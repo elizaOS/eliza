@@ -1,0 +1,432 @@
+--- v14/SOURCE-MANIFEST.json
++++ v15/SOURCE-MANIFEST.json
+@@ -1,8 +1,8 @@
+ {
+-  "commit": "ff04a558747ed426d9d871a319f7b3946f7660e6",
+-  "tree": "086d0c65fb3df530cb1d4f89758dc9d034e09adc",
+-  "parentCommit": "e2325d2d58c2fb6616fdb21eabe029bac2983928",
+-  "parentTree": "ba145e0fbb23a26f915d46f5b0d80e4ebcb02d6b",
++  "commit": "7c154c26580dad30452db43ccb66ffec6b41d972",
++  "tree": "c583c8675a6f9400b7b60c72be852e4dfe95cb10",
++  "parentCommit": "ff04a558747ed426d9d871a319f7b3946f7660e6",
++  "parentTree": "086d0c65fb3df530cb1d4f89758dc9d034e09adc",
+   "files": {
+     "bunfig.toml": "eec98c76b5f98631cb0e417a4945e154476e3cfa963bf3d95c1a32d64afe3fe6",
+     "package.json": "fd04e2ad8574cd0055627138466b8eec77404863e2bc546a866bace10c6d732b",
+@@ -32,7 +32,7 @@
+     "plugins/plugin-assistant/src/services/message/context-discovery.ts": "397e91841aa88075aa98ea84acc28a893b85cec556339c5b43e063c13281bf23",
+     "plugins/plugin-assistant/src/services/message/context-read-recovery.test.ts": "2da5cd3308b5487f1ed4babf579e049ea5f2ffcf6528ee2cb787a6b945b8895d",
+     "plugins/plugin-assistant/src/services/message/history-discovery.ts": "d0f7d2e0cc2f7a80f0dd2207656657075bffb2632283724879482a54c6d8c3f6",
+-    "plugins/plugin-assistant/src/services/message/history-id-replay.test.ts": "45a788d9cbe4f32bce837835396c5c40f4259f11d95d1b53f16543857031298d",
++    "plugins/plugin-assistant/src/services/message/history-id-replay.test.ts": "bdb17c2456ffe753858c03946350a7d3fb6e61024f0a114c11b00d9edce13cfb",
+     "plugins/plugin-assistant/src/services/message/native-context-read.ts": "5b9f6ff83f40fb6889dcc37360e3d5d8e39239afde052306090d8fa0cf96e1e2",
+     "plugins/plugin-assistant/src/services/message/stage1-decision.ts": "b27f9fa556e294425186b7ffa94e84e6a5f2fc2d323b05cb94933cdc27f4b958",
+     "plugins/plugin-openai/__tests__/qwen-response-schema.wire.test.ts": "1d1a52a6db9295eb0731037f5cba53c940256a0d1f2cb93fe239b22ddf153a97",
+--- v14/ORACLES.json
++++ v15/ORACLES.json
+@@ -1,11 +1,11 @@
+ {
+-  "state": "SOURCE_EXPECTED113_IDENTITIES_FOR_DIAGNOSTIC_COMPARISON_NOT_PASS",
+-  "parentCommit": "aee676d861457045f402715132a841ade5fd5888",
++  "state": "SOURCE_DERIVED113_EXPECTED_IDENTITIES_TESTONLY_HOOK_ORACLE_SUCCESSOR_NOT_EXECUTED",
++  "parentCommit": "ff04a558747ed426d9d871a319f7b3946f7660e6",
+   "testOnlyPostwireSuccessorUnpublished": false,
+   "files": [
+     {
+       "path": "plugins/plugin-assistant/src/services/message/history-id-replay.test.ts",
+-      "sha256": "45a788d9cbe4f32bce837835396c5c40f4259f11d95d1b53f16543857031298d",
++      "sha256": "bdb17c2456ffe753858c03946350a7d3fb6e61024f0a114c11b00d9edce13cfb",
+       "tests": [
+         {
+           "line": 213,
+@@ -56,7 +56,7 @@
+           "mode": "test"
+         },
+         {
+-          "line": 253,
++          "line": 254,
+           "template": "cancels the second HANDLE after a full read when %s changes without depending on a remaining READ tool",
+           "caseRow": 0,
+           "sourceRow": "\"role\"",
+@@ -64,7 +64,7 @@
+           "mode": "test"
+         },
+         {
+-          "line": 253,
++          "line": 254,
+           "template": "cancels the second HANDLE after a full read when %s changes without depending on a remaining READ tool",
+           "caseRow": 1,
+           "sourceRow": "\"namespace\"",
+@@ -72,7 +72,7 @@
+           "mode": "test"
+         },
+         {
+-          "line": 253,
++          "line": 254,
+           "template": "cancels the second HANDLE after a full read when %s changes without depending on a remaining READ tool",
+           "caseRow": 2,
+           "sourceRow": "\"agent\"",
+@@ -80,7 +80,7 @@
+           "mode": "test"
+         },
+         {
+-          "line": 253,
++          "line": 254,
+           "template": "cancels the second HANDLE after a full read when %s changes without depending on a remaining READ tool",
+           "caseRow": 3,
+           "sourceRow": "\"room\"",
+@@ -88,7 +88,7 @@
+           "mode": "test"
+         },
+         {
+-          "line": 253,
++          "line": 254,
+           "template": "cancels the second HANDLE after a full read when %s changes without depending on a remaining READ tool",
+           "caseRow": 4,
+           "sourceRow": "\"entity\"",
+@@ -96,7 +96,7 @@
+           "mode": "test"
+         },
+         {
+-          "line": 253,
++          "line": 254,
+           "template": "cancels the second HANDLE after a full read when %s changes without depending on a remaining READ tool",
+           "caseRow": 5,
+           "sourceRow": "\"message\"",
+@@ -104,7 +104,7 @@
+           "mode": "test"
+         },
+         {
+-          "line": 268,
++          "line": 273,
+           "template": "encodes all 551 bound sources without a 551-value native enum and never fills an offered hole",
+           "caseRow": 0,
+           "sourceRow": null,
+@@ -112,7 +112,7 @@
+           "mode": "test"
+         },
+         {
+-          "line": 283,
++          "line": 288,
+           "template": "requires the canonical offered read before admitting a bare alias and preserves provider precedence",
+           "caseRow": 0,
+           "sourceRow": null,
+@@ -120,7 +120,7 @@
+           "mode": "test"
+         },
+         {
+-          "line": 294,
++          "line": 299,
+           "template": "does not reinterpret unadvertised numeric spellings from the failed public sequence",
+           "caseRow": 0,
+           "sourceRow": null,
+@@ -128,7 +128,7 @@
+           "mode": "test"
+         },
+         {
+-          "line": 301,
++          "line": 306,
+           "template": "reads a bound bare ID as history:hN and still rejects an unbound one",
+           "caseRow": 0,
+           "sourceRow": null,
+@@ -136,7 +136,7 @@
+           "mode": "test"
+         },
+         {
+-          "line": 337,
++          "line": 342,
+           "template": "prints the index and search receipt in the accepted history:hN form",
+           "caseRow": 0,
+           "sourceRow": null,
+@@ -144,7 +144,7 @@
+           "mode": "test"
+         },
+         {
+-          "line": 356,
++          "line": 361,
+           "template": "replays hvpnf0 and qr5upe: the recorded bare reads load their originals",
+           "caseRow": 0,
+           "sourceRow": null,
+@@ -152,7 +152,7 @@
+           "mode": "test"
+         },
+         {
+-          "line": 374,
++          "line": 379,
+           "template": "replays qcw4ho: a repair after a successful read is available again",
+           "caseRow": 0,
+           "sourceRow": null,
+@@ -160,7 +160,7 @@
+           "mode": "test"
+         },
+         {
+-          "line": 394,
++          "line": 399,
+           "template": "still fails closed on two consecutive invalid reads",
+           "caseRow": 0,
+           "sourceRow": null,
+@@ -168,7 +168,7 @@
+           "mode": "test"
+         },
+         {
+-          "line": 405,
++          "line": 410,
+           "template": "replays 32b4qi: the routed decision reads h156 and keeps its route",
+           "caseRow": 0,
+           "sourceRow": null,
+@@ -176,7 +176,7 @@
+           "mode": "test"
+         },
+         {
+-          "line": 421,
++          "line": 426,
+           "template": "names the rejected entry and echoes the routed decision in the repair",
+           "caseRow": 0,
+           "sourceRow": null,
+@@ -933,6 +933,6 @@
+   "expectedSkipsTodosFailures": 0,
+   "formatter": "Frozen Vitest5.0.5 source formatTitle+format provenance; JSONsubset inputdata only, no JS/test/vendor execution. Unknown syntax fails closed.",
+   "actualNormalRegistrationAndAssertionsRequired": true,
+-  "sourceCommit": "ff04a558747ed426d9d871a319f7b3946f7660e6",
+-  "sourceTree": "086d0c65fb3df530cb1d4f89758dc9d034e09adc"
++  "sourceCommit": "7c154c26580dad30452db43ccb66ffec6b41d972",
++  "sourceTree": "c583c8675a6f9400b7b60c72be852e4dfe95cb10"
+ }
+--- v14/EXPECTED-GRAPH.json
++++ v15/EXPECTED-GRAPH.json
+@@ -1,7 +1,7 @@
+ {
+   "state": "SOURCE_DERIVED_NORMAL_AUTHORED_PRODUCER_CONE_NOT_EXECUTED",
+-  "sourceCommit": "ff04a558747ed426d9d871a319f7b3946f7660e6",
+-  "sourceTree": "086d0c65fb3df530cb1d4f89758dc9d034e09adc",
++  "sourceCommit": "7c154c26580dad30452db43ccb66ffec6b41d972",
++  "sourceTree": "c583c8675a6f9400b7b60c72be852e4dfe95cb10",
+   "normalTarget": "@elizaos/plugin-assistant#build",
+   "normalCommand": [
+     "/usr/local/bin/node",
+@@ -224,5 +224,5 @@
+   "normalTestTaskRule": "Root turbo.json has NOgenerictesttask; do not invent testdependsOn. This proposal explicitly selects existingbuildtarget and its unchanged^build dependencies; root test:plugins ordinaryupstreambuild:core precedent exists, notwhole27corelane acceptance.",
+   "normalNoCheckMeaning": "Core/Host/Contracts authoredbuilds useTS6 --noCheck emit as declared. No qualifier noCheck/projectskip isadded, and no semanticCore/globaltypes PASS inferred.",
+   "actualSameRunTurboGraphRequired": true,
+-  "source": "ff04a558747ed426d9d871a319f7b3946f7660e6"
++  "source": "7c154c26580dad30452db43ccb66ffec6b41d972"
+ }
+--- v14/REQUIRED-PRODUCER-EXPORTS.json
++++ v15/REQUIRED-PRODUCER-EXPORTS.json
+@@ -1,5 +1,5 @@
+ {
+-  "sourceCommit": "ff04a558747ed426d9d871a319f7b3946f7660e6",
++  "sourceCommit": "7c154c26580dad30452db43ccb66ffec6b41d972",
+   "requiredOutputs": [
+     "packages/contracts/dist/browser-address-input.js",
+     "packages/contracts/dist/browser-request-grounding.js",
+--- v14/PREFLIGHT-DEFINITION.json
++++ v15/PREFLIGHT-DEFINITION.json
+@@ -7,14 +7,14 @@
+         {
+           "specifier": "@elizaos/core",
+           "importer": "plugins/plugin-assistant/src/services/message/history-id-replay.test.ts",
+-          "importerSHA256": "45a788d9cbe4f32bce837835396c5c40f4259f11d95d1b53f16543857031298d",
++          "importerSHA256": "bdb17c2456ffe753858c03946350a7d3fb6e61024f0a114c11b00d9edce13cfb",
+           "target": "packages/core/src/index.ts",
+           "scope": "Actual selected wholefile/normal implementation import, source-transform or bare-source target only"
+         },
+         {
+           "specifier": "./pipeline.ts",
+           "importer": "plugins/plugin-assistant/src/services/message/history-id-replay.test.ts",
+-          "importerSHA256": "45a788d9cbe4f32bce837835396c5c40f4259f11d95d1b53f16543857031298d",
++          "importerSHA256": "bdb17c2456ffe753858c03946350a7d3fb6e61024f0a114c11b00d9edce13cfb",
+           "target": "plugins/plugin-assistant/src/services/message/pipeline.ts",
+           "scope": "Actual selected wholefile/normal implementation import, source-transform or bare-source target only"
+         },
+@@ -28,7 +28,7 @@
+         {
+           "specifier": "../../runtime/builtin-field-evaluators.ts",
+           "importer": "plugins/plugin-assistant/src/services/message/history-id-replay.test.ts",
+-          "importerSHA256": "45a788d9cbe4f32bce837835396c5c40f4259f11d95d1b53f16543857031298d",
++          "importerSHA256": "bdb17c2456ffe753858c03946350a7d3fb6e61024f0a114c11b00d9edce13cfb",
+           "target": "plugins/plugin-assistant/src/runtime/builtin-field-evaluators.ts",
+           "scope": "Actual selected wholefile/normal implementation import, source-transform or bare-source target only"
+         },
+@@ -148,7 +148,15 @@
+           "importer": "packages/testing/src/sqlite-adapter.ts",
+           "importerSHA256": "d75ef28893fe1594b5347a4c949f26107f99b6d43390c8406471059dbbb5d7f2",
+           "target": "plugins/plugin-sqlite/dist/index.js",
+-          "scope": "Normal declared runtime export under unchanged owning SSR/__vitest__ conditions; fresh same-run producer output required"
++          "scope": "Normal declared runtime export under unchanged owning SSR/__vitest__ conditions; fresh same-run producer output required",
++          "publicValueWitness": {
++            "path": "packages/testing/src/sqlite-adapter.ts",
++            "sha256": "d75ef28893fe1594b5347a4c949f26107f99b6d43390c8406471059dbbb5d7f2",
++            "reexportedNames": [
++              "SQLiteDatabaseAdapter"
++            ],
++            "reason": "Actual Testing import+reexport of public bareSQLite entry. Root-project import cannot supply this declaring importer, unlike the ordinary passing OpenAIwirefile."
++          }
+         }
+       ]
+     }
+@@ -280,7 +288,7 @@
+       "requiredExports": [
+         "SQLiteDatabaseAdapter"
+       ],
+-      "allPublicExportIdentity": true
++      "allPublicExportIdentity": false
+     }
+   },
+   "scope": "Unchanged normal aliases resolve tracked source; other normal exports resolve same-run authored dist. Both SSR/__vitest__ agreement and public-bare/absolute selected-target value identity required, never force source conditions or compare naturally distinct source/dist Core entries as identical."
+--- v14/owning-preflight.mjs
++++ v15/owning-preflight.mjs
+@@ -9,7 +9,7 @@
+ const definition = JSON.parse(fs.readFileSync("/results/PREFLIGHT-DEFINITION.json", "utf8"));
+ const outputReceipt=JSON.parse(fs.readFileSync("/results/OUTPUTS-after.json","utf8"));
+ const freshOutputs=new Map(outputReceipt.records.map(x=>[x.path,x]));
+-if(outputReceipt.sourceCommit!=="ff04a558747ed426d9d871a319f7b3946f7660e6"||outputReceipt.mode!=="after")throw new Error("Wrong fresh output subject");
++if(outputReceipt.sourceCommit!=="7c154c26580dad30452db43ccb66ffec6b41d972"||outputReceipt.mode!=="after")throw new Error("Wrong fresh output subject");
+ const records = [];
+ const originalCacheEnv=process.env.VITEST_FS_MODULE_CACHE_PATH;
+ for (const projectDefinition of definition.projects) {
+@@ -58,7 +58,14 @@
+       if(!runtimeResolved||runtimeResolved.id.split("?")[0]!==expected)throw new Error("Actual __vitest__ source target differs from normal SSR target: "+name);
+       // Exercise the same public bare package entry spelling used by tests;
+       // importing the resolved file alone would bypass bare externalization.
+-      const actualImportId=relative?runtimeResolved.id:name;
++      const witness=edge.publicValueWitness;
++      if(witness){
++        if(witness.path!==edge.importer||witness.sha256!==edge.importerSHA256||JSON.stringify(witness.reexportedNames)!==JSON.stringify(target.requiredExports))throw new Error("Wrong declaring-importer public value witness");
++      }
++      // For an entry declared only by Testing, execute Testing's existing
++      // source import+reexport of the public bare name. Root project.import(name)
++      // would resolve from OpenAI's package, where SQLite is not declared.
++      const actualImportId=witness?importer:relative?runtimeResolved.id:name;
+       const actualValues=await project.import(actualImportId);
+       const canonicalValues=await project.import(expected);
+       for(const value of target.requiredExports??[]){
+@@ -70,7 +77,7 @@
+       }
+       const digest = createHash("sha256").update(fs.readFileSync(expected)).digest("hex");
+       if (digest !== (target.provenance==="FRESH_NORMAL_PRODUCER_OUTPUT" ? freshOutputs.get(target.path)?.sha256 : target.sha256)) throw new Error("Owning entry bytes changed: " + name);
+-      imports.push({ name, importer, importerSHA256: importerDigest, scope: edge.scope, target: edge.target, targetProvenance:target.provenance, allPublicExportIdentity:target.allPublicExportIdentity??false, fetchId, actualValueEnvironment:"__vitest__ via public project.import", runtimeResolved:runtimeResolved.id, actualImportId, canonicalAbsoluteImport:expected, requiredValueIdentityChecked:true, requiredValueExports:target.requiredExports??[], fetchedFile: fetched.file ?? null, fetchedId: fetched.id ?? null, resolved: resolved.id, externalize: fetched.externalize ?? null, sha256: digest });
++      imports.push({ name, importer, importerSHA256: importerDigest, scope: edge.scope, target: edge.target, targetProvenance:target.provenance, allPublicExportIdentity:target.allPublicExportIdentity??false, fetchId, actualValueEnvironment:"__vitest__ via public project.import", runtimeResolved:runtimeResolved.id, actualImportId, publicValueWitness:witness??null, canonicalAbsoluteImport:expected, requiredValueIdentityChecked:true, publicValueProofScope:witness?"EXISTING_CONSUMER_REEXPORTED_CLASS_ONLY_FULL_PACKAGE_NAMESPACE_UNPROVED":target.allPublicExportIdentity?"FULL_NORMAL_PACKAGE_NAMESPACE_IDENTITY":"NAMED_NORMAL_VALUE_IDENTITY", fullPublicNamespaceIdentityChecked:target.allPublicExportIdentity===true, requiredValueExports:target.requiredExports??[], fetchedFile: fetched.file ?? null, fetchedId: fetched.id ?? null, resolved: resolved.id, externalize: fetched.externalize ?? null, sha256: digest });
+     }
+     records.push({ name: projectDefinition.name, config: server.config.configFile,
+       conditions: ssr.config.resolve.conditions, externalConditions: ssr.config.resolve.externalConditions,
+--- v14/PLAN.json
++++ v15/PLAN.json
+@@ -1,7 +1,7 @@
+ {
+   "state": "SOURCE_REVIEW_CANDIDATE_NORMAL_PRODUCER_QUALIFICATION_NOT_ADMITTED",
+   "recipe": "ordinal-normal-producer-qualification",
+-  "sourceParent": "aee676d861457045f402715132a841ade5fd5888",
++  "sourceParent": "ff04a558747ed426d9d871a319f7b3946f7660e6",
+   "resourceBounds": {
+     "wholeSeconds": 1200,
+     "jobTimeoutMinutes": 22,
+@@ -141,8 +141,8 @@
+   ],
+   "nativeCompilerAndActuator": "No API native compiler or GOMEMLIMIT actuator. Normal authored producer toolchain includes Bun/TS6 emit/tsup/esbuild/Rollup declaration library, all fresh installed owner metadata recorded. No semantic wholeSDK typecheck claim.",
+   "costNote": "One frozen ignore-scripts install, one cold normal6-producer command under8GiB/4096Node/concurrency1, then3wholefile CLI+extra value preflight under2GiB/1536Node. Full dependency census/verification, output fingerprints, singleattempt, no live provider/model spend. Whole1200s/job22min unchanged; earlier phase caps do not extend outer deadline.",
+-  "sourceCommit": "ff04a558747ed426d9d871a319f7b3946f7660e6",
+-  "sourceTree": "086d0c65fb3df530cb1d4f89758dc9d034e09adc",
++  "sourceCommit": "7c154c26580dad30452db43ccb66ffec6b41d972",
++  "sourceTree": "c583c8675a6f9400b7b60c72be852e4dfe95cb10",
+   "hostCohortsSHA256": "65c033e9c2dda23ef6a74660806d163c4f7758c2e236a6c86f2cdca74df35cb8",
+   "hostProvenanceDisclosure": {
+     "20261025.353.1": "Exact authenticated41741039106 setup + explicit Root source disposition; independent official tag/readme provenance gap OPEN, not capability waiver.",
+@@ -157,7 +157,7 @@
+     "20261018.96.1": "Exact authenticated41750127407 setup/claim/earlymetadata plus explicitRoot source disposition; fresh officialtag404, independent officialtag/commit/readme provenance gap OPEN, not capability or execution admission."
+   },
+   "moduleCachePolicy": "Fresh owned0700 nonlinked per-phase under results, same explicit CLI+env path; public preflight API cache paths also fresh. Unchanged owning configs/readonly dependency source. Cache/source bytes excluded from artifact retention.",
+-  "modulePreflight": "Unchanged normal aliases resolve tracked source; other normal exports resolve same-run authored dist. Both SSR/__vitest__ agreement and public-bare/absolute selected-target value identity required, never force source conditions or compare naturally distinct source/dist Core entries as identical.",
++  "modulePreflight": "Unchanged normal SSR/__vitest__ importer-relative source/dist resolution and fresh output hashes. Public root bareimports unchangedexceptSQLite usesexistingTesting publicbareimport/reexport witness tocompareSQLiteDatabaseAdapter classidentity. SQLitefullpublicnamespace equivalence remains separatelyUNPROVED; other10generatedbareentryfullnamespace gates unchanged.",
+   "diagnosticOnly": false,
+   "declaredProducerStatus": "H1 source-supported by independent normal config/export and prior ordinary setup evidence; actual same-run graph/output/tool/source/dependency/result closure mandatory.",
+   "observationInstrumentation": {
+@@ -165,7 +165,7 @@
+     "CLIConditions": "Extra read-onlyreporter onTestRunStart recordsactualproject/worker-transport__vitest__/SSRconditions/cache path viaordinaryCLI context; normalJSONreporter retained. No modulevaluepreflight/SDKsourceimport. Configurationrecorddescribesactualserver-sideworkertransport, separatefromworkerprocessNodeflags; notin-workerViteintrospectionclaim.",
+     "failureBehavior": "Observercallbacks bounded/nonthrowing withvisibleunavailablemarkers. Missingmetadata isexplicitdiagnosticgap, neverpass; module/reportersyntax/startup failure remainsactualCLIexit andrecorded. No callbackswrapped/replayed."
+   },
+-  "sourceProof": "Actual Root-remotely-verified ff04 source over reviewed e232 voice base; exact8 canonical context/test leaves. Alpha bcdef current union is separate qualification owner; no runtime adoption.",
++  "sourceProof": "Exact published test-only successor7c154 overff04: onlyhistory cancellationfixture changed toreviewedbdb17; all29569otherleafmode/type/OIDs includingproduction,configs,locks,voice/Google/nativebindings unchanged. Product bcdef/ff04 remainsseparate/unrepinned. No earlier105or253/12pass transferred.",
+   "expectedOutcome": "113 exact ordinary registrations and passes, zero failed/pending/todo/unexecuted, normal six producers cache0/exits0, every custody/resource/closure gate, mandatory postCLI value preflight. Any missing or failed proof rejects selected scope. No whole-package mjs/global types/runtime/live acceptance.",
+   "independentCauseEvidence": {
+     "packet": "/Users/nubs/Git/handoff-20261030/packets/ordinal-contracts-node-20261104/PACKET.md",
+@@ -175,5 +175,10 @@
+   },
+   "effectiveProducerHierarchy": "Preserve explicit system.slice parent/readback and every actual runner/producer ancestor ceiling. Missing kernel-root memory.max requires existing systemd/init.scope/controller/mount checks plus own current namespace descriptor+readlink matching source-bound reserved initial inode on exact reviewed Ubuntu release/version_signature. No PID1 namespace permission, sudo, new child, or unsupported-kernel constant fallback. system.slice must be domain; root cgroup.type is inspected only if exposed, consistent with documented non-root interface.",
+   "workspaceInventoryProposal": "Whole retained workspace including normal frozen-install cache remains covered. Replace large records array/baseline JSON with deterministic streaming record SHA256 plus bounded count/type/top-root summaries. Explicit entry budget proposal100000->1000000; filebytes32GiB and phase90s/test2GiB1536Node/CPU2/PID256/whole1200/job22/disk gates unchanged. Exact Root reviewed source/profile authority required; no automatic cap waiver.",
+-  "hostMetadataDiagnostics": "Retain V13 bounded partial numeric/hierarchy/kernel observations before failure, without its ungranted privileged fallback. V13 remains held/unpublished/unexecuted."
++  "hostMetadataDiagnostics": "Retain V13 bounded partial numeric/hierarchy/kernel observations before failure, without its ungranted privileged fallback. V13 remains held/unpublished/unexecuted.",
++  "SQLiteNamespaceScope": {
++    "accepted": "Existing normal declaring consumer SQLiteDatabaseAdapter binding identical to canonical freshdist export",
++    "notAccepted": "FullSQLitepackageexportnamespace equivalence remains unproved and is not markedpassed orfullSDKqualified",
++    "RootDecision": "/Users/nubs/.local/state/eliza-five-lane-coordination/ROOT-HISTORY-ORACLE-AND-SQLITE-PUBLIC-BINDING-SOURCE-DECISION-20261104.json"
++  }
+ }
+--- v14/run.py
++++ v15/run.py
+@@ -399,6 +399,6 @@
+   except ResourcePolicyError:pass
+   except BaseException as exc:cleanup_errors.append({'cid':item['cid'],'error':str(exc)})
+  resource_errors=[{'cid':item['cid'],**error} for item in owned for error in item.get('resourcePolicyFailures',[])]
+- result={'state':'CLEANUP_FAILED' if cleanup_errors else 'RESOURCE_POLICY_FAILED' if resource_errors else status,'error':run_error,'phases':records,'containers':owned,'cleanupErrors':cleanup_errors,'resourcePolicyErrors':resource_errors,'families':family_results,'seconds':time.monotonic()-start,'sourceCommit':manifest['commit'],'sourceTree':manifest['tree'],'claim':'Selected113wholefile qualification only after normal6producer cold build, actual7node15edge graph, fresh output ownership, ordinaryCLI exactnames/counts/pass, value identity and final source/dependency/process/container closure. Scriptedmodels+loopbackonly; no semantictypes/liveprovider/runtime/device/financial acceptance.','diagnosticOnly':False,'qualificationIssued':status=='QUALIFIED_SELECTED_WHOLE_FILES' and not run_error and not cleanup_errors and not resource_errors,'customValuePreflightAfterAllCLI':True,'normalTypes':False,'entireCompoundPackageScriptsQualified':False,'broadSDKBuild':False,'liveModelProviderVoiceRuntimeDeviceFinancialAcceptance':False}
++ result={'state':'CLEANUP_FAILED' if cleanup_errors else 'RESOURCE_POLICY_FAILED' if resource_errors else status,'error':run_error,'phases':records,'containers':owned,'cleanupErrors':cleanup_errors,'resourcePolicyErrors':resource_errors,'families':family_results,'seconds':time.monotonic()-start,'sourceCommit':manifest['commit'],'sourceTree':manifest['tree'],'claim':'Selected113wholefile qualification only after normal6producer cold build, actual7node15edge graph, fresh output ownership, ordinaryCLI exactnames/counts/pass, value identity and final source/dependency/process/container closure. Scriptedmodels+loopbackonly; no semantictypes/liveprovider/runtime/device/financial acceptance.','diagnosticOnly':False,'qualificationIssued':status=='QUALIFIED_SELECTED_WHOLE_FILES' and not run_error and not cleanup_errors and not resource_errors,'customValuePreflightAfterAllCLI':True,'normalTypes':False,'entireCompoundPackageScriptsQualified':False,'broadSDKBuild':False,'SQLiteFullPublicNamespaceQualified':False,'SQLitePublicValueScope':'EXISTING_TESTING_CONSUMER_REEXPORTED_CLASS_IDENTITY_ONLY','liveModelProviderVoiceRuntimeDeviceFinancialAcceptance':False}
+  (out/'RESULT.json').write_text(json.dumps(result,indent=2)+'\n')
+ raise SystemExit(0 if status=='QUALIFIED_SELECTED_WHOLE_FILES' and not run_error and not cleanup_errors and not resource_errors else 1)
+--- v14/workflow.yml
++++ v15/workflow.yml
+@@ -66,7 +66,7 @@
+         if: inputs.mode == 'qualify'
+         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+         with:
+-          ref: ff04a558747ed426d9d871a319f7b3946f7660e6
++          ref: 7c154c26580dad30452db43ccb66ffec6b41d972
+           path: source
+           fetch-depth: 1
+           submodules: false
+--- v14/ROOT-GO-CONTRACT.json
++++ v15/ROOT-GO-CONTRACT.json
+@@ -12,12 +12,12 @@
+   "expectedRegistrations": 113,
+   "expectedPassed": 113,
+   "expectedUnexecuted": 0,
+-  "sourceCommit": "ff04a558747ed426d9d871a319f7b3946f7660e6",
+-  "sourceTree": "086d0c65fb3df530cb1d4f89758dc9d034e09adc",
++  "sourceCommit": "7c154c26580dad30452db43ccb66ffec6b41d972",
++  "sourceTree": "c583c8675a6f9400b7b60c72be852e4dfe95cb10",
+   "workflowCommit": "UNPUBLISHED_OPERATOR_REVIEW_REQUIRED",
+   "operatorSealSHA256": "FROZEN_AFTER_PIN_AND_REVIEW",
+-  "planSHA256": "ef2e90d72345dbf7e5a8924e111b152d0cc679b90a295091bfcc0efce7f88e2e",
+-  "oracleSHA256": "f1733d451f5369d980dd187641bbe6c2d6303540d68e49575aa8023c49754e10",
++  "planSHA256": "2942425cb99c9db935d68ab5c8198ebd680bd8af305cdfd8aedb3c465d23f162",
++  "oracleSHA256": "2c6462c7820c4712e9b5a16191145436d514c2a8fc87e34425182e284d9c595d",
+   "testResourcePolicySHA256": "3f4ae6ace5fa42184481c14f08fbf55f73bc68339b82a72567b9833b8b850efd",
+   "intentId": "NOT_ISSUED",
+   "issuedEpoch": "NOT_ISSUED",
+@@ -36,12 +36,12 @@
+     },
+     "20261018.96.1": "Exact authenticated41750127407 setup/claim/earlymetadata plus explicitRoot source disposition; fresh officialtag404, independent officialtag/commit/readme provenance gap OPEN, not capability or execution admission."
+   },
+-  "sourceManifestSHA256": "51250285725d9b5817901dcd0d78dede9821973eb302315852cee82a6e2b064e",
++  "sourceManifestSHA256": "25822fa8358b56e5e57b21e2e5efadc3a47f04b7e12e54cb5f60c18d81ab328b",
+   "diagnosticOnly": false,
+   "allowOrdinaryCLIObservation": true,
+   "allowPostCLIValuePreflight": true,
+   "allowNormalOwnedWorkspaceProducers": true,
+   "allowProducerSourceWrite": true,
+-  "producerGraphSHA256": "79deef291c6bdb715b90c0dabbe8d473a9c0d5bb8987cf585f468a6a71f8f2a8",
++  "producerGraphSHA256": "272a709a421f7859c2c0b117aec9331b43a18b276c7ae5aa0013e673dd0ce7fe",
+   "sourceCustodySHA256": "34989438a7187c93d4a0cce79068cea5ca4eacc03d90261ae506da8b84d4f918"
+ }
+--- v14/SOURCE-ONLY-PREPARATION.json
++++ v15/SOURCE-ONLY-PREPARATION.json
+@@ -1,7 +1,7 @@
+ {
+-  "state": "SOURCE_CANDIDATE_READY_FOR_INDEPENDENT_REVIEW_NOT_EXECUTION",
+-  "SDKSource": "ff04a558747ed426d9d871a319f7b3946f7660e6",
+-  "SDKTree": "086d0c65fb3df530cb1d4f89758dc9d034e09adc",
++  "state": "COHERENT_TESTONLY_SUCCESSOR_REBIND_READY_FOR_SOLE_REVIEW_NOT_EXECUTION",
++  "SDKSource": "7c154c26580dad30452db43ccb66ffec6b41d972",
++  "SDKTree": "c583c8675a6f9400b7b60c72be852e4dfe95cb10",
+   "executedSubject": false,
+   "published": false,
+   "GOIssued": false,

@@ -1,0 +1,228 @@
+{
+  "state": "SOURCE_DERIVED_NORMAL_AUTHORED_PRODUCER_CONE_NOT_EXECUTED",
+  "sourceCommit": "7c154c26580dad30452db43ccb66ffec6b41d972",
+  "sourceTree": "c583c8675a6f9400b7b60c72be852e4dfe95cb10",
+  "normalTarget": "@elizaos/plugin-assistant#build",
+  "normalCommand": [
+    "/usr/local/bin/node",
+    "packages/scripts/run-turbo.ts",
+    "run",
+    "build",
+    "--filter=@elizaos/plugin-assistant"
+  ],
+  "nodes": {
+    "@elizaos/plugin-assistant#build": {
+      "path": "plugins/plugin-assistant",
+      "script": "bun run build.ts",
+      "task": "build",
+      "dependsOn": [
+        "^build"
+      ],
+      "manifestSHA256": "752eec2de728333bfeba957d993023c01289d86e8b9d89f8f58469b755156712"
+    },
+    "@elizaos/core#build": {
+      "path": "packages/core",
+      "script": "bun run build.ts",
+      "task": "build",
+      "dependsOn": [],
+      "manifestSHA256": "7e4d5fbca377e9095b414f9fcc9e955288f1bf499839564ba85e15bfd8f1babd"
+    },
+    "@elizaos/host#build": {
+      "path": "packages/host",
+      "script": "tsc6 --noCheck -p tsconfig.emit.json && node ../scripts/rewrite-dist-relative-imports-node-esm.ts packages/host",
+      "task": "build",
+      "dependsOn": [
+        "^build"
+      ],
+      "manifestSHA256": "e07b4c728d053e99df650666f241446c80add422212e11e72ee251d3c1b40703"
+    },
+    "@elizaos/contracts#build": {
+      "path": "packages/contracts",
+      "script": "tsc6 --noCheck -p tsconfig.emit.json && node ../scripts/rewrite-dist-relative-imports-node-esm.ts packages/contracts",
+      "task": "build",
+      "dependsOn": [
+        "^build"
+      ],
+      "manifestSHA256": "f4e8a312510ab9f72ac27e597d7f1268202b162ac04e86db5fd060885ee7838c"
+    },
+    "@elizaos/plugin-sql#build": {
+      "path": "plugins/plugin-sql",
+      "script": "bun run build.ts",
+      "task": "build",
+      "dependsOn": [
+        "^build"
+      ],
+      "manifestSHA256": "5625760075dec5414c28b96ce535d556932131e6ba1a8adbfd8d3a4666a5f82a"
+    },
+    "@elizaos/testing#build": {
+      "path": "packages/testing",
+      "script": null,
+      "task": "build",
+      "dependsOn": [
+        "^build"
+      ],
+      "manifestSHA256": "55e46302ce7cfda70f4cee53eebfeaa32e5d04e7792efd80e16128982d11378f"
+    },
+    "@elizaos/plugin-sqlite#build": {
+      "path": "plugins/plugin-sqlite",
+      "script": "bun run build.ts",
+      "task": "build",
+      "dependsOn": [
+        "^build"
+      ],
+      "manifestSHA256": "2c67fd9839277c0f50427134a4897ebf1d1ed15b564c454c3c23ca7a1de931d9"
+    }
+  },
+  "edges": [
+    {
+      "from": "@elizaos/plugin-assistant#build",
+      "to": "@elizaos/core#build",
+      "declaration": "^build",
+      "manifestField": "dependencies"
+    },
+    {
+      "from": "@elizaos/plugin-assistant#build",
+      "to": "@elizaos/host#build",
+      "declaration": "^build",
+      "manifestField": "dependencies"
+    },
+    {
+      "from": "@elizaos/host#build",
+      "to": "@elizaos/core#build",
+      "declaration": "^build",
+      "manifestField": "dependencies"
+    },
+    {
+      "from": "@elizaos/host#build",
+      "to": "@elizaos/contracts#build",
+      "declaration": "^build",
+      "manifestField": "dependencies"
+    },
+    {
+      "from": "@elizaos/contracts#build",
+      "to": "@elizaos/core#build",
+      "declaration": "^build",
+      "manifestField": "dependencies"
+    },
+    {
+      "from": "@elizaos/plugin-assistant#build",
+      "to": "@elizaos/plugin-sql#build",
+      "declaration": "^build",
+      "manifestField": "devDependencies"
+    },
+    {
+      "from": "@elizaos/plugin-sql#build",
+      "to": "@elizaos/core#build",
+      "declaration": "^build",
+      "manifestField": "dependencies"
+    },
+    {
+      "from": "@elizaos/plugin-assistant#build",
+      "to": "@elizaos/contracts#build",
+      "declaration": "^build",
+      "manifestField": "dependencies"
+    },
+    {
+      "from": "@elizaos/plugin-assistant#build",
+      "to": "@elizaos/testing#build",
+      "declaration": "^build",
+      "manifestField": "devDependencies"
+    },
+    {
+      "from": "@elizaos/testing#build",
+      "to": "@elizaos/core#build",
+      "declaration": "^build",
+      "manifestField": "dependencies"
+    },
+    {
+      "from": "@elizaos/testing#build",
+      "to": "@elizaos/host#build",
+      "declaration": "^build",
+      "manifestField": "dependencies"
+    },
+    {
+      "from": "@elizaos/testing#build",
+      "to": "@elizaos/plugin-sql#build",
+      "declaration": "^build",
+      "manifestField": "dependencies"
+    },
+    {
+      "from": "@elizaos/testing#build",
+      "to": "@elizaos/plugin-sqlite#build",
+      "declaration": "^build",
+      "manifestField": "dependencies"
+    },
+    {
+      "from": "@elizaos/plugin-sqlite#build",
+      "to": "@elizaos/core#build",
+      "declaration": "^build",
+      "manifestField": "dependencies"
+    },
+    {
+      "from": "@elizaos/testing#build",
+      "to": "@elizaos/contracts#build",
+      "declaration": "^build",
+      "manifestField": "dependencies"
+    }
+  ],
+  "topologicalPrerequisiteOrderNotManualInvocation": [
+    "@elizaos/core#build",
+    "@elizaos/contracts#build",
+    "@elizaos/plugin-sql#build",
+    "@elizaos/plugin-sqlite#build",
+    "@elizaos/host#build",
+    "@elizaos/testing#build",
+    "@elizaos/plugin-assistant#build"
+  ],
+  "runnable": 6,
+  "transit": 1,
+  "expectedNodes": 7,
+  "expectedEdges": 15,
+  "coversAllDeclaredWorkspaceDependencySuppliersOfBothOwners": [
+    "@elizaos/contracts",
+    "@elizaos/core",
+    "@elizaos/host",
+    "@elizaos/plugin-assistant",
+    "@elizaos/plugin-sql",
+    "@elizaos/plugin-sqlite",
+    "@elizaos/testing"
+  ],
+  "allSourceWorkspaceManifests": {
+    "@elizaos/core": {
+      "path": "packages/core/package.json",
+      "sha256": "7e4d5fbca377e9095b414f9fcc9e955288f1bf499839564ba85e15bfd8f1babd"
+    },
+    "@elizaos/contracts": {
+      "path": "packages/contracts/package.json",
+      "sha256": "f4e8a312510ab9f72ac27e597d7f1268202b162ac04e86db5fd060885ee7838c"
+    },
+    "@elizaos/host": {
+      "path": "packages/host/package.json",
+      "sha256": "e07b4c728d053e99df650666f241446c80add422212e11e72ee251d3c1b40703"
+    },
+    "@elizaos/plugin-sql": {
+      "path": "plugins/plugin-sql/package.json",
+      "sha256": "5625760075dec5414c28b96ce535d556932131e6ba1a8adbfd8d3a4666a5f82a"
+    },
+    "@elizaos/plugin-sqlite": {
+      "path": "plugins/plugin-sqlite/package.json",
+      "sha256": "2c67fd9839277c0f50427134a4897ebf1d1ed15b564c454c3c23ca7a1de931d9"
+    },
+    "@elizaos/plugin-assistant": {
+      "path": "plugins/plugin-assistant/package.json",
+      "sha256": "752eec2de728333bfeba957d993023c01289d86e8b9d89f8f58469b755156712"
+    },
+    "@elizaos/plugin-openai": {
+      "path": "plugins/plugin-openai/package.json",
+      "sha256": "f10101267ae23f8a63c6a3133e7e2a5c1bfb81a4c55eee70e1d4fce39208b1cc"
+    },
+    "@elizaos/testing": {
+      "path": "packages/testing/package.json",
+      "sha256": "55e46302ce7cfda70f4cee53eebfeaa32e5d04e7792efd80e16128982d11378f"
+    }
+  },
+  "normalTestTaskRule": "Root turbo.json has NOgenerictesttask; do not invent testdependsOn. This proposal explicitly selects existingbuildtarget and its unchanged^build dependencies; root test:plugins ordinaryupstreambuild:core precedent exists, notwhole27corelane acceptance.",
+  "normalNoCheckMeaning": "Core/Host/Contracts authoredbuilds useTS6 --noCheck emit as declared. No qualifier noCheck/projectskip isadded, and no semanticCore/globaltypes PASS inferred.",
+  "actualSameRunTurboGraphRequired": true,
+  "source": "7c154c26580dad30452db43ccb66ffec6b41d972"
+}

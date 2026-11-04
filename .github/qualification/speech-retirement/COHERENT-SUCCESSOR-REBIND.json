@@ -1,0 +1,52 @@
+{
+  "state": "SOURCE_ONLY_OPERATOR_BINDING_FOR_SAME_SOLE_REVIEW_NOT_PUBLISHED_OR_EXECUTED",
+  "atUTC": "2026-11-04T07:09:27.851907+00:00",
+  "actualSource": "7c154c26580dad30452db43ccb66ffec6b41d972",
+  "actualSourceTree": "c583c8675a6f9400b7b60c72be852e4dfe95cb10",
+  "sourceSoleParent": "ff04a558747ed426d9d871a319f7b3946f7660e6",
+  "sourceChangedOnly": "plugins/plugin-assistant/src/services/message/history-id-replay.test.ts",
+  "fixturePostimageSHA256": "bdb17c2456ffe753858c03946350a7d3fb6e61024f0a114c11b00d9edce13cfb",
+  "sourcePublication": "/Users/nubs/.local/state/eliza-five-lane-coordination/ordinal-aee-normal-qualification-preparation-20261103/publication-history-fixture-v1/PUBLISHED.json",
+  "sourcePublicationSHA256": "999a88f8104b8c1d5296929ad275f738259d0205b4a2a42fdfb69daf7e0ba5df",
+  "semanticReview": "/Users/nubs/.local/state/eliza-five-lane-coordination/ordinal-aee-normal-qualification-preparation-20261103/history-cancellation-source-diagnosis-ff04/minimal-correction-proposal-v1/LUNA-SEMANTIC-SOURCE-REVIEW.json",
+  "semanticReviewSHA256": "d08f19584631062b3c5a4a3e41f504541140d39902d72791625c73d3a6d22f25",
+  "RootDecision": "/Users/nubs/.local/state/eliza-five-lane-coordination/ROOT-HISTORY-ORACLE-AND-SQLITE-PUBLIC-BINDING-SOURCE-DECISION-20261104.json",
+  "RootDecisionSHA256": "5994eeb97d243aca7e7c843905bbbac0a1b506c8e1e393c3e1ae07b1daed9f16",
+  "sourceBindings": [
+    "SourceManifest commit/tree/parent/onefixtureSHA",
+    "allsource-derived113oracle names+newactual line offsets/dataSHA",
+    "everyhistoryfixture importerSHA",
+    "freshproducergraph/export subjectcommit/tree only;all7nodes15edges6scripts unchanged",
+    "preflightoutputsubjectcommit andexistingSQLiteconsumer witness/sourceSHA",
+    "plan/sourceproof/RootGO hashes/sourcecommit/tree",
+    "workflow exactsourcecheckout",
+    "result explicitSQLite class-only/fullnamespaceunproved scope"
+  ],
+  "preserved": [
+    "run/claimqualification algorithm and223phaselabels/fivefullcensuses",
+    "allsourceproduction/configs/conditions/aliases",
+    "fresh sixnormalproducers and81exports",
+    "other10generatednamespaceidentitygates",
+    "sameall113fullowningcases22+38+53;exactnamesretained",
+    "allmemory/CPU/time/network/disk/cgroup/1millioninventorybounds"
+  ],
+  "SQLiteProofScope": {
+    "accepted": "Existing normal declaring consumer SQLiteDatabaseAdapter binding identical to canonical freshdist export",
+    "notAccepted": "FullSQLitepackageexportnamespace equivalence remains unproved and is not markedpassed orfullSDKqualified",
+    "RootDecision": "/Users/nubs/.local/state/eliza-five-lane-coordination/ROOT-HISTORY-ORACLE-AND-SQLITE-PUBLIC-BINDING-SOURCE-DECISION-20261104.json"
+  },
+  "sourceCaseDerivation": {
+    "script": "/Users/nubs/.local/state/eliza-five-lane-coordination/ordinal-aee-normal-qualification-preparation-20261103/history-cancellation-source-diagnosis-ff04/successor-source-case-data/derive-as-data.py",
+    "scriptSHA256": "77275724824d1926dcb05c3c5a3f9b9ebcd5a5ac6cb464639460b6d48faffdaf",
+    "result": "/Users/nubs/.local/state/eliza-five-lane-coordination/ordinal-aee-normal-qualification-preparation-20261103/history-cancellation-source-diagnosis-ff04/successor-source-case-data/SOURCE-TEST-REGISTRATIONS.json",
+    "rawDataResultSHA256": "70ff105ccf511c6203c2a64654adeec752a8a915fe8f497bb81e9944b4088848",
+    "codeExecuted": "Python lexical/data formatting only; no JS/SDK/test callback/module executed",
+    "counts": [
+      22,
+      38,
+      53
+    ]
+  },
+  "priorResultNotTransferred": "Oldff04sixproducers/105pass8fail retained; proposedtestsuccessor requiresnewqualification afterexactreview/Rootdecision. No rerun253or12scope.",
+  "noOperatorPublicationJobGOProviderDockerDevice": true
+}
