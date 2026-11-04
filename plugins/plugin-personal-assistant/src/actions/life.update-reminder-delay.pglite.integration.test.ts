@@ -663,6 +663,63 @@ it.each([
   },
 );
 
+// chusmias258-dev on #38583: after the save, the owner edits a different live
+// reminder. "That" is now that reminder, so a planner title of "Call mom" must
+// not fall back to the saved copy; the namesakes stay whole and it asks.
+it("asks instead of moving the saved namesake when a different reminder was edited since", async () => {
+  const older = await seed("Call mom", {
+    ...STRETCH_CADENCE,
+    dueAt: CALL_MOM_4PM,
+  });
+  const saved = await seed("Call mom", {
+    ...STRETCH_CADENCE,
+    dueAt: CALL_MOM_9PM,
+  });
+  const milk = await seed("Buy milk", {
+    ...STRETCH_CADENCE,
+    dueAt: CALL_MOM_4PM,
+  });
+  const conversation = {
+    roomId,
+    entityId: service.ownerEntityId() as UUID,
+  } as Memory;
+  try {
+    await writeRecentLifeSaveCache(fixture.runtime, conversation, {
+      definitionId: saved.definition.id,
+      title: saved.definition.title,
+      createdAt: Date.now(),
+    });
+    const moved = await updateReminder(
+      {
+        title: "Buy milk",
+        target: "Buy milk",
+        details: { cadence: { kind: "once", dueAt: CALL_MOM_5PM } },
+      },
+      "move buy milk to 5pm",
+    );
+    expect(moved.success, JSON.stringify(moved)).toBe(true);
+    const followed = await updateReminder(
+      {
+        title: "Call mom",
+        target: "Call mom",
+        details: { cadence: { kind: "once", dueAt: CALL_MOM_530PM } },
+      },
+      "actually make that 5:30pm",
+    );
+    expect(followed.success, JSON.stringify(followed)).toBe(false);
+    expect(followed.text).toContain("Multiple items match");
+    for (const entry of [older, saved])
+      expect(
+        (await service.getDefinition(entry.definition.id)).definition,
+      ).toEqual(entry.definition);
+  } finally {
+    await clearRecentLifeSaveCache(fixture.runtime, conversation);
+    await clearRecentLifeEditCache(fixture.runtime, conversation);
+    for (const entry of [older, saved, milk])
+      await service.deleteDefinition(entry.definition.id);
+  }
+});
+
 // Each namesake case the reviews probed, at the trajectory's 5:01 AM PDT clock.
 // A row names the one definition that may change. A row without one (except
 // the snooze) must ask "Multiple items match" and change nothing, as the base

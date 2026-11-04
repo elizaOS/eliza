@@ -1360,8 +1360,8 @@ function supersedingNamesake(
       (entry.definition.status !== "archived" &&
         entry.definition.status !== "completed"),
   );
-  // "That" is the newest touched copy that is still live; an edited copy
-  // since cancelled or completed gives way to the saved one.
+  // "That" is the touched copy the caller chose (the live edited reminder,
+  // else the saved one); a copy no longer live is no candidate below.
   const touched = op.cancel
     ? []
     : (op.recentTouchIds ?? []).flatMap((id) =>
@@ -6606,14 +6606,30 @@ async function runLifeOperationHandlerInner(
       // "That" is the reminder this conversation touched last: the one it
       // edited since its last save, else the one it saved. The save record
       // also backs a retraction, so an edit records its own pointer instead
-      // of moving it, and a later save clears that pointer. Both pointers go
-      // to the resolver, which skips one whose reminder is no longer live.
+      // of moving it, and a later save clears that pointer. While the edited
+      // reminder is live it alone is "that", whatever its title, so an edit
+      // of another title never falls back to the saved copy. Once it is
+      // cancelled, completed or deleted, "that" is the saved one again.
+      const editedId = archiveOnlyReminder
+        ? undefined
+        : (await readRecentLifeEditCache(runtime, message))?.definitionId;
+      const editedIsLive =
+        editedId !== undefined &&
+        (await service
+          .getDefinition(editedId)
+          .then(
+            ({ definition }) =>
+              definition.status !== "archived" &&
+              definition.status !== "completed",
+          )
+          .catch(() => false));
       const recentTouchIds = archiveOnlyReminder
         ? []
-        : [
-            (await readRecentLifeEditCache(runtime, message))?.definitionId,
-            (await readRecentLifeSaveCache(runtime, message))?.definitionId,
-          ].filter((id): id is string => typeof id === "string");
+        : editedIsLive
+          ? [editedId]
+          : [
+              (await readRecentLifeSaveCache(runtime, message))?.definitionId,
+            ].filter((id): id is string => typeof id === "string");
       const { match: target, ambiguousCandidates } =
         await resolveDefinitionForMutation(
           service,
