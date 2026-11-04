@@ -1,0 +1,65 @@
+{
+  "state": "SOURCE_PARSERS_ONLY_NO_OPERATOR_OR_SDK_MODULE_EXECUTION",
+  "checks": [
+    {
+      "file": "run.py",
+      "check": "Python AST parse only",
+      "result": "PASS"
+    },
+    {
+      "file": "claim.py",
+      "check": "Python AST parse only",
+      "result": "PASS"
+    },
+    {
+      "file": "host-memory-admission.py",
+      "check": "Python AST parse only",
+      "result": "PASS"
+    },
+    {
+      "file": "producer-bootstrap.mjs",
+      "check": "Node syntax only; module not imported",
+      "result": "PASS"
+    },
+    {
+      "file": "owning-preflight.mjs",
+      "check": "Node syntax only; module not imported",
+      "result": "PASS"
+    },
+    {
+      "file": "ordinary-cli-conditions-reporter.mjs",
+      "check": "Node syntax only; module not imported",
+      "result": "PASS"
+    },
+    {
+      "file": "workspace-write-custody.mjs",
+      "check": "Node syntax only; module not imported",
+      "result": "PASS"
+    },
+    {
+      "file": "output-custody.mjs",
+      "check": "Node syntax only; module not imported",
+      "result": "PASS"
+    },
+    {
+      "file": "capture-turbo-graph.mjs",
+      "check": "Node syntax only; module not imported",
+      "result": "PASS"
+    },
+    {
+      "file": "bootstrap.mjs",
+      "check": "Node syntax only; module not imported",
+      "result": "PASS"
+    },
+    {
+      "file": "ordinary-node-conditions.cjs",
+      "check": "Node syntax only; module not imported",
+      "result": "PASS"
+    }
+  ],
+  "unboundFunctionGlobals": [],
+  "subjectTests": 0,
+  "jobs": 0,
+  "publishes": 0,
+  "GOs": 0
+}

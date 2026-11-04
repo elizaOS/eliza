@@ -1,0 +1,177 @@
+{
+  "state": "SOURCE_REVIEW_CANDIDATE_NORMAL_PRODUCER_QUALIFICATION_NOT_ADMITTED",
+  "recipe": "ordinal-normal-producer-qualification",
+  "sourceParent": "aee676d861457045f402715132a841ade5fd5888",
+  "resourceBounds": {
+    "wholeSeconds": 1200,
+    "jobTimeoutMinutes": 22,
+    "cpu": 2,
+    "pids": 256,
+    "logBytesPerPhase": 8388608,
+    "maxDiskGrowthBytes": 12884901888,
+    "minimumStartFreeBytes": 17179869184,
+    "stopFreeBytes": 8589934592
+  },
+  "reviewedRunner": {
+    "ImageOS": "ubuntu24",
+    "dockerServer": "28.0.4",
+    "evidenceRun": 41504810728,
+    "evidenceAttempt": 1,
+    "evidenceArtifact": 13169763764,
+    "evidenceArchiveSHA256": "c8809eb81e5914c0fc2ed96cb6c8e77cbc5336930fcdeefa857708a02cd0de90",
+    "scope": "Docker and ImageOS pins only; image admission uses the sealed finite allowlist plus same-run capabilities."
+  },
+  "hostEnvironment": {
+    "allowedImageVersions": [
+      "20261018.96.1",
+      "20261025.353.1",
+      "20261026.354.1",
+      "20261101.360.1"
+    ],
+    "ImageOS": "ubuntu24",
+    "architecture": "x86_64",
+    "cleanupPaths": [],
+    "cleanupSecondsPerPath": 60,
+    "cleanupBeforeMinimumDiskAdmission": false,
+    "cleanupOnlyWhenBelowEntryFloor": false,
+    "hostPythonRange": "3.12 <= version < 3.16",
+    "capabilities": [
+      "Linux /proc",
+      "waitid WNOWAIT preserves child identity before reap",
+      "session PGID identity",
+      "Docker linux/amd64",
+      "Docker server exact28.0.4"
+    ],
+    "priorSingleCohortReview": {
+      "ImageVersion": "20261026.354.1",
+      "ImageOS": "ubuntu24",
+      "dockerServer": "28.0.4",
+      "evidenceRun": 41504810728,
+      "evidenceAttempt": 1,
+      "evidenceArtifact": 13169763764,
+      "evidenceArchiveSHA256": "c8809eb81e5914c0fc2ed96cb6c8e77cbc5336930fcdeefa857708a02cd0de90"
+    },
+    "provenanceLimit": "Exact18 and25 authenticated-job attestation plus explicit Root source dispositions; independent officialprimary provenance gaps OPEN (fresh18tag404).26officialstable/01prerelease. No wildcard, capability/source/cap/test waiver or spentintent replay.",
+    "noMacExecutionOrDeletion": true,
+    "normalSDKLifecycleStillFalse": true,
+    "newExactCohortSourceReview": {
+      "cohort": "20261101.360.1",
+      "provenanceSHA256": "b632e2087f81a3405c27c1277aeccb242a66485e4ad07051f311279975983167",
+      "readmeSHA256": "5993072a61c810a3bf5057bba6322e576a5d83307b87afc1c8600e05b811b124",
+      "runtimeCapabilities": "UNKNOWN_REQUIRE_SAME_RUN_GATES",
+      "noWildcardOrDockerPinChange": true
+    },
+    "noHostCleanupAuthorized": true
+  },
+  "expectedTools": {
+    "node": "24.15.0",
+    "bun": "1.4.2",
+    "bunSHA256": "a83d263767d839e4d2649ca8e35d07159c7afc99afdc96d731ced29e056dda0c",
+    "nodeSHA256": "d1de76d8edf2fededf6f8b30d244e2c0529ac607923a018283b77e9c74bd932c"
+  },
+  "expectedRegistrations": 113,
+  "expectedPassed": 113,
+  "expectedUnexecuted": 0,
+  "groups": [
+    {
+      "name": "owning-0",
+      "file": "plugins/plugin-assistant/src/services/message/history-id-replay.test.ts",
+      "relative": "src/services/message/history-id-replay.test.ts",
+      "cwd": "/workspace/plugins/plugin-assistant",
+      "config": "vitest.config.ts",
+      "runner": "/workspace/node_modules/vitest/vitest.mjs",
+      "report": "ordinal-0.json",
+      "registrations": 22,
+      "phaseSeconds": 120
+    },
+    {
+      "name": "owning-1",
+      "file": "plugins/plugin-assistant/src/services/message/context-read-recovery.test.ts",
+      "relative": "src/services/message/context-read-recovery.test.ts",
+      "cwd": "/workspace/plugins/plugin-assistant",
+      "config": "vitest.config.ts",
+      "runner": "/workspace/node_modules/vitest/vitest.mjs",
+      "report": "ordinal-1.json",
+      "registrations": 38,
+      "phaseSeconds": 120
+    },
+    {
+      "name": "owning-2",
+      "file": "plugins/plugin-openai/__tests__/qwen-response-schema.wire.test.ts",
+      "relative": "__tests__/qwen-response-schema.wire.test.ts",
+      "cwd": "/workspace/plugins/plugin-openai",
+      "config": "vitest.config.ts",
+      "runner": "/workspace/node_modules/vitest/vitest.mjs",
+      "report": "ordinal-2.json",
+      "registrations": 53,
+      "phaseSeconds": 120
+    }
+  ],
+  "scope": "One normal authored6-producer cone on actual ff04, then all113 selected ordinary owning CLI assertions, then mandatory extra normal branch/value identity preflight. No diagnostic-only run, no altered config/alias/export/condition, no repeated failed intent.",
+  "normalPackageLegs": {
+    "assistant": "vitest run; its subsequent node --test *.test.mjs leg is separate/unadmitted",
+    "openai": "vitest run --config ./vitest.config.ts"
+  },
+  "normalSourceConfig": "Unchanged source aliases; normal unaliased exports select fresh authored dist under normal __vitest__/SSR conditions. Both must match their source-declared branch.",
+  "normalProducerBuilds": {
+    "command": [
+      "/usr/local/bin/node",
+      "packages/scripts/run-turbo.ts",
+      "run",
+      "build",
+      "--filter=@elizaos/plugin-assistant"
+    ],
+    "environment": {
+      "RUN_TURBO_CONCURRENCY": "1"
+    },
+    "newWriteContract": "PRODUCER-WRITE-CONTRACT.json"
+  },
+  "normalProducerStatus": "H1 source-supported by independent normal config/export and prior ordinary setup evidence; actual same-run graph/output/tool/source/dependency/result closure mandatory.",
+  "network": "bridge only frozen ignore-scripts install; every metadata/test container network=none, in-container loopback fixture permitted, no provider keys/host socket/HOME/production data mounted.",
+  "mandatoryCases": [
+    "history551-all -> READ -> current_request numeric HANDLE -> canonical h1..h551 dispatch in exactly2 mocked model responses; secondREAD removed",
+    "stale sourceSet/roles/namespace/agent/room/entity/message/abort/legacy/custom constraints all selected wholefile assertions",
+    "12 and551 complete real adapter+AI SDK loopback wire both tools strict/no pattern/no allOf, canonical combined budget AFTER captured payload normalization"
+  ],
+  "claimLimit": "Model responses in Stage1 replay are scripted normal fixtures; actual engine/authorization/dispatch execute. Wire uses real SDK serialization against fixtureHTTP. Neither proves a live model/provider user reply.",
+  "beforeAnyRun": [
+    "Independent exact code/profile/tool/new-write review",
+    "Explicit publication authority, actual remote literal readback and source guard ancestry disposition",
+    "Fresh finite source-bound Root intent/GO; NO existing intent replay"
+  ],
+  "nativeCompilerAndActuator": "No API native compiler or GOMEMLIMIT actuator. Normal authored producer toolchain includes Bun/TS6 emit/tsup/esbuild/Rollup declaration library, all fresh installed owner metadata recorded. No semantic wholeSDK typecheck claim.",
+  "costNote": "One frozen ignore-scripts install, one cold normal6-producer command under8GiB/4096Node/concurrency1, then3wholefile CLI+extra value preflight under2GiB/1536Node. Full dependency census/verification, output fingerprints, singleattempt, no live provider/model spend. Whole1200s/job22min unchanged; earlier phase caps do not extend outer deadline.",
+  "sourceCommit": "ff04a558747ed426d9d871a319f7b3946f7660e6",
+  "sourceTree": "086d0c65fb3df530cb1d4f89758dc9d034e09adc",
+  "hostCohortsSHA256": "65c033e9c2dda23ef6a74660806d163c4f7758c2e236a6c86f2cdca74df35cb8",
+  "hostProvenanceDisclosure": {
+    "20261025.353.1": "Exact authenticated41741039106 setup + explicit Root source disposition; independent official tag/readme provenance gap OPEN, not capability waiver.",
+    "20261026.354.1": {
+      "officialTagCommitReadmeBound": true,
+      "releasePrerelease": false
+    },
+    "20261101.360.1": {
+      "officialTagCommitReadmeBound": true,
+      "releasePrerelease": true
+    },
+    "20261018.96.1": "Exact authenticated41750127407 setup/claim/earlymetadata plus explicitRoot source disposition; fresh officialtag404, independent officialtag/commit/readme provenance gap OPEN, not capability or execution admission."
+  },
+  "moduleCachePolicy": "Fresh owned0700 nonlinked per-phase under results, same explicit CLI+env path; public preflight API cache paths also fresh. Unchanged owning configs/readonly dependency source. Cache/source bytes excluded from artifact retention.",
+  "modulePreflight": "Unchanged normal aliases resolve tracked source; other normal exports resolve same-run authored dist. Both SSR/__vitest__ agreement and public-bare/absolute selected-target value identity required, never force source conditions or compare naturally distinct source/dist Core entries as identical.",
+  "diagnosticOnly": false,
+  "declaredProducerStatus": "H1 source-supported by independent normal config/export and prior ordinary setup evidence; actual same-run graph/output/tool/source/dependency/result closure mandatory.",
+  "observationInstrumentation": {
+    "NodeConditions": "Passive CommonJSpreload onlynode:fs, writesphase/PID/NodeexecArgv/explicitconditions/selectedmetadataenv; noSDK/testimport/no env/conditions mutation. Addedrequire isdisclosedinNODE_OPTIONS, heapunchanged.",
+    "CLIConditions": "Extra read-onlyreporter onTestRunStart recordsactualproject/worker-transport__vitest__/SSRconditions/cache path viaordinaryCLI context; normalJSONreporter retained. No modulevaluepreflight/SDKsourceimport. Configurationrecorddescribesactualserver-sideworkertransport, separatefromworkerprocessNodeflags; notin-workerViteintrospectionclaim.",
+    "failureBehavior": "Observercallbacks bounded/nonthrowing withvisibleunavailablemarkers. Missingmetadata isexplicitdiagnosticgap, neverpass; module/reportersyntax/startup failure remainsactualCLIexit andrecorded. No callbackswrapped/replayed."
+  },
+  "sourceProof": "Actual Root-remotely-verified ff04 source over reviewed e232 voice base; exact8 canonical context/test leaves. Alpha bcdef current union is separate qualification owner; no runtime adoption.",
+  "expectedOutcome": "113 exact ordinary registrations and passes, zero failed/pending/todo/unexecuted, normal six producers cache0/exits0, every custody/resource/closure gate, mandatory postCLI value preflight. Any missing or failed proof rejects selected scope. No whole-package mjs/global types/runtime/live acceptance.",
+  "independentCauseEvidence": {
+    "packet": "/Users/nubs/Git/handoff-20261030/packets/ordinal-contracts-node-20261104/PACKET.md",
+    "sha256": "fa0353913c808d3af0cf37e4868e32fa202ecf67c6a2b4e6e51b3f5ec82543c4",
+    "comment": 6621988965,
+    "runtimeConditionSnapshotLimit": "Derived installed conditions/dist absence not directly observed by reviewer; passive actualCLI observations retained in this qualification."
+  },
+  "effectiveProducerHierarchy": "Docker create --cgroup-parent system.slice; actual HostConfig.CgroupParent verified prestart/postexit/cleanup. Check every runner/producer ancestor including exposed cgroup root ceilings; standard kernel-root missing memory.max accepted only with systemdPID1/init.scope/samecgroupnamespace/memorycontroller/domain proof. Missing non-root ceiling rejects."
+}

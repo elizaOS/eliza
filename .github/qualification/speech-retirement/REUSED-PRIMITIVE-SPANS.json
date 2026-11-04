@@ -1,0 +1,137 @@
+{
+  "state": "TEN_EXACT_RETAINED_PRIMITIVES_ONE_REVIEWED_CACHE_ENV_ADAPTATION_REQUIRED",
+  "spans": [
+    {
+      "name": "PhaseExitError",
+      "source": "/Users/nubs/.local/state/eliza-five-lane-coordination/speech-retirement-proof-implementation-20261102/claude-review-repairs-20261102/qualification-ack-normal-capacity-v8/run.py",
+      "sourceSHA256": "4e9f9584b6a9da9890fd3dbd653d663eed8a5059cd08a2734ef091a9bf4dd191",
+      "lines": [
+        74,
+        76
+      ],
+      "exactCopiedSHA256": "289010330ec8d107172cdde2f86ef2a1b0707543b06a66dbd6e9f5274d920455",
+      "currentSHA256": "289010330ec8d107172cdde2f86ef2a1b0707543b06a66dbd6e9f5274d920455",
+      "reuse": "EXACT"
+    },
+    {
+      "name": "identity",
+      "source": "/Users/nubs/.local/state/eliza-five-lane-coordination/speech-retirement-proof-implementation-20261102/claude-review-repairs-20261102/qualification-ack-normal-capacity-v8/run.py",
+      "sourceSHA256": "4e9f9584b6a9da9890fd3dbd653d663eed8a5059cd08a2734ef091a9bf4dd191",
+      "lines": [
+        77,
+        81
+      ],
+      "exactCopiedSHA256": "82190576168ebbca48cb1ffcc2254cdc8cbedf7e53f397da0b89e5e7909b4c00",
+      "currentSHA256": "82190576168ebbca48cb1ffcc2254cdc8cbedf7e53f397da0b89e5e7909b4c00",
+      "reuse": "EXACT"
+    },
+    {
+      "name": "group_members",
+      "source": "/Users/nubs/.local/state/eliza-five-lane-coordination/speech-retirement-proof-implementation-20261102/claude-review-repairs-20261102/qualification-ack-normal-capacity-v8/run.py",
+      "sourceSHA256": "4e9f9584b6a9da9890fd3dbd653d663eed8a5059cd08a2734ef091a9bf4dd191",
+      "lines": [
+        82,
+        88
+      ],
+      "exactCopiedSHA256": "8c8a7686996c686dbca4c888e63081dc76615bad36c4277aa1730780e6b6ed02",
+      "currentSHA256": "8c8a7686996c686dbca4c888e63081dc76615bad36c4277aa1730780e6b6ed02",
+      "reuse": "EXACT"
+    },
+    {
+      "name": "phase",
+      "source": "/Users/nubs/.local/state/eliza-five-lane-coordination/speech-retirement-proof-implementation-20261102/claude-review-repairs-20261102/qualification-ack-normal-capacity-v8/run.py",
+      "sourceSHA256": "4e9f9584b6a9da9890fd3dbd653d663eed8a5059cd08a2734ef091a9bf4dd191",
+      "lines": [
+        89,
+        151
+      ],
+      "exactCopiedSHA256": "e6ec2780da1801303f5d1325c7db2fd6184b9ea380a050d09322a8f31b88c371",
+      "currentSHA256": "e6ec2780da1801303f5d1325c7db2fd6184b9ea380a050d09322a8f31b88c371",
+      "reuse": "EXACT"
+    },
+    {
+      "name": "inspect_container",
+      "source": "/Users/nubs/.local/state/eliza-five-lane-coordination/speech-retirement-proof-implementation-20261102/claude-review-repairs-20261102/qualification-ack-normal-capacity-v8/run.py",
+      "sourceSHA256": "4e9f9584b6a9da9890fd3dbd653d663eed8a5059cd08a2734ef091a9bf4dd191",
+      "lines": [
+        154,
+        159
+      ],
+      "exactCopiedSHA256": "6d3ac6b8cb7a45a04149e9f82158135c4afe37b6f03fc688cc04caabb16376a0",
+      "currentSHA256": "6d3ac6b8cb7a45a04149e9f82158135c4afe37b6f03fc688cc04caabb16376a0",
+      "reuse": "EXACT"
+    },
+    {
+      "name": "check_container",
+      "source": "/Users/nubs/.local/state/eliza-five-lane-coordination/speech-retirement-proof-implementation-20261102/claude-review-repairs-20261102/qualification-ack-normal-capacity-v8/run.py",
+      "sourceSHA256": "4e9f9584b6a9da9890fd3dbd653d663eed8a5059cd08a2734ef091a9bf4dd191",
+      "lines": [
+        160,
+        163
+      ],
+      "exactCopiedSHA256": "ee2c7e5040bbbae39b07e6eea2badab278ad0a950177b909b03cb6adf4279e55",
+      "currentSHA256": "ee2c7e5040bbbae39b07e6eea2badab278ad0a950177b909b03cb6adf4279e55",
+      "reuse": "EXACT"
+    },
+    {
+      "name": "ResourcePolicyError",
+      "source": "/Users/nubs/.local/state/eliza-five-lane-coordination/speech-retirement-proof-implementation-20261102/claude-review-repairs-20261102/qualification-ack-normal-capacity-v8/run.py",
+      "sourceSHA256": "4e9f9584b6a9da9890fd3dbd653d663eed8a5059cd08a2734ef091a9bf4dd191",
+      "lines": [
+        165,
+        166
+      ],
+      "exactCopiedSHA256": "4e5e41bdcb6cf796e08dfed5cc65a9c78ae39e6b05cc85907988a65ab325c2fc",
+      "currentSHA256": "4e5e41bdcb6cf796e08dfed5cc65a9c78ae39e6b05cc85907988a65ab325c2fc",
+      "reuse": "EXACT"
+    },
+    {
+      "name": "check_resources",
+      "source": "/Users/nubs/.local/state/eliza-five-lane-coordination/speech-retirement-proof-implementation-20261102/claude-review-repairs-20261102/qualification-ack-normal-capacity-v8/run.py",
+      "sourceSHA256": "4e9f9584b6a9da9890fd3dbd653d663eed8a5059cd08a2734ef091a9bf4dd191",
+      "lines": [
+        167,
+        171
+      ],
+      "exactCopiedSHA256": "df64ef1dc88915c19d31ee88387ba8a2306277bce16b809d6b47159565239c56",
+      "currentSHA256": "df64ef1dc88915c19d31ee88387ba8a2306277bce16b809d6b47159565239c56",
+      "reuse": "EXACT"
+    },
+    {
+      "name": "cleanup_container",
+      "source": "/Users/nubs/.local/state/eliza-five-lane-coordination/speech-retirement-proof-implementation-20261102/claude-review-repairs-20261102/qualification-ack-normal-capacity-v8/run.py",
+      "sourceSHA256": "4e9f9584b6a9da9890fd3dbd653d663eed8a5059cd08a2734ef091a9bf4dd191",
+      "lines": [
+        172,
+        191
+      ],
+      "exactCopiedSHA256": "35487aa7c7c054fade1993664e09fecb14ad1c950258f74258e1cd38f37b33af",
+      "currentSHA256": "35487aa7c7c054fade1993664e09fecb14ad1c950258f74258e1cd38f37b33af",
+      "reuse": "EXACT"
+    },
+    {
+      "name": "container_phase",
+      "source": "/Users/nubs/.local/state/eliza-five-lane-coordination/speech-retirement-proof-implementation-20261102/claude-review-repairs-20261102/qualification-ack-normal-capacity-v8/run.py",
+      "sourceSHA256": "4e9f9584b6a9da9890fd3dbd653d663eed8a5059cd08a2734ef091a9bf4dd191",
+      "lines": [
+        193,
+        221
+      ],
+      "exactCopiedSHA256": "c97f6b0bd6046e60a1531e5bb3472340662708863926659783e85f79ec2fa470",
+      "currentSHA256": "08e982e982078a8238fa1ebb0624c2860fd5287859af3f8f1fb011cb9d82f373",
+      "reuse": "ADAPTED_CACHE_ENV_ONLY_REVIEW_REQUIRED"
+    },
+    {
+      "name": "normalized_report_file",
+      "source": "/Users/nubs/.local/state/eliza-five-lane-coordination/speech-retirement-proof-implementation-20261102/claude-review-repairs-20261102/qualification-ack-normal-capacity-v8/run.py",
+      "sourceSHA256": "4e9f9584b6a9da9890fd3dbd653d663eed8a5059cd08a2734ef091a9bf4dd191",
+      "lines": [
+        222,
+        228
+      ],
+      "exactCopiedSHA256": "47a4e777f710983a4ff2fff9b715ed5f8ed7e643d20d01ce101de16d12fd3faf",
+      "currentSHA256": "47a4e777f710983a4ff2fff9b715ed5f8ed7e643d20d01ce101de16d12fd3faf",
+      "reuse": "EXACT"
+    }
+  ]
+}
