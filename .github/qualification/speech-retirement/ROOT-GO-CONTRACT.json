@@ -1,0 +1,39 @@
+{
+  "state": "SCHEMA_ONLY_NO_GO_OR_INTENT",
+  "action": "ONE_EXACT_QUALIFICATION_RUN",
+  "recipe": "ordinal-normal-fullfiles",
+  "mode": "qualify",
+  "allowHostedFrozenLockSetup": true,
+  "allowHostedWholeFileTests": true,
+  "allowLoopbackWireFixture": true,
+  "allowHostedUnusedAndroidCleanup": false,
+  "allowExternalProviders": false,
+  "allowSourceOverlay": false,
+  "expectedRegistrations": 113,
+  "expectedPassed": 113,
+  "expectedUnexecuted": 0,
+  "sourceCommit": "1777491433a8cf13d53b30bf69336f0bff8c77e2",
+  "sourceTree": "bea8c0fb4684198d8bc656b948d1f3ebaaccd2fc",
+  "workflowCommit": "UNPUBLISHED_OPERATOR_REVIEW_REQUIRED",
+  "operatorSealSHA256": "FROZEN_AFTER_PIN_AND_REVIEW",
+  "planSHA256": "47be1d003f9f46c2d31efc04ee682207745dd0c5ff5bff494c56cbe9991651e0",
+  "oracleSHA256": "40f1b7dbf0113b6bbe00c4916fc0b45b83577ac98dc622b3096f6f38678f2eff",
+  "testResourcePolicySHA256": "cf7c707b21ff9d55a601baa66d6c1b1614c521cfc3ed68998aa348bf40861c66",
+  "intentId": "NOT_ISSUED",
+  "issuedEpoch": "NOT_ISSUED",
+  "expiresEpoch": "NOT_ISSUED",
+  "output": "ROOT_REVIEWED_RUNNER_TEMP_OUTPUT",
+  "hostCohortsSHA256": "fbb3b272dbd7ef65ea21ac3c659296bd45f377802654fb1e8e5d3b00d3f9c007",
+  "hostProvenanceDisclosure": {
+    "20261025.353.1": "Exact authenticated41741039106 setup + explicit Root source disposition; independent official tag/readme provenance gap OPEN, not capability waiver.",
+    "20261026.354.1": {
+      "officialTagCommitReadmeBound": true,
+      "releasePrerelease": false
+    },
+    "20261101.360.1": {
+      "officialTagCommitReadmeBound": true,
+      "releasePrerelease": true
+    }
+  },
+  "sourceManifestSHA256": "6cdf503b362031eb2d64b18ebfe8118980803be096d13ff3aadf09d7c3d95efd"
+}

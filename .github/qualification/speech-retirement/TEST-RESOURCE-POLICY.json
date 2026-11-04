@@ -1,0 +1,11 @@
+{
+  "defaultTest": {
+    "memory": "2g",
+    "memoryBytes": 2147483648,
+    "nodeOldSpaceMiB": 1536
+  },
+  "memorySwapEqualsMemory": true,
+  "CPU": 2,
+  "PIDs": 256,
+  "automaticExpansion": false
+}

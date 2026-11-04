@@ -1,0 +1,149 @@
+{
+  "projects": [
+    {
+      "name": "assistant",
+      "root": "plugins/plugin-assistant",
+      "edges": [
+        {
+          "specifier": "@elizaos/core",
+          "importer": "plugins/plugin-assistant/src/services/message/history-id-replay.test.ts",
+          "importerSHA256": "45a788d9cbe4f32bce837835396c5c40f4259f11d95d1b53f16543857031298d",
+          "target": "packages/core/src/index.ts",
+          "scope": "Actual selected wholefile/normal implementation import, source-transform or bare-source target only"
+        },
+        {
+          "specifier": "./pipeline.ts",
+          "importer": "plugins/plugin-assistant/src/services/message/history-id-replay.test.ts",
+          "importerSHA256": "45a788d9cbe4f32bce837835396c5c40f4259f11d95d1b53f16543857031298d",
+          "target": "plugins/plugin-assistant/src/services/message/pipeline.ts",
+          "scope": "Actual selected wholefile/normal implementation import, source-transform or bare-source target only"
+        },
+        {
+          "specifier": "./native-context-read.ts",
+          "importer": "plugins/plugin-assistant/src/services/message/context-read-recovery.test.ts",
+          "importerSHA256": "2da5cd3308b5487f1ed4babf579e049ea5f2ffcf6528ee2cb787a6b945b8895d",
+          "target": "plugins/plugin-assistant/src/services/message/native-context-read.ts",
+          "scope": "Actual selected wholefile/normal implementation import, source-transform or bare-source target only"
+        },
+        {
+          "specifier": "../../runtime/builtin-field-evaluators.ts",
+          "importer": "plugins/plugin-assistant/src/services/message/history-id-replay.test.ts",
+          "importerSHA256": "45a788d9cbe4f32bce837835396c5c40f4259f11d95d1b53f16543857031298d",
+          "target": "plugins/plugin-assistant/src/runtime/builtin-field-evaluators.ts",
+          "scope": "Actual selected wholefile/normal implementation import, source-transform or bare-source target only"
+        },
+        {
+          "specifier": "../../../../../packages/core/src/actions/validate-tool-args.ts",
+          "importer": "plugins/plugin-assistant/src/services/message/context-read-recovery.test.ts",
+          "importerSHA256": "2da5cd3308b5487f1ed4babf579e049ea5f2ffcf6528ee2cb787a6b945b8895d",
+          "target": "packages/core/src/actions/validate-tool-args.ts",
+          "scope": "Actual selected wholefile/normal implementation import, source-transform or bare-source target only"
+        }
+      ]
+    },
+    {
+      "name": "openai",
+      "root": "plugins/plugin-openai",
+      "edges": [
+        {
+          "specifier": "@elizaos/core",
+          "importer": "plugins/plugin-openai/__tests__/qwen-response-schema.wire.test.ts",
+          "importerSHA256": "1d1a52a6db9295eb0731037f5cba53c940256a0d1f2cb93fe239b22ddf153a97",
+          "target": "packages/core/src/index.ts",
+          "scope": "Actual selected wholefile/normal implementation import, source-transform or bare-source target only"
+        },
+        {
+          "specifier": "@elizaos/testing/runtime",
+          "importer": "plugins/plugin-openai/__tests__/qwen-response-schema.wire.test.ts",
+          "importerSHA256": "1d1a52a6db9295eb0731037f5cba53c940256a0d1f2cb93fe239b22ddf153a97",
+          "target": "packages/testing/src/runtime.ts",
+          "scope": "Actual selected wholefile/normal implementation import, source-transform or bare-source target only"
+        },
+        {
+          "specifier": "../models/text",
+          "importer": "plugins/plugin-openai/__tests__/qwen-response-schema.wire.test.ts",
+          "importerSHA256": "1d1a52a6db9295eb0731037f5cba53c940256a0d1f2cb93fe239b22ddf153a97",
+          "target": "plugins/plugin-openai/models/text.ts",
+          "scope": "Actual selected wholefile/normal implementation import, source-transform or bare-source target only"
+        },
+        {
+          "specifier": "../../plugin-assistant/src/services/message/native-context-read.ts",
+          "importer": "plugins/plugin-openai/__tests__/qwen-response-schema.wire.test.ts",
+          "importerSHA256": "1d1a52a6db9295eb0731037f5cba53c940256a0d1f2cb93fe239b22ddf153a97",
+          "target": "plugins/plugin-assistant/src/services/message/native-context-read.ts",
+          "scope": "Actual selected wholefile/normal implementation import, source-transform or bare-source target only"
+        },
+        {
+          "specifier": "@elizaos/plugin-sqlite",
+          "importer": "packages/testing/src/sqlite-adapter.ts",
+          "importerSHA256": "d75ef28893fe1594b5347a4c949f26107f99b6d43390c8406471059dbbb5d7f2",
+          "target": "plugins/plugin-sqlite/index.ts",
+          "scope": "Actual selected wholefile/normal implementation import, source-transform or bare-source target only"
+        }
+      ]
+    }
+  ],
+  "targets": {
+    "packages/core/src/index.ts": {
+      "path": "packages/core/src/index.ts",
+      "sha256": "c493450f40b45c44692a748dec11dab4fced2af84fd7b361708948293fd57002",
+      "requiredExports": [
+        "createHandleResponseTool",
+        "ResponseHandlerFieldRegistry",
+        "parseAndValidate",
+        "completionContextSources"
+      ]
+    },
+    "plugins/plugin-assistant/src/services/message/pipeline.ts": {
+      "path": "plugins/plugin-assistant/src/services/message/pipeline.ts",
+      "sha256": "4777af663c7f25a2e305210b9b23ca56897979e576c2302dba9b38f0f571c2e2",
+      "requiredExports": [
+        "runV5MessageRuntimeStage1"
+      ]
+    },
+    "plugins/plugin-assistant/src/services/message/native-context-read.ts": {
+      "path": "plugins/plugin-assistant/src/services/message/native-context-read.ts",
+      "sha256": "5b9f6ff83f40fb6889dcc37360e3d5d8e39239afde052306090d8fa0cf96e1e2",
+      "requiredExports": [
+        "decodeNativeContextReads",
+        "assertNativeContextReadToolBudget"
+      ]
+    },
+    "plugins/plugin-assistant/src/runtime/builtin-field-evaluators.ts": {
+      "path": "plugins/plugin-assistant/src/runtime/builtin-field-evaluators.ts",
+      "sha256": "054c43c1161e23e40f7b1d381871c5b2dd097ba7671c43c2153ab363c81f6bc6",
+      "requiredExports": []
+    },
+    "packages/core/src/actions/validate-tool-args.ts": {
+      "path": "packages/core/src/actions/validate-tool-args.ts",
+      "sha256": "cfbaf6ba1106096c7d710b7af92770ea32becbda44ff7c3cfc4ca8dee268d758",
+      "requiredExports": [
+        "validateSchema"
+      ]
+    },
+    "packages/testing/src/runtime.ts": {
+      "path": "packages/testing/src/runtime.ts",
+      "sha256": "d2351bc4e828b7ca2beb1d15c6b0c4dff672f5aebd9a7e1735a2df234d3630ff",
+      "requiredExports": [
+        "createSQLiteTestRuntime"
+      ]
+    },
+    "plugins/plugin-openai/models/text.ts": {
+      "path": "plugins/plugin-openai/models/text.ts",
+      "sha256": "27356c237430bfa8f16257577e9e8b231ff67ebb25508cef6c270190a41aa814",
+      "requiredExports": [
+        "handleResponseHandler",
+        "handleTextSmall",
+        "handleActionPlanner"
+      ]
+    },
+    "plugins/plugin-sqlite/index.ts": {
+      "path": "plugins/plugin-sqlite/index.ts",
+      "sha256": "571827cd3781cc292468efe4df1cb9b3ab1f427f3c2ee8b7cb21ad6f292885db",
+      "requiredExports": [
+        "SQLiteDatabaseAdapter"
+      ]
+    }
+  },
+  "scope": "Actual unchanged owning configs, SSR+__vitest__ target agreement and public project.import value identity; no alias/condition override. If normal OpenAI sqlite external conditions fail, report source-owner prerequisite failure, never substitute dist/shim/build."
+}

@@ -1,0 +1,9 @@
+{
+  "state": "PINNED_VITEST5_CLI_SOURCE_SUPPORT_NOT_EXECUTION",
+  "version": "5.0.5",
+  "relativeCLIChunk": "dist/chunks/cac.CLrZKo1g.js",
+  "sha256": "cbe6e023d5b1e5c8de648da0d43242e660d88676b172a022d2b95f22a88b78c0",
+  "localReadOnlyPrimarySource": "/Users/nubs/.bun/install/cache/vitest@5.0.5@@@1/dist/chunks/cac.CLrZKo1g.js",
+  "optionSource": "fsModuleCachePath: { description: Directory where fsModuleCache is stored, argument: <path> }",
+  "futureSameInstalledOwnerByteCheck": true
+}

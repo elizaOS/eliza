@@ -1,0 +1,297 @@
+"""Finite normal whole-file ordinal qualification. SOURCE ONLY: no admitted subject yet."""
+import collections,hashlib,json,os,pathlib,re,selectors,signal,shutil,subprocess,sys,time
+P=pathlib.Path(__file__).resolve().parent
+assert len(sys.argv)==3
+source=pathlib.Path(sys.argv[1]).resolve();out=pathlib.Path(sys.argv[2]).resolve()
+sha=lambda p:hashlib.sha256(p.read_bytes()).hexdigest()
+plan=json.loads((P/'PLAN.json').read_text());manifest=json.loads((P/'SOURCE-MANIFEST.json').read_text());oracle=json.loads((P/'ORACLES.json').read_text());resource_policy=json.loads((P/'TEST-RESOURCE-POLICY.json').read_text())
+for name,want in json.loads((P/'SEAL.json').read_text())['files'].items():assert sha(P/name)==want,name
+assert re.fullmatch('[a-f0-9]{40}',manifest['commit']) and re.fullmatch('[a-f0-9]{40}',manifest['tree']),'Reviewed test-only successor must be published/rebound before admission'
+go_path=pathlib.Path(os.environ['ROOT_GO_JSON']).resolve();go=json.loads(go_path.read_text())
+assert go['action']=='ONE_EXACT_QUALIFICATION_RUN' and go['recipe']=='ordinal-normal-fullfiles' and go['mode']=='qualify'
+assert go['allowHostedFrozenLockSetup'] is True and go['allowHostedWholeFileTests'] is True and go['allowLoopbackWireFixture'] is True
+assert go['allowHostedUnusedAndroidCleanup'] is False and go['allowExternalProviders'] is False and go['allowSourceOverlay'] is False
+assert go['expectedRegistrations']==go['expectedPassed']==113 and go['expectedUnexecuted']==0
+assert go['workflowCommit']==os.environ['GITHUB_SHA']==os.environ['EXPECTED_WORKFLOW_SHA']
+assert go['sourceCommit']==manifest['commit'] and go['sourceTree']==manifest['tree']
+assert go['operatorSealSHA256']==sha(P/'SEAL.json')
+for key,n in [('planSHA256','PLAN.json'),('oracleSHA256','ORACLES.json'),('testResourcePolicySHA256','TEST-RESOURCE-POLICY.json'),('hostCohortsSHA256','HOST-COHORTS.json'),('sourceManifestSHA256','SOURCE-MANIFEST.json')]:assert go[key]==sha(P/n)
+assert 0<go['issuedEpoch']<=time.time()<go['expiresEpoch']<=go['issuedEpoch']+1200 and re.fullmatch('[a-f0-9]{32}',go['intentId'])
+assert os.environ['GITHUB_RUN_ATTEMPT']=='1' and os.environ['RUNNER_ENVIRONMENT']=='github-hosted' and os.environ['GITHUB_REPOSITORY']=='elizaOS/eliza' and os.environ['GITHUB_EVENT_NAME']=='workflow_dispatch'
+host_policy=json.loads((P/'HOST-COHORTS.json').read_text());runner_metadata={}
+for key,spec in host_policy['metadataFields'].items():
+ value=os.environ.get(spec['environment']);runner_metadata[key]=value if value is None or len(value)<=spec['maxChars'] else {'overBound':True,'length':len(value)}
+metadata_line=json.dumps({'state':'OBSERVED_RUNNER_METADATA_NOT_ADMISSION','fields':runner_metadata},separators=(',',':'));assert len(metadata_line.encode())<=4096
+print(metadata_line,flush=True)
+assert go['hostProvenanceDisclosure']==plan['hostProvenanceDisclosure']
+assert sys.platform=='linux' and os.uname().machine=='x86_64' and (3,12)<=sys.version_info[:2]<(3,16)
+assert hasattr(os,'waitid') and hasattr(os,'WNOWAIT') and pathlib.Path('/proc/self/stat').is_file()
+assert os.environ.get('ImageOS')==host_policy['ImageOS'] and os.environ.get('ImageVersion') in host_policy['allowedImageVersions']
+assert source==pathlib.Path(os.environ['GITHUB_WORKSPACE']).resolve()/'source' and str(out)==go['output'] and out.is_relative_to(pathlib.Path(os.environ['RUNNER_TEMP']).resolve()) and not out.exists()
+claim=json.loads((pathlib.Path(os.environ['RUNNER_TEMP'])/'speech-intent-claim.json').read_text())
+assert claim['actualRunId']==os.environ['GITHUB_RUN_ID'] and claim['attempt']==1 and claim['rootGOsha256']==sha(go_path)
+metadata_path=pathlib.Path(os.environ['RUNNER_TEMP'])/'ordinal-admission.json';assert sha(metadata_path)==claim['runnerMetadataSHA256'] and json.loads(metadata_path.read_text())['fields']==runner_metadata
+for key in ['intentId','workflowCommit','sourceCommit','sourceTree','operatorSealSHA256','planSHA256','oracleSHA256','testResourcePolicySHA256','hostCohortsSHA256','sourceManifestSHA256','hostProvenanceDisclosure','expectedRegistrations','expectedPassed','expectedUnexecuted','allowHostedFrozenLockSetup','allowHostedWholeFileTests','allowLoopbackWireFixture','allowHostedUnusedAndroidCleanup','allowExternalProviders','allowSourceOverlay','issuedEpoch','expiresEpoch']:assert claim[key]==go[key],key
+import urllib.request
+artifact_id=os.environ['CLAIM_ARTIFACT_ID'];assert artifact_id.isdigit()
+request=urllib.request.Request('https://api.github.com/repos/elizaOS/eliza/actions/artifacts/'+artifact_id,headers={'Authorization':'Bearer '+os.environ['GH_TOKEN'],'Accept':'application/vnd.github+json'})
+with urllib.request.urlopen(request,timeout=20) as response:artifact=json.load(response)
+assert artifact['name']=='speech-intent-'+go['intentId'] and artifact['workflow_run']['id']==int(os.environ['GITHUB_RUN_ID']) and not artifact['expired']
+with go_path.with_suffix('.consumed').open('x') as f:f.write('consumed')
+out.mkdir();start=time.monotonic();free_start=shutil.disk_usage(out).free
+records=[];owned=[];status='FAILED';run_error=None;cleanup_errors=[];family_results={}
+(out/'RUNNER-METADATA.json').write_bytes(metadata_path.read_bytes())
+runid=os.environ['GITHUB_RUN_ID'];assert runid.isdigit();prefix='speech-retirement-'+runid+'-1-ordinal-normal'
+assert resource_policy['defaultTest']=={'memory':'2g','memoryBytes':2147483648,'nodeOldSpaceMiB':1536} and resource_policy['memorySwapEqualsMemory'] is True
+for key in ['DOCKER_TLS','DOCKER_TLS_VERIFY','DOCKER_CERT_PATH','DOCKER_CONFIG','DOCKER_API_VERSION']:assert not os.environ.get(key),'Inherited Docker override not admitted'
+assert os.environ.get('DOCKER_HOST','unix:///var/run/docker.sock')=='unix:///var/run/docker.sock' and os.environ.get('DOCKER_CONTEXT','default')=='default'
+os.environ['DOCKER_HOST']='unix:///var/run/docker.sock';os.environ.pop('DOCKER_CONTEXT',None)
+docker_config=out.parent/('ordinal-docker-config-'+runid);docker_config.mkdir();os.environ['DOCKER_CONFIG']=str(docker_config)
+class PhaseExitError(RuntimeError):
+ def __init__(self,phase_name,code):
+  super().__init__(f'{phase_name} exited {code}');self.phase_name=phase_name;self.code=code
+
+def identity(pid):
+ try:
+  fields=pathlib.Path(f'/proc/{pid}/stat').read_text().rsplit(')',1)[1].split()
+  return {'state':fields[0],'pgid':int(fields[2]),'birth':fields[19]}
+ except FileNotFoundError:return None
+
+def group_members(pgid):
+ result=[]
+ for entry in pathlib.Path('/proc').iterdir():
+  if not entry.name.isdigit():continue
+  value=identity(int(entry.name))
+  if value and value['pgid']==pgid and value['state']!='Z':result.append(int(entry.name))
+ return result
+
+def phase(name,args,timeout,accepted=(0,),cleanup=False):
+ begin=time.monotonic();log=out/(name+'.log');written=0;proc=None;birth=None;empty=False;code=None;error=None;sel=None
+ def signal_owned(sig):
+  current=identity(proc.pid)
+  assert current and current['birth']==birth and current['pgid']==proc.pid,'Lost child/PGID custody'
+  os.killpg(proc.pid,sig)
+ try:
+  if not cleanup:
+   assert time.time()<go['expiresEpoch'], 'Root GO expired'
+   free=shutil.disk_usage(out).free
+   if free<plan['resourceBounds']['stopFreeBytes'] or free_start-free>plan['resourceBounds']['maxDiskGrowthBytes']:raise RuntimeError('disk bound before launch')
+   if time.monotonic()-start>1200:raise RuntimeError('whole-job wall bound before launch')
+  proc=subprocess.Popen(args,stdout=subprocess.PIPE,stderr=subprocess.STDOUT,start_new_session=True)
+  first=identity(proc.pid);assert first and first['pgid']==proc.pid;birth=first['birth']
+  os.set_blocking(proc.stdout.fileno(),False);sel=selectors.DefaultSelector();sel.register(proc.stdout,selectors.EVENT_READ)
+  with log.open('xb') as stream:
+   def drain(wait=0):
+    nonlocal written
+    for key,_ in sel.select(wait):
+     data=os.read(key.fileobj.fileno(),65536)
+     if not data:sel.unregister(key.fileobj);continue
+     written+=len(data)
+     if written>8*1024**2:raise RuntimeError('phase log cap')
+     stream.write(data);stream.flush()
+   while True:
+    drain(.1)
+    if time.monotonic()-begin>timeout:raise RuntimeError('phase wall bound')
+    if not cleanup:
+     assert time.time()<go['expiresEpoch'], 'Root GO expired'
+     free=shutil.disk_usage(out).free
+     if free<plan['resourceBounds']['stopFreeBytes'] or free_start-free>plan['resourceBounds']['maxDiskGrowthBytes']:raise RuntimeError('disk bound')
+     if time.monotonic()-start>1200:raise RuntimeError('whole-job wall bound')
+    # WNOWAIT deliberately retains the leader identity until its group is empty.
+    if os.waitid(os.P_PID,proc.pid,os.WEXITED|os.WNOHANG|os.WNOWAIT):
+     deadline=time.monotonic()+1
+     while group_members(proc.pid) and time.monotonic()<deadline:drain(.05)
+     if group_members(proc.pid):raise RuntimeError('Descendant outlived leader')
+     empty=True
+     for _ in range(20):
+      drain(.01)
+      if not sel.get_map():break
+     break
+  code=proc.wait(timeout=2)
+  if code not in accepted:raise PhaseExitError(name,code)
+ except BaseException as exc:error=type(exc).__name__+': '+str(exc);raise
+ finally:
+  if proc and not empty:
+   try:
+    if group_members(proc.pid):signal_owned(signal.SIGTERM)
+    deadline=time.monotonic()+1
+    while group_members(proc.pid) and time.monotonic()<deadline:time.sleep(.05)
+    if group_members(proc.pid):signal_owned(signal.SIGKILL)
+    deadline=time.monotonic()+2
+    while group_members(proc.pid) and time.monotonic()<deadline:time.sleep(.05)
+    empty=not group_members(proc.pid)
+    if empty:code=proc.wait(timeout=2)
+   except BaseException as exc:error=(error or '')+'; cleanup '+str(exc)
+  if proc is None:empty=True
+  if sel is not None:sel.close()
+  records.append({'phase':name,'seconds':time.monotonic()-begin,'exit':code,'acceptedExit':code in accepted,'error':error,'logBytes':written,'leaderBirth':birth,'ownedGroupEmpty':empty})
+  if proc and proc.stdout:proc.stdout.close()
+  if not empty:raise RuntimeError('Unclosed owned process group')
+ return log.read_text(),code
+
+def inspect_container(key,label,cleanup=False,resources=False):
+ text,code=phase(label,['docker','container','inspect','--format',resource_inspect_format if resources else inspect_format,key],10,accepted=(0,1),cleanup=cleanup)
+ if code==1:
+  assert 'No such object' in text or 'No such container' in text,'Container lookup failed ambiguously'
+  return None
+ return json.loads(text)
+
+def check_container(value,item):
+ assert re.fullmatch('[a-f0-9]{64}',value['Id']) and value['Name']=='/'+item['name']
+ if item['cid'] is not None:assert value['Id']==item['cid']
+ assert value['Labels']['org.eliza.qualification-run']==runid and value['Labels']['org.eliza.qualification-kind']=='speech-retirement'
+
+class ResourcePolicyError(RuntimeError):
+ pass
+
+def check_resources(value,item,label):
+ actual=value.get('Resources')
+ if actual!=item['resources']:
+  item.setdefault('resourcePolicyFailures',[]).append({'where':label,'expected':item['resources'],'actual':actual})
+  raise ResourcePolicyError('Actual Docker resource/Node heap policy mismatch')
+
+def cleanup_container(item,label):
+ key=item['cid'] or item['name'];policy_failure=None
+ try:
+  value=inspect_container(key,label+'-identity',cleanup=True,resources=True)
+ except BaseException as exc:
+  # A failed resource probe must not prevent custody-only owned cleanup.
+  item.setdefault('resourcePolicyFailures',[]).append({'where':label,'resourceInspectionError':type(exc).__name__+': '+str(exc)})
+  policy_failure=ResourcePolicyError('Resource inspection failed during owned cleanup')
+  value=inspect_container(key,label+'-owner-only-identity',cleanup=True)
+ if value:
+  check_container(value,item);item['cid']=value['Id']
+  if policy_failure is None:
+   try:check_resources(value,item,label)
+   except ResourcePolicyError as exc:policy_failure=exc
+  phase(label+'-remove',['docker','rm','-f',item['cid']],10,cleanup=True)
+  assert inspect_container(item['cid'],label+'-absence',cleanup=True) is None
+ elif not item['createCompleted']:
+  raise RuntimeError('Container creation outcome unknown; no matching container observed')
+ item['closed']=True
+ if policy_failure:raise policy_failure
+
+def container_phase(name,network,memory,command,timeout,rw=False,test_family=False,cwd="/workspace",node_old_space_mib=None):
+ assert (name=="install" and network=="bridge" and rw) or (name!="install" and network=="none" and not rw)
+ if node_old_space_mib is None:node_old_space_mib=resource_policy['defaultTest']['nodeOldSpaceMiB']
+ assert memory in ('2g','4g') and node_old_space_mib in (1024,1536)
+ memory_bytes=int(memory[:-1])*1024**3
+ resources={'memoryBytes':memory_bytes,'memorySwapBytes':memory_bytes,'nanoCpus':2000000000,'pidsLimit':256,'nodeOptions':'NODE_OPTIONS=--max-old-space-size='+str(node_old_space_mib)}
+ cname=prefix+'-'+name
+ assert inspect_container(cname,name+'-absence') is None,'Preexisting container name; no mutation'
+ args=['docker','create','--pull=never','--name',cname,'--label','org.eliza.qualification-run='+runid,'--label','org.eliza.qualification-kind=speech-retirement','--network',network,'--cpus','2','--memory',memory,'--memory-swap',memory,'--pids-limit','256','--read-only','--cap-drop=ALL','--security-opt=no-new-privileges','--user',str(os.getuid())+':'+str(os.getgid()),'--tmpfs','/tmp:rw,nosuid,size=536870912','--mount','type=bind,src='+str(source)+',dst=/workspace'+('' if rw else ',readonly'),'--mount','type=bind,src='+str(out)+',dst=/results','--workdir',cwd,'--env','HOME=/tmp/home','--env','TMPDIR=/tmp','--env','CI=true','--env','NODE_ENV=test','--env',resources['nodeOptions'],'--env','ELIZA_VAULT_DISABLE_KEYCHAIN=1','--env','ELIZA_LIVE_TEST=0','--env','BUN_INSTALL_CACHE_DIR='+('/workspace/.cache/qualification-bun' if name=='install' else '/tmp/bun-cache'),'--env','BUN_CONFIG_NO_AUTO_INSTALL=true','--env','VITEST_FS_MODULE_CACHE_PATH=/results/module-cache-'+name,'--entrypoint',command[0],image,*command[1:]]
+ # Register intent before the daemon can create anything. A lost CLI reply
+ # is reconciled by exact name AND run labels, never removed by name alone.
+ item={'cid':None,'name':cname,'createCompleted':False,'resources':resources};owned.append(item)
+ text,_=phase(name+'-create',args,20);cid=text.strip();assert re.fullmatch('[a-f0-9]{64}',cid)
+ item['cid']=cid;item['createCompleted']=True
+ value=inspect_container(cid,name+'-identity',resources=True);check_container(value,item);check_resources(value,item,name+'-identity')
+ failure=None
+ try:phase(name,['docker','start','--attach',cid],timeout)
+ except PhaseExitError as exc:
+  if not test_family or exc.phase_name!=name:raise
+  failure=exc
+ value=inspect_container(cid,name+'-postidentity',resources=True);check_container(value,item);check_resources(value,item,name+'-postidentity')
+ state=value['State']
+ if state['Running'] or state['Status']!='exited' or state['OOMKilled'] or state['Error']:
+  raise RuntimeError('Container did not reach an ordinary non-OOM exited state')
+ if state['ExitCode']!=(failure.code if failure else 0) or state['ExitCode']>=128:
+  raise RuntimeError('Container exit identity/signal is not a clean test result')
+ # Continuation is permitted only after both the CLI group and exact CID close.
+ cleanup_container(item,'after-'+name)
+ return failure
+
+def normalized_report_file(raw,cwd):
+ if not isinstance(raw,str) or not raw or "\\" in raw:raise ValueError('Missing or non-POSIX report file')
+ value=pathlib.PurePosixPath(raw)
+ if '..' in value.parts:raise ValueError('Report file traversal')
+ if value.is_absolute():return str(value.relative_to('/workspace'))
+ if value.parts and value.parts[0]=='packages':return str(value)
+ return str(pathlib.PurePosixPath(cwd)/value)
+
+def verify_source():
+ assert sha(source/'bun.lock')==manifest['bunLockSHA256']
+ for name,want in manifest['files'].items():assert sha(source/name)==want,name
+ env=dict(os.environ,GIT_NO_LAZY_FETCH='1',GIT_NO_REPLACE_OBJECTS='1',GIT_OPTIONAL_LOCKS='0')
+ def git(*args,allowed=(0,)):
+  remaining=min(10.0,go['expiresEpoch']-time.time(),1200-(time.monotonic()-start))
+  assert remaining>0,'No remaining finite source-metadata window'
+  result=subprocess.run(['git','-c','core.hooksPath=/dev/null','-c','core.fsmonitor=false','-C',str(source),*args],env=env,text=True,stdout=subprocess.PIPE,stderr=subprocess.PIPE,timeout=remaining)
+  assert result.returncode in allowed,'Source metadata read failed'
+  return result.stdout.strip()
+ assert not git('config','--local','--get-regexp',r'^(http\..*\.extraheader|credential\.|core\.sshcommand|include\.|includeif\.|url\..*\.insteadof)',allowed=(0,1)), 'Credential-bearing or indirect local Git config not admitted'
+ assert git('config','--local','--get','remote.origin.url') in ['https://github.com/elizaOS/eliza.git','https://github.com/elizaOS/eliza'], 'Unexpected or credential-bearing source origin'
+ assert git('rev-parse','HEAD')==manifest['commit'] and git('rev-parse','HEAD^{tree}')==manifest['tree']
+ assert not git('diff','--no-ext-diff','--name-only','HEAD')
+ assert not git('ls-files','--others','--exclude-standard'), 'Untracked source overlay'
+ assert not any(x.startswith('S ') or x[:1].islower() for x in git('ls-files','-v').splitlines())
+ custody=json.loads((P/'SOURCE-CUSTODY.json').read_text())
+ for name,want in custody['sourceTreePins'].items():assert git('rev-parse','HEAD:'+name)==want
+ for name,want in custody['extraNormalHelperGitBlobPins'].items():assert git('rev-parse','HEAD:'+name)==want
+ for directory in [source,*[source/x for x in ['plugins/plugin-assistant','plugins/plugin-openai','packages/core','packages/host','packages/testing','plugins/plugin-sqlite']]]:
+  for name in ['.env','.env.local','.env.test','.env.test.local','.env.development','.env.development.local','.env.production','.env.production.local','.dev.vars','.dev.vars.production']:
+   assert not (directory/name).exists() and not (directory/name).is_symlink(), 'Credential-bearing environment file not admitted'
+
+def verify_dependencies(final=False):
+ receipt=out/'DEPENDENCY-INVENTORY.json';d=json.loads(receipt.read_text())
+ assert d['sourceCommit']==manifest['commit'] and d['sourceTree']==manifest['tree'] and d['bunLockSHA256']==manifest['bunLockSHA256'] and d['ignoreScripts'] is True and d['nativeHooksExecuted'] is False
+ assert sha(out/'dependency-files.jsonl')==d['inventorySHA256']
+ phase('verify-installed-dependencies'+('-final' if final else ''),[sys.executable,'-I','-B',str(P/'inventory_dependencies.py'),'verify',str(source),str(out),manifest['commit'],manifest['tree'],manifest['bunLockSHA256']],90)
+ return d['inventorySHA256']
+
+def fresh_module_cache(name):
+ assert re.fullmatch('[a-z0-9-]{1,64}',name)
+ directory=out/name;directory.mkdir(mode=0o700)
+ value=directory.lstat();parent=out.stat()
+ assert not directory.is_symlink() and directory.is_dir() and value.st_dev==parent.st_dev and value.st_uid==os.getuid() and (value.st_mode&0o777)==0o700 and not any(directory.iterdir())
+ (out/('CACHE-ADMISSION-'+name+'.json')).write_text(json.dumps({'state':'FRESH_OWNED_WRITABLE_MODULE_CACHE_NOT_SOURCE_OR_TEST_PASS','path':'/results/'+name,'uid':value.st_uid,'device':value.st_dev,'inode':value.st_ino,'entriesBefore':0,'retainedCacheContents':False},indent=2)+'\n')
+
+def judge(group,failure):
+ report=out/group['report'];assert report.stat().st_size<=8388608
+ data=json.loads(report.read_text());assert failure is None and data['success'] is True and data['numFailedTests']==data['numPendingTests']==data['numTodoTests']==0
+ assert data['numTotalTests']==data['numPassedTests']==group['registrations']
+ assert len(data['testResults'])==1
+ family=data['testResults'][0]
+ assert normalized_report_file(family['name'],group['cwd'].removeprefix('/workspace/'))==group['file'] and family['status']=='passed'
+ actual=family['assertionResults'];assert len(actual)==group['registrations'] and all(x['status']=='passed' for x in actual)
+ expected=next(x for x in oracle['files'] if x['path']==group['file'])
+ assert collections.Counter(x['fullName'] for x in actual)==collections.Counter(x['name'] for x in expected['tests'])
+ family_results[group['file']]={'state':'NORMAL_WHOLE_FILE_ASSERTIONS_PASS','reportSHA256':sha(report),'fileSHA256':expected['sha256'],'registered':len(actual),'passed':len(actual),'unexecuted':0,'names':[x['fullName'] for x in actual]}
+
+try:
+ assert free_start>=plan['resourceBounds']['minimumStartFreeBytes']
+ (out/'runner.json').write_text(json.dumps({'ImageOS':os.environ['ImageOS'],'ImageVersion':os.environ['ImageVersion'],'runId':runid,'attempt':1,'freeStartBytes':free_start},indent=2)+'\n')
+ text,_=phase('docker-endpoint',['docker','context','inspect','default','--format','{{json .Endpoints.docker.Host}}'],10);assert json.loads(text)=='unix:///var/run/docker.sock'
+ text,_=phase('docker-version',['docker','version','--format','{{.Server.Version}}'],10);assert text.strip()==plan['reviewedRunner']['dockerServer']
+ text,_=phase('docker-platform',['docker','info','--format','{{.OSType}}/{{.Architecture}}'],10);assert text.strip()=='linux/x86_64'
+ guard,_=phase('known-incident-source-guard',[sys.executable,'-I','-B',str(P/'check_source.py'),'--kind','sdk','--repo',str(source),'--expected-head',manifest['commit']],65);assert json.loads(guard)['result']=='PASS';verify_source()
+ for name,filename,repo in [('bun','BUN-IMAGE.json','oven/bun'),('node','NODE-IMAGE.json','library/node')]:phase('pull-'+name,['docker','pull',repo+'@'+json.loads((P/filename).read_text())['selectedDigest']],120)
+ phase('toolchain-assembly',['docker','build','--network=none','--pull=false','-t',prefix+'-tools','-f',str(P/'Dockerfile'),str(P)],90)
+ text,_=phase('toolchain-image',['docker','image','inspect',prefix+'-tools','--format','{{.Id}}'],10);image=text.strip();assert re.fullmatch('sha256:[a-f0-9]{64}',image)
+ toolcode="const c=require('node:child_process'),f=require('node:fs'),h=require('node:crypto');console.log(JSON.stringify({node:process.versions.node,bun:c.execFileSync('/usr/local/bin/bun',['--version'],{encoding:'utf8'}).trim(),bunSHA256:h.createHash('sha256').update(f.readFileSync('/usr/local/bin/bun')).digest('hex'),nodeSHA256:h.createHash('sha256').update(f.readFileSync('/usr/local/bin/node')).digest('hex')}));"
+ container_phase('versions','none','2g',['/usr/local/bin/node','-e',toolcode],20);assert json.loads((out/'versions.log').read_text())==plan['expectedTools']
+ container_phase('install','bridge','4g',['/usr/local/bin/bun','install','--frozen-lockfile','--ignore-scripts','--no-progress'],600,rw=True);verify_source()
+ phase('inventory-installed-dependencies',[sys.executable,'-I','-B',str(P/'inventory_dependencies.py'),'capture',str(source),str(out),manifest['commit'],manifest['tree'],manifest['bunLockSHA256']],90)
+ before=verify_dependencies()
+ for name in ['bootstrap.mjs','owning-preflight.mjs','PREFLIGHT-DEFINITION.json']:(out/name).write_bytes((P/name).read_bytes())
+ container_phase('bootstrap','none','2g',['/usr/local/bin/node','/results/bootstrap.mjs'],30)
+ for cache_name in ['module-cache-owning-preflight','preflight-cache-assistant','preflight-cache-openai']:fresh_module_cache(cache_name)
+ container_phase('owning-preflight','none','2g',['/usr/local/bin/node','/results/owning-preflight.mjs'],90);verify_source()
+ for group in plan['groups']:
+  fresh_module_cache('module-cache-'+group['name'])
+  command=['/usr/local/bin/node',group['runner'],'run',group['relative'],'--config',group['config'],'--configLoader','runner','--pool','forks','--maxWorkers','1','--maxConcurrency','1','--no-file-parallelism','--no-cache','--fsModuleCachePath','/results/module-cache-'+group['name'],'--reporter=json','--outputFile=/results/'+group['report']]
+  failure=container_phase(group['name'],'none','2g',command,group['phaseSeconds'],test_family=True,cwd=group['cwd'],node_old_space_mib=1536)
+  judge(group,failure);verify_source()
+ after=verify_dependencies(final=True);assert before==after
+ assert set(family_results)=={x['file'] for x in plan['groups']} and sum(x['passed'] for x in family_results.values())==113
+ status='NORMAL_ORDINAL_SELECTED_WHOLE_FILES_PASS_PENDING_INDEPENDENT_SCOPE_REVIEW'
+except BaseException as exc:run_error=type(exc).__name__+': '+str(exc)
+finally:
+ for index,item in enumerate(owned):
+  try:cleanup_container(item,'cleanup-'+str(index))
+  except ResourcePolicyError:pass
+  except BaseException as exc:cleanup_errors.append({'cid':item['cid'],'error':str(exc)})
+ resource_errors=[{'cid':item['cid'],**error} for item in owned for error in item.get('resourcePolicyFailures',[])]
+ result={'state':'CLEANUP_FAILED' if cleanup_errors else 'RESOURCE_POLICY_FAILED' if resource_errors else status,'error':run_error,'phases':records,'containers':owned,'cleanupErrors':cleanup_errors,'resourcePolicyErrors':resource_errors,'families':family_results,'seconds':time.monotonic()-start,'sourceCommit':manifest['commit'],'sourceTree':manifest['tree'],'claim':'Selected complete normal113fixture registrations/assertions only; requires independent raw scope acceptance. Scripted model replies and realSDK loopback are not live model/provider proof.','normalTypes':False,'entireCompoundPackageScriptsQualified':False,'broadSDKBuild':False,'liveModelProviderVoiceRuntimeDeviceFinancialAcceptance':False}
+ (out/'RESULT.json').write_text(json.dumps(result,indent=2)+'\n')
+raise SystemExit(0 if status=='NORMAL_ORDINAL_SELECTED_WHOLE_FILES_PASS_PENDING_INDEPENDENT_SCOPE_REVIEW' and not run_error and not cleanup_errors and not resource_errors else 1)
