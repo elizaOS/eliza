@@ -185,6 +185,45 @@ function parse(
   });
 }
 
+const VALIDATION_COPY = ".restore-v3-database-validation";
+
+/** Interrupts one validation-copy finalize after link(2), before unlink(2). */
+async function stopValidationCopyAfterLink(
+  candidateFs: AgentBackupRestoreV3CandidateFs,
+): Promise<void> {
+  const lock = await candidateFs.acquireLock(
+    ".restore-v3-validate-database.lock",
+    control(),
+  );
+  try {
+    await candidateFs.ensureFileTreeDirectory(VALIDATION_COPY, control(), lock);
+    const bytes = new TextEncoder().encode("17\n");
+    const writer = await candidateFs.createFileTreeFile(
+      VALIDATION_COPY,
+      { path: "PG_VERSION", sizeBytes: bytes.length, mode: 0o600, mtimeMs: 0 },
+      undefined,
+      control(),
+      lock,
+    );
+    await writer.write(bytes, control());
+    const stop = new AbortController();
+    const link = fs.link.bind(fs);
+    const linked = vi.spyOn(fs, "link").mockImplementation(async (from, to) => {
+      await link(from, to);
+      stop.abort(new Error("Deadline reached while the copy published a file"));
+    });
+    try {
+      await expect(
+        writer.finalize({ ...control(), signal: stop.signal }),
+      ).rejects.toThrow();
+    } finally {
+      linked.mockRestore();
+    }
+  } finally {
+    await lock.release(control());
+  }
+}
+
 describe("physical PGlite archive", () => {
   it(
     "never validates an archive containing corrupt physical database control files",
@@ -399,6 +438,55 @@ describe("physical PGlite archive", () => {
     },
     TEST_BUDGET_MS,
   );
+
+  it(
+    "validates again after a validation copy stopped between link and unlink",
+    async () => {
+      const source = new PGlite();
+      databases.add(source);
+      await source.exec("CREATE TABLE restore_fact (id integer PRIMARY KEY)");
+      const dump = await source.dumpDataDir("gzip");
+      await source.close();
+      databases.delete(source);
+      const { input, attemptRoot } = await extractionFixture(
+        Buffer.from(await dump.arrayBuffer()),
+      );
+      await extractAgentBackupRestoreV3CandidateDatabase(input);
+      await stopValidationCopyAfterLink(input.candidateFs);
+      // The partial and final names share one inode, the state a process that
+      // dies between link(2) and unlink(2) leaves behind.
+      expect(
+        (await fs.stat(path.join(attemptRoot, VALIDATION_COPY, "PG_VERSION")))
+          .nlink,
+      ).toBe(2);
+      const validation = await validateAgentBackupRestoreV3CandidateDatabase({
+        ...input,
+        control: control(),
+      });
+      expect(validation.serverVersion).toMatch(/^[1-9][0-9]{4,5}$/);
+      await expect(
+        fs.stat(path.join(attemptRoot, VALIDATION_COPY)),
+      ).rejects.toMatchObject({ code: "ENOENT" });
+    },
+    TEST_BUDGET_MS,
+  );
+
+  it("still refuses a validation copy file that is linked from elsewhere", async () => {
+    const { input, attemptRoot } = await extractionFixture();
+    await stopValidationCopyAfterLink(input.candidateFs);
+    const copied = path.join(attemptRoot, VALIDATION_COPY, "PG_VERSION");
+    await fs.link(copied, path.join(attemptRoot, "outside-link"));
+    await expect(
+      validateAgentBackupRestoreV3CandidateDatabase({
+        ...input,
+        control: control(),
+      }),
+    ).rejects.toMatchObject({
+      code: "AGENT_BACKUP_RESTORE_V3_CANDIDATE_FS_CLEANUP_UNSAFE",
+    });
+    // The preflight refuses before it removes any link.
+    expect((await fs.stat(copied)).nlink).toBe(3);
+  });
 
   it.each([
     "../escape",
