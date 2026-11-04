@@ -248,12 +248,15 @@ describe("history ID grammar", () => {
     });
     await expect(f.run()).rejects.toThrow("Context read authorization changed");
     expect(f.useModel).toHaveBeenCalledTimes(1);expect(f.runtime.composeState).not.toHaveBeenCalled();
-    expect(f.runtime.runActionsByMode).not.toHaveBeenCalled();
+    expect(f.dispatch).not.toHaveBeenCalled();expect(f.runtime.emitEvent).not.toHaveBeenCalled();
+    expect(vi.mocked(f.runtime.runActionsByMode).mock.calls.map(([mode])=>mode)).toEqual(["RESPONSE_HANDLER_BEFORE","RESPONSE_HANDLER_DURING"]);
   });
   it.each(["role","namespace","agent","room","entity","message"] as const)("cancels the second HANDLE after a full read when %s changes without depending on a remaining READ tool",async mode=>{
     const f=await fixture([]);const sourceSetId=f.history.sourceSetId;
     f.useModel.mockImplementationOnce(async()=>({text:"",toolCalls:[{name:"READ_CONTEXT",arguments:{reads:[{kind:"history-all",sourceSetId}],acknowledgment:""}}]}));
+    let compositionsBeforeAuthorizationChange=0;
     f.useModel.mockImplementationOnce(async()=>{
+      compositionsBeforeAuthorizationChange=vi.mocked(f.runtime.composeState).mock.calls.length;
       if(mode==="role")f.message.content.source="client_chat";
       if(mode==="agent")f.runtime.agentId="00000000-0000-4000-8000-000000000099" as UUID;
       if(mode==="room")f.message.roomId="00000000-0000-4000-8000-000000000098" as UUID;
@@ -263,7 +266,9 @@ describe("history ID grammar", () => {
       return handle({replyText:"found it.",completionContext:{mode:"relevant_prior_dialogue",sourceSetId:"current_request",complete:true,relevantSourceIds:[551],constraintSourceIds:[],referentSourceIds:[],pendingIntentSourceIds:[]}});
     });
     await expect(f.run()).rejects.toThrow("Context read authorization changed");
-    expect(f.useModel).toHaveBeenCalledTimes(2);expect(f.dispatch).not.toHaveBeenCalled();expect(f.runtime.runActionsByMode).not.toHaveBeenCalled();
+    expect(f.useModel).toHaveBeenCalledTimes(2);expect(f.dispatch).not.toHaveBeenCalled();expect(f.runtime.emitEvent).not.toHaveBeenCalled();
+    expect(f.runtime.composeState).toHaveBeenCalledTimes(compositionsBeforeAuthorizationChange);
+    expect(vi.mocked(f.runtime.runActionsByMode).mock.calls.map(([mode])=>mode)).toEqual(["RESPONSE_HANDLER_BEFORE","RESPONSE_HANDLER_DURING"]);
   });
   it("encodes all 551 bound sources without a 551-value native enum and never fills an offered hole", async () => {
     const {context,history}=await fixture([]);const scope=history.scope;
