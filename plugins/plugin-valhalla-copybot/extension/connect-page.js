@@ -1,8 +1,9 @@
-(function () {
+(() => {
   const params = new URLSearchParams(location.search);
   const which = params.get("wallet") === "solflare" ? "solflare" : "phantom";
   const label = which === "solflare" ? "Solflare" : "Phantom";
-  const downloadHref = which === "solflare" ? "https://solflare.com/download" : "https://phantom.app/download";
+  const downloadHref =
+    which === "solflare" ? "https://solflare.com/download" : "https://phantom.app/download";
   const status = document.getElementById("status");
   const go = document.getElementById("go");
   const missing = document.getElementById("missing");
@@ -31,7 +32,9 @@
 
   if (download) download.href = downloadHref;
   if (go) go.textContent = `Continue with ${label}`;
-  say(`Looking for ${label}. This page only asks you to connect and to sign in. It does not send a transaction.`);
+  say(
+    `Looking for ${label}. This page only asks you to connect and to sign in. It does not send a transaction.`
+  );
 
   window.setTimeout(() => {
     if (found()) return;
@@ -89,7 +92,9 @@
       });
     }
     if (window.opener) window.opener.postMessage(payload, "https://valhalla-app.xyz");
-    say(`Signed in. Address ends in ${proof.address.slice(-4)}. Return to the Valhalla popup. Nothing was sent.`);
+    say(
+      `Signed in. Address ends in ${proof.address.slice(-4)}. Return to the Valhalla popup. Nothing was sent.`
+    );
   }
 
   go?.addEventListener("click", async () => {

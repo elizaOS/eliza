@@ -1,6 +1,6 @@
+import { createPublicKey, randomUUID, verify } from "node:crypto";
 import { mkdir, readFile, writeFile } from "node:fs/promises";
 import path from "node:path";
-import { createPublicKey, randomUUID, verify } from "node:crypto";
 import { readSignedAllowance } from "./monetization-trust.ts";
 
 const PUBLIC_KEY_B64 = "3Y25V3M5MkK354P3Ghw2BnA8locVlep3q86GTOD/EKU=";
@@ -18,7 +18,9 @@ export function allowanceMessage(allowance: number, trialDays: number): string {
   return `proTradeAllowance=${allowance}\ntrialDays=${trialDays}`;
 }
 
-export function counterMessage(state: Pick<ProTradeState, "identity" | "remaining" | "allowance">): string {
+export function counterMessage(
+  state: Pick<ProTradeState, "identity" | "remaining" | "allowance">
+): string {
   return `identity=${state.identity}\nremaining=${state.remaining}\nallowance=${state.allowance}`;
 }
 
@@ -43,8 +45,13 @@ async function readState(dataDir: string, allowance: number): Promise<ProTradeSt
   try {
     const raw = JSON.parse(await readFile(path.join(dataDir, FILE), "utf8")) as ProTradeState;
     const remaining = Number(raw.remaining);
-    const safe = Number.isFinite(remaining) ? Math.max(0, Math.min(allowance, remaining)) : allowance;
-    const signedOk = verifySigned(counterMessage({ ...raw, remaining: safe, allowance }), raw.signature);
+    const safe = Number.isFinite(remaining)
+      ? Math.max(0, Math.min(allowance, remaining))
+      : allowance;
+    const signedOk = verifySigned(
+      counterMessage({ ...raw, remaining: safe, allowance }),
+      raw.signature
+    );
     return {
       identity: raw.identity || randomUUID(),
       remaining: signedOk ? remaining : safe,
@@ -62,7 +69,10 @@ async function writeState(dataDir: string, state: ProTradeState): Promise<void> 
   await writeFile(path.join(dataDir, FILE), JSON.stringify(state));
 }
 
-export async function proTradeView(dataDir: string, allowance = readSignedAllowance()): Promise<ProTradeState> {
+export async function proTradeView(
+  dataDir: string,
+  allowance = readSignedAllowance()
+): Promise<ProTradeState> {
   const state = await readState(dataDir, allowance);
   await writeState(dataDir, state);
   return state;

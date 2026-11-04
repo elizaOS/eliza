@@ -1,5 +1,5 @@
-import { readFileSync } from "node:fs";
 import { createPublicKey, verify } from "node:crypto";
+import { readFileSync } from "node:fs";
 
 export const MONETIZATION_PUBLIC_KEY_B64 = "GasF+x9XzQvsO07cTOCMoA5Vf314gd4gmf8gYGJWZ68=";
 export const ADSENSE_CLIENT = "ca-pub-6504655762357230";
@@ -91,7 +91,10 @@ function verifyMessage(message: string, signature: string | undefined): boolean 
 export function readSignedAllowance(report: (surface: string) => void = () => undefined): number {
   try {
     const doc = JSON.parse(readFileSync(new URL("../monetization.json", import.meta.url), "utf8"));
-    if (doc.adsenseClient !== ADSENSE_CLIENT || !verifyMessage(canonicalMonetization(doc), doc.signature)) {
+    if (
+      doc.adsenseClient !== ADSENSE_CLIENT ||
+      !verifyMessage(canonicalMonetization(doc), doc.signature)
+    ) {
       report("desk");
       return 0;
     }

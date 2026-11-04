@@ -1,7 +1,8 @@
 import { readdirSync, readFileSync, statSync } from "node:fs";
 import path from "node:path";
 
-const FORBIDDEN = /\bsignTransaction\b|\bsignAllTransactions\b|\bsendTransaction\b|\bsignAndSendTransaction\b/;
+const FORBIDDEN =
+  /\bsignTransaction\b|\bsignAllTransactions\b|\bsendTransaction\b|\bsignAndSendTransaction\b/;
 
 const ROOTS = [
   "public",

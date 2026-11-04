@@ -11,7 +11,7 @@ for /f "usebackq tokens=1,* delims==" %%A in (".env") do (
 )
 where bun >nul 2>nul
 if %errorlevel%==0 (
-  bun src/standalone.ts
+  bun src/main.ts
   pause
   exit /b %errorlevel%
 )

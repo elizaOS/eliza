@@ -25,8 +25,9 @@ import { tail4 } from "./net.ts";
 import { AFFILIATE_LABEL, contextForReport, contextForScore, offersFor } from "./offers.ts";
 import { pollTelegramTools } from "./outside-read.ts";
 import { comparisonRows, PLAN_PRICES, paywallCopy, TRIAL_MS, tierFor } from "./plan.ts";
-import { confirmRepair, proposeFix } from "./self-repair.ts";
 import { proTradeView } from "./pro-allowance.ts";
+import { quoteBuy } from "./quote.ts";
+import { confirmRepair, proposeFix } from "./self-repair.ts";
 import { signalScore } from "./signal-score.ts";
 import {
   checkDesktopUpdate,
@@ -58,6 +59,57 @@ function same(left: string, right: string): boolean {
 
 function token(): string {
   return `${Date.now().toString(36)}.${Math.random().toString(36).slice(2)}`;
+}
+
+/** One live feed per open desk tab. Keep the ceiling low; this is a desk, not a web farm. */
+const MAX_STREAMS = 8;
+let streams = 0;
+
+/**
+ * Push desk state to a browser instead of making it poll. The frame is the same
+ * `stateView` the polled route returns, so the page needs no second state model.
+ * A frame is written only when the state changed, plus a ping comment so a proxy
+ * does not close an idle stream.
+ */
+function streamDesk(engine: AgentEngine, req: IncomingMessage, res: ServerResponse): void {
+  if (streams >= MAX_STREAMS) {
+    send(res, 503, { ok: false, error: "Too many live feeds. Close a desk tab." });
+    return;
+  }
+  streams += 1;
+  res.writeHead(200, {
+    "content-type": "text/event-stream",
+    "cache-control": "no-cache, no-transform",
+    connection: "keep-alive",
+    "x-accel-buffering": "no",
+  });
+  let last = "";
+  const push = (): void => {
+    let frame: string;
+    try {
+      frame = JSON.stringify(stateView(engine));
+    } catch {
+      return;
+    }
+    if (frame === last) return;
+    last = frame;
+    res.write(`event: desk\ndata: ${frame}\n\n`);
+  };
+  push();
+  const tick = setInterval(push, 1_000);
+  const beat = setInterval(() => res.write(": ping\n\n"), 15_000);
+  let closed = false;
+  const stop = (): void => {
+    if (closed) return;
+    closed = true;
+    clearInterval(tick);
+    clearInterval(beat);
+    streams -= 1;
+    res.end();
+  };
+  req.on("close", stop);
+  req.on("error", stop);
+  res.on("close", stop);
 }
 
 function readBody(req: IncomingMessage): Promise<unknown> {
@@ -230,6 +282,10 @@ async function handle(
     send(res, 401, { ok: false, error: "Sign in on this PC first.", login: true });
     return;
   }
+  if (req.method === "GET" && pathname === "/api/stream/desk") {
+    streamDesk(engine, req, res);
+    return;
+  }
   if (req.method === "GET" && pathname === "/api/ads/report") {
     send(res, 200, await loadAdReport(process.env));
     return;
@@ -399,6 +455,19 @@ async function handle(
       return;
     }
     send(res, 200, { svg: await qrSvg(address), address, short: tail4(address) });
+    return;
+  }
+  if (req.method === "GET" && pathname === "/api/quote") {
+    // Read-only: a route quote, never a swap. The trader signs in their wallet.
+    try {
+      const quote = await quoteBuy({
+        mint: url.searchParams.get("mint"),
+        sol: url.searchParams.get("sol"),
+      });
+      send(res, 200, { ok: true, quote });
+    } catch (err) {
+      send(res, 200, { ok: false, error: err instanceof Error ? err.message : "quote failed" });
+    }
     return;
   }
   if (req.method === "POST") {

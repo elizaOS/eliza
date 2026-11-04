@@ -14,7 +14,7 @@ The first launch asks for age 18+, shows that this is not financial advice, then
 
 ## Valhalla Brain
 
-Brain is the advisory model layer. Gemini is the default. You can also pick OpenAI, Anthropic, Grok, OpenRouter, or local Ollama. Keys stay encrypted on this PC. A monthly cap stops extra model calls. The analyst can only make a pass fail. It cannot approve a coin the rules already blocked. A strategy tweak waits for your tap and can be rolled back. Details are in [docs/AI.md](../../docs/AI.md).
+Brain is the advisory model layer. Gemini is the default. You can also pick OpenAI, Anthropic, Grok, OpenRouter, Together AI, or local Ollama. Together AI serves DeepSeek, and the default model is `deepseek-ai/DeepSeek-V4.1-Flash`. Put `TOGETHER_API_KEY` in `.env` and the desk uses it on start; a key saved in Controls still wins. Keys stay encrypted on this PC. A monthly cap stops extra model calls. The analyst can only make a pass fail. It cannot approve a coin the rules already blocked. A strategy tweak waits for your tap and can be rolled back. Details are in [docs/AI.md](../../docs/AI.md).
 
 ## Self-repair
 
@@ -26,6 +26,7 @@ The agent watches itself. Hung calls time out. The next data provider is used. A
 2. Open this folder: `plugins/plugin-valhalla-copybot`.
 3. Copy `.env.example` to `.env`.
 4. Paste your Google AI Studio key into `GOOGLE_GENERATIVE_AI_API_KEY`. Leave `VALHALLA_LIVE_TRADING=false`.
+   For DeepSeek through Together AI, also paste your key into `TOGETHER_API_KEY`. The desk uses it on start.
 5. Double-click `start.bat` on Windows, or run `./start.sh` on Mac or Linux.
 
 The desk opens at `http://127.0.0.1:8787`. It stays on this PC unless you set `VALHALLA_BIND=0.0.0.0` so the phone on your network can pair. Wallet actions still refuse any request that is not from this PC.
@@ -46,13 +47,13 @@ After you pair, the phone watches the PC agent:
 - A background notice carries those alerts. The app does not ask you to turn battery optimization off.
 - If the pairing token expires, the phone asks for a new one.
 - Error lines stay on the phone. Open Error log to read them.
-- Chat uses the same PC agent and the same Google AI Studio key. The key stays on the PC. A settings idea is not applied until you tap confirm, and it must stay inside the desk limits.
+- Chat uses the same PC agent and the Brain provider you picked in Controls. The key stays on the PC. A settings idea is not applied until you tap confirm, and it must stay inside the desk limits.
 
 The bot stays read-only. Arm live only from Controls on the PC, and only after you type `CONFIRM LIVE`. Set `VALHALLA_LIVE_TRADING=false` in `.env` if you want the file to block live swaps.
 
 There is no send or withdraw button. Move SOL with your own wallet app.
 
-Chat on the desk answers status, positions, and P&L. It refuses transfer and "turn off safety" requests. Gemini uses Google AI Studio, not Vertex.
+Chat on the desk answers status, positions, and P&L. It refuses transfer and "turn off safety" requests. Open chat uses the Brain provider you picked, so DeepSeek on Together AI answers when that is the provider.
 
 A log is written to `data/agent.log` and `data/audit.jsonl`. The log panel shows the same lines. Keys are not written there.
 

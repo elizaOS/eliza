@@ -91,4 +91,25 @@ describe("self-repair", () => {
     expect(confirmRepair(restart, true, 2, 0).applied).toBe(false);
     expect(confirmRepair(restart, true, 0, 0).applied).toBe(true);
   });
+
+  it("names a model fault instead of calling it unknown, and never trades on it", () => {
+    const rejected = classifyIncident(["chat: Desk chat failed: together HTTP 401"]);
+    expect(rejected.kind).toBe("model_key");
+    expect(rejected.report).toMatch(/key/i);
+    expect(rejected.report).toMatch(/trading checks still run/i);
+
+    expect(classifyIncident(["together HTTP 429"]).kind).toBe("model_limited");
+    expect(classifyIncident(["desk chat failed: gemini HTTP 503"]).kind).toBe("model_down");
+    expect(classifyIncident(["Desk chat timed out after 8000ms"]).kind).toBe("model_timeout");
+
+    const proposal = proposeFix(["Desk chat failed: together HTTP 401"]);
+    expect(proposal.action).toBe("switch_provider");
+    expect(proposal.needsConfirm).toBe(true);
+    expect(proposal.applied).toBe(false);
+    expect(confirmRepair(proposal, false, 0, 0).applied).toBe(false);
+
+    // A model fault must not be reported as an RPC or wallet fault.
+    expect(classifyIncident(["rpc timed out"]).kind).toBe("hung_rpc");
+    expect(classifyIncident(["websocket dropped"]).kind).toBe("dropped_ws");
+  });
 });

@@ -82,3 +82,36 @@ describe("safety controls", () => {
     await desk.close();
   });
 });
+
+describe("live desk feed", () => {
+  it("pushes desk state as server-sent events instead of making the page poll", async () => {
+    const dir = await mkdtemp(path.join(tmpdir(), "valhalla-stream-"));
+    const engine = engineForTests(dir);
+    const desk = await startDashboard(engine, { port: 0 });
+    const controller = new AbortController();
+    try {
+      const res = await fetch(`http://127.0.0.1:${desk.port}/api/stream/desk`, {
+        signal: controller.signal,
+      });
+      expect(res.status).toBe(200);
+      expect(res.headers.get("content-type")).toContain("text/event-stream");
+      const reader = res.body?.getReader();
+      expect(reader).toBeTruthy();
+      if (!reader) return;
+      let buffer = "";
+      while (!buffer.includes("\n\n")) {
+        const next = await reader.read();
+        if (next.done) break;
+        buffer += new TextDecoder().decode(next.value);
+      }
+      expect(buffer).toContain("event: desk");
+      const frame = /^data: (.*)$/m.exec(buffer)?.[1] ?? "";
+      const state = JSON.parse(frame) as { running?: boolean; openPositions?: number };
+      expect(typeof state.running).toBe("boolean");
+      controller.abort();
+      await reader.cancel().catch(() => undefined);
+    } finally {
+      await withTimeout(desk.close(), 3_000, "desk close");
+    }
+  });
+});

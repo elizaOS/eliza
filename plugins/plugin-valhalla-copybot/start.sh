@@ -10,7 +10,7 @@ set -a
 . ./.env
 set +a
 if command -v bun >/dev/null 2>&1; then
-  exec bun src/standalone.ts
+  exec bun src/main.ts
 fi
 echo "Install Bun from https://bun.sh or Node.js 24, then run this again."
 exit 1

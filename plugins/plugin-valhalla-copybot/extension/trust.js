@@ -1,8 +1,8 @@
-(function (root, factory) {
+((root, factory) => {
   const api = factory();
   if (typeof module === "object" && module.exports) module.exports = api;
   else root.ValhallaTrust = api;
-})(typeof globalThis !== "undefined" ? globalThis : this, function () {
+})(typeof globalThis !== "undefined" ? globalThis : this, () => {
   /** Public key only. The private key is not in this repo. */
   const PUBLIC_KEY_B64 = "GasF+x9XzQvsO07cTOCMoA5Vf314gd4gmf8gYGJWZ68=";
   const ADSENSE_CLIENT = "ca-pub-6504655762357230";

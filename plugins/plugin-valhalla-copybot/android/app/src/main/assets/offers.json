@@ -9,7 +9,15 @@
       "blurb": "A hardware wallet keeps the signing key off the trading PC.",
       "url": "",
       "image": "",
-      "placements": ["tools", "footer", "app-banner", "extension", "portal", "telegram", "risk-score"],
+      "placements": [
+        "tools",
+        "footer",
+        "app-banner",
+        "extension",
+        "portal",
+        "telegram",
+        "risk-score"
+      ],
       "tier": "free",
       "category": "hardware-wallet",
       "disclosure": "Affiliate link · we may earn a commission"

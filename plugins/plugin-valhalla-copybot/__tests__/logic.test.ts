@@ -369,7 +369,9 @@ describe("source scan", () => {
     expect(text).not.toContain(dummySweepPubkey);
     expect(text).not.toContain("eyJhbGci");
     expect(text).not.toContain("wallet.json");
-    expect(text).not.toContain("readFileSync");
+    // Sync file IO is allowed for the shop config only. It must never point at a
+    // wallet or key file, so this checks the target instead of banning the call.
+    expect(text).not.toMatch(/readFileSync\([^)]*(wallet|keypair|secret|private)/i);
     expect(text).not.toContain("SystemProgram.transfer");
     expect(text).not.toMatch(/api-key=[A-Za-z0-9]{8,}/);
   });

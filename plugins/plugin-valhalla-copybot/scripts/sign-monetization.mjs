@@ -1,5 +1,5 @@
-import { readFileSync, writeFileSync } from "node:fs";
 import { createPrivateKey, createPublicKey, sign } from "node:crypto";
+import { readFileSync, writeFileSync } from "node:fs";
 import vm from "node:vm";
 
 const sandbox = vm.createContext({ TextEncoder, atob });
@@ -8,7 +8,9 @@ const trust = sandbox.ValhallaTrust;
 
 let raw = process.env.MONETIZATION_SIGNING_KEY || "";
 if (!raw) {
-  console.error("MONETIZATION_SIGNING_KEY is not set. The bundled signed config was left unchanged.");
+  console.error(
+    "MONETIZATION_SIGNING_KEY is not set. The bundled signed config was left unchanged."
+  );
   process.exit(0);
 }
 if (!raw.includes("BEGIN")) {
@@ -35,7 +37,9 @@ try {
 const root = new URL("../", import.meta.url);
 const doc = JSON.parse(readFileSync(new URL("./monetization.json", root), "utf8"));
 delete doc.signature;
-doc.offersSignature = sign(null, Buffer.from(trust.canonicalOffers(doc.offers)), key).toString("base64");
+doc.offersSignature = sign(null, Buffer.from(trust.canonicalOffers(doc.offers)), key).toString(
+  "base64"
+);
 doc.signature = sign(null, Buffer.from(trust.canonicalMonetization(doc)), key).toString("base64");
 const pretty = `${JSON.stringify(doc, null, 2)}\n`;
 writeFileSync(new URL("./monetization.json", root), pretty);

@@ -1,7 +1,7 @@
-import { readFileSync, readdirSync, statSync } from "node:fs";
+import { createPublicKey, verify } from "node:crypto";
+import { readdirSync, readFileSync, statSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { createPublicKey, verify } from "node:crypto";
 import vm from "node:vm";
 
 const plugin = new URL("../", import.meta.url);
@@ -25,9 +25,12 @@ function verifySig(message, signature) {
 
 const money = JSON.parse(readFileSync(new URL("./monetization.json", plugin), "utf8"));
 const offers = JSON.parse(readFileSync(new URL("./offers.json", plugin), "utf8"));
-if (money.adsenseClient !== trust.ADSENSE_CLIENT) fail("adsense client is not the Valhalla publisher");
-if (!verifySig(trust.canonicalMonetization(money), money.signature)) fail("monetization.json signature does not verify");
-if (!verifySig(trust.canonicalOffers(offers.offers), offers.signature)) fail("offers.json signature does not verify");
+if (money.adsenseClient !== trust.ADSENSE_CLIENT)
+  fail("adsense client is not the Valhalla publisher");
+if (!verifySig(trust.canonicalMonetization(money), money.signature))
+  fail("monetization.json signature does not verify");
+if (!verifySig(trust.canonicalOffers(offers.offers), offers.signature))
+  fail("offers.json signature does not verify");
 if (trust.canonicalOffers(money.offers) !== trust.canonicalOffers(offers.offers)) {
   fail("offers.json does not match monetization.json");
 }

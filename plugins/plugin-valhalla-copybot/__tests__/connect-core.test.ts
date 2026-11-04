@@ -1,6 +1,6 @@
-import { beforeAll, describe, expect, it } from "vitest";
-import vm from "node:vm";
 import { readFileSync } from "node:fs";
+import vm from "node:vm";
+import { beforeAll, describe, expect, it } from "vitest";
 
 type Nacl = {
   sign: {
@@ -14,8 +14,16 @@ type ConnectApi = {
   adapterFromInjected(
     provider: unknown,
     name: string
-  ): Promise<{ name: string; address: string; signMessage(bytes: Uint8Array): Promise<Uint8Array> } | null>;
-  adapterFromStandard(wallet: unknown): Promise<{ name: string; address: string; signMessage(bytes: Uint8Array): Promise<Uint8Array> } | null>;
+  ): Promise<{
+    name: string;
+    address: string;
+    signMessage(bytes: Uint8Array): Promise<Uint8Array>;
+  } | null>;
+  adapterFromStandard(wallet: unknown): Promise<{
+    name: string;
+    address: string;
+    signMessage(bytes: Uint8Array): Promise<Uint8Array>;
+  } | null>;
   pickNamed(list: Array<{ name: string }>, which: string): { name: string } | null;
   signInWithAdapter(
     adapter: { address: string; signMessage(bytes: Uint8Array): Promise<Uint8Array> },
@@ -44,7 +52,13 @@ function b58(bytes: Uint8Array): string {
       carry = Math.floor(carry / 58);
     }
   }
-  return "1".repeat(zeros) + digits.reverse().map((digit) => alphabet[digit]).join("");
+  return (
+    "1".repeat(zeros) +
+    digits
+      .reverse()
+      .map((digit) => alphabet[digit])
+      .join("")
+  );
 }
 
 function pair() {
@@ -65,8 +79,14 @@ beforeAll(() => {
     btoa: (value: string) => Buffer.from(value, "binary").toString("base64"),
   });
   (sandbox as { self: unknown }).self = sandbox;
-  vm.runInContext(readFileSync(new URL("../extension/vendor/nacl.min.js", import.meta.url), "utf8"), sandbox);
-  vm.runInContext(readFileSync(new URL("../extension/connect-core.js", import.meta.url), "utf8"), sandbox);
+  vm.runInContext(
+    readFileSync(new URL("../extension/vendor/nacl.min.js", import.meta.url), "utf8"),
+    sandbox
+  );
+  vm.runInContext(
+    readFileSync(new URL("../extension/connect-core.js", import.meta.url), "utf8"),
+    sandbox
+  );
   nacl = (sandbox as { nacl: Nacl }).nacl;
   connect = (sandbox as { ValhallaConnect: ConnectApi }).ValhallaConnect;
 });
@@ -75,12 +95,19 @@ describe("wallet sign-in", () => {
   it("accepts a Phantom-style provider and a Solflare Wallet Standard provider", async () => {
     const phantom = pair();
     const solflare = pair();
-    const when = { domain: "valhalla-app.xyz", nonce: "nonce-1", issuedAt: new Date().toISOString(), expiresAt: new Date(Date.now() + 60_000).toISOString() };
+    const when = {
+      domain: "valhalla-app.xyz",
+      nonce: "nonce-1",
+      issuedAt: new Date().toISOString(),
+      expiresAt: new Date(Date.now() + 60_000).toISOString(),
+    };
     const phantomAdapter = await connect.adapterFromInjected(
       {
         isPhantom: true,
         connect: async () => ({ publicKey: { toString: () => phantom.address } }),
-        signMessage: async (bytes: Uint8Array) => ({ signature: nacl.sign.detached(bytes, phantom.secretKey) }),
+        signMessage: async (bytes: Uint8Array) => ({
+          signature: nacl.sign.detached(bytes, phantom.secretKey),
+        }),
       },
       "Phantom"
     );
@@ -104,7 +131,10 @@ describe("wallet sign-in", () => {
     };
     expect(connect.pickNamed([standard], "solflare")?.name).toBe("Solflare");
     const solAdapter = await connect.adapterFromStandard(standard);
-    const solSession = await connect.signInWithAdapter(solAdapter!, nacl, { ...when, nonce: "nonce-2" });
+    const solSession = await connect.signInWithAdapter(solAdapter!, nacl, {
+      ...when,
+      nonce: "nonce-2",
+    });
     expect(solSession.address).toBe(solflare.address);
     expect(connect.isPubkey("not-an-address")).toBe(false);
   });
