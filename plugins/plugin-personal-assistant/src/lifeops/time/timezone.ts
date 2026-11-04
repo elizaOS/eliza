@@ -167,11 +167,39 @@ function isClockTimeToken(tokens: readonly string[], index: number): boolean {
   return BARE_HOUR_TOKEN_PATTERN.test(token) && TIME_PREPOSITIONS.has(previous);
 }
 
+function isZoneWord(tokens: readonly string[], index: number): boolean {
+  return (
+    tokens[index] === "timezone" ||
+    (tokens[index] === "zone" && tokens[index - 1] === "time")
+  );
+}
+
+/**
+ * Whether the words before `tokens[index]` set up a zone: "timezone" or
+ * "time zone", optionally followed by "to" / "is" ("set my timezone to
+ * Pacific"), or the schedule phrase "all times in" / "all times are in"
+ * ("all times in CT"). A bare "in" is not enough for a region word ("in
+ * Central Park", "in Mountain View", "in central London"), and "three times
+ * in Central Park" counts visits.
+ */
+function followsZoneWord(tokens: readonly string[], index: number): boolean {
+  const previous = tokens[index - 1];
+  if (previous === "to" || previous === "is") {
+    return isZoneWord(tokens, index - 2);
+  }
+  if (previous !== "in") {
+    return isZoneWord(tokens, index - 1);
+  }
+  const times = tokens[index - 2] === "are" ? index - 3 : index - 2;
+  return tokens[times] === "times" && tokens[times - 1] === "all";
+}
+
 /**
  * Whether the phrase at `tokens[index, index + size)` is used as a zone or a
  * place: the whole text, followed by "time" ("Tokyo time"), right after a
- * clock time ("10am PT", "3:30 central", "noon PT", "at 5 central"), or, for
- * a place, after "in" ("while I'm in Tokyo").
+ * clock time ("10am PT", "3:30 central", "noon PT", "at 5 central"), after a
+ * zone word ("timezone to Pacific", "all times in CT"), or, for a place,
+ * after "in" ("while I'm in Tokyo").
  */
 function phraseNamesZone(
   tokens: readonly string[],
@@ -187,7 +215,9 @@ function phraseNamesZone(
     return true;
   }
   return (
-    isClockTimeToken(tokens, index - 1) || (place && tokens[index - 1] === "in")
+    isClockTimeToken(tokens, index - 1) ||
+    followsZoneWord(tokens, index) ||
+    (place && tokens[index - 1] === "in")
   );
 }
 
