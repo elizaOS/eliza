@@ -318,6 +318,16 @@ describe("GitHub account resolution", () => {
     expect(member).toMatchObject({ success: false });
     expect(list).toHaveBeenCalledTimes(1);
 
+    // The agent's own turn has no owner behind it and keeps failing closed.
+    const agentSelf = await prOpAction.handler(
+      rt,
+      turn("00000000-0000-4000-8000-000000000001"),
+      undefined,
+      { op: "list", repo: "a/b" },
+    );
+    expect(agentSelf).toMatchObject({ success: false });
+    expect(list).toHaveBeenCalledTimes(1);
+
     // An explicit agent request still needs an agent account.
     const explicitAgent = await prOpAction.handler(
       rt,

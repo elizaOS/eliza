@@ -7,6 +7,7 @@
 import type { HandlerCallback, IAgentRuntime, Memory } from "@elizaos/core";
 import {
   hasRoleAccess,
+  isAgentSelf,
   requireConfirmation,
   stableStringify,
 } from "@elizaos/core";
@@ -264,11 +265,14 @@ export async function buildResolvedClient(
   }
   // The usual connection (Settings token, device sign-in, connector OAuth) is
   // only the owner's account. An operation that defaults to the agent account
-  // then uses it; the owner check below still applies.
+  // then uses it for the owner; the owner check below still applies. The
+  // agent's own turns have no human owner behind them, so they keep failing
+  // closed.
   const resolvedSelection: GitHubAccountSelection =
     "defaulted" in requestedSelection &&
     requestedSelection.defaulted &&
     requestedSelection.role === "agent" &&
+    !isAgentSelf(runtime, message) &&
     !getClient(runtime, requestedSelection)
       ? { role: "user" }
       : requestedSelection;
