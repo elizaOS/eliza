@@ -185,7 +185,9 @@ class NoHistoryChannelDiscordService extends Service {
 }
 
 it("still memoizes an absent author when a real channel has no message history", async () => {
-  const directory = await mkdtemp(path.join(tmpdir(), "eliza-inbox-nohistory-"));
+  const directory = await mkdtemp(
+    path.join(tmpdir(), "eliza-inbox-nohistory-"),
+  );
   for (const [key, value] of Object.entries({
     ELIZA_STATE_DIR: directory,
     ELIZA_CONFIG_PATH: path.join(directory, "config.json"),
