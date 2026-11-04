@@ -315,9 +315,17 @@ function loadLocales(localeDir) {
     const data = JSON.parse(
       fs.readFileSync(path.join(localeDir, entry), "utf8"),
     );
-    if (data && typeof data === "object" && !Array.isArray(data)) {
-      locales[lang] = data;
+    // Fail closed. A file that parses but is not a key/value object (null, an
+    // array, a bare string) used to be dropped here, so every per-locale rule
+    // — missing used keys, missing translations, orphaned translations,
+    // `${...}` leaks — silently stopped running for that language while the
+    // checker still exited 0. A file on disk is a catalog, never an absent one.
+    if (!data || typeof data !== "object" || Array.isArray(data)) {
+      throw new Error(
+        `[i18n] ${entry} is not a key/value object; a catalog must be a JSON object of key -> string. Fix or delete the file — a malformed locale is never skipped.`,
+      );
     }
+    locales[lang] = data;
   }
   return locales;
 }
