@@ -74,6 +74,24 @@ function commandExists(command) {
   return result.status === 0;
 }
 
+/**
+ * Order build-tools directory names newest first. The names are dotted
+ * versions ("9.0.0", "34.0.1"), so the default string sort puts "9.0.0"
+ * after "34.0.0" and reverse() would hand back the oldest tool. Missing or
+ * non-numeric segments count as 0 so "35" and "35.0.0" compare equal.
+ */
+function compareBuildToolsVersionsDescending(a, b) {
+  const left = a.split(".");
+  const right = b.split(".");
+  const length = Math.max(left.length, right.length);
+  for (let i = 0; i < length; i += 1) {
+    const l = Number.parseInt(left[i] ?? "0", 10) || 0;
+    const r = Number.parseInt(right[i] ?? "0", 10) || 0;
+    if (l !== r) return r - l;
+  }
+  return a < b ? -1 : a > b ? 1 : 0;
+}
+
 /** Locate aapt2/aapt from the Android SDK build-tools (newest first), or PATH. */
 function findAapt() {
   for (const name of ["aapt2", "aapt"]) {
@@ -85,7 +103,9 @@ function findAapt() {
     path.join(process.env.HOME ?? "", "Android", "Sdk");
   const buildTools = path.join(sdk, "build-tools");
   if (!fs.existsSync(buildTools)) return null;
-  const versions = fs.readdirSync(buildTools).sort().reverse();
+  const versions = fs
+    .readdirSync(buildTools)
+    .sort(compareBuildToolsVersionsDescending);
   for (const v of versions) {
     for (const name of ["aapt2", "aapt"]) {
       const p = path.join(buildTools, v, name);

@@ -7,6 +7,7 @@ import { spawnSync } from "node:child_process";
 import { createHash } from "node:crypto";
 import {
   chmodSync,
+  existsSync,
   mkdirSync,
   mkdtempSync,
   readFileSync,
@@ -95,7 +96,10 @@ interface DeviceBehavior {
   sha256sum: string;
 }
 
-function runInstall(device: (localHash: string) => DeviceBehavior) {
+function runInstall(
+  device: (localHash: string) => DeviceBehavior,
+  options: { buildTools?: Record<string, string> } = {},
+) {
   const root = mkdtempSync(path.join(os.tmpdir(), "android-adb-install-"));
   tempDirs.push(root);
   const stamp = JSON.stringify({ buildId: "fixture-build" });
@@ -108,6 +112,22 @@ function runInstall(device: (localHash: string) => DeviceBehavior) {
     .update(readFileSync(apk))
     .digest("hex");
   const behavior = device(localHash);
+
+  // Each installed build-tools version carries an aapt2 that records the
+  // version it was called for and answers with that version's package name.
+  const selectionLog = path.join(root, "aapt-selection.log");
+  for (const [version, packageName] of Object.entries(
+    options.buildTools ?? {},
+  )) {
+    const buildToolsDir = path.join(root, "build-tools", version);
+    mkdirSync(buildToolsDir, { recursive: true });
+    const aapt2 = path.join(buildToolsDir, "aapt2");
+    writeFileSync(
+      aapt2,
+      `#!/bin/sh\necho "${version}" >> ${JSON.stringify(selectionLog)}\necho "package: name='${packageName}'"\n`,
+    );
+    chmodSync(aapt2, 0o755);
+  }
 
   const bin = path.join(root, "bin");
   mkdirSync(bin);
@@ -131,7 +151,7 @@ esac
   );
   chmodSync(adb, 0o755);
 
-  return spawnSync(
+  const result = spawnSync(
     process.execPath,
     [scriptPath, "--apk", apk, "--no-launch"],
     {
@@ -147,6 +167,12 @@ esac
       },
     },
   );
+  return {
+    ...result,
+    selection: existsSync(selectionLog)
+      ? readFileSync(selectionLog, "utf8").trim()
+      : "",
+  };
 }
 
 const basePath = `echo "package:/data/app/~~x/${appId}-1/base.apk"`;
@@ -205,6 +231,27 @@ describe("android-adb-install hash verification", { timeout: 120_000 }, () => {
     expect(result.stderr).not.toContain("android-adb-install:");
     expect(result.status).toBe(0);
     expect(result.stdout).toContain("Verified on-device APK hash matches");
+    expect(result.stdout).toContain(`Android install verified for ${appId}.`);
+  });
+
+  it("asks the newest installed build-tools, not the string-last version", () => {
+    const result = runInstall(
+      (localHash) => ({
+        pmPath: basePath,
+        sha256sum: `echo "${localHash}  /data/app/base.apk"`,
+      }),
+      {
+        buildTools: {
+          // "9.0.0" sorts after "35.0.1" as a string, so the old reverse()
+          // picked the 2016 tool and its answer for the APK decided the
+          // package check.
+          "9.0.0": "com.legacy.brand.app",
+          "35.0.1": appId,
+        },
+      },
+    );
+    expect(result.selection).toBe("35.0.1");
+    expect(result.status).toBe(0);
     expect(result.stdout).toContain(`Android install verified for ${appId}.`);
   });
 });
