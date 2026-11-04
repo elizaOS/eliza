@@ -474,6 +474,58 @@ async function finalIdentityRevalidation(
   await revalidateDirectoryPath(stateDirectory, trustedDirectory);
 }
 
+function isCandidateName(name: string): boolean {
+  const prefix = `.${INSTALLATION_ID_FILENAME}.`;
+  const suffix = ".tmp";
+  return (
+    name.startsWith(prefix) &&
+    name.endsWith(suffix) &&
+    UUID_PATTERN.test(name.slice(prefix.length, -suffix.length))
+  );
+}
+
+/**
+ * Creation publishes a candidate with link() and unlinks its temporary name
+ * afterwards. Until then the identity has two links: another boot reads it in
+ * that window, and a process that stops there leaves it for every later boot.
+ * Only a candidate name in the trusted state directory that holds this inode
+ * is removed, so any other link still fails the single-link check.
+ */
+async function removePublishedCandidateNames(
+  target: string,
+  identityStat: FileStat,
+  stateDirectory: string,
+  trustedDirectory: TrustedDirectory,
+): Promise<FileStat> {
+  await revalidateDirectoryPath(stateDirectory, trustedDirectory);
+  const candidateNames: string[] = [];
+  const entries = await fs.opendir(stateDirectory);
+  try {
+    for await (const entry of entries) {
+      if (isCandidateName(entry.name)) candidateNames.push(entry.name);
+    }
+  } finally {
+    await entries.close().catch((error: NodeJS.ErrnoException) => {
+      // error-policy:J2 Directory enumeration cleanup is part of secure identity
+      // cleanup, so a close failure remains fatal at the boot boundary.
+      if (error.code !== "ERR_DIR_CLOSED") throw error;
+    });
+  }
+  if (candidateNames.length > 0) {
+    await revalidateDirectoryPath(stateDirectory, trustedDirectory);
+    for (const name of candidateNames) {
+      await removeCandidateName(stateDirectory, name, identityStat);
+    }
+    await syncStateDirectory(trustedDirectory);
+  }
+  // The other boot may have unlinked its own name since the first lstat.
+  const pathStat = await fs.lstat(target);
+  if (!sameIdentity(pathStat, identityStat)) {
+    throw new Error("Runtime installation identity changed during validation.");
+  }
+  return pathStat;
+}
+
 async function readInstallationId(
   target: string,
   stateDirectory: string,
@@ -490,6 +542,14 @@ async function readInstallationId(
     throw new Error("Runtime installation identity must be a regular file.");
   }
   assertOwnedByRuntime(pathStat, "Runtime installation identity");
+  if (Number(pathStat.nlink) !== 1) {
+    pathStat = await removePublishedCandidateNames(
+      target,
+      pathStat,
+      stateDirectory,
+      trustedDirectory,
+    );
+  }
   if (Number(pathStat.nlink) !== 1) {
     throw new Error(
       "Runtime installation identity must not have multiple links.",
