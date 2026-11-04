@@ -12,6 +12,7 @@ import {
   type IAgentRuntime,
   logger,
   ModelType,
+  parseBooleanValue,
   Service,
   type ServiceTypeName,
   withStandaloneTrajectory,
@@ -694,19 +695,15 @@ export class VisionService extends Service {
   }
 
   private async initializeAudioCapture(): Promise<void> {
-    const getSettingString = (key: string): string | undefined => {
-      const value = this.runtime.getSetting(key);
-      return value === true || value === false
-        ? String(value)
-        : typeof value === "string"
-          ? value
-          : typeof value === "number"
-            ? String(value)
-            : undefined;
-    };
-    const enableMicrophone = getSettingString("ENABLE_MICROPHONE") === "true";
+    // Read these two flags with core's boolean parser, like every other
+    // boolean setting in this service (see parseConfig). An exact "true"
+    // match dropped "TRUE", "1", "yes" and "on" and silently disabled the
+    // microphone.
+    const enableMicrophone =
+      parseBooleanValue(this.runtime.getSetting("ENABLE_MICROPHONE")) ?? false;
     const useStreamingAudio =
-      getSettingString("USE_STREAMING_AUDIO") === "true";
+      parseBooleanValue(this.runtime.getSetting("USE_STREAMING_AUDIO")) ??
+      false;
 
     if (!enableMicrophone) {
       logger.info("[VisionService] Microphone capture disabled");
