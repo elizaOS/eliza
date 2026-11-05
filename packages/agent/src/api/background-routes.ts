@@ -49,6 +49,11 @@ async function persistGeneratedImage(
   if (imageUrl.startsWith("data:")) {
     const persisted = persistDataUrl(imageUrl);
     if (persisted) return persisted.url;
+    // A data URL the store refused is not a servable reference. Returning it
+    // would hand the client a multi-MB inline payload to persist — the exact
+    // quota blow-up this route exists to prevent — so fail like the upload
+    // route instead of answering 200 with it.
+    throw new Error("Generated image is too large to store.");
   }
   if (/^https?:\/\//.test(imageUrl)) {
     try {
