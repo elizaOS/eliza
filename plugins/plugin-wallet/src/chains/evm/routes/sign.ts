@@ -230,11 +230,15 @@ function hexOrIntToBigInt(value: unknown): bigint | undefined {
 }
 // eth_signTransaction and eth_sendTransaction carry the dApp's nonce (a
 // replacement or a queued transaction); without one, viem fills in the
-// account's pending nonce.
+// account's pending nonce. viem takes the nonce as a number, so a nonce a
+// safe integer cannot hold is the dApp's input error.
 function readEvmNonce(value: EvmTxRequest["nonce"]): number | undefined {
-    if (typeof value === "number")
-        return value;
-    return value ? Number(hexOrIntToBigInt(value)) : undefined;
+    const nonce = hexOrIntToBigInt(value);
+    if (nonce === undefined)
+        return undefined;
+    if (nonce < 0n || nonce > BigInt(Number.MAX_SAFE_INTEGER))
+        throw new EvmSignInputError(`invalid nonce value: ${value}`);
+    return Number(nonce);
 }
 const sendTransactionHandler: LegacyRouteHandler = async (req, res, runtime) => {
     if (!authorize(req, res, runtime))

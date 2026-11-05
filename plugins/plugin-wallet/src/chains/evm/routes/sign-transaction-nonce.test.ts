@@ -171,4 +171,28 @@ describe("browser EVM transaction nonce", () => {
     expect(rawSent).toHaveLength(1);
     expect(parseTransaction(rawSent[0]).nonce).toBe(5);
   });
+
+  // 0x20000000000001 is 2^53 + 1; as a JavaScript number it rounds to 2^53.
+  it.each([1.5, -1, "-1", "0x20000000000001"])(
+    "refuses eth_signTransaction nonce %j as invalid input",
+    async (nonce) => {
+      const { status, payload } = await post("/wallet/evm/sign-transaction", {
+        ...transfer,
+        nonce,
+      });
+
+      expect(status).toBe(400);
+      expect(payload.signedTransaction).toBeUndefined();
+    },
+  );
+
+  it("refuses an eth_sendTransaction nonce it cannot sign exactly", async () => {
+    const { status } = await post("/wallet/evm/send-transaction", {
+      ...transfer,
+      nonce: "0x20000000000001",
+    });
+
+    expect(status).toBe(400);
+    expect(rawSent).toHaveLength(0);
+  });
 });
