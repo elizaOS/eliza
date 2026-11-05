@@ -5,6 +5,7 @@ import {
   ContextRegistry,
   type IAgentRuntime,
   type Memory,
+  renderContextObject,
 } from "@elizaos/core";
 import { describe, expect, it, vi } from "vitest";
 import { proposeDeviceAction } from "../device-actions/action.ts";
@@ -22,7 +23,10 @@ vi.mock("../device-actions/service.ts", async (original) => ({
   readDeviceConversationReceipts: async () => [],
 }));
 
+import { ACKNOWLEDGMENT_RULE } from "../../prompts/acknowledgment.ts";
 import { createV5MessageContextObject } from "./context-assembly.ts";
+import { replyIsClaimSafeAcknowledgment } from "./side-effect-claims.ts";
+import { renderMessageHandlerModelInput } from "./stage1-input.ts";
 
 const capabilities = [
   "notes.local-record.v1",
@@ -288,5 +292,91 @@ describe("selected phone capability guidance", () => {
         (event) => event.id === "authenticated-phone-capability",
       ),
     ).toBe(false);
+  });
+});
+
+describe("voice response policy", () => {
+  for (const providerPhase of ["response", "planning", "completion"] as const) {
+    it(`keeps one spoken policy through the ${providerPhase} context without changing the request`, async () => {
+      const args = fixture();
+      const literal =
+        "Give me a detailed news briefing with all requested sources.";
+      args.message.content = {
+        ...args.message.content,
+        channelType: "VOICE_DM",
+        text: literal,
+      };
+      const context = await createV5MessageContextObject({
+        ...args,
+        providerPhase,
+      });
+      const policy = context.staticPrefix?.staticProviders?.filter(
+        (segment) => segment.id === "voice-response-style",
+      );
+      expect(policy).toHaveLength(1);
+      expect(policy![0].content).toContain(
+        "Expand when the user explicitly asks for detail",
+      );
+      expect(policy![0].content).toContain("preserve attribution required");
+      expect(policy![0].content).toContain("one to three short sentences");
+      expect(policy![0].content).toContain(
+        "takes priority over generic thoroughness",
+      );
+      expect(policy![0].content).toContain("keep complete internal evidence");
+      const input =
+        providerPhase === "response"
+          ? renderMessageHandlerModelInput(args.runtime, context, [], {
+              directMessage: true,
+              nativeTools: true,
+            })
+          : renderContextObject(context);
+      const rendered = JSON.stringify(input.messages);
+      expect(rendered.split("voice_response_style:")).toHaveLength(2);
+      expect(rendered).toContain(literal);
+      expect(args.message.content.text).toBe(literal);
+    });
+    for (const channelType of ["DM", "API", "VOICE_GROUP"] as const) {
+      it(`leaves ${channelType} ${providerPhase} context without the private-voice policy`, async () => {
+        const args = fixture();
+        args.message.content = { ...args.message.content, channelType };
+        const context = await createV5MessageContextObject({
+          ...args,
+          providerPhase,
+        });
+        expect(context.staticPrefix?.staticProviders).toBeUndefined();
+        expect(
+          JSON.stringify(renderContextObject(context).messages),
+        ).not.toContain("voice_response_style:");
+      });
+    }
+  }
+});
+
+describe("model acknowledgment authoring grammar", () => {
+  it.each([
+    "Let me check.",
+    "I'll search.",
+    "Let me take a look.",
+    "I'll look into that.",
+    "Checking both.",
+    "Let me check your notes.",
+    "I'll pull up your calendar.",
+    "Let me open Calendar.",
+    "I’ll open Calendar.",
+  ])("advertises only admitted short prospective forms: %s", (cue) => {
+    expect(replyIsClaimSafeAcknowledgment(cue)).toBe(true);
+  });
+  it("explains arbitrary topics through referents and forbids the incomplete live form", () => {
+    expect(ACKNOWLEDGMENT_RULE).toContain(
+      "These references work for any topic",
+    );
+    expect(ACKNOWLEDGMENT_RULE).toContain("a complete lookup phrase");
+    expect(ACKNOWLEDGMENT_RULE).toContain("Do not invent other forms or synonyms");
+    expect(ACKNOWLEDGMENT_RULE).toContain(
+      "leave it empty and still do authorized work",
+    );
+    expect(replyIsClaimSafeAcknowledgment("let me pull the latest.")).toBe(
+      false,
+    );
   });
 });

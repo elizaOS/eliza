@@ -8,7 +8,9 @@
  * structured `values`/`data` for the planner. Connector reads pass through the
  * privacy-egress guard so per-account privacy policies redact what surfaces;
  * connector/calendar/gmail fetch failures degrade to annotated lines rather
- * than aborting the whole context.
+ * than aborting the whole context. When the caller shows the model only
+ * `discoveryText` (`referenceBodyDeferred`), the next-event read is skipped and
+ * `text` states that instead; restoration composes again with the read.
  */
 
 import type {
@@ -25,6 +27,7 @@ import {
   logger,
   type Memory,
   type Provider,
+  type ProviderExecutionContext,
   type ProviderResult,
   type State,
   timeInferenceSpan,
@@ -57,6 +60,10 @@ import { LifeOpsService } from "../lifeops/service.js";
 import { formatConnectorDegradationLines } from "./lifeops-connector-lines.js";
 
 const INTERNAL_URL = new URL("http://127.0.0.1/");
+// error-policy:J4 a skipped read is stated in `text`, never rendered as an
+// empty calendar.
+const CALENDAR_READ_DEFERRED_LINE =
+  "Next calendar event: not read in this planning view. Restore the complete lifeops reference to check connected calendar sources; this does not mean the calendar is empty.";
 
 function formatCount(label: string, count: number): string {
   return `${label}: ${count}`;
@@ -369,6 +376,7 @@ export const lifeOpsProvider: Provider = {
     runtime: IAgentRuntime,
     message: Memory,
     _state: State,
+    context?: ProviderExecutionContext,
   ): Promise<ProviderResult> {
     // The destination decides the audience, never the sender's claim about
     // itself: an unattested turn (or one attested to a shared room) reads as
@@ -534,6 +542,7 @@ export const lifeOpsProvider: Provider = {
       const emailLines: string[] = [];
       const accountLines: string[] = [];
       let nextEventContext: LifeOpsNextCalendarEventContext | null = null;
+      let calendarReadDeferred = false;
       let gmailSummary: LifeOpsGmailTriageSummary | null = null;
 
       try {
@@ -642,6 +651,9 @@ export const lifeOpsProvider: Provider = {
               })
             ) {
               calendarLines.push("Calendar context hidden by privacy policy.");
+            } else if (context?.referenceBodyDeferred === true) {
+              calendarReadDeferred = true;
+            calendarLines.push(CALENDAR_READ_DEFERRED_LINE);
             } else {
               try {
                 nextEventContext = await timeInferenceSpan(
@@ -703,23 +715,28 @@ export const lifeOpsProvider: Provider = {
         }
 
         if (calendarLines.length === 0 && audience === "owner") {
-          try {
-            nextEventContext = await timeInferenceSpan(
-              "provider:lifeops:calendar-next",
-              () => service.getNextCalendarEventContext(INTERNAL_URL),
-            );
-            calendarLines.push(...summarizeNextEvent(nextEventContext));
-          } catch (cause) {
-            // error-policy:J4 designed absence — with no calendar source
-            // connected this probe throws CALENDAR_SOURCES_UNAVAILABLE on
-            // every turn of a connector-less install, so it stays a
-            // debug-level omit rather than a reportError that would escalate
-            // an unconfigured install as a systemic failure; genuine failures
-            // on the capability-granted path are reported above.
-            logger.debug(
-              { err: cause },
-              "[LifeOpsProvider] native calendar context unavailable — omitting calendar context",
-            );
+          if (context?.referenceBodyDeferred === true) {
+            calendarReadDeferred = true;
+            calendarLines.push(CALENDAR_READ_DEFERRED_LINE);
+          } else {
+            try {
+              nextEventContext = await timeInferenceSpan(
+                "provider:lifeops:calendar-next",
+                () => service.getNextCalendarEventContext(INTERNAL_URL),
+              );
+              calendarLines.push(...summarizeNextEvent(nextEventContext));
+            } catch (cause) {
+              // error-policy:J4 designed absence — with no calendar source
+              // connected this probe throws CALENDAR_SOURCES_UNAVAILABLE on
+              // every turn of a connector-less install, so it stays a
+              // debug-level omit rather than a reportError that would escalate
+              // an unconfigured install as a systemic failure; genuine failures
+              // on the capability-granted path are reported above.
+              logger.debug(
+                { err: cause },
+                "[LifeOpsProvider] native calendar context unavailable — omitting calendar context",
+              );
+            }
           }
         }
       } catch (cause) {
@@ -770,6 +787,7 @@ export const lifeOpsProvider: Provider = {
         ...summarizeOwnerTimingFacts(ownerFacts),
       ];
       return {
+        ...(calendarReadDeferred ? { referenceBodyDeferred: true as const } : {}),
         discoveryText: [
           ...instructions,
           ...ownerContext,

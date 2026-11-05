@@ -1,3 +1,7 @@
+import { ResponseHandlerFieldRegistry, runWithStreamingContext } from "@elizaos/core";
+import { calendarReadBindingField } from "../src/read-binding.js";
+import { calendarReadCoverage } from "../../plugin-assistant/src/runtime/evaluator.js";
+import { withCalendarSearchAuthorization } from "../src/search-filter-evidence.js";
 /**
  * Exercises the built-in Eliza calendar through CalendarService against the
  * production PGlite schema. External providers use disconnected or deterministic adapters so default
@@ -2404,6 +2408,50 @@ describe("redacted source placeholders (real PGlite)", {
     vi.useRealTimers();
   });
 
+  it.each(["requested_read", "mutation_prerequisite"] as const)("revision2 full field-dispatch, actual search handler and evaluator preserve %s", async (purpose) => {
+    const seeded = await seedEarlierTodayCoffee();
+    const request = {...coffeeRequest("00000000-0000-0000-0000-000000000991"), content:{text:purpose === "requested_read" ? "When is that event?" : REQUEST}};
+    const state = {values:{},text:"",data:{providers:{RECENT_MESSAGES:{data:{recentMessages:[{
+      ...request,id:"prior-coffee",createdAt:request.createdAt!-1,entityId:runtime.agentId,content:{text:"The drink coffee event."}
+    }]}}}}};
+    const registry = new ResponseHandlerFieldRegistry(); registry.register(calendarReadBindingField);
+    const model = vi.fn(async()=>{throw Error("No extra model call permitted in typed search");});
+    const action = createCalendarActionRunner({runTextModel:model,runJsonModel:model,recentConversationTexts:async()=>[]});
+    const boundRuntime = {...runtime,actions:[{name:"CALENDAR_SEARCH_EVENTS"}]} as IAgentRuntime;
+    await runWithStreamingContext({messageId:request.id,abortSignal:new AbortController().signal},async()=>{
+      const fields=await registry.dispatch({runtime:boundRuntime,message:request,state,senderRole:"OWNER",turnSignal:new AbortController().signal,
+        rawParsed:{intents:[request.content.text],calendarReadBindings:[{intentId:"intent:1",purpose,operation:"search_events",execution:"required",filterEvidence:[{query:"coffee",quote:"coffee",origin:purpose === "requested_read" ? "referent" : "current"}]}]}});
+      const result=await action.handler(boundRuntime,request,state,{parameters:{subaction:"search_events",query:"coffee",details:{timeZone:TIME_ZONE}}});
+      expect(result).toMatchObject({success:true,data:{events:[{id:seeded.id}]}});
+      expect(fields.parsed.calendarReadBindings).toHaveLength(purpose === "requested_read" ? 1 : 0);
+      const context={id:request.id,metadata:{messageId:request.id,roomId:request.roomId,actorId:request.entityId,calendarReadBindings:fields.parsed.calendarReadBindings}};
+      const trajectory={context,outcomeIntents:[request.content.text],steps:[{iteration:1,toolCall:{id:"search",name:"CALENDAR_SEARCH_EVENTS",params:{query:"coffee"}},result}],evaluatorOutputs:[],plannedQueue:[]};
+      expect(calendarReadCoverage({success:true,decision:"FINISH",requestFullyCovered:true,outcomeCoverage:[{intentId:"intent:1",status:"completed",evidenceStepIds:["step:1"]}]},context,trajectory).verified).toBe(true);
+      expect(model).not.toHaveBeenCalled();
+    });
+  });
+
+  it("revision2 rejected filter preserves Notes and allows existing planner feed without another Stage1", async () => {
+    const seeded = await seedEarlierTodayCoffee();
+    const request={...coffeeRequest("00000000-0000-0000-0000-000000000992"),content:{text:"Check notes and anything on my calendar today."}};
+    const state={values:{},data:{},text:""};
+    const model=vi.fn(async()=>{throw Error("No extra model call in typed feed");});
+    const action=createCalendarActionRunner({runTextModel:model,runJsonModel:model,recentConversationTexts:async()=>[]});
+    const boundRuntime={...runtime,actions:[{name:"CALENDAR_FEED"}]} as IAgentRuntime;
+    const registry=new ResponseHandlerFieldRegistry();registry.register(calendarReadBindingField);
+    await runWithStreamingContext({messageId:request.id,abortSignal:new AbortController().signal},async()=>{
+      const fields=await registry.dispatch({runtime:boundRuntime,message:request,state,senderRole:"OWNER",turnSignal:new AbortController().signal,
+        rawParsed:{intents:["check notes","read calendar"],replyText:"No events",calendarReadBindings:[{intentId:"intent:2",purpose:"requested_read",operation:"search_events",execution:"required",filterEvidence:[{query:"agenda",quote:"agenda",origin:"current"}]}]}});
+      expect(fields.parsed.replyText).toBe("");expect(fields.parsed.intents).toEqual(["check notes","read calendar"]);
+      expect(fields.parsed.calendarReadBindings).toEqual([]);
+      // The existing planner chooses this typed operation from the retained literal request.
+      // This verifies execution compatibility, not the probabilistic model choice itself.
+      const result=await action.handler(boundRuntime,request,state,{parameters:{subaction:"feed",details:{date:"2026-10-29",timeZone:TIME_ZONE}}});
+      expect(result).toMatchObject({success:true,data:{events:[{id:seeded.id}]}});
+      expect(model).not.toHaveBeenCalled();
+    });
+  });
+
   it.each([
     [
       "the runtime mask copied as source ids",
@@ -2423,9 +2471,14 @@ describe("redacted source placeholders (real PGlite)", {
         recentConversationTexts: vi.fn(async () => []),
       });
       // The second CALENDAR_SEARCH_EVENTS call from the trajectory, verbatim.
-      const result = await action.handler(
+      const request = coffeeRequest("00000000-0000-0000-0000-000000000901");
+      const result = await withCalendarSearchAuthorization({
+        current: request, agentId: runtime.agentId, recent: [],
+        filterEvidence: ["coffee", "drink coffee"].map(query => ({query,quote:query,origin:"current"})),
+        signal: new AbortController().signal,
+      }, () => action.handler(
         runtime,
-        coffeeRequest("00000000-0000-0000-0000-000000000901"),
+        request,
         undefined,
         {
           parameters: {
@@ -2446,7 +2499,7 @@ describe("redacted source placeholders (real PGlite)", {
             ...sourceIds,
           },
         },
-      );
+      ));
       expect(result).toMatchObject({
         success: true,
         data: {
@@ -2493,9 +2546,11 @@ describe("redacted source placeholders (real PGlite)", {
       runJsonModel: vi.fn(async () => null),
       recentConversationTexts: vi.fn(async () => []),
     });
-    const result = await action.handler(
+    const request = coffeeRequest("00000000-0000-0000-0000-000000000902");
+    const result = await withCalendarSearchAuthorization({current:request,agentId:runtime.agentId,recent:[],
+      filterEvidence:[{query:"coffee",quote:"coffee",origin:"current"}],signal:new AbortController().signal}, () => action.handler(
       runtime,
-      coffeeRequest("00000000-0000-0000-0000-000000000902"),
+      request,
       undefined,
       {
         parameters: {
@@ -2505,7 +2560,7 @@ describe("redacted source placeholders (real PGlite)", {
           details: { timeZone: TIME_ZONE },
         },
       },
-    );
+    ));
     expect(ground).toHaveBeenCalledExactlyOnceWith(
       expect.objectContaining({
         actionType: "lifeops.calendar.ground_search_matches",

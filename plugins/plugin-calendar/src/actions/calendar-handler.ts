@@ -1,3 +1,5 @@
+import { getStreamingContext } from "@elizaos/core";
+import { calendarSearchFiltersAreBound } from "../search-filter-evidence.js";
 import { parseClientTurnObservation } from "@elizaos/contracts/client-turn-observation";
 import {
   type CalendarFields,
@@ -7247,6 +7249,14 @@ export function createCalendarActionRunner(
         const request = baseResolved.request;
         const label = baseResolved.label;
         const hasExplicitWindow = baseResolved.explicitWindow;
+        if (subaction === "search_events" && !calendarSearchFiltersAreBound(
+          getStreamingContext()?.actionConstraints, message, String(runtime.agentId),
+          searchQueries, normalizeCalendarSearchQueryValue,
+        )) {
+          throw new CalendarServiceError(400,
+            "Calendar search filters are not bound to this request's verified current or same-room referent evidence. No Calendar event read occurred. Use the requested unfiltered feed or a source-bound content lookup; do not invent a query.",
+            "CALENDAR_SEARCH_FILTER_UNBOUND");
+        }
         const feed = await service.getCalendarFeed(INTERNAL_URL, {
           includeHiddenCalendars:
             detailBoolean(details, "includeHiddenCalendars") ??
@@ -7504,7 +7514,19 @@ export function createCalendarActionRunner(
             operation: "calendar.feed.read",
             discriminator: label,
           }),
-          data: toActionData(feed),
+          data: toActionData({
+            ...feed,
+            requestWindow: {
+              kind: "calendar.request-window.v1",
+              sourceMessageId: message.id,
+              roomId: message.roomId,
+              actorId: message.entityId,
+              requestedAt: Date.parse(calendarMessageObservedAt(message)),
+              timeZone: planningTimeZone,
+              timeMin: request.timeMin,
+              timeMax: request.timeMax,
+            },
+          }),
         });
       } catch (error) {
         // error-policy:J1 Source and local-time rejections require user input before dispatch.
@@ -7567,6 +7589,7 @@ export function createCalendarActionRunner(
           // swallowed "mode must be one of ..." surfaced only as
           // CALENDAR_SERVICE_400).
           const coachingFailure =
+            error.code === "CALENDAR_SEARCH_FILTER_UNBOUND" ||
             error.code === "CALENDAR_TARGET_SELECTOR_INVALID" ||
             error.code === "CALENDAR_ATTENDEE_ARGUMENT_INVALID" ||
             error.code === "CALENDAR_TRIP_LOCATION_REQUIRED" ||

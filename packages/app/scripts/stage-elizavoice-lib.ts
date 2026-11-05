@@ -268,7 +268,7 @@ async function ensureEspeakNg({ dir, abi, ndk, forkSrc }) {
     // temporary directory.
     const hostBuild = mkdtempSync(path.join(os.tmpdir(), "espeak-host-"));
     run("cmake", ["-S", source, "-B", hostBuild, ...espeakCmakeFlags()]);
-    run("ninja", [
+    run("ninja", ["-j", String(process.env.CMAKE_BUILD_PARALLEL_LEVEL || 2),
       "-C",
       hostBuild,
       "espeak-ng-data/intonations",
@@ -305,7 +305,7 @@ async function ensureEspeakNg({ dir, abi, ndk, forkSrc }) {
     "-DUSE_KLATT=OFF",
     "-DUSE_SPEECHPLAYER=OFF",
   ]);
-  run("ninja", ["-C", build, "espeak-ng"]);
+  run("ninja", ["-j", String(process.env.CMAKE_BUILD_PARALLEL_LEVEL || 2), "-C", build, "espeak-ng"]);
   const prefix = path.join(dir, abi);
   mkdirSync(path.join(prefix, "include/espeak-ng"), { recursive: true });
   mkdirSync(path.join(prefix, "lib"), { recursive: true });
