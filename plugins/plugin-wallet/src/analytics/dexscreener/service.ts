@@ -206,7 +206,9 @@ export class DexScreenerService extends Service {
       const boostedTokens = Array.isArray(responseData)
         ? responseData
         : [responseData];
-      const pairPromises = boostedTokens.slice(0, limit).map(async (token) => {
+      const page = boostedTokens.slice(0, limit);
+      const failures: Error[] = [];
+      const pairPromises = page.map(async (token) => {
         try {
           const pairData = await this.get<TokensV1Wire>(
             `/tokens/v1/${token.chainId}/${token.tokenAddress}`,
@@ -222,12 +224,21 @@ export class DexScreenerService extends Service {
             `Failed to get pair data for ${token.tokenAddress}:`,
             error,
           );
+          failures.push(
+            error instanceof Error ? error : new Error(String(error)),
+          );
           return null;
         }
       });
       const pairs = (await Promise.all(pairPromises)).filter(
         (pair) => pair !== null,
       );
+      // Every pair lookup on the page failed: that is an outage, not an empty
+      // ranking. `success: true, data: []` told the caller nothing is trending
+      // when DexScreener answered nothing at all.
+      if (page.length > 0 && failures.length === page.length) {
+        throw failures[0];
+      }
       return {
         success: true,
         data: pairs,
@@ -314,34 +325,42 @@ export class DexScreenerService extends Service {
             (p) => p.chainId.toLowerCase() === params.chain?.toLowerCase(),
           )
         : profiles;
-      const pairPromises = filteredProfiles
-        .slice(0, limit)
-        .map(async (profile) => {
-          try {
-            const pairData = await this.get<TokensV1Wire>(
-              `/tokens/v1/${profile.chainId}/${profile.tokenAddress}`,
-            );
-            const pairs = Array.isArray(pairData) ? pairData : [];
-            if (pairs.length > 0) {
-              return {
-                ...pairs[0],
-                labels: pairs[0].labels?.includes("new")
-                  ? pairs[0].labels
-                  : [...(pairs[0].labels || []), "new"],
-              };
-            }
-            return null;
-          } catch (error) {
-            console.error(
-              `Failed to get pair data for ${profile.tokenAddress}:`,
-              error,
-            );
-            return null;
+      const page = filteredProfiles.slice(0, limit);
+      const failures: Error[] = [];
+      const pairPromises = page.map(async (profile) => {
+        try {
+          const pairData = await this.get<TokensV1Wire>(
+            `/tokens/v1/${profile.chainId}/${profile.tokenAddress}`,
+          );
+          const pairs = Array.isArray(pairData) ? pairData : [];
+          if (pairs.length > 0) {
+            return {
+              ...pairs[0],
+              labels: pairs[0].labels?.includes("new")
+                ? pairs[0].labels
+                : [...(pairs[0].labels || []), "new"],
+            };
           }
-        });
+          return null;
+        } catch (error) {
+          console.error(
+            `Failed to get pair data for ${profile.tokenAddress}:`,
+            error,
+          );
+          failures.push(
+            error instanceof Error ? error : new Error(String(error)),
+          );
+          return null;
+        }
+      });
       const pairs = (await Promise.all(pairPromises)).filter(
         (pair) => pair !== null,
       );
+      // Same rule as getTrending: a page where every lookup failed is an
+      // outage, and must not be reported as "no new pairs".
+      if (page.length > 0 && failures.length === page.length) {
+        throw failures[0];
+      }
       return {
         success: true,
         data: pairs,
