@@ -553,8 +553,16 @@ export async function fetchEvmNativeBalanceViaRpc(
 }
 
 /**
+ * A token balance read that failed, kept distinct from a token that holds
+ * nothing: only the caller can decide what an unread holding means.
+ */
+class TokenBalanceReadError extends Error {}
+
+/**
  * Query ERC-20 balanceOf, symbol, and decimals for a single token via RPC.
- * Returns null if the token has zero balance or the call fails.
+ * Returns null when the token holds nothing. A read that failed throws
+ * `TokenBalanceReadError`, so the chain reports the holding it could not read
+ * instead of listing the inventory as complete without it.
  */
 async function fetchErc20BalanceViaRpc(
   rpcUrl: string,
@@ -583,7 +591,17 @@ async function fetchErc20BalanceViaRpc(
         params: [{ to, data }, "latest"],
       }),
       signal: AbortSignal.timeout(8_000),
-    }).then((r) => r.json() as Promise<{ result?: string }>);
+    }).then(async (response) => {
+      if (!response.ok) {
+        throw new TokenBalanceReadError(
+          `Token read returned HTTP ${response.status}`,
+        );
+      }
+      return (await response.json()) as {
+        result?: string;
+        error?: { message?: string };
+      };
+    });
 
   try {
     const [balRes, symRes, decRes] = await Promise.all([
@@ -592,9 +610,27 @@ async function fetchErc20BalanceViaRpc(
       makeCall(contractAddress, decimalsData),
     ]);
 
+    if (balRes.error) {
+      throw new TokenBalanceReadError(
+        balRes.error.message ?? "Token balance read returned an error",
+      );
+    }
     const rawBal = balRes.result;
-    if (!rawBal || rawBal === "0x" || rawBal === "0x0" || BigInt(rawBal) === 0n)
+    // `0x` is the node's "no account here", which is a zero holding for this
+    // wallet; a non-hex result is a failed read, not an empty one.
+    if (
+      rawBal === undefined ||
+      rawBal === null ||
+      rawBal === "" ||
+      rawBal === "0x"
+    )
       return null;
+    if (!/^0x[0-9a-f]+$/i.test(rawBal)) {
+      throw new TokenBalanceReadError(
+        "Token balance read returned a malformed result",
+      );
+    }
+    if (BigInt(rawBal) === 0n) return null;
 
     let decimals = 18;
     if (decRes.result && decRes.result !== "0x") {
@@ -628,8 +664,14 @@ async function fetchErc20BalanceViaRpc(
       valueUsd: "0",
       logoUrl: "",
     };
-  } catch {
-    return null;
+  } catch (err) {
+    // A failed read is not a zero balance: replay it as the typed failure the
+    // caller counts, so the holding it could not read stays visible.
+    throw err instanceof TokenBalanceReadError
+      ? err
+      : new TokenBalanceReadError(
+          err instanceof Error ? err.message : String(err),
+        );
   }
 }
 
@@ -646,6 +688,7 @@ async function fetchEvmChainBalancesViaRpc(
 
       // Query known ERC-20 tokens (e.g. from trade ledger).
       const tokens: EvmTokenBalance[] = [];
+      let unreadTokenBalances = 0;
       if (knownTokenAddresses && knownTokenAddresses.length > 0) {
         const results = await Promise.allSettled(
           knownTokenAddresses.map((addr) =>
@@ -653,7 +696,11 @@ async function fetchEvmChainBalancesViaRpc(
           ),
         );
         for (const r of results) {
-          if (r.status === "fulfilled" && r.value) tokens.push(r.value);
+          if (r.status === "fulfilled") {
+            if (r.value) tokens.push(r.value);
+            continue;
+          }
+          unreadTokenBalances += 1;
         }
       }
 
@@ -698,7 +745,13 @@ async function fetchEvmChainBalancesViaRpc(
         nativeSymbol: chain.nativeSymbol,
         nativeValueUsd,
         tokens,
-        error: null,
+        // A token whose balance could not be read has an unknown holding; the
+        // chain reports it instead of listing the inventory as complete
+        // without it, the same rule the Alchemy metadata path follows.
+        error:
+          unreadTokenBalances > 0
+            ? `Token balance unavailable for ${unreadTokenBalances} of ${knownTokenAddresses?.length ?? 0} tokens`
+            : null,
       };
     } catch (err) {
       const msg = String(err);
