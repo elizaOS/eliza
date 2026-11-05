@@ -14,6 +14,8 @@ import {
   SPEECH_RELAY_EXTEND_HEADER,
   SPEECH_RELAY_EXTEND_OFFER,
   SPEECH_RETIREMENT_HEADER,
+  SPEECH_SESSION_ID_HEADER,
+  SPEECH_SESSION_ID_UNIQUE,
 } from "@elizaos/host/voice/speech-relay-wire";
 import { Hono } from "hono";
 import { requireGenerativeRouteCaller } from "../../../src/lib/generative-route-auth";
@@ -24,6 +26,19 @@ import {
 
 const app = new Hono<AppEnv>();
 const UUID = /^[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}$/i;
+const UNIQUE_ID = /^[0-9a-f]{64}$/;
+/** A session is a named object (UUID) or an unnamed one (its 64-hex object ID). */
+function sessionStub(env: AppEnv["Bindings"], sessionId: string) {
+  const sessions = env.SPEECH_RELAY_SESSIONS!;
+  if (UUID.test(sessionId)) return sessions.getByName(sessionId);
+  if (!UNIQUE_ID.test(sessionId)) return null;
+  try {
+    return sessions.get(sessions.idFromString(sessionId));
+  } catch {
+    // error-policy:J3 an ID this namespace did not issue is a malformed input.
+    return null;
+  }
+}
 app.use("*", async (c, next) => {
   // This attestation is present only while no initialize request has begun.
   // Bind it to the caller's one-use consent intent to reject stale replies.
@@ -161,8 +176,17 @@ app.post("/session", async (c) => {
     "recoverySessionId" in body ? body.recoverySessionId : undefined;
   if (recovering && (typeof recoveryId !== "string" || !UUID.test(recoveryId)))
     return c.json({ error: "invalid_speech_session" }, 400);
-  const sessionId =
-      typeof recoveryId === "string" ? recoveryId : crypto.randomUUID(),
+  // Recovery and retirement sessions keep their UUID contract.
+  const unique =
+    c.env.VOICE_SPEECH_UNIQUE_SESSION_IDS === "true" &&
+    c.req.header(SPEECH_SESSION_ID_HEADER) === SPEECH_SESSION_ID_UNIQUE &&
+    !recovering &&
+    !proofVersion;
+  const sessionId = unique
+      ? c.env.SPEECH_RELAY_SESSIONS!.newUniqueId().toString()
+      : typeof recoveryId === "string"
+        ? recoveryId
+        : crypto.randomUUID(),
     token = randomBytes(32).toString("base64url"),
     expiresAt = Math.min(
       Date.now() + 60000,
@@ -176,9 +200,9 @@ app.post("/session", async (c) => {
   );
   const initialize = () =>
     timer.time("speech_directory_write", () =>
-      c.env
-        .SPEECH_RELAY_SESSIONS!.getByName(sessionId)
-        .fetch("https://speech-relay.internal/initialize", {
+      sessionStub(c.env, sessionId)!.fetch(
+        "https://speech-relay.internal/initialize",
+        {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
@@ -191,7 +215,8 @@ app.post("/session", async (c) => {
             caller,
             ...(proofVersion ? { proofVersion } : {}),
           }),
-        }),
+        },
+      ),
     );
   let result: Response;
   if (proofVersion) {
@@ -231,33 +256,28 @@ app.post("/session", async (c) => {
 });
 app.get("/ws", async (c) => {
   const sessionId = c.req.query("sessionId");
-  if (!sessionId || !UUID.test(sessionId))
-    return c.json({ error: "invalid_speech_session" }, 400);
+  const stub = sessionId ? sessionStub(c.env, sessionId) : null;
+  if (!stub) return c.json({ error: "invalid_speech_session" }, 400);
   if (c.req.header("Upgrade")?.toLowerCase() !== "websocket")
     return c.json({ error: "websocket_required" }, 426);
-  return c.env
-    .SPEECH_RELAY_SESSIONS!.getByName(sessionId)
-    .fetch(new Request("https://speech-relay.internal/ws", c.req.raw));
+  return stub.fetch(new Request("https://speech-relay.internal/ws", c.req.raw));
 });
 app.post("/session/:sessionId/revoke", async (c) => {
-  const sessionId = c.req.param("sessionId");
-  if (!UUID.test(sessionId))
-    return c.json({ error: "invalid_speech_session" }, 400);
+  const stub = sessionStub(c.env, c.req.param("sessionId"));
+  if (!stub) return c.json({ error: "invalid_speech_session" }, 400);
   // Cleanup remains available with a current same-owner credential even if
   // generation is disabled, unfunded, or the original credential was rotated.
   const user = await requireUserOrApiKeyWithOrg(c);
-  return c.env
-    .SPEECH_RELAY_SESSIONS!.getByName(sessionId)
-    .fetch("https://speech-relay.internal/revoke", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        userId: user.id,
-        organizationId: user.organization_id,
-        ...(c.req.header(SPEECH_RETIREMENT_HEADER) === "1"
-          ? { proofVersion: 1 }
-          : {}),
-      }),
-    });
+  return stub.fetch("https://speech-relay.internal/revoke", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      userId: user.id,
+      organizationId: user.organization_id,
+      ...(c.req.header(SPEECH_RETIREMENT_HEADER) === "1"
+        ? { proofVersion: 1 }
+        : {}),
+    }),
+  });
 });
 export default app;

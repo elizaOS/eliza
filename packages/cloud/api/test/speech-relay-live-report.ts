@@ -99,6 +99,8 @@ const timings = [
   "sessionMs",
   "wsReadyMs",
   "bootstrapMs",
+  // 1 for an unnamed session object, 0 for a named one (staging A/B lines).
+  "idUnique",
   "ttsStartupMs",
   "firstPcmMs",
   "ttsCompleteMs",
