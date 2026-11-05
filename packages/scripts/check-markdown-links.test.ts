@@ -35,6 +35,25 @@ test("inline code stays literal while link labels and references remain readable
   );
 });
 
+test("CommonMark destinations with angle brackets or inner parentheses stay whole", () => {
+  assert.deepEqual(
+    markdownLinks(
+      [
+        "[guide](<docs/My Guide.md>)",
+        "[surname](./Foo_(bar).md)",
+        "[other]: <docs/Other Guide.md>",
+        "[1]: <https://example.com/x>",
+      ].join("\n"),
+    ),
+    [
+      "docs/My Guide.md",
+      "./Foo_(bar).md",
+      "docs/Other Guide.md",
+      "https://example.com/x",
+    ],
+  );
+});
+
 test("an unclosed fence keeps the remaining example literal", () => {
   assert.deepEqual(
     markdownLinks("[guide](guide.md)\n```python\n[example](fake.md)"),

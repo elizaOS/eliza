@@ -149,16 +149,29 @@ function stripCode(markdown) {
   return prose.join("\n").replace(/`[^`\n]+`/g, "");
 }
 
+/** A CommonMark destination: `<...>` for paths with spaces, else a bare token with balanced parentheses. */
+const DESTINATION = String.raw`(<[^>\n]*>|(?:[^\s()]|\([^\s()]*\))+)`;
+
+function destination(raw) {
+  return raw.startsWith("<") && raw.endsWith(">") ? raw.slice(1, -1) : raw;
+}
+
 export function markdownLinks(markdown) {
   const links = [];
   const searchable = stripCode(markdown);
-  const inlinePattern = /!?\[[^\]\n]*\]\(([^)\s]+)(?:\s+"[^"]*")?\)/g;
-  const referencePattern = /^\s*\[[^\]\n]+]:\s*(\S+)/gm;
+  const inlinePattern = new RegExp(
+    String.raw`!?\[[^\]\n]*\]\(\s*${DESTINATION}(?:\s+"[^"\n]*")?\s*\)`,
+    "g",
+  );
+  const referencePattern = new RegExp(
+    String.raw`^\s*\[[^\]\n]+]:\s*${DESTINATION}`,
+    "gm",
+  );
   for (const match of searchable.matchAll(inlinePattern)) {
-    links.push(match[1]);
+    links.push(destination(match[1]));
   }
   for (const match of searchable.matchAll(referencePattern)) {
-    links.push(match[1]);
+    links.push(destination(match[1]));
   }
   return links;
 }
