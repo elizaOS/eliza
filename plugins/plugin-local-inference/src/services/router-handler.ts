@@ -86,7 +86,11 @@ import { localInferenceEngine } from "./engine";
 import { handlerRegistry } from "./handler-registry";
 import { probeHardware } from "./hardware";
 import { type LiveDeviceSignals, readLiveDeviceSignals } from "./live-signals";
-import { assessVoiceModality, policyEngine } from "./routing-policy";
+import {
+	assessVoiceModality,
+	isLocalProvider,
+	policyEngine,
+} from "./routing-policy";
 import {
 	DEFAULT_ROUTING_POLICY,
 	type RoutingPolicy,
@@ -724,7 +728,7 @@ export function installRouterHandler(
 			handler: async (activeRuntime, context) => {
 				if (
 					context.phase !== "pre_model" ||
-					context.provider !== "eliza-local-inference"
+					context.provider === ROUTER_PROVIDER
 				)
 					return;
 				const slot = modelTypeToSlot(context.resolvedModelKey);
@@ -733,6 +737,29 @@ export function installRouterHandler(
 					skippedSlots.has(slot)
 				)
 					return;
+
+				if (!isLocalProvider(context.provider)) {
+					// Chat calls RESPONSE_HANDLER / ACTION_PLANNER / TEXT_COMPLETION
+					// directly, not through the router, so a remote registration can
+					// serve them. Refuse it under an on-device-only slot policy: the
+					// runtime then tries the next registration (local) and fails
+					// closed when none can serve.
+					const prefs = await readRoutingPreferences();
+					const policy =
+						prefs.policy[slot] ??
+						(readBooleanEnv("ELIZA_LOCAL_ONLY")
+							? "local-only"
+							: DEFAULT_ROUTING_POLICY);
+					if (policy === "local-only") {
+						throw new LocalInferenceUnavailableError(
+							context.resolvedModelKey,
+							"capability_unavailable",
+							`${slot} is set to on-device only; ${context.provider} was not used.`,
+						);
+					}
+					return;
+				}
+				if (context.provider !== "eliza-local-inference") return;
 
 				// The outer runtime can reach a direct local registration after
 				// the router exhausts its candidates. Reuse the same live admission
