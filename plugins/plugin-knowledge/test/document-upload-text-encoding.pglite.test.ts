@@ -162,3 +162,72 @@ it("returns the text of a note whose letters happen to look like base64", async 
     await fixture.cleanup();
   }
 }, 120_000);
+
+it("returns the stored text unchanged when it starts or ends with whitespace", async () => {
+  const owner = randomUUID() as UUID;
+  const fixture = await createTestRuntime({
+    characterName: "WhitespaceTextEncoding",
+    settings: { ELIZA_ADMIN_ENTITY_ID: owner },
+  });
+  try {
+    const { runtime } = fixture;
+    await runtime.createEntity({
+      id: owner,
+      names: ["Owner"],
+      agentId: runtime.agentId,
+    });
+    await runtime.registerService(DocumentService);
+
+    // The edit view sends back exactly what the detail route returned, so a
+    // trimmed detail value rewrites the stored document on the first save.
+    const text = "\n\n# Runbook\n\nRestart the worker.\n\n";
+    const upload = await routeFor(
+      "POST",
+      "/api/documents",
+    )(
+      context(runtime, "POST", "/api/documents", {
+        filename: "runbook.md",
+        contentType: "text/markdown",
+        content: text,
+        scope: "owner-private",
+        metadata: { includeImageDescriptions: false },
+      }),
+    );
+    expect(upload.status).toBe(200);
+    const documentId = (upload.body as { documentId: string }).documentId;
+
+    const detail = await routeFor(
+      "GET",
+      "/api/documents/:id",
+    )(context(runtime, "GET", `/api/documents/${documentId}`));
+    expect(detail.status).toBe(200);
+    const document = (
+      detail.body as {
+        document: { canEditText: boolean; content?: { text?: string } };
+      }
+    ).document;
+    expect(document.canEditText).toBe(true);
+    expect(document.content?.text).toBe(text);
+
+    const save = await routeFor(
+      "PATCH",
+      "/api/documents/:id",
+    )(
+      context(runtime, "PATCH", `/api/documents/${documentId}`, {
+        content: text,
+      }),
+    );
+    expect(save.status).toBe(200);
+
+    const reread = await routeFor(
+      "GET",
+      "/api/documents/:id",
+    )(context(runtime, "GET", `/api/documents/${documentId}`));
+    const rereadDocument = (
+      reread.body as { document: { content?: { text?: string } } }
+    ).document;
+    expect(rereadDocument.content?.text).toBe(text);
+  } finally {
+    await fixture.cleanup();
+  }
+}, 120_000);
