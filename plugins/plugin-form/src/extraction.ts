@@ -20,6 +20,7 @@ import type {
   FormIntent,
   IntentResult,
 } from "./types";
+import { FORM_CONTROL_DEFAULTS } from "./types";
 import { getTypeHandler, parseValue, validateField } from "./validation";
 
 const FORM_INTENTS: FormIntent[] = [
@@ -164,8 +165,9 @@ export function buildFormExtractorPromptSection(params: {
       )
     : controls;
 
-  const visibleControls = resolvedControls.filter((c) => !c.hidden);
-  const fieldsDescription = visibleControls.map((c) => {
+  // Hidden controls are listed too: a hidden field is extracted silently and
+  // only the provider leaves it out, so the agent never asks for it.
+  const fieldsDescription = resolvedControls.map((c) => {
     const handler = getTypeHandler(c.type, resolveControlType?.(c.type));
     const typeHint = handler?.extractionPrompt || c.type;
     return {
@@ -268,7 +270,9 @@ export function parseFormExtractorOutput(raw: unknown): IntentResult | null {
 /**
  * Apply type coercion + validation to a parsed extractions list against the
  * resolved form controls. Lowers confidence to 0.3 when a value fails the
- * control's validator (so downstream confirmation flow kicks in).
+ * control's validator (so downstream confirmation flow kicks in). A hidden
+ * control is never asked about or confirmed, so its extraction is dropped
+ * unless the value is valid and confident.
  */
 export function coerceExtractionsAgainstControls(
   extractions: ExtractionResult[],
@@ -304,6 +308,14 @@ export function coerceExtractionsAgainstControls(
     }
 
     const validation = validateField(value, control, controlType);
+    if (
+      control.hidden &&
+      (!validation.valid ||
+        extraction.confidence <
+          (control.confirmThreshold ?? FORM_CONTROL_DEFAULTS.confirmThreshold))
+    ) {
+      return [];
+    }
     if (!validation.valid) {
       const reasoning =
         `${extraction.reasoning ?? ""} (Validation failed: ${validation.error})`.trim();
