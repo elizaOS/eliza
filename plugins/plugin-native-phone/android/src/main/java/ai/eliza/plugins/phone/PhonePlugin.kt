@@ -60,7 +60,7 @@ class PhonePlugin : Plugin() {
             return
         }
         try {
-            telecom.placeCall(Uri.parse("tel:$number"), Bundle())
+            telecom.placeCall(Uri.fromParts("tel", number, null), Bundle())
             call.resolve()
         } catch (error: SecurityException) {
             // error-policy:J1 Telecom permission denial is returned to the bridge caller.
