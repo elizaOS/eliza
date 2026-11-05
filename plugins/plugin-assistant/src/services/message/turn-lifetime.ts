@@ -94,15 +94,14 @@ function activityStatusCategory(
     if (context === "general" || context === "simple") continue;
     const definition = runtime.contexts.get(context);
     if (definition?.sensitivity !== "public") isPublic = false;
+    if (definition?.sensitivity === "system") continue;
     const contextLabel = definition?.label?.trim();
-    if (contextLabel && definition?.sensitivity !== "system")
-      categoryLabels.add(contextLabel);
-    if (!label && contextLabel && definition?.sensitivity !== "system")
-      label = `Using ${contextLabel}`;
+    categoryLabels.add(contextLabel || context);
+    if (!label && contextLabel) label = `Using ${contextLabel}`;
   }
   // Shared actions such as VIEWS can target several apps. Their first category
-  // is discovery metadata, not proof of which app this invocation uses.
-  if (categoryLabels.size > 1) label = "Working";
+  // is ambiguous even if other declared categories have no registered label.
+  if (label && categoryLabels.size > 1) label = "Working";
   return label ? { label, public: isPublic } : undefined;
 }
 

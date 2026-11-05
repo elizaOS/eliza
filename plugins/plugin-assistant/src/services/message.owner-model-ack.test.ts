@@ -492,15 +492,19 @@ describe("awaited owner model acknowledgments", () => {
     expect(result.chunks).toEqual([]);
   });
 
-  it("does not name the first app for an explicitly multi-category action", async () => {
-    const result = await ownerModelAcknowledgment(true, {
-      toolCategories: ["notes+calendar"],
-    });
-    expect(result.statuses).toEqual([
-      { actionName: "NOTES_CALENDAR_LOOKUP", label: "Working" },
-    ]);
-    expect(result.acknowledgments).toEqual(["Let me check."]);
-  });
+  it.each([
+    ["notes+calendar", "NOTES_CALENDAR_LOOKUP"],
+    ["notes+unregistered_app", "NOTES_UNREGISTERED_APP_LOOKUP"],
+  ])(
+    "does not name the first app for a multi-category action (%s)",
+    async (category, actionName) => {
+      const result = await ownerModelAcknowledgment(true, {
+        toolCategories: [category],
+      });
+      expect(result.statuses).toEqual([{ actionName, label: "Working" }]);
+      expect(result.acknowledgments).toEqual(["Let me check."]);
+    },
+  );
 
   // Catalog-derived actions retain all categories too; a mixed-domain tool
   // must not imply that its first category is the actual selected resource.
