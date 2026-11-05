@@ -669,6 +669,13 @@ export class TaskService extends Service {
 				continue;
 			}
 
+			// A repeat row with a future dueAt waits for it like a one-shot does.
+			// Without this floor a repeat row that never ran (lastRan 0) fired on
+			// the next tick: the Blooio receipt cleanup scheduled seven days out
+			// deleted its dedupe receipt one second after the webhook was answered.
+			const repeatDueMs = resolveDueTime(task);
+			if (repeatDueMs != null && now < repeatDueMs) continue;
+
 			// Use updatedAt for lastRan, then the stored fallback.
 			let lastRan: number;
 			if (
