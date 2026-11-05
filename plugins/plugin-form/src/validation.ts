@@ -402,7 +402,11 @@ function validateNumber(
       error: `${control.label || control.key} must be a number`,
     };
   }
-  return checkNumberBounds(numValue, control);
+  const bounds = checkNumberBounds(numValue, control);
+  if (!bounds.valid) return bounds;
+  // Also apply text validation (pattern, length, enum), to the number that
+  // parseValue stores rather than the typed text ("$1,200" is 1200).
+  return validateText(numValue, control);
 }
 /** Min/max for a numeric value (as numbers, not lengths). */
 function checkNumberBounds(
@@ -497,7 +501,14 @@ function validateDate(
       error: `${control.label || control.key} must be a valid date`,
     };
   }
-  return checkDateBounds(new Date(`${iso}T00:00:00.000Z`).getTime(), control);
+  const bounds = checkDateBounds(
+    new Date(`${iso}T00:00:00.000Z`).getTime(),
+    control,
+  );
+  if (!bounds.valid) return bounds;
+  // Also apply text validation (pattern, length, enum), to the calendar day
+  // that parseValue stores rather than the typed text.
+  return validateText(iso, control);
 }
 /**
  * Min/max for a date, compared as timestamps.

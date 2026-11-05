@@ -445,6 +445,84 @@ describe("validateField currency numbers", () => {
   });
 });
 
+describe("validateField text constraints on number and date", () => {
+  const numberType = getBuiltinType("number");
+  const dateType = getBuiltinType("date");
+
+  it("applies a whole-number pattern to a number answer", () => {
+    const quantity: FormControl = {
+      key: "quantity",
+      label: "Quantity",
+      type: "number",
+      min: 1,
+      pattern: "^[0-9]+$",
+    };
+    expect(validateField(2.5, quantity, numberType)).toEqual({
+      valid: false,
+      error: "Quantity has invalid format",
+    });
+    expect(validateField("2.5", quantity, numberType).valid).toBe(false);
+    expect(validateField(3, quantity, numberType)).toEqual({ valid: true });
+    // The pattern reads the number, not the typed text: "$1,200" is 1200.
+    expect(validateField("$1,200", quantity, numberType)).toEqual({
+      valid: true,
+    });
+  });
+
+  it("applies minLength and maxLength to a number answer", () => {
+    const year: FormControl = {
+      key: "year",
+      label: "Year",
+      type: "number",
+      minLength: 4,
+      maxLength: 4,
+    };
+    expect(validateField(26, year, numberType)).toEqual({
+      valid: false,
+      error: "Year must be at least 4 characters",
+    });
+    expect(validateField(20265, year, numberType)).toEqual({
+      valid: false,
+      error: "Year must be at most 4 characters",
+    });
+    expect(validateField("2026", year, numberType)).toEqual({ valid: true });
+  });
+
+  it("applies enum to a number answer", () => {
+    const seats: FormControl = {
+      key: "seats",
+      label: "Seats",
+      type: "number",
+      enum: ["2", "4", "8"],
+    };
+    expect(validateField(3, seats, numberType)).toEqual({
+      valid: false,
+      error: "Seats must be one of: 2, 4, 8",
+    });
+    expect(validateField("4", seats, numberType)).toEqual({ valid: true });
+  });
+
+  it("applies a pattern to the calendar day of a date answer", () => {
+    const billingStart: FormControl = {
+      key: "billingStart",
+      label: "Billing start",
+      type: "date",
+      pattern: "-01$",
+    };
+    expect(validateField("2026-02-14", billingStart, dateType)).toEqual({
+      valid: false,
+      error: "Billing start has invalid format",
+    });
+    expect(validateField("2026-03-01", billingStart, dateType)).toEqual({
+      valid: true,
+    });
+    // The pattern reads the calendar day, not the typed text.
+    expect(validateField("March 1, 2026", billingStart, dateType)).toEqual({
+      valid: true,
+    });
+  });
+});
+
 /**
  * Legacy type-handler override vs the built-in type switch (`validateField`).
  *
