@@ -118,6 +118,39 @@ interface TodoMutationWire {
 
 const TODO_MUTATION_RECORD_ERROR_CODE = "TODO_INVALID_MUTATION_RECORD";
 
+const NUL = String.fromCharCode(0);
+
+/**
+ * PostgreSQL cannot store U+0000 in a text column (22021) or a jsonb value
+ * (22P05), and todo text comes from the owner or a model reply, so it can carry
+ * one. Drop it before every write, as plugin-workflow's run snapshots and
+ * plugin-sql's log writes do, instead of failing the whole mutation with a raw
+ * "Failed query" error.
+ */
+function storableText(value: string): string {
+  return value.includes(NUL) ? value.replaceAll(NUL, "") : value;
+}
+
+function storableJson(value: unknown): unknown {
+  if (typeof value === "string") return storableText(value);
+  if (Array.isArray(value)) return value.map(storableJson);
+  if (value !== null && typeof value === "object") {
+    return Object.fromEntries(
+      Object.entries(value as Record<string, unknown>).map(([key, item]) => [
+        storableText(key),
+        storableJson(item),
+      ]),
+    );
+  }
+  return value;
+}
+
+function storableMetadata(
+  metadata: Record<string, unknown>,
+): Record<string, unknown> {
+  return storableJson(metadata) as Record<string, unknown>;
+}
+
 function record(value: unknown): Record<string, unknown> | null {
   return value !== null && typeof value === "object" && !Array.isArray(value)
     ? (value as Record<string, unknown>)
@@ -1101,12 +1134,12 @@ class SqlTodoStore<TSchema extends Record<string, unknown>>
         entityId: input.entityId as UUID,
         roomId: (input.roomId ?? null) as UUID | null,
         worldId: (input.worldId ?? null) as UUID | null,
-        content: input.content,
-        activeForm: input.activeForm ?? input.content,
+        content: storableText(input.content),
+        activeForm: storableText(input.activeForm ?? input.content),
         status,
         parentTodoId: (input.parentTodoId ?? null) as UUID | null,
         parentTrajectoryStepId: input.parentTrajectoryStepId ?? null,
-        metadata: input.metadata ?? {},
+        metadata: storableMetadata(input.metadata ?? {}),
         completedAt: status === "completed" ? new Date() : null,
       })
       .returning();
@@ -1145,8 +1178,9 @@ class SqlTodoStore<TSchema extends Record<string, unknown>>
       );
     }
     const set: Record<string, unknown> = { updatedAt: new Date() };
-    if (patch.content !== undefined) set.content = patch.content;
-    if (patch.activeForm !== undefined) set.activeForm = patch.activeForm;
+    if (patch.content !== undefined) set.content = storableText(patch.content);
+    if (patch.activeForm !== undefined)
+      set.activeForm = storableText(patch.activeForm);
     if (patch.status !== undefined) {
       set.status = patch.status;
       if (patch.status === "completed" && existing.status !== "completed") {
@@ -1158,7 +1192,8 @@ class SqlTodoStore<TSchema extends Record<string, unknown>>
     if (patch.parentTodoId !== undefined) {
       set.parentTodoId = patch.parentTodoId;
     }
-    if (patch.metadata !== undefined) set.metadata = patch.metadata;
+    if (patch.metadata !== undefined)
+      set.metadata = storableMetadata(patch.metadata);
     const [row] = await tx
       .update(todosTable)
       .set(set)
@@ -1358,7 +1393,14 @@ class SqlTodoStore<TSchema extends Record<string, unknown>>
     const keepIds = new Set<string>();
     const after: Todo[] = [];
 
-    for (const item of args.todos) {
+    for (const rawItem of args.todos) {
+      const item = {
+        ...rawItem,
+        content: storableText(rawItem.content),
+        ...(rawItem.activeForm === undefined
+          ? {}
+          : { activeForm: storableText(rawItem.activeForm) }),
+      };
       const existing = item.id ? beforeById.get(item.id) : undefined;
       if (existing) {
         keepIds.add(existing.id);
