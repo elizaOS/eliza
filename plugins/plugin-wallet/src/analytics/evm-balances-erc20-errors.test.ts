@@ -102,6 +102,34 @@ it("keeps a genuine zero ERC-20 balance a healthy empty token list", async () =>
   );
 });
 
+it("keeps a real balance when only the symbol call reverts", async () => {
+  // `symbol()` is a label, not evidence about the balance. A token whose symbol
+  // cannot be decoded (bytes32 symbols, a revert on a proxy) still holds a real
+  // amount; that answer must not be replaced by a chain-level RPC fault.
+  await withRpcServer(
+    (request) => {
+      if (request.method === "eth_getBalance")
+        return { result: "0xde0b6b3a7640000" };
+      const data = request.params[0].data;
+      if (data.startsWith("0x70a08231"))
+        return { result: "0x1bc16d674ec80000" };
+      if (data.startsWith("0x313ce567")) return { result: "0x12" };
+      return { error: { code: 3, message: "execution reverted" } };
+    },
+    async (rpc) => {
+      const [chain] = await fetchResolvedEvmBalances(ADDRESS, keyset(rpc), [
+        TOKEN,
+      ]);
+      // Before the fix the revert escaped Promise.all, failed the token read,
+      // and turned the whole chain into "RPC unavailable".
+      expect(chain.error).toBeNull();
+      expect(chain.tokens).toHaveLength(1);
+      expect(chain.tokens[0].symbol).toBe("TOKEN");
+      expect(chain.tokens[0].balance).toBe("2");
+    },
+  );
+});
+
 it("keeps a zero balance healthy when only the token metadata reverts", async () => {
   // `symbol()` / `decimals()` are cosmetic: a token whose metadata call
   // reverts is still a token this wallet holds none of. Reading the balance

@@ -618,7 +618,16 @@ async function fetchErc20BalanceViaRpc(
   if (BigInt(rawBal) === 0n) return null;
 
   const [symRes, decRes] = await Promise.all([
-    makeCall(contractAddress, symbolData),
+    // A symbol is a display label: a revert or a throttled `symbol()` reply must
+    // not erase a balance that was already read successfully.
+    makeCall(contractAddress, symbolData).catch((err: unknown) => {
+      logger.warn(
+        `[wallet] ERC-20 symbol unavailable for ${contractAddress}: ${String(err)}`,
+      );
+      return undefined;
+    }),
+    // `decimals()` stays strict on purpose: guessing it would change what the
+    // balance means, so an unreadable decimals is a real read failure.
     makeCall(contractAddress, decimalsData),
   ]);
 
@@ -629,7 +638,7 @@ async function fetchErc20BalanceViaRpc(
   }
 
   let symbol = "TOKEN";
-  if (symRes.result && symRes.result.length > 2) {
+  if (symRes?.result && symRes.result.length > 2) {
     try {
       // ABI-encoded string: offset (32 bytes) + length (32 bytes) + data
       const hex = symRes.result.slice(2);
