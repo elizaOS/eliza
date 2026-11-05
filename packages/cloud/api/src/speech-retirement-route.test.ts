@@ -2,6 +2,7 @@ import { beforeEach, expect, test, mock } from "bun:test";
 import { HTTPException } from "hono/http-exception";
 import {
   SPEECH_MINT_INTENT_HEADER,
+  SPEECH_RECOVERY_HEADER,
   SPEECH_ADMISSION_OUTCOME_HEADER,
   SPEECH_RELAY_EXTEND_HEADER,
 } from "@elizaos/host/voice/speech-relay-wire";
@@ -90,6 +91,29 @@ test("new mint persists and acknowledges requested proof version", async () => {
   expect(res.headers.get(SPEECH_RELAY_EXTEND_HEADER)).toBeNull();
   expect((await responseObject(res)).retirementProofVersion).toBe(1);
   expect(data.calls[0].body.proofVersion).toBe(1);
+});
+test("recovery consent returns the exact prepared ID that a later mint uses", async () => {
+  const headers = { "X-Eliza-Speech-Retirement-Version": "1", [SPEECH_RECOVERY_HEADER]: "1" };
+  const consent = await app.request("/consent", { method: "POST", headers }, env() as never);
+  expect(consent.status).toBe(200);
+  const body = await responseObject(consent);
+  const recoverySessionId = body.recoverySessionId;
+  expect(typeof recoverySessionId).toBe("string");
+  expect(data.calls[0]).toMatchObject({
+    url: "https://speech-relay.internal/prepare",
+    body: { sessionId: recoverySessionId, proofVersion: 1 },
+  });
+  const mint = await app.request("/session", {
+    method: "POST", headers,
+    body: JSON.stringify({ consentNonce: nonce, recoverySessionId }),
+  }, env() as never);
+  expect(mint.status).toBe(200);
+  expect(mint.headers.get(SPEECH_ADMISSION_OUTCOME_HEADER)).toBeNull();
+  expect((await responseObject(mint)).sessionId).toBe(recoverySessionId);
+  expect(data.calls[1]).toMatchObject({
+    url: "https://speech-relay.internal/initialize",
+    body: { sessionId: recoverySessionId, consentDigest: "a".repeat(64), proofVersion: 1 },
+  });
 });
 test("unsupported proof is refused before admission", async () => {
   const res = await app.request(

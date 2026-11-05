@@ -23,7 +23,7 @@ export interface SpeechLifecycleRecord {
   expiresAt: number;
   caller: { user: { id: string; organization_id: string } };
   proofVersion?: 1;
-  phase: "minted" | "starting" | "active" | "retiring" | "closed";
+  phase: "prepared" | "minted" | "starting" | "active" | "retiring" | "closed";
   retirement?: RetirementState;
   quotaRelease?: "not_required" | "released" | "unknown";
 }
@@ -36,7 +36,7 @@ export function initializeSpeechRecord<T extends SpeechLifecycleRecord>(existing
       throw Error("Speech initialization identity mismatch");
     return existing;
   }
-  return { ...input, phase: "minted", ...(input.proofVersion === 1 ? { retirement: {
+  return { ...input, phase: input.phase === "prepared" ? "prepared" : "minted", ...(input.proofVersion === 1 ? { retirement: {
     generation: 0, attempt: 0, initializedAt: now, acquisition: "never_started",
     progress: { stt: { state: "not_reserved" }, tts: { state: "not_reserved" } },
   } } : {}) };

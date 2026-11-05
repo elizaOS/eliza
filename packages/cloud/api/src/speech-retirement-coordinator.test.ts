@@ -57,6 +57,40 @@ function fixture() {
   return { c, make, input, post, revoke, open, alarms: () => ({ sets: alarmSets, deletes: alarmDeletes }), beforeNextTransaction(fn: () => void) { beforeTransaction = fn; }, failNextProof() { failProof = true; }, get row() { return row; } };
 }
 beforeEach(() => Object.assign(control, { ttsUnknown: false, finalized: 0, afterClose: undefined, closeFails: false, opens: 0, closes: 0, wait: undefined, subscriptionWait: undefined, subscribed: 0, unsubscribed: 0, adapterCloses: 0, finalizerFailure: undefined }));
+test("a prepared session can retire after restart and reject a delayed mint", async () => {
+  const f = fixture();
+  expect((await f.post(f.c, "prepare", f.input)).status).toBe(200);
+  expect(f.row.phase).toBe("prepared");
+  const restarted = f.make();
+  const foreign = await f.post(restarted, "revoke", {
+    userId: org, organizationId: org, proofVersion: 1,
+  });
+  expect(foreign.status).toBe(404);
+  const response = await f.revoke(restarted);
+  expect(response.status).toBe(200);
+  expect(await response.json()).toMatchObject({
+    revoked: true, retirement: { sessionId: id, mode: "never_started" },
+  });
+  const late = await f.post(f.make(), "initialize", {
+    ...f.input, tokenDigest: "b".repeat(64), consentDigest: f.input.tokenDigest,
+  });
+  expect(late.status).toBe(409);
+  expect(f.row.phase).toBe("closed");
+  expect(control.opens).toBe(0);
+});
+test("the same prepared consent and owner can mint once after recreation", async () => {
+  const f = fixture();
+  expect((await f.post(f.c, "prepare", f.input)).status).toBe(200);
+  const mint = { ...f.input, tokenDigest: "b".repeat(64), consentDigest: f.input.tokenDigest };
+  const restarted = f.make();
+  expect((await f.post(restarted, "initialize", { ...mint, consentDigest: "c".repeat(64) })).status).toBe(409);
+  expect((await f.post(restarted, "initialize", mint)).status).toBe(200);
+  expect(f.row.phase).toBe("minted");
+  expect(f.row.tokenDigest).toBe(mint.tokenDigest);
+  expect((await f.post(f.make(), "initialize", mint)).status).toBe(409);
+  expect((await f.revoke(f.make())).status).toBe(200);
+  expect(control.opens).toBe(0);
+});
 test("duplicate initialize cannot reset an opened record", async () => {
   const f = fixture(); await f.post(f.c, "initialize", f.input); await f.open();
   const before = structuredClone(f.row); await f.post(f.c, "initialize", f.input);
