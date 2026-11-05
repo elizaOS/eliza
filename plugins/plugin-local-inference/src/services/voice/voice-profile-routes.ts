@@ -71,6 +71,18 @@ export interface VoiceProfileRouteOptions {
 
 const DEFAULT_PROFILE_ID = "same";
 
+/**
+ * A catalog file that exists but cannot be read back as JSON. Callers must not
+ * treat this as "no profiles yet": the mutation routes would then persist the
+ * empty catalog and erase every entry the unreadable file still holds.
+ */
+export class VoiceProfileCatalogReadError extends Error {
+	constructor(message: string, options?: ErrorOptions) {
+		super(message, options);
+		this.name = "VoiceProfileCatalogReadError";
+	}
+}
+
 // ---------------------------------------------------------------------------
 // Catalog helpers
 // ---------------------------------------------------------------------------
@@ -90,20 +102,30 @@ async function readCatalog(
 			profiles: [],
 		};
 	}
+	let parsed: VoiceProfileCatalog;
 	try {
 		const raw = await fsp.readFile(catalogPath, "utf8");
-		const parsed = JSON.parse(raw) as VoiceProfileCatalog;
-		if (!parsed.profiles) parsed.profiles = [];
-		if (!parsed.defaultProfileId) parsed.defaultProfileId = DEFAULT_PROFILE_ID;
-		parsed.version = CATALOG_SCHEMA_VERSION;
-		return parsed;
-	} catch {
-		return {
-			version: CATALOG_SCHEMA_VERSION,
-			defaultProfileId: DEFAULT_PROFILE_ID,
-			profiles: [],
-		};
+		parsed = JSON.parse(raw) as VoiceProfileCatalog;
+	} catch (error) {
+		throw new VoiceProfileCatalogReadError(
+			`cannot read voice profile catalog ${catalogPath}: ${error instanceof Error ? error.message : String(error)}; fix or remove it before changing profiles`,
+			{ cause: error },
+		);
 	}
+	if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
+		throw new VoiceProfileCatalogReadError(
+			`voice profile catalog ${catalogPath} is not a JSON object`,
+		);
+	}
+	if (!parsed.profiles) parsed.profiles = [];
+	if (!Array.isArray(parsed.profiles)) {
+		throw new VoiceProfileCatalogReadError(
+			`voice profile catalog ${catalogPath} has a non-array "profiles" field`,
+		);
+	}
+	if (!parsed.defaultProfileId) parsed.defaultProfileId = DEFAULT_PROFILE_ID;
+	parsed.version = CATALOG_SCHEMA_VERSION;
+	return parsed;
 }
 
 async function writeCatalog(
@@ -252,6 +274,29 @@ function decodeProfileId(raw: string): string | null {
 }
 
 /**
+ * Read the catalog for a route, answering 500 when the file exists but cannot
+ * be parsed. Returns null after responding, so the caller stops before any
+ * mutation is written back over entries the unreadable file still holds.
+ */
+async function readCatalogOrRespond(
+	voiceModelsDir: string,
+	res: http.ServerResponse,
+): Promise<VoiceProfileCatalog | null> {
+	try {
+		return await readCatalog(voiceModelsDir);
+	} catch (error) {
+		sendError(
+			res,
+			500,
+			error instanceof VoiceProfileCatalogReadError
+				? error.message
+				: `cannot read voice profile catalog: ${error instanceof Error ? error.message : String(error)}`,
+		);
+		return null;
+	}
+}
+
+/**
  * Route handler for all `/v1/voice/profiles*` endpoints.
  *
  * Returns `true` if the request was handled, `false` to pass through.
@@ -279,7 +324,8 @@ export async function handleVoiceProfileRoutes(
 	// GET /v1/voice/profiles
 	// -------------------------------------------------------------------
 	if (method === "GET" && pathname === "/v1/voice/profiles") {
-		const catalog = await readCatalog(voiceModelsDir);
+		const catalog = await readCatalogOrRespond(voiceModelsDir, res);
+		if (!catalog) return true;
 		const profiles = await listProfiles(voiceModelsDir, bundleRoot, catalog);
 		sendJson(res, 200, {
 			defaultProfileId: catalog.defaultProfileId,
@@ -305,7 +351,8 @@ export async function handleVoiceProfileRoutes(
 			return true;
 		}
 
-		const catalog = await readCatalog(voiceModelsDir);
+		const catalog = await readCatalogOrRespond(voiceModelsDir, res);
+		if (!catalog) return true;
 
 		// Accept any profile that exists in the bundle or catalog.
 		const profiles = await listProfiles(voiceModelsDir, bundleRoot, catalog);
@@ -359,7 +406,8 @@ export async function handleVoiceProfileRoutes(
 			return true;
 		}
 
-		const catalog = await readCatalog(voiceModelsDir);
+		const catalog = await readCatalogOrRespond(voiceModelsDir, res);
+		if (!catalog) return true;
 
 		if (catalog.defaultProfileId === profileId) {
 			sendError(
