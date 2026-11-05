@@ -61,6 +61,7 @@ import {
   createBrowserWorkspaceSnapshotRecord,
   createBrowserWorkspaceSyntheticScreenshotData,
   diffBrowserWorkspaceSnapshots,
+  expireBrowserWorkspaceCookie,
   readBrowserWorkspaceCookies,
   readBrowserWorkspaceStorage,
 } from "./browser-workspace-snapshots.js";
@@ -406,7 +407,7 @@ export async function executeWebBrowserWorkspaceUtilityCommand(
           for (const key of Object.keys(
             readBrowserWorkspaceCookies(document),
           )) {
-            document.cookie = `${key}=; expires=Thu, 01 Jan 1970 00:00:00 GMT; path=/`;
+            expireBrowserWorkspaceCookie(document, key);
           }
           return {
             mode: "web",

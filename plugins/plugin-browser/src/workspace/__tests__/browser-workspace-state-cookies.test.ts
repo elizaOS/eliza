@@ -5,12 +5,17 @@
 import * as fsp from "node:fs/promises";
 import * as os from "node:os";
 import * as path from "node:path";
+import { JSDOM } from "jsdom";
 import { afterEach, expect, it } from "vitest";
 import {
   __resetBrowserWorkspaceStateForTests,
   executeBrowserWorkspaceCommand,
   openBrowserWorkspaceTab,
 } from "../browser-workspace.js";
+import {
+  applyBrowserWorkspaceStateToWebDocument,
+  readBrowserWorkspaceCookies,
+} from "../browser-workspace-snapshots.js";
 
 const webEnv: NodeJS.ProcessEnv = {};
 const files: string[] = [];
@@ -87,4 +92,34 @@ it("drops cookies that were not in the saved workspace state", async () => {
     webEnv,
   );
   expect(cookies.value).toEqual({ session: "saved" });
+});
+
+it("drops a cookie the page set from a sub-path", () => {
+  const { document } = new JSDOM("<!doctype html><title>Sub</title>", {
+    url: "https://example.test/app/workspace/page",
+  }).window;
+  document.cookie = "session=saved; path=/";
+  // No Path attribute: the default path is /app/workspace, not /.
+  document.cookie = "leak=after-save";
+  document.cookie = "deep=after-save; path=/app/workspace/page";
+  document.cookie = "session=mutated; path=/";
+
+  applyBrowserWorkspaceStateToWebDocument(document, {
+    cookies: { session: "saved" },
+  });
+
+  expect(readBrowserWorkspaceCookies(document)).toEqual({ session: "saved" });
+});
+
+it("leaves the cookie jar alone when the saved cookies are not a record", () => {
+  const { document } = new JSDOM("<!doctype html><title>Array</title>", {
+    url: "https://example.test/",
+  }).window;
+  document.cookie = "session=current; path=/";
+
+  applyBrowserWorkspaceStateToWebDocument(document, {
+    cookies: [{ name: "session", value: "saved" }],
+  });
+
+  expect(readBrowserWorkspaceCookies(document)).toEqual({ session: "current" });
 });
