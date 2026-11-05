@@ -17,6 +17,7 @@ import {
   getAgentTokenExpiry,
   signAccessToken,
   signAgentToken,
+  TokenRevokedError,
   validateApiKey,
   verifyToken,
 } from "../../auth/index.ts";
@@ -195,75 +196,82 @@ export async function createAgentTokenForExistingAgent(
 }
 
 export async function verifySessionToken(token: string) {
+  let payload: {
+    address: string;
+    tenantId: string;
+    agentId?: string;
+    scope?: string;
+    scopes?: string[];
+    typ?: string;
+    tokenType?: string;
+    userId?: string;
+    email?: string;
+    mfaVerifiedAt?: number;
+    mfaMethod?: string;
+    jti?: string;
+    exp?: number;
+    iat?: number;
+    authMethod?: string;
+    factorEnrollmentVerifiedAt?: number;
+  };
   try {
-    const payload = (await verifyToken(token)) as {
-      address: string;
-      tenantId: string;
-      agentId?: string;
-      scope?: string;
-      scopes?: string[];
-      typ?: string;
-      tokenType?: string;
-      userId?: string;
-      email?: string;
-      mfaVerifiedAt?: number;
-      mfaMethod?: string;
-      jti?: string;
-      exp?: number;
-      iat?: number;
-      authMethod?: string;
-      factorEnrollmentVerifiedAt?: number;
-    };
-    if (payload.typ === "identity") return null;
-    // Never accept a refresh JWT as an access token (SEC-055).
-    if (payload.tokenType === "refresh") return null;
-    await assertTokenNotRevoked(payload);
-    if (payload.userId) {
-      const [user] = payload.tenantId
-        ? rowsFromDbResult<{
-            deactivated_at: Date | string | null;
-            is_guest: boolean;
-            guest_expires_at: Date | string | null;
-            membership_role: string | null;
-          }>(
-            await getDb().execute(sql`
-              SELECT * FROM steward_bootstrap.session_subject(
-                ${payload.userId}::uuid,
-                ${payload.tenantId}
-              )
-            `),
-          )
-        : await getDb()
-            .select({
-              deactivated_at: users.deactivatedAt,
-              is_guest: users.isGuest,
-              guest_expires_at: users.guestExpiresAt,
-              membership_role: sql<string | null>`NULL`,
-            })
-            .from(users)
-            .where(eq(users.id, payload.userId));
-      if (!user || user.deactivated_at) return null;
-      // Fail-closed guest expiry: enforce the guest's hard expiry against the
-      // authoritative DB column, not just the access-token `exp`. A refreshed
-      // access token (or one minted with a longer TTL) is still rejected once
-      // the guest window has elapsed. Full accounts have guestExpiresAt = null.
-      const guestExpiresAt = user.guest_expires_at
-        ? new Date(user.guest_expires_at)
-        : null;
-      if (
-        user.is_guest &&
-        guestExpiresAt &&
-        guestExpiresAt.getTime() <= Date.now()
-      ) {
-        return null;
-      }
-      if (payload.tenantId && !user.membership_role) return null;
-    }
-    return payload;
+    payload = (await verifyToken(token)) as typeof payload;
   } catch {
-    // error-policy:J1 reject credentials when signature or session authority validation fails.
+    // error-policy:J1 an unverifiable signature or expiry is a credential verdict.
     return null;
   }
+  if (payload.typ === "identity") return null;
+  // Never accept a refresh JWT as an access token (SEC-055).
+  if (payload.tokenType === "refresh") return null;
+  try {
+    await assertTokenNotRevoked(payload);
+  } catch (error) {
+    // A revoked jti is a credential verdict; a revocation-store outage is not.
+    if (error instanceof TokenRevokedError) return null;
+    throw error;
+  }
+  if (payload.userId) {
+    const [user] = payload.tenantId
+      ? rowsFromDbResult<{
+          deactivated_at: Date | string | null;
+          is_guest: boolean;
+          guest_expires_at: Date | string | null;
+          membership_role: string | null;
+        }>(
+          await getDb().execute(sql`
+            SELECT * FROM steward_bootstrap.session_subject(
+              ${payload.userId}::uuid,
+              ${payload.tenantId}
+            )
+          `),
+        )
+      : await getDb()
+          .select({
+            deactivated_at: users.deactivatedAt,
+            is_guest: users.isGuest,
+            guest_expires_at: users.guestExpiresAt,
+            membership_role: sql<string | null>`NULL`,
+          })
+          .from(users)
+          .where(eq(users.id, payload.userId));
+    if (!user || user.deactivated_at) return null;
+    // Fail-closed guest expiry: enforce the guest's hard expiry against the
+    // authoritative DB column, not just the access-token `exp`. A refreshed
+    // access token (or one minted with a longer TTL) is still rejected once
+    // the guest window has elapsed. Full accounts have guestExpiresAt = null.
+    const guestExpiresAt = user.guest_expires_at
+      ? new Date(user.guest_expires_at)
+      : null;
+    if (
+      user.is_guest &&
+      guestExpiresAt &&
+      guestExpiresAt.getTime() <= Date.now()
+    ) {
+      return null;
+    }
+    if (payload.tenantId && !user.membership_role) return null;
+  }
+  return payload;
 }
 
 // ─── Input validation helpers ─────────────────────────────────────────────────
