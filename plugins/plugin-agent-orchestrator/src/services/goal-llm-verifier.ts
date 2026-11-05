@@ -37,6 +37,7 @@ import {
   type IAgentRuntime,
   isTrajectoryRecordingEnabled,
   ModelType,
+  parseJsonObject,
   type RecordedStage,
   toWellFormedUnicode,
 } from "@elizaos/core";
@@ -360,28 +361,20 @@ interface ParsedJudgeResponse {
   inconclusive: boolean;
 }
 
-function findFirstJsonObject(raw: string): string | null {
-  const start = raw.indexOf("{");
-  if (start < 0) return null;
-  let depth = 0;
-  for (let i = start; i < raw.length; i += 1) {
-    const ch = raw[i];
-    if (ch === "{") depth += 1;
-    else if (ch === "}") {
-      depth -= 1;
-      if (depth === 0) return raw.slice(start, i + 1);
-    }
-  }
-  return null;
-}
-
 export function parseJudgeResponse(
   raw: string,
   acceptanceCriteria: readonly string[],
 ): ParsedJudgeResponse {
-  const text = raw.trim();
-  const jsonSlice = findFirstJsonObject(text);
-  if (!jsonSlice) {
+  // The core reader scans balanced object regions with string awareness.
+  // The hand-rolled depth counter it replaces counted braces inside string
+  // values too, so a verdict whose summary holds a brace ("Closed the
+  // {parser} gap } cleanly", "Template {name is now filled") or that sits
+  // behind an unclosed prose brace was read as malformed and reported
+  // inconclusive even though the judge had answered. An unparseable model
+  // verdict still fails closed below (passed:false, all criteria unmet),
+  // never a fake-valid pass.
+  const record = parseJsonObject<Record<string, unknown>>(raw);
+  if (!record) {
     return {
       passed: false,
       summary: MALFORMED_RESPONSE_SUMMARY,
@@ -389,28 +382,6 @@ export function parseJudgeResponse(
       inconclusive: true,
     };
   }
-  let parsed: unknown;
-  try {
-    parsed = JSON.parse(jsonSlice);
-  } catch {
-    // error-policy:J3 untrusted-input sanitizing — an unparseable model verdict
-    // fails closed (passed:false, all criteria unmet), never a fake-valid pass.
-    return {
-      passed: false,
-      summary: MALFORMED_RESPONSE_SUMMARY,
-      missing: [...acceptanceCriteria],
-      inconclusive: true,
-    };
-  }
-  if (parsed === null || typeof parsed !== "object") {
-    return {
-      passed: false,
-      summary: MALFORMED_RESPONSE_SUMMARY,
-      missing: [...acceptanceCriteria],
-      inconclusive: true,
-    };
-  }
-  const record = parsed as Record<string, unknown>;
   const passedRaw = record.passed;
   const summaryRaw = record.summary;
   const missingRaw = record.missing;
