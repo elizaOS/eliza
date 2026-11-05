@@ -96,13 +96,15 @@ const TIME_PREPOSITIONS = new Set([
 // tomorrow", "in Pacific for next week"); any other word after it usually
 // continues a place name ("in Central Park", "in Mountain View", "in central
 // London", "in eastern Europe").
-const TIME_PHRASE_WORDS = new Set([
+const CALENDAR_WORDS = new Set([
   "today",
   "tonight",
   "tomorrow",
   "next",
   "this",
   "every",
+]);
+const TIME_PHRASE_PREPOSITIONS = new Set([
   "on",
   "at",
   "for",
@@ -113,6 +115,10 @@ const TIME_PHRASE_WORDS = new Set([
   "before",
   "after",
   "starting",
+]);
+const TIME_PHRASE_WORDS = new Set([
+  ...CALENDAR_WORDS,
+  ...TIME_PHRASE_PREPOSITIONS,
   "monday",
   "tuesday",
   "wednesday",
@@ -120,6 +126,17 @@ const TIME_PHRASE_WORDS = new Set([
   "friday",
   "saturday",
   "sunday",
+]);
+// A full region word is also a place or a team name ("lunch in Central for
+// the team", "meet in Eastern at the HQ", "hike in Mountain on Saturday").
+// After "in", a preposition after it starts a time phrase only before a
+// calendar word or a clock time ("in Pacific for next week", "in Pacific at
+// 3pm").
+const PROSE_REGION_WORDS = new Set([
+  "pacific",
+  "mountain",
+  "central",
+  "eastern",
 ]);
 
 const IANA_TIME_ZONE_PATTERN = /\b([A-Za-z]+(?:\/[A-Za-z0-9_+-]+)+)\b/g;
@@ -224,6 +241,33 @@ function followsZoneWord(tokens: readonly string[], index: number): boolean {
 }
 
 /**
+ * Whether `tokens[index]` starts a time phrase after a region word that
+ * follows "in", or the text ends there. After a full region word
+ * (`regionWord`), a preposition counts only before a calendar word or a
+ * clock time.
+ */
+function startsTimePhrase(
+  tokens: readonly string[],
+  index: number,
+  regionWord: boolean,
+): boolean {
+  const next = tokens[index];
+  if (next === undefined) {
+    return true;
+  }
+  if (!TIME_PHRASE_WORDS.has(next)) {
+    return false;
+  }
+  if (!regionWord || !TIME_PHRASE_PREPOSITIONS.has(next)) {
+    return true;
+  }
+  return (
+    CALENDAR_WORDS.has(tokens[index + 1] ?? "") ||
+    isClockTimeToken(tokens, index + 1)
+  );
+}
+
+/**
  * Whether the phrase at `tokens[index, index + size)` is used as a zone or a
  * place: the whole text, followed by "time" ("Tokyo time"), right after a
  * clock time ("10am PT", "3:30 central", "noon PT", "at 5 central"), after a
@@ -248,7 +292,12 @@ function phraseNamesZone(
     isClockTimeToken(tokens, index - 1) ||
     followsZoneWord(tokens, index) ||
     (tokens[index - 1] === "in" &&
-      (place || next === undefined || TIME_PHRASE_WORDS.has(next)))
+      (place ||
+        startsTimePhrase(
+          tokens,
+          index + size,
+          size === 1 && PROSE_REGION_WORDS.has(tokens[index] ?? ""),
+        )))
   );
 }
 
