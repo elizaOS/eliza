@@ -171,6 +171,22 @@ export function scanContent(filePath, content) {
       severity: "error",
     },
     {
+      // Groq keys start with `gsk_` and xAI keys with `xai-`. Both prefixes are
+      // mandated by the canonical credential registry in
+      // `packages/core/src/security/secrets.ts` (GROQ_API_KEY, XAI_API_KEY).
+      // Neither shape crosses an OpenAI-style `sk-` class, so without these
+      // rules a key pasted into a shared prompt string reaches this gate as a
+      // review-only warning and ships.
+      name: "Groq API key",
+      re: /\bgsk_[A-Za-z0-9]{20,}\b/,
+      severity: "error",
+    },
+    {
+      name: "xAI API key",
+      re: /\bxai-[A-Za-z0-9_-]{20,}\b/,
+      severity: "error",
+    },
+    {
       name: "Anthropic-style key",
       re: /\bsk-ant-[A-Za-z0-9\-_]{20,}\b/,
       severity: "error",
