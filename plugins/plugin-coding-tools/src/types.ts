@@ -27,6 +27,8 @@ export interface FileMeta {
   mtimeMs: number;
   size: number;
   readAt: number;
+  /** False when the last READ returned a window short of the whole file. */
+  complete?: boolean;
   revision?: string;
 }
 

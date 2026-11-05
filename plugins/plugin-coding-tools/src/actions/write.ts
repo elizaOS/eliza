@@ -153,7 +153,9 @@ export async function writeFileHandler(
     });
   }
 
-  const gate = await fileState.assertWritable(conversationId, resolved);
+  const gate = await fileState.assertWritable(conversationId, resolved, {
+    wholeFile: true,
+  });
   if (gate.ok === false) {
     const reason =
       gate.reason === "stale_read" ? "stale_read" : "invalid_param";

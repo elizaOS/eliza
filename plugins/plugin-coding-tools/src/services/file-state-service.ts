@@ -58,7 +58,12 @@ export class FileStateService extends Service {
   async recordRead(
     conversationId: string,
     absPath: string,
-    observed?: { mtimeMs: number; size: number; revision: string },
+    observed?: {
+      mtimeMs: number;
+      size: number;
+      revision: string;
+      complete?: boolean;
+    },
   ): Promise<void> {
     const stat = observed ?? (await fs.stat(absPath));
     this.state.set(this.key(conversationId, absPath), {
@@ -67,6 +72,9 @@ export class FileStateService extends Service {
       size: stat.size,
       readAt: Date.now(),
       ...(observed ? { revision: observed.revision } : {}),
+      ...(observed?.complete === undefined
+        ? {}
+        : { complete: observed.complete }),
     });
   }
 
@@ -88,9 +96,14 @@ export class FileStateService extends Service {
   async assertWritable(
     conversationId: string,
     absPath: string,
+    options: { wholeFile?: boolean } = {},
   ): Promise<
     | { ok: true; exists: boolean }
-    | { ok: false; reason: "must_read_first" | "stale_read"; message: string }
+    | {
+        ok: false;
+        reason: "must_read_first" | "stale_read" | "partial_read";
+        message: string;
+      }
   > {
     let stat: Awaited<ReturnType<typeof fs.stat>>;
     try {
@@ -118,6 +131,15 @@ export class FileStateService extends Service {
         ok: false,
         reason: "stale_read",
         message: `File ${absPath} was modified externally since last read. Re-read before writing.`,
+      };
+    }
+    // A whole-file replacement built from a partial READ destroys the lines
+    // the model never saw. EDIT re-reads the file itself, so only WRITE asks.
+    if (options.wholeFile && meta.complete === false) {
+      return {
+        ok: false,
+        reason: "partial_read",
+        message: `File ${absPath} was read only in part in this session (the last READ had more content beyond its window). Read it completely before replacing it, or use EDIT for a localized change.`,
       };
     }
     return { ok: true, exists: true };
