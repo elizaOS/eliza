@@ -66,7 +66,17 @@ function makeRuntime(options: { local: boolean }): {
 				0,
 			);
 		}
-		// Eliza Cloud registers the chat brain at priority 50.
+	}
+	// Eliza Cloud registers the chat brain at priority 50, including the
+	// fallback text types the runtime tries after RESPONSE_HANDLER.
+	for (const modelType of [
+		ModelType.RESPONSE_HANDLER,
+		ModelType.ACTION_PLANNER,
+		ModelType.TEXT_NANO,
+		ModelType.TEXT_MEDIUM,
+		ModelType.TEXT_SMALL,
+		ModelType.TEXT_LARGE,
+	]) {
 		runtime.registerModel(
 			modelType,
 			async () => {
@@ -84,6 +94,7 @@ function makeRuntime(options: { local: boolean }): {
 describe("on-device-only policy for the chat model types", () => {
 	it("serves RESPONSE_HANDLER and ACTION_PLANNER locally, never from Cloud", async () => {
 		await setPolicy("TEXT_SMALL", "local-only");
+		await setPolicy("TEXT_LARGE", "local-only");
 		const { runtime, calls } = makeRuntime({ local: true });
 
 		await runtime.useModel(ModelType.RESPONSE_HANDLER, { prompt: "hi" });
@@ -97,13 +108,15 @@ describe("on-device-only policy for the chat model types", () => {
 
 	it("fails instead of using Cloud when no local backend is registered", async () => {
 		await setPolicy("TEXT_SMALL", "local-only");
+		await setPolicy("TEXT_LARGE", "local-only");
 		const { runtime, calls } = makeRuntime({ local: false });
 
-		// Cloud is refused; the fallback to the TEXT_SMALL router finds no
-		// on-device provider either, so the call fails without a remote call.
+		// Cloud is refused for RESPONSE_HANDLER and for each fallback type
+		// (TEXT_NANO, TEXT_MEDIUM, and the TEXT_SMALL / TEXT_LARGE routers), so
+		// the call fails without a remote call and names the policy.
 		await expect(
 			runtime.useModel(ModelType.RESPONSE_HANDLER, { prompt: "hi" }),
-		).rejects.toThrow();
+		).rejects.toThrow(/on-device only/);
 		expect(calls).toEqual([]);
 	});
 
