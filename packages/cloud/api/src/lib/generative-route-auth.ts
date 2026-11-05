@@ -30,6 +30,7 @@ import type { EndpointType } from "@elizaos/cloud-shared/lib/services/org-rate-l
 import type { OrganizationInferenceAdmission } from "@elizaos/cloud-shared/lib/services/organization-inference-admission";
 import { logger } from "@elizaos/cloud-shared/lib/utils/logger";
 import type { AppContext } from "@elizaos/cloud-shared/types/cloud-worker-env";
+import { isInferenceTraceId } from "@elizaos/core/protocol";
 
 export interface GenerativeRouteCaller {
   user: {
@@ -421,6 +422,69 @@ export async function admitFlatGenerativeOperation(params: {
   }
 }
 
+const SPEECH_PHASES = [
+  "upload_read",
+  "multipart_decode",
+  "audio_buffer",
+  "audio_sniff",
+  "audio_metadata",
+  "json_decode",
+  "auth_module_load",
+  "auth_resolution",
+  "limiter_module_load",
+  "org_limiter",
+] as const;
+
+/** Optional diagnostics cannot change request results or disclose caller data. */
+export async function timeSpeechPhase<T>(
+  c: AppContext,
+  phase: (typeof SPEECH_PHASES)[number],
+  run: () => Promise<T>,
+): Promise<T> {
+  let route: "stt" | "tts" | undefined;
+  let traceId = "unavailable";
+  let enabled = false;
+  try {
+    const path = new URL(c.req.url).pathname;
+    route =
+      path === "/api/v1/voice/stt"
+        ? "stt"
+        : path === "/api/v1/voice/tts"
+          ? "tts"
+          : undefined;
+    enabled = Boolean(route) && SPEECH_PHASES.includes(phase);
+    const candidate = c.get("traceId") ?? c.get("requestId");
+    if (isInferenceTraceId(candidate)) traceId = candidate;
+  } catch {
+    // Optional diagnostic context failure must not alter the actual operation.
+  }
+  if (!enabled) return run();
+  const start = performance.now();
+  let outcome: "returned" | "threw" = "returned";
+  try {
+    return await run();
+  } catch (error) {
+    outcome = "threw";
+    throw error;
+  } finally {
+    try {
+      const durationMs = Math.round((performance.now() - start) * 10) / 10;
+      if (Number.isFinite(durationMs) && durationMs >= 0) {
+        logger.audit("[CloudSpeech] phase timing", {
+          schema: "cloud_speech_phase_v1",
+          traceId,
+          route,
+          phase,
+          durationMs,
+          outcome,
+        });
+      }
+    } catch {
+      // Best-effort telemetry: preserve the operation's result or original error.
+    }
+  }
+}
+
 /**
  * Bounded join of a cold organization admission hydration. Below the client's
  * 1 s warming retry plus a second request; a slower hydration still returns
@@ -474,8 +538,10 @@ export async function requireGenerativeRouteCaller(
       appScopeId: null,
     };
   }
-  const { resolveInferenceAuthContext } = await import(
-    "@elizaos/cloud-shared/lib/services/inference-auth-context"
+  const { resolveInferenceAuthContext } = await timeSpeechPhase(
+    c,
+    "auth_module_load",
+    () => import("@elizaos/cloud-shared/lib/services/inference-auth-context"),
   );
   const resolveCallerAuth = () =>
     resolveInferenceAuthContext(request, {
@@ -487,7 +553,11 @@ export async function requireGenerativeRouteCaller(
         ? { deferStrongCredentialCheck: true }
         : {}),
     });
-  const resolution = await resolveCallerAuth();
+  const resolution = await timeSpeechPhase(
+    c,
+    "auth_resolution",
+    resolveCallerAuth,
+  );
 
   if (resolution.kind === "authorized") {
     const user = {
@@ -500,7 +570,8 @@ export async function requireGenerativeRouteCaller(
       if (resolution.ctx.apiKeyId) {
         c.set("apiKeyId", resolution.ctx.apiKeyId);
       }
-      if (options.rateLimitEndpoint) {
+      const rateLimitEndpoint = options.rateLimitEndpoint;
+      if (rateLimitEndpoint) {
         const [
           {
             enforceOrgRateLimit,
@@ -508,21 +579,21 @@ export async function requireGenerativeRouteCaller(
             OrgRateLimitCacheNotReadyError,
           },
           { inferenceRateLimitConfig },
-        ] = await Promise.all([
-          import("@elizaos/cloud-shared/lib/middleware/rate-limit"),
-          import(
-            "@elizaos/cloud-shared/lib/services/inference-admission-snapshot"
-          ),
-        ]);
+        ] = await timeSpeechPhase(c, "limiter_module_load", () =>
+          Promise.all([
+            import("@elizaos/cloud-shared/lib/middleware/rate-limit"),
+            import(
+              "@elizaos/cloud-shared/lib/services/inference-admission-snapshot"
+            ),
+          ]),
+        );
         // Authoritative (origin) authorization carries no admission snapshot,
         // so the cache-only limiter can find the organization projection cold.
         // That refusal precedes any dispatch and its hydration already runs
         // under `waitUntil`: surface the same retryable warming contract that
         // speech clients replay, never an opaque route failure.
-        const limited = await enforceOrgRateLimit(
-          resolution.ctx.orgId,
-          options.rateLimitEndpoint,
-          {
+        const limited = await timeSpeechPhase(c, "org_limiter", () =>
+          enforceOrgRateLimit(resolution.ctx.orgId, rateLimitEndpoint, {
             // Same limiter as chat completions: a shared policy lock and one
             // Durable Object decision. Without a snapshot the locked primary
             // policy supplies the limit. The compatibility path took the
@@ -532,7 +603,7 @@ export async function requireGenerativeRouteCaller(
             executionCtx,
             config: inferenceRateLimitConfig(
               resolution.ctx.admission,
-              options.rateLimitEndpoint,
+              rateLimitEndpoint,
             ),
             admissionSnapshot: resolution.ctx.admission,
             // A cold projection would otherwise cost a 503, a 1 s client
@@ -549,23 +620,23 @@ export async function requireGenerativeRouteCaller(
               "keyHash" in resolution.ctx
                 ? inferenceRatePolicyProof(resolution.ctx)
                 : undefined,
-          },
-        ).catch((error: unknown) => {
-          if (!(error instanceof OrgRateLimitCacheNotReadyError)) throw error;
-          throw error.state === "warming"
-            ? new ApiError(
-                503,
-                "auth_cache_warming",
-                "Authorization cache is warming; retry shortly",
-                { retryable: true, retryAfterSeconds: 1 },
-              )
-            : new ApiError(
-                503,
-                "service_unavailable",
-                "Rate limiter is unavailable",
-                { retryable: true, retryAfterSeconds: 1 },
-              );
-        });
+          }).catch((error: unknown) => {
+            if (!(error instanceof OrgRateLimitCacheNotReadyError)) throw error;
+            throw error.state === "warming"
+              ? new ApiError(
+                  503,
+                  "auth_cache_warming",
+                  "Authorization cache is warming; retry shortly",
+                  { retryable: true, retryAfterSeconds: 1 },
+                )
+              : new ApiError(
+                  503,
+                  "service_unavailable",
+                  "Rate limiter is unavailable",
+                  { retryable: true, retryAfterSeconds: 1 },
+                );
+          }),
+        );
         if (limited) {
           throw new ApiError(
             limited.status,
