@@ -796,6 +796,7 @@ export {
   type TriggerEventBridgeHandle,
   type TriggerEventBridgeOptions,
 } from "./triggers/event-bridge.ts";
+export * from "./triggers/event-kinds.ts";
 export * from "./triggers/humanize.ts";
 export * from "./triggers/runtime.ts";
 export * from "./triggers/scheduling.ts";

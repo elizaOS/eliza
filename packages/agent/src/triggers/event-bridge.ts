@@ -36,6 +36,11 @@ import {
   type UUID,
 } from "@elizaos/core";
 import {
+  readEventPayloadSource,
+  resolveTriggerEventKind,
+  triggerEventMatches,
+} from "./event-kinds.ts";
+import {
   executeTriggerTask,
   listTriggerTasks,
   readTriggerConfig,
@@ -97,24 +102,6 @@ function stripRuntimeFields(
   return out;
 }
 
-function readPayloadSource(payload: EventPayload): string | null {
-  const record = payload as EventPayload & {
-    message?: {
-      content?: { source?: unknown };
-      source?: unknown;
-    };
-  };
-  const message = record.message as Record<string, unknown> | undefined;
-  const content = message?.content as Record<string, unknown> | undefined;
-  const candidates = [record.source, content?.source, message?.source];
-  for (const candidate of candidates) {
-    if (typeof candidate === "string" && candidate.trim().length > 0) {
-      return candidate.trim().toLowerCase();
-    }
-  }
-  return null;
-}
-
 function isPassiveConnectorEvent(
   runtime: AgentRuntime,
   payload: EventPayload,
@@ -122,7 +109,7 @@ function isPassiveConnectorEvent(
   if (!lifeOpsPassiveConnectorsEnabled(runtime)) {
     return false;
   }
-  const source = readPayloadSource(payload);
+  const source = readEventPayloadSource(payload);
   return source !== null && isPassiveConnectorSource(source);
 }
 
@@ -168,7 +155,9 @@ export function startTriggerEventBridge(
         trigger.triggerType === "event" &&
         trigger.eventKind
       ) {
-        newEventTypes.add(trigger.eventKind as EventType);
+        newEventTypes.add(
+          resolveTriggerEventKind(trigger.eventKind).kind as EventType,
+        );
       }
     }
     eventTypesWithTriggers = newEventTypes;
@@ -221,7 +210,10 @@ export function startTriggerEventBridge(
         if (!trigger) continue;
         if (!trigger.enabled) continue;
         if (trigger.triggerType !== "event") continue;
-        if (trigger.eventKind !== eventType) continue;
+        if (
+          !triggerEventMatches(trigger.eventKind, { kind: eventType, payload })
+        )
+          continue;
 
         const triggerId = trigger.triggerId;
         const last = lastDispatchMs.get(triggerId);

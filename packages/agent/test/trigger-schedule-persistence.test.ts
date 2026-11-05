@@ -23,6 +23,7 @@ import {
 } from "../src/api/conversation-routes.ts";
 import type { ServerState } from "../src/api/server-types.ts";
 import { registerClientChatSendHandler } from "../src/services/client-chat-sender.ts";
+import { triggerEventMatches } from "../src/triggers/event-kinds.ts";
 import {
   executeTriggerTask,
   getTriggerHealthSnapshot,
@@ -871,6 +872,7 @@ it("persists the timezone through pause and re-enable and schedules in that zone
           const task = await fixture.runtime.getTask(taskId);
           return task ? [task] : [];
         },
+        triggerEventMatches,
         triggersFeatureEnabled,
         readTriggerConfig,
         readTriggerRuns,
@@ -957,6 +959,7 @@ async function requestTrigger(
         readTriggerConfig,
         readTriggerRuns,
         taskToTriggerSummary,
+        triggerEventMatches,
         triggersFeatureEnabled,
         buildTriggerConfig,
         buildTriggerMetadata,
