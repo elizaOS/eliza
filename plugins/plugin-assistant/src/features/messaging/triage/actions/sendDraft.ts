@@ -453,7 +453,14 @@ export const sendDraftAction: Action = {
         body: existing.body,
         worldId: existing.worldId,
         channelId: existing.channelId,
-        metadata: existing.metadata,
+        // The approval task is created in this room, for this requester;
+        // without it the policy parks the hold in the agent's own room,
+        // where no confirmation can reach it.
+        metadata: {
+          ...existing.metadata,
+          roomId: _message.roomId,
+          entityId: _message.entityId,
+        },
       };
       const required = await policy.shouldRequireApproval(runtime, draftReq);
       if (required) {

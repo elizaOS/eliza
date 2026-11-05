@@ -252,6 +252,59 @@ describe("respondToMessageAction", () => {
     });
   });
 
+  it("holds a reply for the room and requester of the turn that asked", async () => {
+    const adapter = new RecordingAdapter([messageRef()]);
+    register(adapter);
+    getDefaultMessageRefStore().saveMessage(messageRef(), AGENT_ID);
+    const { runtime: current, held } = holdingRuntime();
+    // A turn with a room reaches the consent bookkeeping, which needs a cache.
+    const cache = new Map<string, unknown>();
+    Object.assign(current, {
+      getCache: async (key: string) => cache.get(key),
+      setCache: async (key: string, value: unknown) => {
+        cache.set(key, value);
+        return true;
+      },
+      deleteCache: async (key: string) => cache.delete(key),
+      compareAndSetCache: async (
+        key: string,
+        expected: unknown,
+        value: unknown,
+      ) => {
+        if (
+          JSON.stringify(cache.get(key) ?? null) !==
+          JSON.stringify(expected ?? null)
+        )
+          return false;
+        cache.set(key, value);
+        return true;
+      },
+    });
+    await respondToMessageAction.handler(
+      current,
+      {
+        ...turn,
+        roomId: "00000000-0000-4000-8000-000000000203",
+        entityId: "00000000-0000-4000-8000-000000000202",
+      } as Memory,
+      undefined,
+      {
+        parameters: { messageId: "message-1", body: "Tomorrow works." },
+      } as never,
+    );
+    expect(
+      held.map((draft) => ({
+        roomId: draft.metadata?.roomId,
+        entityId: draft.metadata?.entityId,
+      })),
+    ).toEqual([
+      {
+        roomId: "00000000-0000-4000-8000-000000000203",
+        entityId: "00000000-0000-4000-8000-000000000202",
+      },
+    ]);
+  });
+
   it.each([
     [
       "invoice reference",
