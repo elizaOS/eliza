@@ -774,11 +774,52 @@ export async function handleWebhook(
     }
   }
 
-  const event = await adapter.extractEvent(rawBody, config);
-  if (!event) {
-    return ackResponse(adapter.platform);
+  // A provider may batch several messages into one notification (Meta does
+  // for WhatsApp). Every message is admitted before the single
+  // acknowledgement; the first response that asks the provider to retry is
+  // returned, and the messages admitted beside it are deduplicated on the
+  // redelivery by their own claims.
+  const events = adapter.extractEvents
+    ? await adapter.extractEvents(rawBody, config)
+    : await adapter
+        .extractEvent(rawBody, config)
+        .then((event) => (event ? [event] : []));
+  let retry: Response | undefined;
+  for (const event of events) {
+    const response = await admitWebhookEvent(
+      request,
+      rawBody,
+      adapter,
+      config,
+      event,
+      deps,
+      project,
+      trace,
+      agentId,
+    );
+    retry ??= response;
   }
+  return retry ?? ackResponse(adapter.platform);
+}
 
+/**
+ * Admit one extracted event: deduplicate it, claim its delivery and start the
+ * background turn. Returns a response only when the provider must retry
+ * (delivery uncertain or in progress, or an edge forward); `undefined` means
+ * the event is admitted or a duplicate and the webhook is acknowledged.
+ */
+async function admitWebhookEvent(
+  request: Request,
+  rawBody: string,
+  adapter: PlatformAdapter,
+  config: WebhookConfig,
+  event: ChatEvent,
+  deps: HandlerDeps,
+  project: string,
+  trace: MessageTraceContext,
+  agentId?: string,
+): Promise<Response | undefined> {
+  const { redis } = deps;
   if (adapter.platform === "blooio") event.traceId = trace.traceId;
 
   const dedupKey = buildWebhookDedupeKey(
@@ -856,7 +897,7 @@ export async function handleWebhook(
           dedupKey,
         });
       }
-      return ackResponse(adapter.platform);
+      return undefined;
     } catch (error) {
       if (error instanceof TelegramEgressAlreadyClaimedError) {
         // error-policy:J1 A competing worker owns the delivery boundary; return
@@ -916,7 +957,7 @@ export async function handleWebhook(
       messageId: event.messageId,
       dedupKey,
     });
-    return ackResponse(adapter.platform);
+    return undefined;
   }
 
   const isNew = await redis.set(dedupKey, CONNECTOR_PROCESSING, {
@@ -933,7 +974,7 @@ export async function handleWebhook(
       messageId: event.messageId,
       dedupKey,
     });
-    return ackResponse(adapter.platform);
+    return undefined;
   }
 
   // ── Async phase: identity → forward → reply (runs in background) ──
@@ -1002,7 +1043,7 @@ export async function handleWebhook(
       );
     });
 
-  return ackResponse(adapter.platform);
+  return undefined;
 }
 
 /**

@@ -221,6 +221,63 @@ async function sendWhatsAppReply(
   return providerMessageIds;
 }
 
+/**
+ * Every text message in one Meta notification. Meta batches messages into one
+ * delivery (several `messages` per change, several entries per payload) and
+ * never redelivers an acknowledged notification, so returning only the first
+ * message dropped the rest of a batch for good.
+ */
+function extractWhatsAppEvents(rawBody: string): ChatEvent[] {
+  let data: unknown;
+  try {
+    data = JSON.parse(rawBody);
+  } catch {
+    logger.warn("Failed to parse WhatsApp webhook payload");
+    return [];
+  }
+
+  const parsed = WhatsAppWebhookPayloadSchema.safeParse(data);
+  if (!parsed.success) {
+    logger.warn("Invalid WhatsApp webhook payload", {
+      errors: parsed.error.format(),
+    });
+    return [];
+  }
+
+  const events: ChatEvent[] = [];
+  for (const entry of parsed.data.entry) {
+    for (const change of entry.changes) {
+      if (change.field !== "messages") continue;
+
+      const { value } = change;
+      if (!value.messages) continue;
+
+      const contactMap = new Map<string, string>();
+      if (value.contacts) {
+        for (const contact of value.contacts) {
+          if (contact.profile?.name) {
+            contactMap.set(contact.wa_id, contact.profile.name);
+          }
+        }
+      }
+
+      for (const msg of value.messages) {
+        if (msg.type !== "text" || !msg.text?.body) continue;
+        events.push({
+          platform: "whatsapp",
+          messageId: msg.id,
+          chatId: msg.from,
+          senderId: msg.from,
+          senderName: contactMap.get(msg.from),
+          text: msg.text.body,
+          rawPayload: data,
+        });
+      }
+    }
+  }
+  return events;
+}
+
 export const whatsappAdapter: PlatformAdapter = {
   platform: "whatsapp",
 
@@ -260,57 +317,11 @@ export const whatsappAdapter: PlatformAdapter = {
   },
 
   async extractEvent(rawBody: string): Promise<ChatEvent | null> {
-    let data: unknown;
-    try {
-      data = JSON.parse(rawBody);
-    } catch {
-      logger.warn("Failed to parse WhatsApp webhook payload");
-      return null;
-    }
+    return extractWhatsAppEvents(rawBody)[0] ?? null;
+  },
 
-    const parsed = WhatsAppWebhookPayloadSchema.safeParse(data);
-    if (!parsed.success) {
-      logger.warn("Invalid WhatsApp webhook payload", {
-        errors: parsed.error.format(),
-      });
-      return null;
-    }
-
-    for (const entry of parsed.data.entry) {
-      for (const change of entry.changes) {
-        if (change.field !== "messages") continue;
-
-        const { value } = change;
-        if (!value.messages) continue;
-
-        const contactMap = new Map<string, string>();
-        if (value.contacts) {
-          for (const contact of value.contacts) {
-            if (contact.profile?.name) {
-              contactMap.set(contact.wa_id, contact.profile.name);
-            }
-          }
-        }
-
-        // Meta can batch multiple messages per delivery. We intentionally process
-        // only the first text message — each subsequent delivery will be its own webhook.
-        for (const msg of value.messages) {
-          if (msg.type !== "text" || !msg.text?.body) continue;
-
-          return {
-            platform: "whatsapp",
-            messageId: msg.id,
-            chatId: msg.from,
-            senderId: msg.from,
-            senderName: contactMap.get(msg.from),
-            text: msg.text.body,
-            rawPayload: data,
-          };
-        }
-      }
-    }
-
-    return null;
+  async extractEvents(rawBody: string): Promise<ChatEvent[]> {
+    return extractWhatsAppEvents(rawBody);
   },
 
   async sendReply(
