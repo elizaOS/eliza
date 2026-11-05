@@ -1,5 +1,6 @@
 import {
   type AccessContext,
+  attachmentTextSourceDescriptor,
   buildAccessContext,
   ContentType,
   describeImageCached,
@@ -472,6 +473,6 @@ export function summarizeAttachment(attachment: Media): string {
     `Name: ${attachmentLocator(attachment)}`,
     `Type: ${attachment.contentType ?? "unknown"}`,
     `Source: ${attachment.source ?? "unknown"}`,
-    `Stored content: ${storedContent ? "yes" : "no"}`,
+    `Stored content: ${storedContent || attachmentTextSourceDescriptor(attachment) ? "yes" : "no"}`,
   ].join("\n");
 }

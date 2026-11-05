@@ -3,6 +3,10 @@
 import { ElizaError } from "./errors";
 import logger from "./logger";
 import { unwrapWholeCodeFence } from "./markdown/code.ts";
+import {
+	attachmentTextSourceDescriptor,
+	messageTextSourceDescriptor,
+} from "./runtime/message-content-segments";
 import { renderStoredEnvelopesForPrompt } from "./security/external-content";
 import type { Entity } from "./types/environment";
 import type { Memory } from "./types/memory";
@@ -190,9 +194,17 @@ export const formatMessageSegments = ({
 		}
 
 		const rawMessageText = (message.content as Content).text;
+		// Text over the inline limit lives in segment rows and the stored row
+		// keeps only a descriptor. The transcript must still show that the turn
+		// has content and how to read it, or the model sees a blank message.
+		const storedTextSource = rawMessageText
+			? null
+			: messageTextSourceDescriptor(message.content as Content);
 		const messageText = rawMessageText
 			? renderStoredEnvelopesForPrompt(rawMessageText)
-			: rawMessageText;
+			: storedTextSource
+				? `[stored message text, ${storedTextSource.byteLength} bytes: read it with MESSAGE op=read_channel messageId=${message.id ?? "unknown"}]`
+				: rawMessageText;
 		const reactedMessageText = (message.content as Content).reactedMessageText;
 		const messageActions = (message.content as Content).actions;
 		const messageThought = (message.content as Content).thought;
@@ -225,10 +237,11 @@ export const formatMessageSegments = ({
 							if (media.contentType) {
 								lines.push(`Type: ${media.contentType}`);
 							}
-							// Keyed on text only: failed processing leaves text empty but
-							// stores failure prose in description, which must not advertise
-							// an unsatisfiable ATTACHMENT read.
-							if (media.text) {
+							// Keyed on text, or on a segment descriptor for text over the
+							// inline limit: failed processing leaves both empty but stores
+							// failure prose in description, which must not advertise an
+							// unsatisfiable ATTACHMENT read.
+							if (media.text || attachmentTextSourceDescriptor(media)) {
 								lines.push(
 									"Stored content available via ATTACHMENT action=read",
 								);

@@ -1,5 +1,6 @@
 import {
   addHeader,
+  attachmentTextSourceDescriptor,
   ContentType,
   type IAgentRuntime,
   MESSAGE_SOURCE_SUB_AGENT,
@@ -79,6 +80,7 @@ export const attachmentsProvider: Provider = {
       // (working-memory/attachmentContext), so the read is satisfiable
       // whenever an IMAGE_DESCRIPTION model is registered.
       attachment.text ||
+      attachmentTextSourceDescriptor(attachment) !== null ||
       (
         attachment.contentType === ContentType.IMAGE &&
           typeof runtime.getModel(ModelType.IMAGE_DESCRIPTION) === "function"

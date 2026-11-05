@@ -59,6 +59,60 @@ function roomRuntime(): IAgentRuntime {
   });
 }
 
+describe("RECENT_MESSAGES and a turn whose text is stored in segments", () => {
+  it("shows the turn with its stored-text reference instead of a blank line", async () => {
+    // Over the inline limit the stored row keeps only this descriptor.
+    const pasted: Memory = {
+      ...roomMemory(1, USER_ID, ""),
+      content: {
+        source: "client_chat",
+        messageTextSource: {
+          kind: "message-text",
+          storage: "segments",
+          version: 1,
+          revision: `rev:${"a".repeat(64)}`,
+          sha256: "a".repeat(64),
+          byteLength: 70_000,
+          segmentCount: 2,
+        },
+      },
+    };
+    const incoming: Memory = {
+      id: "00000000-0000-4000-8000-0000000001ff" as UUID,
+      entityId: USER_ID,
+      agentId: AGENT_ID,
+      roomId: ROOM_ID,
+      createdAt: BASE_TIME + 4 * 60_000,
+      content: { text: "Summarize what I pasted.", source: "client_chat" },
+    };
+    const runtime = createMockRuntime({
+      agentId: AGENT_ID,
+      getRoom: (async () => ({
+        id: ROOM_ID,
+        source: "client_chat",
+        type: ChannelType.DM,
+      })) as IAgentRuntime["getRoom"],
+      getEntitiesForRoom: (async () => [
+        { id: USER_ID, agentId: AGENT_ID, names: ["Ana"], components: [] },
+        { id: AGENT_ID, agentId: AGENT_ID, names: ["Eliza"], components: [] },
+      ]) as IAgentRuntime["getEntitiesForRoom"],
+      getEntityById: (async () => null) as IAgentRuntime["getEntityById"],
+      getMemories: (async () => [pasted]) as IAgentRuntime["getMemories"],
+    });
+
+    const result = await recentMessagesProvider.get(runtime, incoming, {
+      values: {},
+      data: {},
+      text: "",
+    });
+
+    const transcript = String(result.values?.recentMessages ?? "");
+    expect(transcript).toContain(
+      `Ana: [stored message text, 70000 bytes: read it with MESSAGE op=read_channel messageId=${pasted.id}]`,
+    );
+  });
+});
+
 describe("RECENT_MESSAGES rendered order", () => {
   it("renders the room transcript oldest-first, question above answer", async () => {
     const incoming: Memory = {
