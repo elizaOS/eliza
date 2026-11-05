@@ -63,19 +63,17 @@ type ProfileExtraction = {
 };
 
 const FACT_PATTERNS = [
+  // Only phrasings that state a name or a location. A bare "call me" or
+  // "I'm in" matched "call me back when ...", "I'm in a meeting" and wrote
+  // those as the owner's name and location, app-wide.
   {
     key: "preferredName",
     pattern:
       /\b(?:my name is|people call me|you can call me)\s+([^,.!?]{2,60})/iu,
   },
   {
-    key: "preferredName",
-    pattern: /\bcall me\s+(?!at\b|on\b)([^,.!?]{2,60})/iu,
-  },
-  {
     key: "location",
-    pattern:
-      /\b(?:i live in|i'm in|i am in|my location is)\s+([^,.!?]{2,80})/iu,
+    pattern: /\b(?:i live in|my location is)\s+([^,.!?]{2,80})/iu,
   },
   {
     key: "timezone",
