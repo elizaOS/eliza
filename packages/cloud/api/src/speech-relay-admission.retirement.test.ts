@@ -11,7 +11,7 @@ mock.module("@elizaos/cloud-shared/lib/services/organization-inference-admission
     const index = state.index++;
     if (index === state.failAt) throw state.failure;
     return {
-      mode: state.receiptFault === "funded" ? "durable_object_funded_budget" : "durable_object_debit",
+      mode: state.receiptFault.startsWith("funded") ? "durable_object_funded_budget" : "durable_object_debit",
       async settle(value: number) {
         state.attempts[index]++;
         if (index === 1 && state.failTts) { state.failTts = false; throw Error("TTS settlement unavailable"); }
@@ -22,7 +22,8 @@ mock.module("@elizaos/cloud-shared/lib/services/organization-inference-admission
           organizationId: state.receiptFault === "owner" ? "another-org" : input.context.organizationId,
           requestId: state.receiptFault === "request" ? "another-request" : input.context.requestId,
           amountUsd: state.receiptFault === "amount" ? "999.000000" : value.toFixed(6),
-          mode: state.receiptFault === "mode" ? "synchronous_db_ledger" : state.receiptFault === "funded" ? "durable_object_funded_budget" : "durable_object_debit", status: "canonical_completed" } };
+          mode: state.receiptFault === "mode" ? "synchronous_db_ledger" : state.receiptFault.startsWith("funded") ? "durable_object_funded_budget" : "durable_object_debit",
+          status: state.receiptFault === "funded-persisted" ? "funded_persisted" : "canonical_completed" } };
       },
       async settleUnknown() { state.unknown[index]++; },
       async markProviderDispatched() { state.dispatchMarks++; },
@@ -144,6 +145,13 @@ test("unknown-provider submitted TTS counter settles once without becoming actua
 test("canonical matched speech receipts are terminal after actual settlement", async () => {
   const result = await (await reserve()).settle(details());
   expect(result?.stt?.terminal).toBe(true); expect(result?.tts?.terminal).toBe(true);
+});
+
+test("funded speech requires a persisted receipt from the funded admission", async () => {
+  state.receiptFault = "funded-persisted";
+  const result = await (await reserve()).settle(details());
+  expect(result?.stt?.terminal).toBe(true);
+  expect(result?.tts?.terminal).toBe(true);
 });
 
 test.each(["owner", "request", "amount", "mode"])("a mismatched canonical %s receipt is not terminal speech evidence", async fault => {

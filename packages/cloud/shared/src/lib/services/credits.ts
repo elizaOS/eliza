@@ -240,7 +240,7 @@ export interface CreditReconciliationResult {
     requestId: string;
     amountUsd: string;
     mode: string;
-    status: "canonical_completed";
+    status: "canonical_completed" | "funded_persisted";
   }>;
   reservedAmount: number;
   actualCost: number;
