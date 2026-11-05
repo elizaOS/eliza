@@ -1279,6 +1279,17 @@ async function executeSolanaSwap(
   if (!keypair) {
     throw new Error("Solana keypair is not available.");
   }
+  // The transaction was built for walletPublicKey (from the public-key
+  // settings), but it is signed with the keypair resolved from the private
+  // key. If the two settings disagree, signing dies inside web3.js with a
+  // cryptic "Cannot sign with non signer key" error; fail here instead
+  // with a message that names the misconfiguration. SolanaService.swap
+  // already performs this same comparison before signing.
+  if (!keypair.publicKey.equals(walletPublicKey)) {
+    throw new Error(
+      `Solana wallet key mismatch: configured public key ${walletPublicKey.toBase58()} does not match the public key ${keypair.publicKey.toBase58()} derived from the configured private key. Check SOLANA_PUBLIC_KEY / SOLANA_PRIVATE_KEY (or WALLET_PUBLIC_KEY / WALLET_PRIVATE_KEY).`,
+    );
+  }
   transaction.sign([keypair]);
 
   const latestBlockhash = await connection.getLatestBlockhash();
