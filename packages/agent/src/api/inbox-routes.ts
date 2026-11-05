@@ -1590,7 +1590,14 @@ async function resolveDiscordRoomProfile(
       : {}),
     ...(parentChannelId ? { parentChannelId } : {}),
   };
-  writeCachedValue(discordRoomProfileCache, channelId, profile);
+  // A null `channel` means the lookup itself did not succeed (a 429, a 5xx, a
+  // network error, or no Discord client). That says nothing about this room:
+  // memoizing it hid the channel name — and a thread's parent, which carries
+  // its mute scope — for the whole TTL after one transient failure. Only a
+  // real channel object is durable evidence worth remembering.
+  if (channel) {
+    writeCachedValue(discordRoomProfileCache, channelId, profile);
+  }
   return profile;
 }
 /**

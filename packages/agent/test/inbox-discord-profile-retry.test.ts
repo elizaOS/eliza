@@ -434,3 +434,135 @@ it("retries a failed Discord channel fetch instead of caching the absence", asyn
     await rm(directory, { recursive: true, force: true });
   }
 }, 120_000);
+
+/**
+ * The chat list resolves the live Discord channel for every row to show the
+ * real channel name (and a thread's parent, which carries the mute scope).
+ * A transient `channels.fetch` failure says nothing about that room, so it
+ * must not be memoized as "this room has no title": the row would keep the
+ * generic fallback for the whole cache TTL even after Discord recovers.
+ */
+const CHAT_CHANNEL_ID = "920000000000000001";
+
+class FlakyRoomDiscordService extends Service {
+  static override serviceType = "discord";
+  override capabilityDescription = "Discord connector";
+  channelLookups = 0;
+
+  client = {
+    channels: {
+      fetch: async () => {
+        this.channelLookups += 1;
+        // First read: Discord is momentarily unavailable (rate limit / 5xx).
+        if (this.channelLookups === 1) {
+          throw Object.assign(new Error("Discord responded 500"), {
+            status: 500,
+          });
+        }
+        return { id: CHAT_CHANNEL_ID, name: "general" };
+      },
+    },
+    users: {
+      fetch: async () => ({ id: "920000000000000009", username: "ada" }),
+    },
+  };
+
+  static override async start(runtime: IAgentRuntime) {
+    return new FlakyRoomDiscordService(runtime);
+  }
+
+  override async stop() {}
+}
+
+it("retries a failed Discord channel fetch instead of caching an untitled room", async () => {
+  const directory = await mkdtemp(path.join(tmpdir(), "eliza-inbox-room-"));
+  for (const [key, value] of Object.entries({
+    ELIZA_STATE_DIR: directory,
+    ELIZA_CONFIG_PATH: path.join(directory, "config.json"),
+    ELIZA_PERSIST_CONFIG_PATH: path.join(directory, "config.json"),
+    ELIZA_API_BIND_HOST: "127.0.0.1",
+    ELIZA_API_TOKEN: "",
+    ELIZA_REQUIRE_LOCAL_AUTH: "0",
+  })) {
+    vi.stubEnv(key, value);
+  }
+
+  const runtime = createSQLiteTestRuntime({
+    character: createCharacter({ name: "InboxRoomProfile" }),
+    logLevel: "fatal",
+    enableAutonomy: false,
+  });
+  let server: Awaited<ReturnType<typeof startApiServer>> | undefined;
+  try {
+    await runtime.initialize({ skipMigrations: true });
+    const ownerId = randomUUID() as UUID;
+    const worldId = randomUUID() as UUID;
+    const roomId = randomUUID() as UUID;
+    await runtime.createWorld({
+      id: worldId,
+      agentId: runtime.agentId,
+      name: "Inbox room world",
+    });
+    await runtime.createEntities([
+      { id: ownerId, agentId: runtime.agentId, names: ["Owner"] },
+      {
+        id: runtime.agentId,
+        agentId: runtime.agentId,
+        names: ["InboxRoomProfile"],
+      },
+    ]);
+    await runtime.createRooms([
+      {
+        id: roomId,
+        agentId: runtime.agentId,
+        worldId,
+        type: ChannelType.DM,
+        source: "discord",
+      },
+    ]);
+    await runtime.addParticipant(ownerId, roomId);
+    await runtime.addParticipant(runtime.agentId, roomId);
+    await runtime.createMemory(
+      {
+        id: randomUUID() as UUID,
+        agentId: runtime.agentId,
+        entityId: ownerId,
+        roomId,
+        createdAt: Date.now(),
+        content: { text: "hello from general", source: "discord" },
+        metadata: { discordChannelId: CHAT_CHANNEL_ID },
+      },
+      "messages",
+    );
+
+    await runtime.registerService(FlakyRoomDiscordService);
+    await runtime.getServiceLoadPromise("discord");
+
+    server = await startApiServer({
+      port: 0,
+      runtime,
+      skipDeferredStartupWork: true,
+    });
+    const readChats = async () => {
+      const response = await fetch(
+        `http://127.0.0.1:${server?.port}/api/inbox/chats?sources=discord`,
+      );
+      expect(response.status).toBe(200);
+      const body = (await response.json()) as {
+        chats: Array<{ title?: string }>;
+      };
+      return body.chats[0];
+    };
+
+    // The first read hits a failing channel lookup; the row degrades. The
+    // second read must retry Discord instead of serving the memoized absence.
+    await readChats();
+
+    expect((await readChats()).title).toBe("general");
+  } finally {
+    if (server) await server.close();
+    await runtime.close();
+    vi.unstubAllEnvs();
+    await rm(directory, { recursive: true, force: true });
+  }
+}, 120_000);
