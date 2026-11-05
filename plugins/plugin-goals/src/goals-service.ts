@@ -97,6 +97,33 @@ const GOAL_SIMILARITY_STOP_WORDS = new Set([
 const CJK_SCRIPT_CHAR =
   /[\p{Script=Han}\p{Script=Hiragana}\p{Script=Katakana}\p{Script=Hangul}]/gu;
 
+const GOAL_NUMBER_PATTERN = /[\p{Nd}]+(?:[.,][\p{Nd}]+)*/gu;
+
+// A comma is a thousand separator only in thousand-group position —
+// followed by exactly three digits, then another group, a decimal point or
+// the end ("1,000", "1,000,000", "1,000.5"). Any other comma is a decimal
+// separator: "1,5" is 1.5, not 15, so stripping every comma would inflate
+// decimal-comma amounts tenfold and merge goals with different targets.
+function normalizeGoalNumberSeparators(ascii: string): string {
+  return ascii.replace(/,(\d{3})(?=,|\.|$)/g, "$1").replace(/,/g, ".");
+}
+
+// Ordered numeric values named in a title, normalized so "1,000", "1000"
+// and full-width digits compare equal. Numbers shorter than the tokenizer's
+// length floor never reach the token sets, so the similarity score alone
+// cannot see them; this list is what lets the scorer notice that two titles
+// name different amounts.
+function extractGoalNumbers(text: string | null | undefined): string[] {
+  const raw = typeof text === "string" ? text : "";
+  return (raw.match(GOAL_NUMBER_PATTERN) ?? []).map((match) => {
+    const ascii = match.replace(/[０-９]/g, (ch) =>
+      String.fromCharCode(ch.charCodeAt(0) - 0xfee0),
+    );
+    const value = Number(normalizeGoalNumberSeparators(ascii));
+    return Number.isNaN(value) ? ascii : String(value);
+  });
+}
+
 function tokenizeGoalText(text: string | null | undefined): string[] {
   const raw = typeof text === "string" ? text : "";
   // The split below treats a combining mark as a separator, so compose first:
@@ -140,6 +167,24 @@ export function scoreGoalSimilarity(args: {
   };
   candidate: LifeOpsGoalDefinition;
 }): number {
+  // Numbers state the target amount of a goal. When both titles name
+  // amounts and the amounts differ — in value or in order — the goals have
+  // different targets even if every word matches ("Read 10 books" vs "Read
+  // 20 books", "Read 2 books in 10 days" vs "Read 10 books in 2 days").
+  // Such pairs are not near-duplicates and must never reach the dedup
+  // threshold, however high the word overlap scores.
+  const referenceNumbers = extractGoalNumbers(args.reference.title);
+  const candidateNumbers = extractGoalNumbers(args.candidate.title);
+  if (
+    referenceNumbers.length > 0 &&
+    candidateNumbers.length > 0 &&
+    (referenceNumbers.length !== candidateNumbers.length ||
+      referenceNumbers.some(
+        (value, index) => value !== candidateNumbers[index],
+      ))
+  ) {
+    return 0;
+  }
   const referenceTokens = buildGoalSimilarityTokens({
     title: args.reference.title,
     description: args.reference.description,

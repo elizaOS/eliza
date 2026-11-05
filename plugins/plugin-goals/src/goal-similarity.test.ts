@@ -78,6 +78,34 @@ describe("scoreGoalSimilarity — Unicode normalization", () => {
   });
 });
 
+describe("scoreGoalSimilarity — numeric amounts in titles", () => {
+  it("never merges goals that name different amounts", () => {
+    expect(score("Read 10 books", "Read 20 books")).toBe(0);
+  });
+
+  it("does not read a decimal comma as a thousand separator", () => {
+    // Stripping every comma would read "1,5" as 15 and merge the two goals.
+    expect(score("Run 1,5 km daily", "Run 15 km daily")).toBe(0);
+    expect(score("Run 2,5 km daily", "Run 25 km daily")).toBe(0);
+  });
+
+  it("still merges a decimal-comma goal with itself", () => {
+    expect(
+      score("Run 1,5 km daily", "Run 1,5 km daily"),
+    ).toBeGreaterThanOrEqual(0.85);
+  });
+
+  it("keeps thousand-group commas equal to the plain amount", () => {
+    // Both titles name 1000, so the numbers guard must not fire; the score
+    // is the plain token score (the tokenizer splits "1,000" and keeps
+    // "000", so the token sets differ and the total stays below the floor).
+    expect(score("Save 1,000 dollars", "Save 1000 dollars")).toBeCloseTo(
+      (2 / 3) * 0.75 + (2 / 3) * 0.35,
+      6,
+    );
+  });
+});
+
 describe("scoreGoalSimilarity — English goal text", () => {
   it.each([
     ["Meditate every morning", "Meditate every morning", "", "", 1],
