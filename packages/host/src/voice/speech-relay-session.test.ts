@@ -937,8 +937,9 @@ test("a send that throws after dispatch at the next STT budget keeps that budget
     expect(f.events.filter(isExtended)).toHaveLength(1);
     f.advance(100);
     await vi.advanceTimersByTimeAsync(100);
+    const activeSession = session;
     expect(() =>
-      session!.sendPcm(new Uint8Array(SPEECH_RELAY_BUDGET.chunkBytes)),
+      activeSession.sendPcm(new Uint8Array(SPEECH_RELAY_BUDGET.chunkBytes)),
     ).toThrow("send dispatched then threw");
     await session.close();
     expect(attempted).toBe(windowBytes + SPEECH_RELAY_BUDGET.chunkBytes);
@@ -955,7 +956,7 @@ test("a send that throws after dispatch at the next STT budget keeps that budget
       outcomes: { stt: "unknown" },
     });
     expect(() =>
-      session!.sendPcm(new Uint8Array(SPEECH_RELAY_BUDGET.chunkBytes)),
+      activeSession.sendPcm(new Uint8Array(SPEECH_RELAY_BUDGET.chunkBytes)),
     ).toThrow();
     await session.close();
     expect(f.settled).toHaveLength(2);

@@ -158,7 +158,11 @@ export type CartesiaWebSocketFactory = (
 
 export interface CartesiaWebSocketLike {
   readonly readyState: number;
-  retirementState?(): "pending" | "not_dispatched" | "transport_closed" | "unknown";
+  retirementState?():
+    | "pending"
+    | "not_dispatched"
+    | "transport_closed"
+    | "unknown";
   send(data: string): void;
   close(code?: number, reason?: string): void;
   addEventListener(type: "open", listener: () => void): void;
@@ -292,10 +296,12 @@ export class CartesiaSonicTtsAdapter {
   private failedSocketCreation = false;
   private socketGeneration = 0;
   private readonly transportClosures: Array<{
-    socket: CartesiaWebSocketLike; generation: number;
+    socket: CartesiaWebSocketLike;
+    generation: number;
     state: "pending" | "closed" | "not_dispatched";
     refresh(): void;
-    done: Promise<void>; resolve(): void;
+    done: Promise<void>;
+    resolve(): void;
   }> = [];
 
   constructor(config: CartesiaSonicAdapterConfig) {
@@ -349,28 +355,49 @@ export class CartesiaSonicTtsAdapter {
   }
 
   /** Observes actual socket generations, never a speech context's closed promise. */
-  async closeAndConfirm(timeoutMs = 2000): Promise<"not_dispatched" | "transport_closed" | "unknown"> {
-    if (!Number.isSafeInteger(timeoutMs) || timeoutMs < 1 || timeoutMs > 10000) throw Error("Invalid TTS close timeout");
+  async closeAndConfirm(
+    timeoutMs = 2000,
+  ): Promise<"not_dispatched" | "transport_closed" | "unknown"> {
+    if (!Number.isSafeInteger(timeoutMs) || timeoutMs < 1 || timeoutMs > 10000)
+      throw Error("Invalid TTS close timeout");
     this.retiring = true;
-    if (!this.transportClosures.length) return this.failedSocketCreation ? "unknown" : "not_dispatched";
+    if (!this.transportClosures.length)
+      return this.failedSocketCreation ? "unknown" : "not_dispatched";
     const records = [...this.transportClosures];
     let timer: ReturnType<typeof setTimeout> | undefined;
     try {
       for (const record of records) {
         record.refresh();
-        if (record.state === "pending" && (record.socket.readyState === 0 || record.socket.readyState === 1)) {
-          try { record.socket.close(1000, "Speech retirement"); } catch { /* Await real evidence or return unknown. */ }
+        if (
+          record.state === "pending" &&
+          (record.socket.readyState === 0 || record.socket.readyState === 1)
+        ) {
+          try {
+            record.socket.close(1000, "Speech retirement");
+          } catch {
+            /* Await real evidence or return unknown. */
+          }
         }
         record.refresh();
       }
       await Promise.race([
-        Promise.all(records.map(record => record.done)),
-        new Promise<void>(resolve => { timer = setTimeout(resolve, timeoutMs); }),
+        Promise.all(records.map((record) => record.done)),
+        new Promise<void>((resolve) => {
+          timer = setTimeout(resolve, timeoutMs);
+        }),
       ]);
       for (const record of records) record.refresh();
-      if (this.failedSocketCreation || records.some(record => record.state === "pending")) return "unknown";
-      return records.every(record => record.state === "not_dispatched") ? "not_dispatched" : "transport_closed";
-    } finally { if (timer) clearTimeout(timer); }
+      if (
+        this.failedSocketCreation ||
+        records.some((record) => record.state === "pending")
+      )
+        return "unknown";
+      return records.every((record) => record.state === "not_dispatched")
+        ? "not_dispatched"
+        : "transport_closed";
+    } finally {
+      if (timer) clearTimeout(timer);
+    }
   }
 
   private sharedSocket(): { socket: CartesiaWebSocketLike; reused: boolean } {
@@ -381,13 +408,30 @@ export class CartesiaSonicTtsAdapter {
     }
     let socket: CartesiaWebSocketLike;
     try {
-      socket = this.websocketFactory(buildCartesiaWebSocketUrl(this.websocketUrl), {
-        headers: { "Cartesia-Version": CARTESIA_API_VERSION, "X-API-Key": this.apiKey },
-      });
-    } catch (error) { this.failedSocketCreation = true; throw error; }
+      socket = this.websocketFactory(
+        buildCartesiaWebSocketUrl(this.websocketUrl),
+        {
+          headers: {
+            "Cartesia-Version": CARTESIA_API_VERSION,
+            "X-API-Key": this.apiKey,
+          },
+        },
+      );
+    } catch (error) {
+      this.failedSocketCreation = true;
+      throw error;
+    }
     let resolve!: () => void;
-    const record = { socket, generation: ++this.socketGeneration, state: "pending" as "pending" | "closed" | "not_dispatched",
-      done: new Promise<void>(yes => { resolve = yes; }), resolve: () => resolve(), refresh: () => {} };
+    const record = {
+      socket,
+      generation: ++this.socketGeneration,
+      state: "pending" as "pending" | "closed" | "not_dispatched",
+      done: new Promise<void>((yes) => {
+        resolve = yes;
+      }),
+      resolve: () => resolve(),
+      refresh: () => {},
+    };
     record.refresh = () => {
       const state = socket.retirementState?.();
       if (state === "transport_closed") record.state = "closed";
@@ -396,7 +440,7 @@ export class CartesiaSonicTtsAdapter {
     };
     this.transportClosures.push(record);
     // Install before any close is initiated. A prior generation cannot settle this record.
-    socket.addEventListener("close", event => {
+    socket.addEventListener("close", (event) => {
       if (socket.retirementState) record.refresh();
       else if (event.code === 1000 && event.wasClean === true) {
         record.state = "closed";
