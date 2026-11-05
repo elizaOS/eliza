@@ -94,15 +94,31 @@ function serializeCacheValue<T>(value: T): string {
   return JSON.stringify(value);
 }
 
-function parseCacheValue<T>(value: unknown): T {
+type ParsedCacheValue<T> = { ok: true; value: T } | { ok: false; error: string };
+
+/**
+ * Decodes a payload read back from the backend.
+ *
+ * Every value this client writes goes through {@link serializeCacheValue}, so a
+ * decode failure means the stored bytes are damaged (truncated write, clobbered
+ * key) — it never means "the caller stored a plain string". Reporting that as a
+ * decoded value handed callers a raw string where they expect `T`: property
+ * reads came back `undefined`, truthiness checks passed, and a torn write was
+ * indistinguishable from a valid entry. Callers must treat `ok: false` as a
+ * corrupt entry (warn + delete + miss), not as data.
+ */
+function parseCacheValue<T>(value: unknown): ParsedCacheValue<T> {
   if (typeof value !== "string") {
-    return value as T;
+    return { ok: true, value: value as T };
   }
 
   try {
-    return JSON.parse(value) as T;
-  } catch {
-    return value as T;
+    return { ok: true, value: JSON.parse(value) as T };
+  } catch (error) {
+    return {
+      ok: false,
+      error: error instanceof Error ? error.message : String(error),
+    };
   }
 }
 
@@ -539,7 +555,16 @@ export class CacheClient {
 
       const parsed = parseCacheValue<T>(value);
 
-      if (!this.isValidCacheValue(parsed)) {
+      if (!parsed.ok) {
+        logger.warn("[Cache] Corrupt cache payload (not JSON); deleting", {
+          ...this.cacheLogContext(key, options),
+          error: parsed.error,
+        });
+        await this.del(key, options);
+        return { kind: "invalid", backend };
+      }
+
+      if (!this.isValidCacheValue(parsed.value)) {
         logger.warn("[Cache] Invalid cached value; deleting", {
           ...this.cacheLogContext(key, options),
         });
@@ -549,7 +574,7 @@ export class CacheClient {
 
       this.resetFailures();
       this.logMetric(key, "hit", duration);
-      return { kind: "hit", value: parsed, backend };
+      return { kind: "hit", value: parsed.value, backend };
     } catch (error) {
       // error-policy:J1 cache-adapter boundary translates backend failure into
       // an explicit error outcome; security callers then use authoritative data.
@@ -1113,7 +1138,16 @@ export class CacheClient {
             return null;
           }
 
-          return parseCacheValue<T>(value);
+          const decoded = parseCacheValue<T>(value);
+          if (!decoded.ok) {
+            logger.warn(`[Cache] Corrupt cache payload in mget for key ${keys[index]}, skipping`, {
+              error: decoded.error,
+            });
+            await this.del(keys[index]);
+            return null;
+          }
+
+          return decoded.value;
         }),
       );
 
