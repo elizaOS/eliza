@@ -219,6 +219,12 @@ it("a default-window read says the channel may hold more", async () => {
       "Read 20 messages from Slack. Newest 20 by default; the channel may hold more. Pass limit, range=dates, or before=<oldest message id> to read further.",
     );
 
+    // A cursor-bound read is a page, not the newest window.
+    const paged = await read({ before: stringToUuid("slack:m10") });
+    expect(paged?.text).toBe(
+      "Read 20 messages from Slack. 20 per page by default; more may exist beyond this page. Pass limit, range=dates, or before=<oldest message id> to read further.",
+    );
+
     // An explicit limit is the model's own request: no default note.
     const explicit = await read({ limit: 25 });
     expect(explicit?.text).toBe("Read 25 messages from Slack.");

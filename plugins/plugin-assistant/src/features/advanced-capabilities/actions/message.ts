@@ -239,6 +239,7 @@ export function defaultReadWindowNote(
   range: string | undefined,
   limit: number | undefined,
   returned: number,
+  cursorBound = false,
 ): string {
   if (
     requestedLimit !== undefined ||
@@ -247,7 +248,10 @@ export function defaultReadWindowNote(
     returned < limit
   )
     return "";
-  return ` Newest ${limit} by default; the channel may hold more. Pass limit, range=dates, or before=<oldest message id> to read further.`;
+  const window = cursorBound
+    ? `${limit} per page by default; more may exist beyond this page.`
+    : `Newest ${limit} by default; the channel may hold more.`;
+  return ` ${window} Pass limit, range=dates, or before=<oldest message id> to read further.`;
 }
 
 function normalizeComparable(value: unknown): string {
@@ -4146,6 +4150,9 @@ async function handleReadChannel(
     );
   }
   const limit = recentReadLimit(range, requestedLimit);
+  const cursorBound = ["cursor", "before", "after"].some(
+    (key) => textParam(params[key]) !== undefined,
+  );
 
   // Prefer in-process connector fetchMessages when available.
   const hookConnectors = connectors.filter(
@@ -4207,6 +4214,7 @@ async function handleReadChannel(
         range,
         limit,
         memories.length,
+        cursorBound,
       );
       return opSuccess(
         "read_channel",
@@ -4299,6 +4307,7 @@ async function handleReadChannel(
       range,
       limit,
       limited.length,
+      cursorBound,
     );
     const readText = limited.length
       ? `Read ${limited.length} recent messages across ${sources.length} connectors.${windowNote}`
@@ -4362,6 +4371,7 @@ async function handleReadChannel(
       range,
       limit,
       memories.length,
+      cursorBound,
     );
     return opSuccess(
       "read_channel",
