@@ -20,9 +20,14 @@ it("registers a real persistent adapter before runtime initialization and reopen
   let runtime = new AgentRuntime({ character, plugins: [plugin] });
   try {
     await runtime.initialize();
-    await runtime.adapter.updateAgents([
-      { agentId, agent: { name: "Persisted runtime identity" } },
-    ]);
+    // plugin-sql updateAgent returns true on any successful UPDATE, so an
+    // update that matches a row and an empty update list both report success.
+    expect(
+      await runtime.adapter.updateAgents([
+        { agentId, agent: { name: "Persisted runtime identity" } },
+      ]),
+    ).toBe(true);
+    expect(await runtime.adapter.updateAgents([])).toBe(true);
     await runtime.adapter.setCaches([
       {
         key: "runtime-proof",
@@ -48,6 +53,27 @@ it("registers a real persistent adapter before runtime initialization and reopen
     expect(
       (await runtime.adapter.getCaches(["runtime-proof"])).get("runtime-proof"),
     ).toEqual({ complete: "stored by real AgentRuntime" });
+    // No agent row exists in a fresh database, but the update still succeeds,
+    // like plugin-sql.
+    const ghostDirectory = await mkdtemp(
+      join(tmpdir(), "eliza-sqlite-update-agents-"),
+    );
+    const ghostId = randomUUID() as UUID;
+    const ghost = SQLiteDatabaseAdapter.create(
+      join(ghostDirectory, "agent.sqlite"),
+      ghostId,
+    );
+    await ghost.initialize();
+    try {
+      expect(
+        await ghost.updateAgents([
+          { agentId: ghostId, agent: { name: "Ghost" } },
+        ]),
+      ).toBe(true);
+    } finally {
+      await ghost.close();
+      await rm(ghostDirectory, { recursive: true, force: true });
+    }
   } finally {
     await runtime.stop();
     await runtime.adapter?.close();
