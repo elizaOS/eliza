@@ -1,16 +1,14 @@
 /** Protected provider proof. No user text, token, or credential is logged. */
 import { test } from "bun:test";
 import {
-  SPEECH_SESSION_ID_HEADER,
-  SPEECH_SESSION_ID_UNIQUE,
-} from "@elizaos/host/voice/speech-relay-wire";
-import {
   reportedSpeechRelayTest,
   speechRelayPhases,
   speechRelayRefusal,
   speechServerTimings,
 } from "../test/speech-relay-live-report";
 
+// Literal: the protected workflow runs this file with Bun and no installed packages.
+const UNIQUE_SESSION_HEADERS = { "x-eliza-speech-session-id": "unique-v1" };
 const environment = process.env.ELIZA_VOICE_CLOUD_ENVIRONMENT;
 const target =
   environment === "staging"
@@ -359,7 +357,7 @@ const AB_PAIRS = 3;
         "/api/v1/voice/speech/session",
         { consentNonce: consent.consentNonce },
         "session",
-        unique ? { [SPEECH_SESSION_ID_HEADER]: SPEECH_SESSION_ID_UNIQUE } : {},
+        unique ? UNIQUE_SESSION_HEADERS : {},
       );
       const sessionAt = performance.now();
       check(
