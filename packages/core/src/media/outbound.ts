@@ -75,10 +75,33 @@ export function summarizeOutboundAttachmentUrl(url: string): {
 	}
 }
 
-async function decodeDataUrl(
+const HEX_BYTE = /^[\da-f]{2}$/i;
+
+/** The WHATWG data-URL body bytes: UTF-8 text with %XX escapes as raw bytes.
+ * As the URL parser does, the fragment and ASCII tab/newline are not part of it. */
+function percentDecodeBytes(payload: string): Buffer {
+	const text = payload.split("#", 1)[0]?.replace(/[\t\n\r]/g, "") ?? "";
+	const input = Buffer.from(text, "utf8");
+	const output = Buffer.alloc(input.length);
+	let length = 0;
+	for (let index = 0; index < input.length; index += 1) {
+		const byte = input[index] as number;
+		const hex =
+			byte === 0x25 ? input.toString("latin1", index + 1, index + 3) : "";
+		if (HEX_BYTE.test(hex)) {
+			output[length++] = Number.parseInt(hex, 16);
+			index += 2;
+		} else {
+			output[length++] = byte;
+		}
+	}
+	return output.subarray(0, length);
+}
+
+function decodeDataUrl(
 	url: string,
 	maxBytes: number,
-): Promise<ResolvedOutboundAttachmentBytes> {
+): ResolvedOutboundAttachmentBytes {
 	const comma = url.indexOf(",");
 	if (!isDataUrl(url) || comma < 0) {
 		throw new MediaFetchError("fetch_failed", "malformed data URL");
@@ -103,7 +126,9 @@ async function decodeDataUrl(
 			);
 		} else {
 			// A non-base64 data URL contains percent-encoded bytes, not UTF-8 text.
-			buffer = Buffer.from(await (await fetch(url)).arrayBuffer());
+			// Decode them here: Bun's fetch reads "DATA:"/"Data:" as an http
+			// request to a host named "data" (or sends it to HTTP_PROXY).
+			buffer = percentDecodeBytes(payload);
 		}
 	} catch (error) {
 		// error-policy:J3 malformed data-URL encoding is untrusted input; never
