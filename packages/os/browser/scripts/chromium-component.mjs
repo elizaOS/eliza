@@ -415,6 +415,29 @@ export async function generateComponentOverlay({
             `trusted host embedding for ${activity}`,
           );
         }
+        // Activity embedding splits only within one task. The tabbed browser's
+        // own launch modes always start a new task, so a host could dock only a
+        // Custom Tab. These two values let the full browser join the host's task.
+        source = replaceOnce(
+          source,
+          `android:exported="true"
+            android:launchMode="singleTask"
+            {% if is_desktop_android == "true" %}`,
+          `android:exported="true"
+            android:launchMode="singleTop"
+            {% if is_desktop_android == "true" %}`,
+          "tabbed browser launch mode",
+        );
+        source = replaceOnce(
+          source,
+          `            <meta-data
+                android:name="android.activity.launch_mode"
+                android:value="singleInstancePerTask"/>
+
+`,
+          "",
+          "tabbed browser per-task launch mode",
+        );
         return source;
       });
     }

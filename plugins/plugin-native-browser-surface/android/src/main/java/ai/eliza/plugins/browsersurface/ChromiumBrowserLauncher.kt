@@ -6,8 +6,10 @@
 package ai.eliza.plugins.browsersurface
 
 import android.app.Activity
+import android.content.ComponentName
 import android.content.Context
 import android.content.Intent
+import android.content.pm.ActivityInfo
 import android.content.pm.PackageManager
 import android.net.Uri
 import android.os.Build
@@ -19,6 +21,7 @@ class BrowserLaunchException(val code: String, message: String) : IllegalArgumen
 
 object ChromiumBrowserLauncher {
     const val PACKAGE_NAME = BuildConfig.ELIZA_CHROMIUM_PACKAGE_NAME
+    private const val TABBED_ACTIVITY = "org.chromium.chrome.browser.ChromeTabbedActivity"
 
     internal fun validatedUrl(value: String): String {
         val parsed = try {
@@ -74,6 +77,25 @@ object ChromiumBrowserLauncher {
         if (!isTrusted(activity)) {
             throw BrowserLaunchException("BROWSER_UNTRUSTED", "The configured Chromium package or signing certificate is unavailable. Repair the provisioned browser and try again.")
         }
+    }
+
+    /** Activity embedding splits only within one task; these launch modes stay in the host's task. */
+    internal fun joinsHostTask(launchMode: Int): Boolean =
+        launchMode == ActivityInfo.LAUNCH_MULTIPLE || launchMode == ActivityInfo.LAUNCH_SINGLE_TOP
+
+    /** Whether the installed browser's full tabbed window can share the host's task. */
+    internal fun supportsTabbedDock(context: Context): Boolean = try {
+        joinsHostTask(context.packageManager.getActivityInfo(ComponentName(PACKAGE_NAME, TABBED_ACTIVITY), 0).launchMode)
+    } catch (error: PackageManager.NameNotFoundException) {
+        // error-policy:J3 A browser without this activity keeps the Custom Tab route.
+        false
+    }
+
+    /** Opens the website in a tab of the full browser, in the host's task, for the host's split. */
+    internal fun launchTabbed(activity: Activity, url: String) {
+        val target = Uri.parse(validatedUrl(url))
+        requireTrustedBrowser(activity)
+        activity.startActivity(Intent(Intent.ACTION_VIEW, target).setComponent(ComponentName(PACKAGE_NAME, TABBED_ACTIVITY)))
     }
 
     @JvmStatic

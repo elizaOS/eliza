@@ -112,7 +112,9 @@ internal object BrowserDockController {
         controller.addRule(rule)
         try {
             // Explicit navigation; dispatch alone does not prove a split or select a task tab.
-            ChromiumBrowserLauncher.launch(activity, url)
+            // The full browser where it can join this task; an older build docks its Custom Tab.
+            if (ChromiumBrowserLauncher.supportsTabbedDock(activity)) ChromiumBrowserLauncher.launchTabbed(activity, url)
+            else ChromiumBrowserLauncher.launch(activity, url)
             sessions[activity] = Session(panelWidthDp)
         } catch (error: RuntimeException) {
             // error-policy:J1 Restore host rules when Android rejects the launch.

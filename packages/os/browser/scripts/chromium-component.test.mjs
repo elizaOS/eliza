@@ -535,12 +535,36 @@ test("Android embedding is opt-in and restricted to the provisioned native host 
     ).length,
     4,
   );
+  // The tabbed browser joins the host's task; every other activity keeps its launch mode.
+  assert.ok(!output.includes('android:name="android.activity.launch_mode"'));
+  const tabbed = output.slice(
+    output.indexOf(
+      '<activity android:name="org.chromium.chrome.browser.ChromeTabbedActivity"',
+    ),
+  );
+  assert.match(tabbed.slice(0, tabbed.indexOf("</activity>")), /android:launchMode="singleTop"/);
   assert.equal(
-    output.replaceAll(
-      `\n            android:knownActivityEmbeddingCerts="${certificate}"`,
+    output
+      .replaceAll(
+        `\n            android:knownActivityEmbeddingCerts="${certificate}"`,
+        "",
+      )
+      .replace(
+        `android:exported="true"
+            android:launchMode="singleTop"
+            {% if is_desktop_android == "true" %}`,
+        `android:exported="true"
+            android:launchMode="singleTask"
+            {% if is_desktop_android == "true" %}`,
+      ),
+    sources[manifest].replace(
+      `            <meta-data
+                android:name="android.activity.launch_mode"
+                android:value="singleInstancePerTask"/>
+
+`,
       "",
     ),
-    sources[manifest],
   );
   assert.ok(!output.includes("allowUntrustedActivityEmbedding"));
   assert.deepEqual(embedded.report.trustedActivityEmbedding, {

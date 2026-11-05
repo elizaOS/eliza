@@ -336,10 +336,14 @@ Android component generation accepts `--embed-host` only as an explicit build
 option. It adds `knownActivityEmbeddingCerts` to the intent dispatcher target, standard Custom Tab and main
 tabbed activities, plus the dispatcher alias (Android 15 does not inherit its
 certificate set). It uses the provisioned host certificate from native messaging.
-It does not enable untrusted embedding or change activity exports/launch modes.
+It does not enable untrusted embedding or change activity exports.
 Android enforces this opt-in by signer, not package name: every app sharing that
 signer is trusted for embedding. Use a dedicated host signer for a production
 distribution. Native messaging still checks its separate host application ID.
+The same flag lets the full tabbed browser join the host's task, because Android
+splits activities only within one task: `ChromeTabbedActivity` becomes `singleTop`
+and loses its per-task launch mode. The host's dock opens that window where the
+installed browser allows it, and otherwise docks a Custom Tab.
 The default remains disabled. Host WindowManager support, actual split bounds,
 existing-tab continuity, input and lifecycle must be qualified on the installed
 browser; a generated manifest is only one prerequisite for a native dock.
