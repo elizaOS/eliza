@@ -95,7 +95,6 @@ import {
   buildSleepRecapFromSchedule,
   deriveSleepWakeEvents,
   type LifeOpsDerivedEvent,
-  NIGHT_CHECKIN_LEAD_MINUTES,
   normalizeHealthSignal,
   shouldRunNightCheckinFromSleepCycle,
 } from "@elizaos/plugin-health";
@@ -394,6 +393,9 @@ function foregroundRequestHandling(
  * channel. A clean refusal (`runtime_send_not_delivered`) or a missing send
  * handler (`runtime_send_handler_missing`, nothing was sent) is retried.
  */
+/** One night check-in per night: two are never sent within this span. */
+const NIGHT_CHECKIN_DEDUPE_MS = 12 * 60 * 60 * 1000;
+
 const SEND_MAY_HAVE_REACHED_RECIPIENT = new Set([
   "runtime_send_acceptance_unknown",
   "runtime_send_partially_delivered",
@@ -6919,12 +6921,11 @@ export class RemindersDomain {
         now: args.now,
         timezone,
         // The night window (bedtime minus the lead) can start before
-        // midnight and end after it: a night check-in sent earlier in the
-        // same window already served this bedtime.
+        // midnight and end after it, and the bedtime target can move later
+        // during the evening. A night check-in sent in the last 12 hours
+        // already served tonight; the next night is about a day later.
         ...(kind === "night"
-          ? {
-              sinceMs: args.now.getTime() - NIGHT_CHECKIN_LEAD_MINUTES * 60_000,
-            }
+          ? { sinceMs: args.now.getTime() - NIGHT_CHECKIN_DEDUPE_MS }
           : {}),
       });
       if (alreadySent) {

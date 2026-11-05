@@ -493,12 +493,17 @@ describe("merged schedule state", () => {
         });
       };
 
-      expect(await tick("2026-04-19T21:45:00.000Z", 165)).toMatchObject([
+      expect(await tick("2026-04-19T21:30:00.000Z", 180)).toMatchObject([
         { kind: "night", status: "delivered" },
       ]);
       expect(await tick("2026-04-20T00:05:00.000Z", 25)).toMatchObject([
         { kind: "night", status: "skipped_already_sent" },
       ]);
+      // The baseline moves tonight's target later, to 01:00: a tick at 00:45
+      // is 195 minutes after the 21:30 check-in, past the 3-hour lead.
+      expect(
+        await tick("2026-04-20T00:45:00.000Z", 15, "2026-04-20T01:00:00.000Z"),
+      ).toMatchObject([{ kind: "night", status: "skipped_already_sent" }]);
       expect(sent).toHaveLength(1);
       // The next evening's window is a new night: it sends again.
       expect(
