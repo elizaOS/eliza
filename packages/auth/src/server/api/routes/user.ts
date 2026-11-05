@@ -168,6 +168,7 @@ import {
 import { getConfiguredVault } from "../services/vault-factory";
 import { redactWalletMetadataSecrets } from "../services/wallet-metadata";
 import { dispatchWebhook } from "../services/webhook-dispatch";
+import { externalBroadcastOutcomeUnknownResponse } from "./vault";
 
 // ─── Session payload types ────────────────────────────────────────────────────
 
@@ -1458,7 +1459,7 @@ async function getUserWalletTransactionStats(userId: string, chainId?: number) {
       and(
         inArray(transactions.agentId, agentIds),
         sql`${transactions.createdAt} >= ${oneWeekAgo.toISOString()}::timestamptz`,
-        sql`${transactions.status} in ('signed', 'broadcast', 'confirmed')`,
+        sql`${transactions.status} in ('signed', 'broadcast', 'confirmed', 'outcome_unknown')`,
       ),
     );
 
@@ -6024,6 +6025,7 @@ user.post("/me/wallet/sign", async (c) => {
       : USER_WALLET_DEFAULT_POLICIES;
 
   let completedResult: { txId: string; txHash: string } | undefined;
+  let signingTxId: string | undefined;
 
   try {
     const result: UserWalletSignResult = await withAgentSpendLock(
@@ -6078,6 +6080,7 @@ user.post("/me/wallet/sign", async (c) => {
             ...userWalletSignerAuditMetadata(c),
           },
         });
+        signingTxId = txId;
         const txHash = await vault.signTransaction(signRequest, {
           txId,
           policyResults: evaluation.results,
@@ -6136,6 +6139,14 @@ user.post("/me/wallet/sign", async (c) => {
         data: completedResult,
       });
     }
+    // The signed bytes may be on chain. A 5xx releases the Idempotency-Key,
+    // so a client retry would sign and pay again. Return 202 with the hash.
+    const outcomeUnknown = externalBroadcastOutcomeUnknownResponse(
+      c,
+      e,
+      signingTxId,
+    );
+    if (outcomeUnknown) return outcomeUnknown;
     logger.error(
       {
         details: [

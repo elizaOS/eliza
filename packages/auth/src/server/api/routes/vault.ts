@@ -1303,8 +1303,8 @@ function executionAuthorizationErrorResponse(
   return c.json<ApiResponse>({ ok: false, error: error.message }, status);
 }
 
-function externalBroadcastOutcomeUnknownResponse(
-  c: Context<{ Variables: AppVariables }>,
+export function externalBroadcastOutcomeUnknownResponse(
+  c: Context,
   error: unknown,
   txId?: string,
 ): Response | null {
