@@ -318,7 +318,12 @@ function fixture() {
     input,
     post,
     get row() {
-      return structuredClone(row);
+      return structuredClone(getRow());
+    },
+    get retirement() {
+      const retirement = getRow().retirement;
+      if (!retirement) throw Error("Missing persisted retirement");
+      return structuredClone(retirement);
     },
     async openSuccessfully() {
       await post(coordinator, "initialize", input);
@@ -473,8 +478,8 @@ test("N4 partial actual-zero rollback and never-reserved peer require both exact
     expect((await retirementFrom(response)).state).toBe(
       fault ? "unconfirmed" : "confirmed",
     );
-    expect(f.row.retirement.progress.tts.state).toBe("not_reserved");
-    expect(f.row.retirement.progress.stt.state).toBe(
+    expect(f.retirement.progress.tts.state).toBe("not_reserved");
+    expect(f.retirement.progress.stt.state).toBe(
       fault ? "unconfirmed" : "settled_actual",
     );
     expect(f.row.quotaRelease).toBe("unknown");
@@ -511,9 +516,9 @@ test("N4 lost reservation or reserved-progress acknowledgement cannot create no-
     const f = fixture();
     await f.start();
     expect((await f.revoke()).status).toBe(409);
-    expect(f.row.retirement.proof.state).toBe("unconfirmed");
+    expect(f.retirement.proof?.state).toBe("unconfirmed");
     expect(["reserving", "unconfirmed"]).toContain(
-      f.row.retirement.progress.stt.state,
+      f.retirement.progress.stt.state,
     );
     expect(control.providerFetches).toBe(0);
     expect(control.quotaReleases).toBe(1);
@@ -542,7 +547,7 @@ test("D3 real coordinator admission and host retain conservative history after l
   expect(control.admissions).toBe(2);
   for (let attempt = 0; attempt < 3; attempt++)
     expect((await f.revoke()).status).toBe(409);
-  const frozen = structuredClone(f.row.retirement.progress.tts);
+  const frozen = structuredClone(f.retirement.progress.tts);
   expect(frozen).toMatchObject({
     state: "settled_conservative",
     amountUsd: "0.006",
@@ -558,7 +563,7 @@ test("D3 real coordinator admission and host retain conservative history after l
     accounting: "settled_actual",
     tts: "transport_closed",
   });
-  expect(f.row.retirement.progress.tts).toEqual(frozen);
+  expect(f.retirement.progress.tts).toEqual(frozen);
   expect(control.zeroSettlements).toEqual([0, 0.006]);
   expect(control.admissions).toBe(2);
   expect(control.sttOpens).toBe(1);

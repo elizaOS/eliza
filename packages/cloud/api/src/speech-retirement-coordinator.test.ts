@@ -1,5 +1,8 @@
 import { beforeEach, expect, mock, test } from "bun:test";
-import type { SpeechRelayPorts } from "@elizaos/host/voice/speech-relay-session";
+import type {
+  SpeechRelayPorts,
+  SpeechRelayRetirementHandle,
+} from "@elizaos/host/voice/speech-relay-session";
 import type { reserveSpeechRelayAdmission } from "./speech-relay-admission";
 import type { SpeechLifecycleRecord } from "./speech-retirement-state";
 
@@ -98,12 +101,14 @@ const actualSpeechRelaySession = {
 mock.module("@elizaos/host/voice/speech-relay-session", () => ({
   ...actualSpeechRelaySession,
   createSpeechRelaySession: async (
-    _id: unknown,
+    identity: Parameters<
+      typeof actualSpeechRelaySession.createSpeechRelaySession
+    >[0],
     _nonce: unknown,
     ports: SpeechRelayPorts,
   ) => {
     control.opens++;
-    const handle = {
+    const handle: SpeechRelayRetirementHandle = {
       async close() {
         control.closes++;
         control.afterClose?.();
@@ -122,8 +127,13 @@ mock.module("@elizaos/host/voice/speech-relay-session", () => ({
         accounting: "settled_actual",
       }),
     };
+    if (!ports.registerRetirement)
+      throw Error("Missing retirement registration");
     ports.registerRetirement(handle);
-    await ports.reserveCredits();
+    await ports.reserveCredits(
+      identity,
+      actualSpeechRelaySession.SPEECH_RELAY_BUDGET,
+    );
     await control.wait;
     return { retirement: handle, close: () => handle.close() };
   },
@@ -254,6 +264,11 @@ function fixture() {
     },
     get row() {
       return getRow();
+    },
+    get retirement() {
+      const retirement = getRow().retirement;
+      if (!retirement) throw Error("Missing persisted retirement");
+      return retirement;
     },
   };
 }
@@ -387,12 +402,12 @@ test("proof-write failure never acknowledges before a durable commit", async () 
   await f.open();
   f.failNextProof();
   expect((await f.revoke()).status).toBe(409);
-  expect(f.row.retirement.proof?.state).not.toBe("confirmed");
-  const failedGeneration = f.row.retirement.generation,
-    failedAttempt = f.row.retirement.attempt;
+  expect(f.retirement.proof?.state).not.toBe("confirmed");
+  const failedGeneration = f.retirement.generation,
+    failedAttempt = f.retirement.attempt;
   expect((await f.revoke()).status).toBe(200);
-  expect(f.row.retirement.generation).toBeGreaterThan(failedGeneration);
-  expect(f.row.retirement.attempt).toBeGreaterThan(failedAttempt);
+  expect(f.retirement.generation).toBeGreaterThan(failedGeneration);
+  expect(f.retirement.attempt).toBeGreaterThan(failedAttempt);
 });
 test("late subscription after retirement is released exactly once", async () => {
   const f = fixture();
@@ -501,7 +516,7 @@ test("alarm retries an existing live holder and preserves unknown until success"
   control.closeFails = false;
   await f.c.alarm();
   expect(control.closes).toBe(2);
-  expect(f.row.retirement.proof.state).toBe("confirmed");
+  expect(f.retirement.proof?.state).toBe("confirmed");
 });
 test("automatic unknown cleanup is bounded, never confirmed by exhaustion", async () => {
   const f = fixture();
@@ -513,7 +528,7 @@ test("automatic unknown cleanup is bounded, never confirmed by exhaustion", asyn
   await f.c.alarm().catch(() => {});
   await f.c.alarm().catch(() => {});
   expect(control.closes).toBe(3);
-  expect(f.row.retirement.proof.state).toBe("unconfirmed");
+  expect(f.retirement.proof?.state).toBe("unconfirmed");
 });
 
 test.each(["exhausted", "expired", "missing-holder"])(
@@ -524,13 +539,13 @@ test.each(["exhausted", "expired", "missing-holder"])(
     await f.open();
     control.closeFails = true;
     expect((await f.revoke()).status).toBe(409);
-    if (reason === "exhausted") f.row.retirement.attempt = 3;
-    if (reason === "expired") f.row.retirement.retryDeadlineAt = Date.now() - 1;
+    if (reason === "exhausted") f.retirement.attempt = 3;
+    if (reason === "expired") f.retirement.retryDeadlineAt = Date.now() - 1;
     const before = structuredClone(f.row);
     await f.make().alarm();
     expect(f.row).toEqual(before);
     expect(control.closes).toBe(1);
-    expect(f.row.retirement.proof.state).toBe("unconfirmed");
+    expect(f.retirement.proof?.state).toBe("unconfirmed");
   },
 );
 
@@ -542,8 +557,8 @@ test.each(["exhausted", "expired"])(
     await f.open();
     control.closeFails = true;
     expect((await f.revoke()).status).toBe(409);
-    if (reason === "exhausted") f.row.retirement.attempt = 3;
-    else f.row.retirement.retryDeadlineAt = Date.now() - 1;
+    if (reason === "exhausted") f.retirement.attempt = 3;
+    else f.retirement.retryDeadlineAt = Date.now() - 1;
     const before = structuredClone(f.row);
     await f.c.alarm();
     expect(f.row).toEqual(before);
@@ -557,12 +572,12 @@ test("an intervening revoke count cannot lend the alarm another attempt", async 
   control.closeFails = true;
   expect((await f.revoke()).status).toBe(409);
   f.beforeNextTransaction(() => {
-    f.row.retirement.attempt = 3;
+    f.retirement.attempt = 3;
   });
   await f.c.alarm();
-  expect(f.row.retirement.attempt).toBe(3);
+  expect(f.retirement.attempt).toBe(3);
   expect(control.closes).toBe(1);
-  expect(f.row.retirement.proof.state).toBe("unconfirmed");
+  expect(f.retirement.proof?.state).toBe("unconfirmed");
 });
 
 test("live-holder deadline exhaustion finalizes its frozen counter without a third cleanup", async () => {
@@ -579,7 +594,7 @@ test("live-holder deadline exhaustion finalizes its frozen counter without a thi
     expect((await f.revoke()).status).toBe(409);
     expect(control.finalized).toBe(1);
     expect(control.closes).toBe(1);
-    expect(f.row.retirement.proof.state).toBe("unconfirmed");
+    expect(f.retirement.proof?.state).toBe("unconfirmed");
   } finally {
     Date.now = realNow;
   }
@@ -603,7 +618,7 @@ test("D2 expired automatic alarm finalizes the live unknown holder without anoth
   control.ttsUnknown = true;
   control.closeFails = true;
   expect((await f.revoke()).status).toBe(409);
-  f.row.retirement.retryDeadlineAt = Date.now() - 1;
+  f.retirement.retryDeadlineAt = Date.now() - 1;
   const before = structuredClone(f.row),
     alarms = f.alarms();
   const closes = control.closes,
@@ -618,7 +633,7 @@ test("D2 expired automatic alarm finalizes the live unknown holder without anoth
     sets: alarms.sets,
     deletes: alarms.deletes + 1,
   });
-  expect(f.row.retirement.proof.state).toBe("unconfirmed");
+  expect(f.retirement.proof?.state).toBe("unconfirmed");
 });
 
 test("D2 capped automatic alarm never grants another attempt or fabricates an evicted holder", async () => {
@@ -628,7 +643,7 @@ test("D2 capped automatic alarm never grants another attempt or fabricates an ev
   control.ttsUnknown = true;
   control.closeFails = true;
   expect((await f.revoke()).status).toBe(409);
-  f.row.retirement.attempt = 3;
+  f.retirement.attempt = 3;
   const before = structuredClone(f.row),
     alarms = f.alarms();
   const closes = control.closes,
@@ -655,7 +670,7 @@ test("D2 finalizer rejection remains observable and removes the alarm without ch
   control.ttsUnknown = true;
   control.closeFails = true;
   expect((await f.revoke()).status).toBe(409);
-  f.row.retirement.retryDeadlineAt = Date.now() - 1;
+  f.retirement.retryDeadlineAt = Date.now() - 1;
   const failure = new Error(
     "canonical frozen settlement acknowledgement unavailable",
   );
@@ -667,7 +682,7 @@ test("D2 finalizer rejection remains observable and removes the alarm without ch
   await expect(f.c.alarm()).rejects.toBe(failure);
   expect(control.finalized).toBe(1);
   expect(f.row).toEqual(before);
-  expect(f.row.retirement.proof.state).toBe("unconfirmed");
+  expect(f.retirement.proof?.state).toBe("unconfirmed");
   expect(control.closes).toBe(closes);
   expect(control.adapterCloses).toBe(adapters);
   expect(f.alarms()).toEqual({
