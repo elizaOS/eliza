@@ -782,7 +782,10 @@ export function parseValue(
  * the range, the allowed options and the file limits. A bound that cannot be
  * compared against the value (a handler-accepted number or date that neither
  * the handler's `parse` nor the built-in parser can read) fails closed rather
- * than passing unchecked.
+ * than passing unchecked. Pattern, length and enum read the same value as the
+ * bounds (a number in plain digits, a date as its calendar day), so typed text
+ * and a stored value get the same answer; a value neither parser can read
+ * keeps its own text.
  */
 function validateFieldConstraints(
   value: JsonValue,
@@ -790,10 +793,11 @@ function validateFieldConstraints(
   handler: TypeHandler | ControlType | undefined,
 ): ValidationResult {
   const hasBounds = control.min !== undefined || control.max !== undefined;
+  let text: JsonValue = value;
   switch (control.type) {
     case "number": {
+      const numValue = readHandlerNumber(value, handler);
       if (hasBounds) {
-        const numValue = readHandlerNumber(value, handler);
         if (numValue === undefined) {
           return {
             valid: false,
@@ -803,11 +807,12 @@ function validateFieldConstraints(
         const bounds = checkNumberBounds(numValue, control);
         if (!bounds.valid) return bounds;
       }
+      if (numValue !== undefined) text = plainNumberText(numValue);
       break;
     }
     case "date": {
+      const iso = readHandlerDate(value, handler);
       if (hasBounds) {
-        const iso = readHandlerDate(value, handler);
         if (iso === undefined) {
           return {
             valid: false,
@@ -820,6 +825,7 @@ function validateFieldConstraints(
         );
         if (!bounds.valid) return bounds;
       }
+      if (iso !== undefined) text = iso;
       break;
     }
     case "select": {
@@ -837,7 +843,7 @@ function validateFieldConstraints(
     default:
       break;
   }
-  return validateText(value, control);
+  return validateText(text, control);
 }
 /** Read a numeric value through the owning handler's parser, then the built-in one. */
 function readHandlerNumber(

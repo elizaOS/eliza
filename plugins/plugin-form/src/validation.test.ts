@@ -665,6 +665,73 @@ describe("legacy type-handler override (validateField)", () => {
     clearTypeHandlers();
   });
 
+  it("checks pattern, length and enum on the value the bounds read", () => {
+    const builtinNumber = getBuiltinType("number");
+    const builtinDate = getBuiltinType("date");
+    if (!builtinNumber?.validate || !builtinDate?.validate)
+      throw new Error("built-in number/date control is missing");
+    clearTypeHandlers();
+    registerTypeHandler("number", { validate: () => ({ valid: true }) });
+    registerTypeHandler("date", { validate: () => ({ valid: true }) });
+    const quantity: FormControl = {
+      key: "quantity",
+      label: "Quantity",
+      type: "number",
+      pattern: "^[0-9]+$",
+      maxLength: 4,
+      enum: ["1200", "9000"],
+    };
+    // The typed text and the stored number get the same answer.
+    expect(validateField("$1,200", quantity, builtinNumber)).toEqual({
+      valid: true,
+    });
+    expect(validateField(1200, quantity, builtinNumber)).toEqual({
+      valid: true,
+    });
+    expect(validateField("$12,000", quantity, builtinNumber)).toEqual({
+      valid: false,
+      error: "Quantity must be at most 4 characters",
+    });
+    // parseValue stores 0.00000015 as a number, which String() writes "1.5e-7".
+    const rate: FormControl = {
+      key: "rate",
+      label: "Rate",
+      type: "number",
+      pattern: "^[0-9.]+$",
+    };
+    expect(
+      validateField(
+        parseValue("0.00000015", rate, builtinNumber),
+        rate,
+        builtinNumber,
+      ),
+    ).toEqual({ valid: true });
+    // A value the number grammar cannot read keeps its own text.
+    const amount: FormControl = {
+      key: "amount",
+      label: "Amount",
+      type: "number",
+      pattern: "^lots$",
+    };
+    expect(validateField("lots", amount, builtinNumber)).toEqual({
+      valid: true,
+    });
+    const billingStart: FormControl = {
+      key: "billingStart",
+      label: "Billing start",
+      type: "date",
+      pattern: "-01$",
+    };
+    expect(validateField("March 1, 2026", billingStart, builtinDate)).toEqual({
+      valid: true,
+    });
+    expect(validateField("March 2, 2026", billingStart, builtinDate)).toEqual({
+      valid: false,
+      error: "Billing start has invalid format",
+    });
+    clearTypeHandlers();
+  });
+
   it("still enforces select options and date bounds under legacy overrides", () => {
     const builtinSelect = getBuiltinType("select");
     const builtinDate = getBuiltinType("date");
