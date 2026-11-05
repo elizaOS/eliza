@@ -855,19 +855,31 @@ it("a long SMS reminder whose second part Twilio rejects is not sent again", asy
 }, 120000);
 
 it.each([
-  ["sms", "/Messages.json"],
-  ["voice", "/Calls.json"],
+  ["sms", "/Messages.json", "no answer", 1],
+  ["voice", "/Calls.json", "no answer", 1],
+  ["sms", "/Messages.json", 502, 1],
+  ["voice", "/Calls.json", 502, 1],
+  ["sms", "/Messages.json", 400, 3],
 ] as const)(
-  "a %s reminder whose Twilio request got no answer is not sent again",
-  async (channel, endpoint) => {
+  "a %s reminder (%s) whose Twilio create got %s is sent %i time(s) in three ticks",
+  async (channel, endpoint, answer, expectedPosts) => {
     const f = await createLifeOpsTestRuntime();
     const posts: string[] = [];
-    // Twilio reads the request, then the connection drops before any answer:
-    // the message may have gone out, so the reminder must not send it again.
-    const twilio = createServer((request) => {
+    // "no answer": the connection drops before any reply. 502: Twilio
+    // answers, but that does not prove the create was refused. Either way
+    // the message may have gone out, so it must not be sent again. A 400 is
+    // a clean refusal: nothing was sent, so later ticks retry it.
+    const twilio = createServer((request, response) => {
       posts.push(request.url ?? "");
       request.resume();
-      request.on("end", () => request.socket.destroy());
+      request.on("end", () => {
+        if (answer === "no answer") {
+          request.socket.destroy();
+          return;
+        }
+        response.writeHead(answer, { "Content-Type": "application/json" });
+        response.end(JSON.stringify({ message: `HTTP ${answer}` }));
+      });
     });
     await new Promise<void>((resolve) =>
       twilio.listen(0, "127.0.0.1", resolve),
@@ -916,14 +928,11 @@ it.each([
       const attempts = await service.repository.listReminderAttempts(
         f.runtime.agentId,
       );
-      expect(attempts.filter((a) => a.channel === channel)).toEqual([
-        expect.objectContaining({
-          outcome: "blocked_connector",
-          deliveryMetadata: expect.objectContaining({
-            reason: "runtime_send_acceptance_unknown",
-          }),
-        }),
-      ]);
+      const [attempt] = attempts.filter((a) => a.channel === channel);
+      expect(attempt?.outcome).toBe("blocked_connector");
+      expect(attempt?.deliveryMetadata.reason ?? null).toBe(
+        expectedPosts === 1 ? "runtime_send_acceptance_unknown" : null,
+      );
       for (const later of [due + 60_000, due + 120_000]) {
         vi.setSystemTime(new Date(later));
         await service.processReminders({
@@ -931,7 +940,9 @@ it.each([
           scope: "definitions",
         });
       }
-      expect(posts.filter((url) => url.endsWith(endpoint))).toHaveLength(1);
+      expect(posts.filter((url) => url.endsWith(endpoint))).toHaveLength(
+        expectedPosts,
+      );
     } finally {
       model.mockRestore();
       vi.unstubAllEnvs();
