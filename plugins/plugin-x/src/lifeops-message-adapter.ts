@@ -6,6 +6,7 @@
  * LifeOps can import it without the full plugin runtime.
  */
 import {
+  ElizaError,
   type IAgentRuntime,
   type Memory,
   toWellFormedUnicode,
@@ -19,6 +20,7 @@ import {
   type MessageSource,
   NotYetImplementedError,
 } from "@elizaos/plugin-assistant";
+import { isExplicitTwitterRejection } from "./utils/error-handler";
 
 type XRuntimeServiceLike = {
   sendDirectMessageForAccount?: (
@@ -117,6 +119,7 @@ function parseDraftId(draftId: string): {
   participantId: string;
   text: string;
   accountId?: string;
+  createdAtMs: number;
 } {
   const parts = draftId.split(":");
   if ((parts.length !== 4 && parts.length !== 5) || parts[0] !== "twitter") {
@@ -142,11 +145,32 @@ function parseDraftId(draftId: string): {
   if (!text) {
     throw new Error(`[XDmAdapter] cannot resolve body from draftId ${draftId}`);
   }
-  return { participantId, text, ...(accountId ? { accountId } : {}) };
+  const createdAtMs = Number(parts[2]);
+  return {
+    participantId,
+    text,
+    createdAtMs: Number.isFinite(createdAtMs) ? createdAtMs : 0,
+    ...(accountId ? { accountId } : {}),
+  };
+}
+
+function sentDmEventId(message: Memory): string | undefined {
+  const x = (message.metadata as { x?: { dmEventId?: unknown } } | undefined)
+    ?.x;
+  return typeof x?.dmEventId === "string" && x.dmEventId
+    ? x.dmEventId
+    : undefined;
 }
 
 export class XDmAdapter extends BaseMessageAdapter {
   readonly source: MessageSource = "twitter";
+
+  /**
+   * Drafts whose send X did not confirm (transport failure or 5xx). The next
+   * send looks the account's own messages up first so the recipient does not
+   * get the message twice.
+   */
+  private readonly outcomeUnknown = new Set<string>();
 
   isAvailable(runtime: IAgentRuntime): boolean {
     return Boolean(getXRuntimeService(runtime));
@@ -252,11 +276,42 @@ export class XDmAdapter extends BaseMessageAdapter {
       throw new Error("[XDmAdapter] X runtime service is unavailable");
     }
 
-    const { participantId, text, accountId } = parseDraftId(draftId);
-    const sent = await service.sendDirectMessageForAccount(accountId, {
-      participantId,
-      text,
-    });
+    const { participantId, text, accountId, createdAtMs } =
+      parseDraftId(draftId);
+    if (this.outcomeUnknown.has(draftId)) {
+      const delivered = await this.findSentDm(runtime, service, {
+        accountId,
+        participantId,
+        text,
+        createdAtMs,
+      });
+      if (delivered) {
+        this.outcomeUnknown.delete(draftId);
+        return { externalId: delivered };
+      }
+    }
+    let sent: { ok?: boolean; status?: number; messageId?: string | null };
+    try {
+      sent = await service.sendDirectMessageForAccount(accountId, {
+        participantId,
+        text,
+      });
+    } catch (error) {
+      // A 4xx is a refusal and nothing was delivered. Anything else (no
+      // response, 5xx, a later chunk failing after one was accepted) may
+      // have reached the recipient.
+      if (isExplicitTwitterRejection(error)) throw error;
+      this.outcomeUnknown.add(draftId);
+      throw new ElizaError(
+        "X did not confirm the direct message; it may have been delivered. Confirming the same draft again checks X before sending it again.",
+        {
+          code: "X_DM_SEND_OUTCOME_UNKNOWN",
+          cause: error,
+          context: { draftId },
+        },
+      );
+    }
+    this.outcomeUnknown.delete(draftId);
     if (sent.ok === false) {
       throw new Error(
         `[XDmAdapter] failed to send direct message${
@@ -267,6 +322,33 @@ export class XDmAdapter extends BaseMessageAdapter {
     return {
       externalId: sent.messageId ?? `${participantId}:${Date.now()}`,
     };
+  }
+
+  /** The account's own message to this recipient with the draft's text, sent since the draft was created. */
+  private async findSentDm(
+    runtime: IAgentRuntime,
+    service: XRuntimeServiceLike,
+    draft: {
+      accountId?: string;
+      participantId: string;
+      text: string;
+      createdAtMs: number;
+    },
+  ): Promise<string | undefined> {
+    if (typeof service.fetchDirectMessagesForAccount !== "function") {
+      return undefined;
+    }
+    const messages = await service.fetchDirectMessagesForAccount(
+      draft.accountId,
+      { participantId: draft.participantId, limit: 50 },
+    );
+    const match = messages.find(
+      (message) =>
+        message.entityId === runtime.agentId &&
+        (message.content.text ?? "").trim() === draft.text.trim() &&
+        (message.createdAt ?? 0) >= draft.createdAtMs,
+    );
+    return match ? sentDmEventId(match) : undefined;
   }
 
   protected scheduleSendImpl(
