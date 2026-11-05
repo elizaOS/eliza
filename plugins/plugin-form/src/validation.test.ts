@@ -14,6 +14,7 @@
  */
 import { spawnSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
+import type { JsonValue } from "@elizaos/core";
 import { describe, expect, it } from "vitest";
 import { getBuiltinType } from "./builtins";
 import type { FormControl, ValidationResult } from "./types";
@@ -407,6 +408,25 @@ describe("builtin format contracts", () => {
     expect(formatValue("US", selectControl, getBuiltinType("select"))).toBe(
       "United States",
     );
+  });
+
+  it("shows a number with every decimal it is submitted with", () => {
+    const tipControl: FormControl = {
+      key: "tip",
+      label: "Tip (SOL)",
+      type: "number",
+    };
+    const shown = (value: JsonValue) =>
+      formatValue(value, tipControl, getBuiltinType("number"));
+
+    // The checks hold in any host locale: two different answers must not
+    // read the same, and the digits must survive.
+    expect(shown(0.0005)).not.toBe(shown(0.001));
+    expect(shown(1.23456)).not.toBe(shown(1.235));
+    expect(shown(0.0001)).not.toBe(shown(0));
+    expect(shown(0.0005).replace(/\D/g, "")).toBe("00005");
+    // A value kept as text is shown as it will be submitted.
+    expect(shown("1,250")).toBe("1,250");
   });
 });
 
