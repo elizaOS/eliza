@@ -35,7 +35,7 @@ import {
   type ReadMessageResult,
   type SearchMessagesFilters,
 } from "@elizaos/plugin-assistant";
-import { sortGmailMessages } from "./gmail.js";
+import { GoogleGmailSendOutcomeUnknownError, sortGmailMessages } from "./gmail.js";
 import {
   buildGmailContentPublication,
   gmailContentHeadId,
@@ -49,6 +49,7 @@ import { isEmailAddress } from "./gmail-message-connector.js";
 import type {
   GoogleGmailBulkOperation,
   GoogleGmailMessageSummary,
+  GoogleGmailSendResult,
   IGoogleGmailService,
 } from "./types.js";
 
@@ -60,6 +61,7 @@ const GMAIL_ADAPTER_METHODS = [
   "getGmailMessageRevision",
   "sendGmailReply",
   "sendGmailMessage",
+  "findGmailMessageByHeaderId",
   "modifyGmailMessages",
   "createGmailFilterForSender",
 ] as const satisfies readonly (keyof IGoogleGmailService)[];
@@ -69,6 +71,11 @@ type GoogleGmailAdapterService = Pick<IGoogleGmailService, (typeof GMAIL_ADAPTER
 interface GmailDraftContext {
   readonly request: DraftRequest;
   readonly preview: string;
+  /**
+   * A send whose outcome Gmail did not report. The next send looks the
+   * Message-ID up first so the message is not sent twice.
+   */
+  readonly outcomeUnknown?: { messageIdHeader: string };
   readonly replyEnvelope?: {
     accountId: string;
     to: string[];
@@ -752,11 +759,16 @@ export class GoogleGmailAdapter extends BaseMessageAdapter {
     const service = this.requireService(runtime);
     const request = draft.request;
     if (!request.inReplyToId) {
-      const sent = await service.sendGmailMessage({
+      const sent = await this.sendOnce(service, draftId, draft, {
         accountId: request.worldId ?? DEFAULT_GOOGLE_ACCOUNT_ID,
-        to: newDraftRecipients(request),
-        subject: request.subject?.trim() || "",
-        bodyText: request.body,
+        send: (messageIdHeader) =>
+          service.sendGmailMessage({
+            accountId: request.worldId ?? DEFAULT_GOOGLE_ACCOUNT_ID,
+            to: newDraftRecipients(request),
+            subject: request.subject?.trim() || "",
+            bodyText: request.body,
+            messageIdHeader,
+          }),
       });
       return { externalId: sent.messageId ?? `gmail-new:${draftId}` };
     }
@@ -765,14 +777,19 @@ export class GoogleGmailAdapter extends BaseMessageAdapter {
       throw new ElizaError("Gmail reply draft has no captured envelope", {
         code: "MESSAGE_DRAFT_ENVELOPE_MISSING",
       });
-    const sent = await service.sendGmailReply({
+    const sent = await this.sendOnce(service, draftId, draft, {
       accountId: envelope.accountId,
-      to: envelope.to,
-      subject: envelope.subject,
-      bodyText: request.body,
-      inReplyTo: envelope.inReplyTo,
-      references: envelope.references,
-      threadId: envelope.threadId,
+      send: (messageIdHeader) =>
+        service.sendGmailReply({
+          accountId: envelope.accountId,
+          to: envelope.to,
+          subject: envelope.subject,
+          bodyText: request.body,
+          inReplyTo: envelope.inReplyTo,
+          references: envelope.references,
+          threadId: envelope.threadId,
+          messageIdHeader,
+        }),
     });
     if (sent.messageId) {
       await emitCommittedGmailMutation(runtime, {
@@ -785,6 +802,48 @@ export class GoogleGmailAdapter extends BaseMessageAdapter {
     return {
       externalId: sent.messageId ?? `gmail-reply:${envelope.externalId}`,
     };
+  }
+
+  /**
+   * Sends a draft at most once. When Gmail did not report the outcome of an
+   * earlier attempt, the message is looked up by the Message-ID this client
+   * wrote; a stored message is the receipt and nothing is sent again.
+   */
+  private async sendOnce(
+    service: GoogleGmailAdapterService,
+    draftId: string,
+    draft: GmailDraftContext,
+    options: {
+      accountId: string;
+      send: (messageIdHeader: string | undefined) => Promise<GoogleGmailSendResult>;
+    }
+  ): Promise<GoogleGmailSendResult> {
+    const pending = draft.outcomeUnknown;
+    if (pending) {
+      const stored = await service.findGmailMessageByHeaderId({
+        accountId: options.accountId,
+        messageIdHeader: pending.messageIdHeader,
+      });
+      if (stored) {
+        return {
+          messageId: stored.messageId,
+          threadId: stored.threadId,
+          labelIds: [],
+          messageIdHeader: pending.messageIdHeader,
+        };
+      }
+    }
+    try {
+      return await options.send(pending?.messageIdHeader);
+    } catch (error) {
+      if (error instanceof GoogleGmailSendOutcomeUnknownError) {
+        this.draftCache.set(draftId, {
+          ...draft,
+          outcomeUnknown: { messageIdHeader: error.messageIdHeader },
+        });
+      }
+      throw error;
+    }
   }
 
   protected async manageMessageImpl(

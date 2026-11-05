@@ -1,3 +1,4 @@
+import { randomUUID } from "node:crypto";
 import { gmailThreadSourceLink } from "./gmail-source-link.js";
 /**
  * `GoogleGmailClient` — all Gmail operations behind the workspace service: raw
@@ -691,6 +692,7 @@ export class GoogleGmailClient {
       threadId: string;
       inReplyTo?: string | null;
       references?: string | null;
+      messageIdHeader?: string;
     }
   ): Promise<GoogleGmailSendResult> {
     const threadId = params.threadId.trim();
@@ -700,12 +702,14 @@ export class GoogleGmailClient {
         severity: "fatal",
       });
     }
+    const messageIdHeader = resolveGmailMessageIdHeader(params.messageIdHeader);
     const raw = encodeRawGmailMessage([
       `To: ${sanitizeMailHeaderValue(params.to.join(", "))}`,
       ...(params.cc && params.cc.length > 0
         ? [`Cc: ${sanitizeMailHeaderValue(params.cc.join(", "))}`]
         : []),
       `Subject: ${encodeMailSubject(normalizeReplySubject(params.subject))}`,
+      `Message-ID: ${messageIdHeader}`,
       "MIME-Version: 1.0",
       "Content-Type: text/plain; charset=UTF-8",
       ...(params.inReplyTo ? [`In-Reply-To: ${sanitizeMailHeaderValue(params.inReplyTo)}`] : []),
@@ -713,7 +717,12 @@ export class GoogleGmailClient {
       "",
       params.bodyText.replace(/\r?\n/g, "\r\n"),
     ]);
-    return this.sendRawGmailMessage({ ...params, threadId }, raw, "gmail.sendGmailReply");
+    return this.sendRawGmailMessage(
+      { ...params, threadId },
+      raw,
+      "gmail.sendGmailReply",
+      messageIdHeader
+    );
   }
 
   async sendGmailMessage(
@@ -723,8 +732,10 @@ export class GoogleGmailClient {
       bcc?: string[];
       subject: string;
       bodyText: string;
+      messageIdHeader?: string;
     }
   ): Promise<GoogleGmailSendResult> {
+    const messageIdHeader = resolveGmailMessageIdHeader(params.messageIdHeader);
     const raw = encodeRawGmailMessage([
       `To: ${sanitizeMailHeaderValue(params.to.join(", "))}`,
       ...(params.cc && params.cc.length > 0
@@ -734,12 +745,37 @@ export class GoogleGmailClient {
         ? [`Bcc: ${sanitizeMailHeaderValue(params.bcc.join(", "))}`]
         : []),
       `Subject: ${encodeMailSubject(params.subject.trim() || "(no subject)")}`,
+      `Message-ID: ${messageIdHeader}`,
       "MIME-Version: 1.0",
       "Content-Type: text/plain; charset=UTF-8",
       "",
       params.bodyText.replace(/\r?\n/g, "\r\n"),
     ]);
-    return this.sendRawGmailMessage(params, raw, "gmail.sendGmailMessage");
+    return this.sendRawGmailMessage(params, raw, "gmail.sendGmailMessage", messageIdHeader);
+  }
+
+  /**
+   * The message Gmail stored for a Message-ID header this client wrote, or
+   * null. Used after a send whose outcome the transport did not report.
+   */
+  async findGmailMessageByHeaderId(
+    params: GoogleAccountRef & { messageIdHeader: string }
+  ): Promise<{ messageId: string; threadId: string | null } | null> {
+    const gmail = await this.clientFactory.gmail(
+      params,
+      ["gmail.read"],
+      "gmail.findGmailMessageByHeaderId"
+    );
+    const id = params.messageIdHeader.trim().replace(/^<|>$/g, "");
+    const response = await gmail.users.messages.list({
+      userId: "me",
+      q: `rfc822msgid:${id}`,
+      includeSpamTrash: true,
+      maxResults: 1,
+    });
+    const found = response.data.messages?.[0];
+    const messageId = found?.id?.trim();
+    return messageId ? { messageId, threadId: found?.threadId ?? null } : null;
   }
 
   async createGmailDraft(
@@ -953,19 +989,62 @@ export class GoogleGmailClient {
   private async sendRawGmailMessage(
     params: GoogleAccountRef & { threadId?: string | null },
     raw: string,
-    reason: string
+    reason: string,
+    messageIdHeader: string
   ): Promise<GoogleGmailSendResult> {
     const gmail = await this.clientFactory.gmail(params, ["gmail.send"], reason);
     const threadId = params.threadId?.trim();
-    const response = await gmail.users.messages.send({
-      userId: "me",
-      requestBody: threadId ? { raw, threadId } : { raw },
-    });
+    let sent: { id?: string | null; threadId?: string | null; labelIds?: string[] | null };
+    try {
+      sent = (
+        await gmail.users.messages.send({
+          userId: "me",
+          requestBody: threadId ? { raw, threadId } : { raw },
+        })
+      ).data;
+    } catch (error) {
+      // No HTTP status (socket reset, timeout) or a 5xx: Gmail may have
+      // accepted the message before the response was lost. A 4xx is a
+      // refusal and nothing was sent.
+      const status = googleErrorStatus(error);
+      if (status === undefined || status >= 500) {
+        throw new GoogleGmailSendOutcomeUnknownError(messageIdHeader, error);
+      }
+      throw error;
+    }
     return {
-      messageId: requireGmailSendMessageId(response.data.id),
-      threadId: response.data.threadId ?? null,
-      labelIds: response.data.labelIds ?? [],
+      messageId: requireGmailSendMessageId(sent.id),
+      threadId: sent.threadId ?? null,
+      labelIds: sent.labelIds ?? [],
+      messageIdHeader,
     };
+  }
+}
+
+function resolveGmailMessageIdHeader(requested: string | undefined): string {
+  const value = requested?.trim();
+  if (value && /^<[^\s<>@]+@[^\s<>@]+>$/.test(value)) return value;
+  return `<${randomUUID()}@eliza.local>`;
+}
+
+/**
+ * Gmail did not report whether a send went through. The Message-ID header
+ * the client wrote lets a later attempt look the message up before sending
+ * it again.
+ */
+export class GoogleGmailSendOutcomeUnknownError extends ElizaError {
+  readonly messageIdHeader: string;
+
+  constructor(messageIdHeader: string, cause: unknown) {
+    super(
+      "Gmail did not confirm the send; the message may have gone out. Confirming the same draft again checks Gmail before sending it again.",
+      {
+        code: "GOOGLE_GMAIL_SEND_OUTCOME_UNKNOWN",
+        cause,
+        context: { messageIdHeader },
+      }
+    );
+    this.messageIdHeader = messageIdHeader;
   }
 }
 

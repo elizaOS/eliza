@@ -279,6 +279,7 @@ export class GoogleWorkspaceService extends Service implements IGoogleWorkspaceS
       threadId: string;
       inReplyTo?: string | null;
       references?: string | null;
+      messageIdHeader?: string;
     }
   ): Promise<GoogleGmailSendResult> {
     return this.gmailClient.sendGmailReply(params);
@@ -291,9 +292,16 @@ export class GoogleWorkspaceService extends Service implements IGoogleWorkspaceS
       bcc?: string[];
       subject: string;
       bodyText: string;
+      messageIdHeader?: string;
     }
   ): Promise<GoogleGmailSendResult> {
     return this.gmailClient.sendGmailMessage(params);
+  }
+
+  findGmailMessageByHeaderId(
+    params: GoogleAccountRef & { messageIdHeader: string }
+  ): Promise<{ messageId: string; threadId: string | null } | null> {
+    return this.gmailClient.findGmailMessageByHeaderId(params);
   }
 
   createGmailDraft(
