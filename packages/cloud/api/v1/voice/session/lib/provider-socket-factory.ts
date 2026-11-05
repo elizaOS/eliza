@@ -28,6 +28,7 @@ import type {
 
 interface WorkerUpgradeSocket {
   accept?(): void;
+  retirementState?(): "pending" | "not_dispatched" | "transport_closed" | "unknown";
   send(data: string | ArrayBuffer | ArrayBufferView): void;
   close(code?: number, reason?: string): void;
   addEventListener(type: string, listener: (event: unknown) => void): void;
@@ -92,22 +93,23 @@ function openWorkerSocket(
       const response = await fetch(httpUrl, {
         method: "GET",
         headers: { ...headers, Upgrade: "websocket" },
+        signal: proxy.signal,
       });
       const ws = (response as unknown as { webSocket?: WorkerUpgradeSocket })
         .webSocket;
       if (!ws) {
-        proxy.failOpen(
-          new Error(`outbound WS upgrade failed: HTTP ${response.status}`),
-        );
+        await response.body?.cancel();
+        proxy.failOpen(new Error(`outbound WS upgrade failed: HTTP ${response.status}`));
         return;
       }
-      ws.accept?.();
       proxy.bind(ws);
     } catch (error) {
       // error-policy:J1 boundary translation — the async Workers upgrade is the
       // transport boundary; failures surface via the socket's error/close
       // listeners, which the adapters observe.
       proxy.failOpen(error);
+    } finally {
+      proxy.markUpgradeSettled();
     }
   })();
   return proxy;
@@ -119,6 +121,8 @@ function openWorkerSocket(
  * async Workers upgrade.
  */
 class DeferredWorkerSocket implements WorkerUpgradeSocket {
+  private readonly upgradeAbort = new AbortController();
+  readonly signal = this.upgradeAbort.signal;
   // Report OPEN immediately. The adapters gate `send` on `readyState === 1`,
   // but this proxy BUFFERS every send until the real outbound socket binds, so
   // reporting open is safe and prevents the adapter from dropping the first
@@ -127,13 +131,28 @@ class DeferredWorkerSocket implements WorkerUpgradeSocket {
   readyState = 1;
   binaryType = "arraybuffer";
   private real: WorkerUpgradeSocket | null = null;
+  private upgradeFinished = false;
+  private observedRealClose = false;
+  private observedCleanClose = false;
+  private dispatchAttempted = false;
+
+  markUpgradeSettled(): void { this.upgradeFinished = true; }
+
+  retirementState(): "pending" | "not_dispatched" | "transport_closed" | "unknown" {
+    if (this.real) return this.observedCleanClose
+      ? (this.dispatchAttempted ? "transport_closed" : "not_dispatched")
+      : this.observedRealClose ? "unknown" : "pending";
+    return this.upgradeFinished ? "unknown" : "pending";
+  }
   private readonly pendingSends: (string | ArrayBuffer | ArrayBufferView)[] =
     [];
   private readonly listeners: Array<[string, (event: unknown) => void]> = [];
   private closedEarly: { code?: number; reason?: string } | null = null;
 
   send(data: string | ArrayBuffer | ArrayBufferView): void {
+    if (this.closedEarly || this.observedRealClose) return;
     if (this.real) {
+      this.dispatchAttempted = true;
       this.real.send(data);
       return;
     }
@@ -143,14 +162,15 @@ class DeferredWorkerSocket implements WorkerUpgradeSocket {
   }
 
   close(code?: number, reason?: string): void {
+    this.closedEarly = { code, reason };
+    this.pendingSends.length = 0;
     if (this.real) {
       this.real.close(code, reason);
       return;
     }
-    // Closed before the upgrade bound: mark it and drop any buffered audio now,
-    // so a later `bind()` can never flush post-close audio to the provider.
-    this.closedEarly = { code, reason };
-    this.pendingSends.length = 0;
+    this.readyState = 2;
+    this.upgradeAbort.abort();
+    // A late bind remains tracked and may only close; queued data stays dropped.
   }
 
   addEventListener(type: string, listener: (event: unknown) => void): void {
@@ -174,6 +194,15 @@ class DeferredWorkerSocket implements WorkerUpgradeSocket {
 
   bind(real: WorkerUpgradeSocket): void {
     this.real = real;
+    real.addEventListener("close", event => {
+      this.observedRealClose = true;
+      const close = event as { code?: number; wasClean?: boolean };
+      this.observedCleanClose = close.code === 1000 && close.wasClean === true;
+      this.readyState = 3;
+    });
+    // Observe a late provider close even when an earlier cancellation won.
+    for (const [type, listener] of this.listeners) real.addEventListener(type, listener);
+    real.accept?.();
 
     // If the session was severed/closed BEFORE the outbound upgrade completed
     // (the slow-upgrade race this proxy exists for), we must NOT flush buffered
@@ -187,11 +216,9 @@ class DeferredWorkerSocket implements WorkerUpgradeSocket {
       return;
     }
 
+    if (this.observedRealClose) { this.pendingSends.length = 0; return; }
     this.readyState = 1;
-    for (const [type, listener] of this.listeners) {
-      real.addEventListener(type, listener);
-    }
-    for (const data of this.pendingSends) real.send(data);
+    for (const data of this.pendingSends) { this.dispatchAttempted = true; real.send(data); }
     this.pendingSends.length = 0;
     // Synthesize an `open` for adapters that expect it after binding.
     for (const [type, listener] of this.listeners) {
@@ -200,6 +227,14 @@ class DeferredWorkerSocket implements WorkerUpgradeSocket {
   }
 
   failOpen(error: unknown): void {
+    // Neither local cancellation nor a generic failed HTTP upgrade proves
+    // absence of remote provider allocation. Keep the issued dial unknown
+    // unless an actual bound provider socket supplies accepted close evidence.
+    if (this.real && !this.observedRealClose) {
+      this.closedEarly ??= { code: 1000, reason: "upgrade failed" };
+      this.readyState = 2;
+      try { this.real.close(1000, "upgrade failed"); } catch { /* Retain unknown until an actual close. */ }
+    } else this.readyState = 3;
     for (const [type, listener] of this.listeners) {
       if (type === "error") listener({ error });
       if (type === "close")
