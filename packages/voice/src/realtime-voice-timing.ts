@@ -19,7 +19,7 @@ const object = (v:unknown):v is Record<string,unknown> => !!v && typeof v === "o
 const bytes = (v:string) => new TextEncoder().encode(v).byteLength;
 /** A raw string is bounded before JSON.parse. Output copies allowlisted fields only. */
 export function sanitizeRealtimeTiming(raw:unknown):{format:typeof REALTIME_TIMING_FORMAT;clock:"client-performance-ms";units:"ms";records:Row[]} {
- const empty = () => ({format:REALTIME_TIMING_FORMAT,clock:"client-performance-ms" as const,units:"ms" as const,records:[] as Row[]});
+ const empty = () => ({format:REALTIME_TIMING_FORMAT as typeof REALTIME_TIMING_FORMAT,clock:"client-performance-ms" as const,units:"ms" as const,records:[] as Row[]});
  try {
   if(typeof raw !== "string" || raw.length > REALTIME_TIMING_LIMIT || bytes(raw)>REALTIME_TIMING_LIMIT)return empty();
   const doc:unknown=JSON.parse(raw);
