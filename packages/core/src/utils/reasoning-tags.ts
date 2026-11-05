@@ -101,15 +101,59 @@ export function findNextCloseTag(
 	return null;
 }
 
+/** True when an open tag ends `/>` (a self-closing tag opens no block). */
+function isSelfClosingTag(text: string, open: TagMatch): boolean {
+	return open.end >= 2 && text[open.end - 2] === "/";
+}
+
+/**
+ * Finds the close tag that matches the open tag ending at `from`: the
+ * first later close at which the count of opens seen since `from` returns
+ * to zero. An open pairs with its MATCHING close, not the nearest close,
+ * so a nested block of the same family is removed with its outer block
+ * instead of leaving the outer block's tail and stray close behind.
+ * Returns `null` when no close in the bounded prefix balances the open
+ * (an unbalanced open is left for the caller's unclosed-suffix pass,
+ * which removes from the first such open to end-of-text, rather than
+ * pairing it with an inner block's close and leaking the tail).
+ */
+function findMatchingCloseTag(
+	text: string,
+	from: number,
+	bound: number,
+	tagAlternation: string,
+): TagMatch | null {
+	let depth = 1;
+	let scan = from;
+	while (scan < bound) {
+		const open = findNextOpenTag(text, scan, tagAlternation);
+		const close = findNextCloseTag(text, scan, tagAlternation);
+		if (!close || close.end > bound) return null;
+		if (open && open.start < close.start && open.start < bound) {
+			if (isSelfClosingTag(text, open)) {
+				scan = open.end;
+				continue;
+			}
+			depth++;
+			scan = open.end;
+			continue;
+		}
+		depth--;
+		if (depth === 0) return close;
+		scan = close.end;
+	}
+	return null;
+}
+
 /**
  * Removes every complete `open...close` pair for a name in `tagAlternation`,
  * bounded to the prefix through the LAST close tag in `text` (a suffix of
  * dangling opens after the last close cannot contain a full pair, so it is
  * never fed to the pairing scan — the caller's unclosed-suffix pass handles
- * it separately). Non-greedy like the regex it replaces: an open pairs with
- * the NEAREST later close, so nested same-family tags collapse the outer
- * pair and its embedded markup together (see outbound-sanitize's
- * "nested same-family tags" characterization test).
+ * it separately). Depth-counted, not non-greedy: an open pairs with its
+ * matching close, so nested same-family tags are removed with the whole
+ * outer block and its contents, as the outbound sanitizer's doc promises
+ * ("Paired tags are removed with their contents").
  */
 export function stripPairedTagBlocks(
 	text: string,
@@ -131,8 +175,20 @@ export function stripPairedTagBlocks(
 	while (pos < lastCloseEnd) {
 		const open = findNextOpenTag(text, pos, tagAlternation);
 		if (!open || open.start >= lastCloseEnd) break;
-		const close = findNextCloseTag(text, open.end, tagAlternation);
-		if (!close || close.end > lastCloseEnd) break;
+		if (isSelfClosingTag(text, open)) {
+			// A self-closing tag holds no content: drop the tag alone.
+			out += text.slice(cursor, open.start);
+			cursor = open.end;
+			pos = open.end;
+			continue;
+		}
+		const close = findMatchingCloseTag(
+			text,
+			open.end,
+			lastCloseEnd,
+			tagAlternation,
+		);
+		if (!close) break;
 		out += text.slice(cursor, open.start);
 		cursor = close.end;
 		pos = close.end;
