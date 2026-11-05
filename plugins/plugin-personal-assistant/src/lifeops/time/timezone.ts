@@ -91,6 +91,37 @@ const TIME_PREPOSITIONS = new Set([
   "till",
 ]);
 
+// Words that start a time phrase. After "in", a region word followed by one
+// of them, or at the end of the text, names a zone ("in PT next week", "in ET
+// tomorrow", "in Pacific for next week"); any other word after it usually
+// continues a place name ("in Central Park", "in Mountain View", "in central
+// London", "in eastern Europe").
+const TIME_PHRASE_WORDS = new Set([
+  "today",
+  "tonight",
+  "tomorrow",
+  "next",
+  "this",
+  "every",
+  "on",
+  "at",
+  "for",
+  "from",
+  "by",
+  "until",
+  "till",
+  "before",
+  "after",
+  "starting",
+  "monday",
+  "tuesday",
+  "wednesday",
+  "thursday",
+  "friday",
+  "saturday",
+  "sunday",
+]);
+
 const IANA_TIME_ZONE_PATTERN = /\b([A-Za-z]+(?:\/[A-Za-z0-9_+-]+)+)\b/g;
 
 function supportedTimeZoneValues(): string[] {
@@ -178,9 +209,7 @@ function isZoneWord(tokens: readonly string[], index: number): boolean {
  * Whether the words before `tokens[index]` set up a zone: "timezone" or
  * "time zone", optionally followed by "to" / "is" ("set my timezone to
  * Pacific"), or the schedule phrase "all times in" / "all times are in"
- * ("all times in CT"). A bare "in" is not enough for a region word ("in
- * Central Park", "in Mountain View", "in central London"), and "three times
- * in Central Park" counts visits.
+ * ("all times in CT").
  */
 function followsZoneWord(tokens: readonly string[], index: number): boolean {
   const previous = tokens[index - 1];
@@ -198,8 +227,9 @@ function followsZoneWord(tokens: readonly string[], index: number): boolean {
  * Whether the phrase at `tokens[index, index + size)` is used as a zone or a
  * place: the whole text, followed by "time" ("Tokyo time"), right after a
  * clock time ("10am PT", "3:30 central", "noon PT", "at 5 central"), after a
- * zone word ("timezone to Pacific", "all times in CT"), or, for a place,
- * after "in" ("while I'm in Tokyo").
+ * zone word ("timezone to Pacific", "all times in CT"), or after "in": a
+ * place anywhere ("while I'm in Tokyo"), a region word before a time phrase
+ * or at the end ("while I'm in PT next week", "meeting is in ET tomorrow").
  */
 function phraseNamesZone(
   tokens: readonly string[],
@@ -217,7 +247,8 @@ function phraseNamesZone(
   return (
     isClockTimeToken(tokens, index - 1) ||
     followsZoneWord(tokens, index) ||
-    (place && tokens[index - 1] === "in")
+    (tokens[index - 1] === "in" &&
+      (place || next === undefined || TIME_PHRASE_WORDS.has(next)))
   );
 }
 

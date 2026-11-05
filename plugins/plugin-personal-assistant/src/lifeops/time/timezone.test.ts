@@ -71,8 +71,8 @@ describe("free-text time-zone scan ignores ordinary words", () => {
     // "am" and "pm" mark a clock time only after an hour.
     "I am central to the launch next week",
     "I am central to the project and need to call Casey tomorrow",
-    // "in" before a region word is usually a place, and "morning PT" is
-    // usually a session.
+    // A region word after "in" is part of a place when a name follows it,
+    // and "morning PT" is usually a session.
     "lunch in Mountain View next week",
     "find three slots while I'm in central London",
     "find slots while I'm in eastern Europe next week",
@@ -109,6 +109,10 @@ describe("free-text time-zone scan reads a zone where the text names one", () =>
     ["my time zone is Central, find three slots next week", "America/Chicago"],
     ["all times in CT", "America/Chicago"],
     ["find three slots next week, all times are in PT", "America/Los_Angeles"],
+    ["while I'm in PT next week find slots with Ryan", "America/Los_Angeles"],
+    ["meeting is in ET tomorrow", "America/New_York"],
+    ["schedule in Pacific for next week", "America/Los_Angeles"],
+    ["find three slots with Ryan while I'm in ET", "America/New_York"],
   ])("reads %j as %s", (sentence, timeZone) => {
     expect(extractExplicitTimeZoneFromText(sentence)).toBe(timeZone);
   });
