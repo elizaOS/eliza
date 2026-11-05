@@ -252,10 +252,15 @@ async function main() {
     ? [
         "--var",
         "NODE_ENV:test",
-        // Paid proxy routes require the same admission snapshot here that
-        // production derives from its auth cache. The E2E cache is in memory.
+        // Paid proxy routes require an admission snapshot. The in-memory
+        // E2E cache still requires the same strong revocation gate as staging.
         ...(isCloudE2ETestMode
-          ? ["--var", "INFERENCE_AUTH_CACHE_ENABLED:true"]
+          ? [
+              "--var",
+              "INFERENCE_AUTH_CACHE_ENABLED:true",
+              "--var",
+              "INFERENCE_STRONG_REVOCATION_ENABLED:true",
+            ]
           : []),
         ...(process.env.CLOUD_E2E_RUN_RECEIPT
           ? [
