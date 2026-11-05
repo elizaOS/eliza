@@ -1,5 +1,9 @@
 /** Calendar model view and reversible event encoding; canonical data/receipts stay intact. */
-import type { ActionResult } from "@elizaos/core";
+import type {
+  ActionResult,
+  ProviderDataRecord,
+  ProviderValue,
+} from "@elizaos/core";
 export function calendarReadPromptProjection(
   data: ActionResult["data"],
 ): Pick<ActionResult, "promptData" | "promptDataMode"> {
@@ -8,37 +12,63 @@ export function calendarReadPromptProjection(
   // routing and edits. The ordinary read model receives one Calendar view;
   // explicit source administration keeps its own complete result contract.
   const { sources, calendarSources, ...withoutSources } = data;
-  const sourceInventory = Array.isArray(sources) ? sources : Array.isArray(calendarSources) ? calendarSources : undefined;
+  const sourceInventory = Array.isArray(sources)
+    ? sources
+    : Array.isArray(calendarSources)
+      ? calendarSources
+      : undefined;
   const unified = sourceInventory !== undefined;
-  const modelEvent = (event: unknown) => {
-    if (!event || typeof event !== "object" || Array.isArray(event)) return event;
-    const { accountEmail: _accountEmail, calendarSummary: _calendarSummary, ...record } = event as Record<string, unknown>;
+  const modelEvent = (event: ProviderValue): ProviderValue => {
+    if (!event || typeof event !== "object" || Array.isArray(event))
+      return event;
+    const {
+      accountEmail: _accountEmail,
+      calendarSummary: _calendarSummary,
+      ...record
+    } = event as ProviderDataRecord;
     return record;
   };
   const rawReply = data.replyContext;
-  const reply = rawReply && typeof rawReply === "object" && !Array.isArray(rawReply)
-    ? rawReply as Record<string, unknown> : undefined;
+  const reply =
+    rawReply && typeof rawReply === "object" && !Array.isArray(rawReply)
+      ? (rawReply as ProviderDataRecord)
+      : undefined;
   // Facts duplicate the structured events and can contain a legacy source
   // enumeration. Keep the actual scope/selection constraints, not that prose.
-  const { facts: _facts, userFacingFacts: _userFacingFacts, ...replyScope } = reply ?? {};
+  const {
+    facts: _facts,
+    userFacingFacts: _userFacingFacts,
+    ...replyScope
+  } = reply ?? {};
 
   const view = unified
     ? {
         ...withoutSources,
-        ...(Array.isArray(data.events) ? { events: data.events.map(modelEvent) } : {}),
+        ...(Array.isArray(data.events)
+          ? { events: data.events.map(modelEvent) }
+          : {}),
         ...(data.event !== undefined ? { event: modelEvent(data.event) } : {}),
         ...(reply ? { replyContext: replyScope } : {}),
         calendarView: {
           name: "Calendar",
           state: data.state,
           sourceIssues: sourceInventory
-            .filter((source) => source && typeof source === "object" && source.status !== "fresh")
+            .filter(
+              (source) =>
+                source &&
+                typeof source === "object" &&
+                source.status !== "fresh",
+            )
             .map((source) => ({
               status: source.status,
               visibility: source.visibility,
-              errorCode: source.error && typeof source.error === "object" ? source.error.code : undefined,
+              errorCode:
+                source.error && typeof source.error === "object"
+                  ? source.error.code
+                  : undefined,
             })),
-          presentation: "This is one canonical Calendar with optional connected sync. Describe its events and read coverage, not separate provider calendars. Event IDs and provenance fields are internal routing evidence, not additional user calendars. Preserve partial/unavailable status and the requested time-window boundary; never claim an incomplete view is empty.",
+          presentation:
+            "This is one canonical Calendar with optional connected sync. Describe its events and read coverage, not separate provider calendars. Event IDs and provenance fields are internal routing evidence, not additional user calendars. Preserve partial/unavailable status and the requested time-window boundary; never claim an incomplete view is empty.",
         },
       }
     : data;
@@ -54,7 +84,8 @@ export function calendarReadPromptProjection(
     const wire = JSON.parse(JSON.stringify(view)) as typeof data;
     const events = wire.events as Record<string, unknown>[];
     const first = events[0];
-    if (!first || typeof first !== "object" || Array.isArray(first)) return fallback;
+    if (!first || typeof first !== "object" || Array.isArray(first))
+      return fallback;
     const keys = Object.keys(first),
       rows: unknown[][] = [];
     const shared: Record<string, unknown> = {};

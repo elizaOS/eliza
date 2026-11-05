@@ -3992,8 +3992,9 @@ export class CalendarService extends Service {
           .map(icsCalendarSummary),
       );
     }
+    const managedCalendar = this.managedCalendar;
     if (
-      this.managedCalendar?.acceptsGrantId(request?.grantId) &&
+      managedCalendar?.acceptsGrantId(request?.grantId) &&
       side !== "agent" &&
       (!mode || mode === "cloud_managed")
     ) {
@@ -4001,7 +4002,7 @@ export class CalendarService extends Service {
         signal?.throwIfAborted();
         const managed = await timeInferenceSpan(
           "calendar:discovery:managed-sources",
-          () => this.managedCalendar.sources(signal),
+          () => managedCalendar.sources(signal),
         );
         summaries.push(
           ...managed.filter(
