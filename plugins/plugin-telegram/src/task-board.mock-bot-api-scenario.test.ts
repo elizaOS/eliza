@@ -159,4 +159,50 @@ describe("Telegram task board mock Bot API scenario (#8902 AC4)", () => {
       17,
     );
   });
+
+  it("posts one board inside the Bot API text limit for a long live list", async () => {
+    let commandHandler:
+      | ((ctx: {
+          chat?: { id: number };
+          message?: { message_thread_id?: number };
+        }) => Promise<void>)
+      | undefined;
+    const bot = {
+      command: vi.fn(
+        (_name: string, handler: NonNullable<typeof commandHandler>) => {
+          commandHandler = handler;
+        },
+      ),
+      telegram: {
+        // The Bot API rejects a text longer than 4096 UTF-16 units instead of
+        // splitting it, so a board over the limit is never delivered.
+        sendMessage: vi.fn(async (_chatId: unknown, text: unknown) => {
+          if (String(text).length > 4096) {
+            throw new Error("400: Bad Request: message is too long");
+          }
+          return { message_id: 8903 };
+        }),
+        pinChatMessage: vi.fn(async () => undefined),
+      },
+    };
+    const messageManager = { editMessage: vi.fn(async () => undefined) };
+    const tasks: TaskBoardEntry[] = Array.from({ length: 60 }, (_, index) => ({
+      id: `task-${index}`,
+      title: `deploy step ${index} to the staging cluster ${"x".repeat(90)}`,
+      status: "open",
+    }));
+    const runtime = makeRuntime({ tasks, onRegister: () => {} });
+
+    registerTelegramTaskBoardCommand(bot, runtime, messageManager);
+    await commandHandler?.({
+      chat: { id: -1008902000000 },
+      message: { message_thread_id: 17 },
+    });
+
+    const posted = bot.telegram.sendMessage.mock.calls[0]?.[1];
+    expect(typeof posted).toBe("string");
+    expect(String(posted).length).toBeLessThanOrEqual(4096);
+    expect(String(posted)).toContain("Task board (60 active)");
+    expect(String(posted)).toContain("more active");
+  });
 });

@@ -144,12 +144,24 @@ export function taskBoardEmoji(status: string): string {
   return STATUS_EMOJI[status] ?? "•";
 }
 
+/** Telegram rejects a Bot API message text longer than this many UTF-16 units. */
+export const TELEGRAM_TASK_BOARD_TEXT_LIMIT = 4096;
+
 /**
  * Render the board body — plain text (no Markdown) so the same string is safe
  * for both the initial post and an in-place MarkdownV2 edit. Live tasks first,
  * then a capped "recently closed" tail.
+ *
+ * The board is one message that later renders edit in place, so the body must
+ * stay inside {@link TELEGRAM_TASK_BOARD_TEXT_LIMIT}: a longer body is rejected
+ * by the Bot API, the post throws, and the chat gets no board at all. Fill the
+ * live section until the budget is spent, count the rest in one "+N more
+ * active" line, and drop the closed tail when even that would overflow.
  */
-export function composeTaskBoard(entries: TaskBoardEntry[]): string {
+export function composeTaskBoard(
+  entries: TaskBoardEntry[],
+  limit = TELEGRAM_TASK_BOARD_TEXT_LIMIT,
+): string {
   if (entries.length === 0) {
     return "📋 Task board\n\nNo tasks yet. Start one and it'll show up here.";
   }
@@ -157,13 +169,32 @@ export function composeTaskBoard(entries: TaskBoardEntry[]): string {
   const closed = entries.filter((e) => !LIVE_STATUSES.has(e.status));
   const line = (e: TaskBoardEntry) =>
     `${taskBoardEmoji(e.status)} ${e.title} — ${e.status}`;
-  const sections: string[] = [`📋 Task board (${live.length} active)`];
-  if (live.length > 0) sections.push(live.map(line).join("\n"));
-  if (closed.length > 0)
-    sections.push(
-      `recently closed:\n${closed.slice(0, 5).map(line).join("\n")}`,
+  const header = `📋 Task board (${live.length} active)`;
+  const tail =
+    closed.length > 0
+      ? `recently closed:\n${closed.slice(0, 5).map(line).join("\n")}`
+      : undefined;
+  const compose = (lines: string[], omitted: number) =>
+    [
+      header,
+      lines.length > 0 ? lines.join("\n") : undefined,
+      omitted > 0 ? `… +${omitted} more active` : undefined,
+    ]
+      .filter((part): part is string => part !== undefined)
+      .join("\n\n");
+  const lines: string[] = [];
+  for (const entry of live) {
+    const candidate = compose(
+      [...lines, line(entry)],
+      live.length - lines.length - 1,
     );
-  return sections.join("\n\n");
+    if (candidate.length > limit) break;
+    lines.push(line(entry));
+  }
+  const body = compose(lines, live.length - lines.length);
+  if (tail !== undefined && `${body}\n\n${tail}`.length <= limit)
+    return `${body}\n\n${tail}`;
+  return body;
 }
 
 export interface TaskBoardPostResult {
