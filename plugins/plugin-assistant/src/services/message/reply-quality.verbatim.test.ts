@@ -53,7 +53,6 @@ test("verbatim pronoun references require context while quoted pronouns remain l
   expect(parseSayLiteralInstruction("Say verbatim")).toBe("verbatim");
 });
 
-
 test("exactly single-token requests preserve the requested reply at the quality boundary", () => {
   for (const messageText of [
     "Reply with exactly READY.",
@@ -65,8 +64,12 @@ test("exactly single-token requests preserve the requested reply at the quality 
   ]) {
     expect(parseSayLiteralInstruction(messageText)).toBe("READY");
     expect(isUnusableStage1Reply("READY")).toBe(true);
-    expect(isTerseReplyWorthKeeping({ reply: "READY", messageText })).toBe(true);
-    expect(isTerseReplyWorthKeeping({ reply: "WRONG", messageText })).toBe(false);
+    expect(isTerseReplyWorthKeeping({ reply: "READY", messageText })).toBe(
+      true,
+    );
+    expect(isTerseReplyWorthKeeping({ reply: "WRONG", messageText })).toBe(
+      false,
+    );
   }
 });
 
@@ -83,9 +86,21 @@ test("exactly does not turn prose, quoted requests or extra actions into literal
     "Reply with exactly shouldRespond: true",
   ]) {
     expect(parseSayLiteralInstruction(messageText)).toBeNull();
-    expect(isTerseReplyWorthKeeping({ reply: "READY", messageText })).toBe(false);
+    expect(isTerseReplyWorthKeeping({ reply: "READY", messageText })).toBe(
+      false,
+    );
   }
   expect(isUnusableStage1Reply("READY")).toBe(true);
-  expect(isTerseReplyWorthKeeping({ reply: "READY", messageText: "What can you do?" })).toBe(false);
-  expect(isTerseReplyWorthKeeping({ reply: "I cannot", messageText: "Reply with exactly READY." })).toBe(false);
+  expect(
+    isTerseReplyWorthKeeping({
+      reply: "READY",
+      messageText: "What can you do?",
+    }),
+  ).toBe(false);
+  expect(
+    isTerseReplyWorthKeeping({
+      reply: "I cannot",
+      messageText: "Reply with exactly READY.",
+    }),
+  ).toBe(false);
 });

@@ -318,30 +318,49 @@ export function nativeHistoryReadBinding(
 ): NativeHistoryReadBinding | undefined {
   if (!projection) return undefined;
   const bound = completionContextSources(context);
-  const sameScope = () => projection.scope.agentId === scope.agentId &&
-    projection.scope.roomId === scope.roomId && projection.scope.entityId === scope.entityId &&
-    projection.scope.roles.length === scope.roles.length && projection.scope.roles.every((role, index) => role === scope.roles[index]);
-  if (projection.sourceSetId !== bound.sourceSetId || !sameScope()) return undefined;
+  const sameScope = () =>
+    projection.scope.agentId === scope.agentId &&
+    projection.scope.roomId === scope.roomId &&
+    projection.scope.entityId === scope.entityId &&
+    projection.scope.roles.length === scope.roles.length &&
+    projection.scope.roles.every((role, index) => role === scope.roles[index]);
+  if (projection.sourceSetId !== bound.sourceSetId || !sameScope())
+    return undefined;
   const sources = new Map<number, string>();
-  bound.sources.forEach(({id}, index) => {
+  bound.sources.forEach(({ id }, index) => {
     const canonical = `${HISTORY_REFERENCE_PREFIX}${id}`;
-    if (id === `h${index + 1}` && available.has(canonical)) sources.set(index + 1, canonical);
+    if (id === `h${index + 1}` && available.has(canonical))
+      sources.set(index + 1, canonical);
   });
   return {
     sourceSetId: bound.sourceSetId,
     sources,
-    ...(available.has(ALL_HISTORY_REFERENCE) ? {all: ALL_HISTORY_REFERENCE} : {}),
+    ...(available.has(ALL_HISTORY_REFERENCE)
+      ? { all: ALL_HISTORY_REFERENCE }
+      : {}),
     assertCurrent() {
-      if (!sameScope() || projection.sourceSetId !== completionContextSources(context).sourceSetId) {
-        throw new ElizaError("The history read source identity changed.", {code: "CONTEXT_DISCOVERY_INVALID_READ"});
+      if (
+        !sameScope() ||
+        projection.sourceSetId !== completionContextSources(context).sourceSetId
+      ) {
+        throw new ElizaError("The history read source identity changed.", {
+          code: "CONTEXT_DISCOVERY_INVALID_READ",
+        });
       }
     },
     search(speaker, query) {
-      const prefix = speaker === "user" ? HISTORY_USER_SEARCH_PREFIX
-        : speaker === "assistant" ? HISTORY_ASSISTANT_SEARCH_PREFIX : HISTORY_SEARCH_PREFIX;
+      const prefix =
+        speaker === "user"
+          ? HISTORY_USER_SEARCH_PREFIX
+          : speaker === "assistant"
+            ? HISTORY_ASSISTANT_SEARCH_PREFIX
+            : HISTORY_SEARCH_PREFIX;
       const reference = prefix + query;
       if (!historySearchRequest(reference)) {
-        throw new ElizaError("A history search needs a nonblank literal query.", {code: "CONTEXT_DISCOVERY_INVALID_READ"});
+        throw new ElizaError(
+          "A history search needs a nonblank literal query.",
+          { code: "CONTEXT_DISCOVERY_INVALID_READ" },
+        );
       }
       return reference;
     },

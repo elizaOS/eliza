@@ -12,8 +12,13 @@ import type {
 } from "@elizaos/core";
 import { ElizaError } from "@elizaos/core";
 import { ACKNOWLEDGMENT_RULE } from "../../prompts/acknowledgment.ts";
+import {
+  decodeNativeContextReads,
+  type NativeContextReadContract,
+  nativeContextReadsSchema,
+  supportsNativeContextReads,
+} from "./native-context-read.ts";
 import { parseToolArguments } from "./tool-arguments.ts";
-import { decodeNativeContextReads, nativeContextReadsSchema, supportsNativeContextReads, type NativeContextReadContract } from "./native-context-read.ts";
 
 export const READ_CONTEXT_TOOL_NAME = "READ_CONTEXT";
 
@@ -43,8 +48,7 @@ export function createContextReadTool(
     strict: true,
     description: contract
       ? "Read only offered references before deciding. Use reads with provider references, or source-set-bound history selectors. A source ordinal N selects exactly the offered history:hN original, not a database ID. History search keeps the complete literal query and selected speaker. Choose HANDLE_RESPONSE directly when no read is needed. Reads do not execute actions or authorize a final reply."
-      :
-      "Read needed authorized provider references or conversation originals before deciding. Use explicitly advertised provider reference IDs; a routing-context or tool name is not readable unless advertised as a provider reference. Select contexts in HANDLE_RESPONSE; inspect actions via DISCOVER_ACTIONS. For a specific saved-fact lookup, first use an advertised stored-memory reference, a known history:hN, or an advertised literal-search scope for the fact's subject; inspect matched originals and their corrections. Use history:all when targeted reads leave dependencies unresolved, for exhaustive coverage, or before claiming something was never discussed. Do not enumerate the history index. Returns complete originals; no reply or effects execute. When current records, status or timestamps are not supplied by an advertised provider, use HANDLE_RESPONSE to route their read to planner actions. Do not use history:all to repair an unknown routing-context or tool name. Historical messages do not establish current record timestamps or state.",
+      : "Read needed authorized provider references or conversation originals before deciding. Use explicitly advertised provider reference IDs; a routing-context or tool name is not readable unless advertised as a provider reference. Select contexts in HANDLE_RESPONSE; inspect actions via DISCOVER_ACTIONS. For a specific saved-fact lookup, first use an advertised stored-memory reference, a known history:hN, or an advertised literal-search scope for the fact's subject; inspect matched originals and their corrections. Use history:all when targeted reads leave dependencies unresolved, for exhaustive coverage, or before claiming something was never discussed. Do not enumerate the history index. Returns complete originals; no reply or effects execute. When current records, status or timestamps are not supplied by an advertised provider, use HANDLE_RESPONSE to route their read to planner actions. Do not use history:all to repair an unknown routing-context or tool name. Historical messages do not establish current record timestamps or state.",
     parameters: {
       type: "object",
       additionalProperties: false,
@@ -60,7 +64,7 @@ export function createContextReadTool(
             }
           : {}),
         // extractContextRead enforces nonempty reads before any provider access.
-        ...(reads ? {reads} : {contextRequests: { ...requests }}),
+        ...(reads ? { reads } : { contextRequests: { ...requests } }),
       },
       required: includeAcknowledgment
         ? [reads ? "reads" : "contextRequests", "acknowledgment"]
@@ -101,12 +105,25 @@ export function extractContextRead(
     );
   const args = parseToolArguments(entry.arguments);
   if (args && "reads" in args) {
-    if (!contract || Object.keys(args).some(key => key !== "reads" && key !== "acknowledgment") ||
-        (args.acknowledgment !== undefined && typeof args.acknowledgment !== "string")) {
-      throw new ElizaError("A native context read needs one offered read contract.", {code: "CONTEXT_DISCOVERY_INVALID_READ"});
+    if (
+      !contract ||
+      Object.keys(args).some(
+        (key) => key !== "reads" && key !== "acknowledgment",
+      ) ||
+      (args.acknowledgment !== undefined &&
+        typeof args.acknowledgment !== "string")
+    ) {
+      throw new ElizaError(
+        "A native context read needs one offered read contract.",
+        { code: "CONTEXT_DISCOVERY_INVALID_READ" },
+      );
     }
-    return {contextRequests: decodeNativeContextReads(args.reads, contract),
-      ...(typeof args.acknowledgment === "string" ? {acknowledgment: args.acknowledgment} : {})};
+    return {
+      contextRequests: decodeNativeContextReads(args.reads, contract),
+      ...(typeof args.acknowledgment === "string"
+        ? { acknowledgment: args.acknowledgment }
+        : {}),
+    };
   }
   // Compatibility input only: old adapters and recorded READ_CONTEXT calls
   // may still use contextRequests. The new native tool never advertises this

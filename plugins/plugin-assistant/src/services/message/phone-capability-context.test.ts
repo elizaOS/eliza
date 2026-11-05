@@ -8,6 +8,7 @@ import {
   renderContextObject,
 } from "@elizaos/core";
 import { describe, expect, it, vi } from "vitest";
+import { requiredFixtureValue } from "../../../test/required-fixture-value.ts";
 import { proposeDeviceAction } from "../device-actions/action.ts";
 
 const binding = vi.hoisted(() => ({
@@ -314,15 +315,21 @@ describe("voice response policy", () => {
         (segment) => segment.id === "voice-response-style",
       );
       expect(policy).toHaveLength(1);
-      expect(policy![0].content).toContain(
+      expect(requiredFixtureValue(policy)[0].content).toContain(
         "Expand when the user explicitly asks for detail",
       );
-      expect(policy![0].content).toContain("preserve attribution required");
-      expect(policy![0].content).toContain("one to three short sentences");
-      expect(policy![0].content).toContain(
+      expect(requiredFixtureValue(policy)[0].content).toContain(
+        "preserve attribution required",
+      );
+      expect(requiredFixtureValue(policy)[0].content).toContain(
+        "one to three short sentences",
+      );
+      expect(requiredFixtureValue(policy)[0].content).toContain(
         "takes priority over generic thoroughness",
       );
-      expect(policy![0].content).toContain("keep complete internal evidence");
+      expect(requiredFixtureValue(policy)[0].content).toContain(
+        "keep complete internal evidence",
+      );
       const input =
         providerPhase === "response"
           ? renderMessageHandlerModelInput(args.runtime, context, [], {
@@ -371,7 +378,9 @@ describe("model acknowledgment authoring grammar", () => {
       "These references work for any topic",
     );
     expect(ACKNOWLEDGMENT_RULE).toContain("a complete lookup phrase");
-    expect(ACKNOWLEDGMENT_RULE).toContain("Do not invent other forms or synonyms");
+    expect(ACKNOWLEDGMENT_RULE).toContain(
+      "Do not invent other forms or synonyms",
+    );
     expect(ACKNOWLEDGMENT_RULE).toContain(
       "leave it empty and still do authorized work",
     );

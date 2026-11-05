@@ -2936,9 +2936,20 @@ describe("simple arithmetic evaluator parity", () => {
   );
 });
 
-it.each(["Let me check what's on your calendar today.","I'll check what is on the calendar tomorrow."])("accepts prospective calendar question: %s",text=>{expect(replyIsClaimSafeAcknowledgment(text)).toBe(true)});
-it.each(["I checked what's on your calendar today.","Let me check what's on your calendar today. You have no meetings.","Let me check what is on your calendar today and send it to Alice.","Let me check what's on Sarah's calendar today."])("rejects calendar result or expanded authority: %s",text=>{expect(replyIsClaimSafeAcknowledgment(text)).toBe(false)});
-
+it.each([
+  "Let me check what's on your calendar today.",
+  "I'll check what is on the calendar tomorrow.",
+])("accepts prospective calendar question: %s", (text) => {
+  expect(replyIsClaimSafeAcknowledgment(text)).toBe(true);
+});
+it.each([
+  "I checked what's on your calendar today.",
+  "Let me check what's on your calendar today. You have no meetings.",
+  "Let me check what is on your calendar today and send it to Alice.",
+  "Let me check what's on Sarah's calendar today.",
+])("rejects calendar result or expanded authority: %s", (text) => {
+  expect(replyIsClaimSafeAcknowledgment(text)).toBe(false);
+});
 
 describe("complete acknowledgment lookup contract without incomplete latest exception", () => {
   it.each([
@@ -2950,9 +2961,12 @@ describe("complete acknowledgment lookup contract without incomplete latest exce
     "On it. Let me pull the latest.",
     "One sec, let me pull the latest.",
     "Let me pull the latest",
-  ])("rejects an incomplete latest phrase without a special exception: %s", (reply) => {
-    expect(replyIsClaimSafeAcknowledgment(reply)).toBe(false);
-  });
+  ])(
+    "rejects an incomplete latest phrase without a special exception: %s",
+    (reply) => {
+      expect(replyIsClaimSafeAcknowledgment(reply)).toBe(false);
+    },
+  );
   it.each([
     "Let me pull up the latest headlines.",
     "I’ll pull up your calendar.",

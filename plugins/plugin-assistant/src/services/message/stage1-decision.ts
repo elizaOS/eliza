@@ -24,7 +24,6 @@ import {
   computePrefixHashes,
   createHandleResponseTool,
   ElizaError,
-  TurnAbortedError,
   getCandidateActionBackstopRules,
   getStreamingContext,
   getUserMessageText,
@@ -36,6 +35,7 @@ import {
   providerReviewSources,
   recordInferenceSpan,
   sanitizeUserVisibleModelOutput,
+  TurnAbortedError,
   timeInferenceSpan,
   withGuidedDecodeProviderOptions,
   withModelInputBudgetProviderOptions,
@@ -80,9 +80,9 @@ import {
   HISTORY_REFERENCE_PREFIX,
   type HistoryDiscovery,
   historyReferenceNotice,
-  nativeHistoryReadBinding,
   historyReferences,
   loadHistoryReferences,
+  nativeHistoryReadBinding,
   projectReviewedHistory,
   readHistoryContextRequests,
   repairableHistorySourceIds,
@@ -90,6 +90,11 @@ import {
   withReviewedHistorySelection,
 } from "./history-discovery.js";
 import { withoutInactiveFields } from "./inactive-field-schema.js";
+import {
+  assertNativeContextReadToolBudget,
+  type NativeContextReadContract,
+  supportsNativeContextReads,
+} from "./native-context-read.ts";
 import { composeResponseState } from "./provider-state.js";
 import { restorePiiInUserReplyText } from "./reply-policy.ts";
 import { replyIsClaimSafeAcknowledgment } from "./side-effect-claims.ts";
@@ -133,7 +138,6 @@ import {
   reportRejectedUserVisibleModelOutput,
 } from "./stage1-output.ts";
 import { parseToolArguments } from "./tool-arguments.ts";
-import {assertNativeContextReadToolBudget, supportsNativeContextReads, type NativeContextReadContract} from "./native-context-read.ts";
 import { recordMessageHandlerStage } from "./trajectory-stages.ts";
 import type { V5MessageRuntimeInput } from "./turn-input.ts";
 
@@ -338,26 +342,54 @@ export async function generateStage1Decision(
   let repairHistorySourceIds: string[] | undefined;
   let nativeHistoryRead = false;
   let restoredHistorySourceSetId: string | undefined;
-  const nativeTurnIdentity = {agentId:args.runtime.agentId,roomId:args.message.roomId,entityId:args.message.entityId,messageId:args.message.id,responseId:args.responseId};
+  const nativeTurnIdentity = {
+    agentId: args.runtime.agentId,
+    roomId: args.message.roomId,
+    entityId: args.message.entityId,
+    messageId: args.message.id,
+    responseId: args.responseId,
+  };
   const assertNativeTurnIdentity = () => {
-    if (args.runtime.agentId !== nativeTurnIdentity.agentId || args.message.roomId !== nativeTurnIdentity.roomId || args.message.entityId !== nativeTurnIdentity.entityId || args.message.id !== nativeTurnIdentity.messageId || args.responseId !== nativeTurnIdentity.responseId) {
+    if (
+      args.runtime.agentId !== nativeTurnIdentity.agentId ||
+      args.message.roomId !== nativeTurnIdentity.roomId ||
+      args.message.entityId !== nativeTurnIdentity.entityId ||
+      args.message.id !== nativeTurnIdentity.messageId ||
+      args.responseId !== nativeTurnIdentity.responseId
+    ) {
       throw new TurnAbortedError("Context read authorization changed");
     }
   };
-  let nativeSelectionAuthority: {sourceSetId:string;role:string;frameworkHistory:boolean} | undefined;
+  let nativeSelectionAuthority:
+    | { sourceSetId: string; role: string; frameworkHistory: boolean }
+    | undefined;
   let sourceSelectionBinding: ReturnType<typeof createSourceSelectionBinding>;
   let sourceReplySnapshot: ReturnType<typeof createSourceReplySnapshot>;
   let sourceReplyRendering: SourceReplyRendering | undefined;
   let effectiveReplySchema: JSONSchema | undefined;
   const interpretNativeReply = async (raw: string | GenerateTextResult) => {
     if (nativeReadContract || nativeSelectionAuthority) {
-      stage1TurnSignal.throwIfAborted();assertNativeTurnIdentity();
-      const currentRole = await resolveStage1SenderRole(args.runtime, args.message);
-      stage1TurnSignal.throwIfAborted();assertNativeTurnIdentity();
-      const frameworkHistory = nativeSelectionAuthority?.frameworkHistory || nativeReadContract?.history;
-      if (currentRole !== (nativeSelectionAuthority?.role ?? senderRole) ||
-          (frameworkHistory && args.runtime.providers?.some(provider => provider.name.startsWith(HISTORY_REFERENCE_PREFIX))) ||
-          (nativeSelectionAuthority && completionContextSources(context).sourceSetId !== nativeSelectionAuthority.sourceSetId)) {
+      stage1TurnSignal.throwIfAborted();
+      assertNativeTurnIdentity();
+      const currentRole = await resolveStage1SenderRole(
+        args.runtime,
+        args.message,
+      );
+      stage1TurnSignal.throwIfAborted();
+      assertNativeTurnIdentity();
+      const frameworkHistory =
+        nativeSelectionAuthority?.frameworkHistory ||
+        nativeReadContract?.history;
+      if (
+        currentRole !== (nativeSelectionAuthority?.role ?? senderRole) ||
+        (frameworkHistory &&
+          args.runtime.providers?.some((provider) =>
+            provider.name.startsWith(HISTORY_REFERENCE_PREFIX),
+          )) ||
+        (nativeSelectionAuthority &&
+          completionContextSources(context).sourceSetId !==
+            nativeSelectionAuthority.sourceSetId)
+      ) {
         throw new TurnAbortedError("Context read authorization changed");
       }
     }
@@ -510,26 +542,53 @@ export async function generateStage1Decision(
     if (discoveryEnabled)
       fieldSchema = withProviderReviewSchema(fieldSchema, context);
     nativeReadContract = undefined;
-    if (discoveryEnabled && selectedResponseHandlerFields.includes(contextRequestsFieldEvaluator) &&
-        canonicalResponseHandlerSchema.properties?.contextRequests === contextRequestsFieldEvaluator.schema &&
-        supportsNativeContextReads(fieldSchema.properties?.contextRequests)) {
+    if (
+      discoveryEnabled &&
+      selectedResponseHandlerFields.includes(contextRequestsFieldEvaluator) &&
+      canonicalResponseHandlerSchema.properties?.contextRequests ===
+        contextRequestsFieldEvaluator.schema &&
+      supportsNativeContextReads(fieldSchema.properties?.contextRequests)
+    ) {
       // Recover provider-origin offers from the same pure projection, not from
       // routing domains or guessed names. Framework history has its own binding.
-      const providers = projectDiscoverableContext(context, args.state, loadedContext).available;
-      if (contextCatalog && discovery.available.has(CONTEXT_CATALOG_REFERENCE)) providers.add(CONTEXT_CATALOG_REFERENCE);
-      const ownedHistory = args.runtime.providers?.some(provider => provider.name.startsWith(HISTORY_REFERENCE_PREFIX));
-      const historyBinding = ownedHistory ? undefined : nativeHistoryReadBinding(context, history, discovery.available, {
-        agentId: args.runtime.agentId, roomId: args.message.roomId, entityId: args.message.entityId, roles: [senderRole],
-      });
-      nativeReadContract = {providers: new Set([...providers].filter(name => discovery.available.has(name))),
-        ...(historyBinding ? {history: historyBinding} : {})};
+      const providers = projectDiscoverableContext(
+        context,
+        args.state,
+        loadedContext,
+      ).available;
+      if (contextCatalog && discovery.available.has(CONTEXT_CATALOG_REFERENCE))
+        providers.add(CONTEXT_CATALOG_REFERENCE);
+      const ownedHistory = args.runtime.providers?.some((provider) =>
+        provider.name.startsWith(HISTORY_REFERENCE_PREFIX),
+      );
+      const historyBinding = ownedHistory
+        ? undefined
+        : nativeHistoryReadBinding(context, history, discovery.available, {
+            agentId: args.runtime.agentId,
+            roomId: args.message.roomId,
+            entityId: args.message.entityId,
+            roles: [senderRole],
+          });
+      nativeReadContract = {
+        providers: new Set(
+          [...providers].filter((name) => discovery.available.has(name)),
+        ),
+        ...(historyBinding ? { history: historyBinding } : {}),
+      };
     }
     const referenceSchema = nativeReadContract
       ? withAvailableContextRequests(fieldSchema, nativeReadContract.providers)
-      : discoveryEnabled && !history ? withAvailableContextRequests(fieldSchema, discovery.available) : fieldSchema;
-    const readTool = discoveryEnabled && discovery.available.size > 0
-      ? createContextReadTool(nativeReadContract ? fieldSchema : referenceSchema, contextReadProgressEnabled, nativeReadContract)
-      : undefined;
+      : discoveryEnabled && !history
+        ? withAvailableContextRequests(fieldSchema, discovery.available)
+        : fieldSchema;
+    const readTool =
+      discoveryEnabled && discovery.available.size > 0
+        ? createContextReadTool(
+            nativeReadContract ? fieldSchema : referenceSchema,
+            contextReadProgressEnabled,
+            nativeReadContract,
+          )
+        : undefined;
     if (!readTool) nativeReadContract = undefined;
     nativeHistoryRead = Boolean(
       history &&
@@ -552,37 +611,75 @@ export async function generateStage1Decision(
     // Selection authority survives a successful full read even when no further
     // READ_CONTEXT tool remains. Preserve the existing foreground admission gate.
     const canBindSelection = Boolean(
-      (history || restoredHistorySourceSetId || sourceReplySnapshot) && !repairHistoryIdentity &&
-      selectedResponseHandlerFields.includes(completionContextFieldEvaluator) &&
-      selectedResponseHandlerFields.includes(contextRequestsFieldEvaluator) &&
-      canonicalResponseHandlerSchema.properties?.completionContext === completionContextFieldEvaluator.schema &&
-      canonicalResponseHandlerSchema.properties?.contextRequests === contextRequestsFieldEvaluator.schema);
+      (history || restoredHistorySourceSetId || sourceReplySnapshot) &&
+        !repairHistoryIdentity &&
+        selectedResponseHandlerFields.includes(
+          completionContextFieldEvaluator,
+        ) &&
+        selectedResponseHandlerFields.includes(contextRequestsFieldEvaluator) &&
+        canonicalResponseHandlerSchema.properties?.completionContext ===
+          completionContextFieldEvaluator.schema &&
+        canonicalResponseHandlerSchema.properties?.contextRequests ===
+          contextRequestsFieldEvaluator.schema,
+    );
     nativeSelectionAuthority = undefined;
-    if (canBindSelection && discoveryEnabled && supportsNativeContextReads(fieldSchema.properties?.contextRequests)) {
+    if (
+      canBindSelection &&
+      discoveryEnabled &&
+      supportsNativeContextReads(fieldSchema.properties?.contextRequests)
+    ) {
       assertNativeTurnIdentity();
       const evidence = history ?? historyReadEvidence;
-      const sourceSetId = completionContextSources(discovery.context).sourceSetId;
-      if (evidence && (evidence.sourceSetId !== sourceSetId || evidence.scope.agentId !== nativeTurnIdentity.agentId ||
-          evidence.scope.roomId !== nativeTurnIdentity.roomId || evidence.scope.entityId !== nativeTurnIdentity.entityId ||
-          evidence.scope.roles.length !== 1 || evidence.scope.roles[0] !== senderRole)) {
+      const sourceSetId = completionContextSources(
+        discovery.context,
+      ).sourceSetId;
+      if (
+        evidence &&
+        (evidence.sourceSetId !== sourceSetId ||
+          evidence.scope.agentId !== nativeTurnIdentity.agentId ||
+          evidence.scope.roomId !== nativeTurnIdentity.roomId ||
+          evidence.scope.entityId !== nativeTurnIdentity.entityId ||
+          evidence.scope.roles.length !== 1 ||
+          evidence.scope.roles[0] !== senderRole)
+      ) {
         throw new TurnAbortedError("Context read authorization changed");
       }
-      if (restoredHistorySourceSetId && (!historyReadEvidence || historyReadEvidence.sourceSetId !== restoredHistorySourceSetId || restoredHistorySourceSetId !== sourceSetId)) {
+      if (
+        restoredHistorySourceSetId &&
+        (!historyReadEvidence ||
+          historyReadEvidence.sourceSetId !== restoredHistorySourceSetId ||
+          restoredHistorySourceSetId !== sourceSetId)
+      ) {
         throw new TurnAbortedError("Context read authorization changed");
       }
-      nativeSelectionAuthority = {sourceSetId,role:senderRole,frameworkHistory:Boolean(evidence)};
+      nativeSelectionAuthority = {
+        sourceSetId,
+        role: senderRole,
+        frameworkHistory: Boolean(evidence),
+      };
     }
     const selectionAuthority = nativeSelectionAuthority;
     sourceSelectionBinding = canBindSelection
-      ? createSourceSelectionBinding(parameters, discovery.context, selectionAuthority ? {
-          sourceOrdinals:true,
-          assertCurrent(){
-            assertNativeTurnIdentity();
-            if (completionContextSources(context).sourceSetId !== selectionAuthority.sourceSetId) {
-              throw new TurnAbortedError("Context read authorization changed");
-            }
-          },
-        } : undefined)
+      ? createSourceSelectionBinding(
+          parameters,
+          discovery.context,
+          selectionAuthority
+            ? {
+                sourceOrdinals: true,
+                assertCurrent() {
+                  assertNativeTurnIdentity();
+                  if (
+                    completionContextSources(context).sourceSetId !==
+                    selectionAuthority.sourceSetId
+                  ) {
+                    throw new TurnAbortedError(
+                      "Context read authorization changed",
+                    );
+                  }
+                },
+              }
+            : undefined,
+        )
       : undefined;
     const tools = [
       createHandleResponseTool({
@@ -593,7 +690,8 @@ export async function generateStage1Decision(
       }),
       ...(readTool ? [readTool] : []),
     ];
-    if (nativeReadContract || nativeSelectionAuthority) assertNativeContextReadToolBudget(tools);
+    if (nativeReadContract || nativeSelectionAuthority)
+      assertNativeContextReadToolBudget(tools);
     return tools;
   };
   let messageHandlerTools = createMessageHandlerTools();
@@ -1024,7 +1122,11 @@ export async function generateStage1Decision(
     let explicit: string[] = [];
     let invalidReadRepair: string | undefined;
     try {
-      nativeRead = extractContextRead(rawMessageHandler, contextReadEnabled(), nativeReadContract);
+      nativeRead = extractContextRead(
+        rawMessageHandler,
+        contextReadEnabled(),
+        nativeReadContract,
+      );
       parsedDecision =
         nativeRead ?? extractMessageHandlerRawParsed(rawMessageHandler);
       if (terminalReviewAnswerPending && !nativeRead) {
