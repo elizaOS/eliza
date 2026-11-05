@@ -80,8 +80,7 @@ import {
 } from "./turn-session.ts";
 
 /**
- * Content-free activity label from the action's first labelled registered
- * category. Catch-all and system contexts name no activity. Publishing without
+ * Content-free activity label from an unambiguous registered category. Catch-all and system contexts name no activity. Publishing without
  * an owner-only audience check requires every listed category to be public.
  */
 function activityStatusCategory(
@@ -90,14 +89,20 @@ function activityStatusCategory(
 ): { label: string; public: boolean } | undefined {
   let label: string | undefined;
   let isPublic = true;
+  const categoryLabels = new Set<string>();
   for (const context of resolveActionContexts(action)) {
     if (context === "general" || context === "simple") continue;
     const definition = runtime.contexts.get(context);
     if (definition?.sensitivity !== "public") isPublic = false;
     const contextLabel = definition?.label?.trim();
+    if (contextLabel && definition?.sensitivity !== "system")
+      categoryLabels.add(contextLabel);
     if (!label && contextLabel && definition?.sensitivity !== "system")
       label = `Using ${contextLabel}`;
   }
+  // Shared actions such as VIEWS can target several apps. Their first category
+  // is discovery metadata, not proof of which app this invocation uses.
+  if (categoryLabels.size > 1) label = "Working";
   return label ? { label, public: isPublic } : undefined;
 }
 

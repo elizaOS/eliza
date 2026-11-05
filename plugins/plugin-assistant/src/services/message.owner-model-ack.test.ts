@@ -451,12 +451,22 @@ describe("awaited owner model acknowledgments", () => {
     expect(result.chunks).toEqual([]);
   });
 
-  // An action that declares no category takes its catalog entry. Web search
-  // names Web first and keeps its personal document and browser categories.
+  it("does not name the first app for an explicitly multi-category action", async () => {
+    const result = await ownerModelAcknowledgment(true, {
+      toolCategories: ["notes+calendar"],
+    });
+    expect(result.statuses).toEqual([
+      { actionName: "NOTES_CALENDAR_LOOKUP", label: "Working" },
+    ]);
+    expect(result.acknowledgments).toEqual(["Let me check."]);
+  });
+
+  // Catalog-derived actions retain all categories too; a mixed-domain tool
+  // must not imply that its first category is the actual selected resource.
   it.each([
-    ["WEB_SEARCH", "Using Web"],
-    ["SEARCH_WEB", "Using Web"],
-    ["SEARCH", "Using Documents"],
+    ["WEB_SEARCH", "Working"],
+    ["SEARCH_WEB", "Working"],
+    ["SEARCH", "Working"],
   ])(
     "labels an uncategorized %s from its catalog entry",
     async (toolName, label) => {
