@@ -61,6 +61,7 @@ interface GateLedger {
   activeEstimateUsd: number;
   nextAlarmAt: number | null;
   settledRequestIds: string[];
+  settledFenceEstimates?: Record<string, number>;
   /**
    * Highest organization policy generation observed from an authoritative
    * policy read (primary admission or snapshot publication). Cache-served
@@ -496,6 +497,7 @@ function cloneLedger(ledger: GateLedger): GateLedger {
     activeEstimateUsd: ledger.activeEstimateUsd,
     nextAlarmAt: ledger.nextAlarmAt,
     settledRequestIds: [...ledger.settledRequestIds],
+    ...(ledger.settledFenceEstimates && { settledFenceEstimates: { ...ledger.settledFenceEstimates } }),
     ...(ledger.policyGeneration !== undefined && {
       policyGeneration: ledger.policyGeneration,
     }),
@@ -519,13 +521,27 @@ function cloneRateLimitWindows(windows: RateLimitWindows): RateLimitWindows {
   );
 }
 
-function rememberSettledRequest(ledger: GateLedger, requestId: string): void {
+function validSettledFenceEstimates(value: unknown, requestIds: readonly string[]): boolean {
+  if (value === undefined) return true;
+  if (!value || typeof value !== "object" || Array.isArray(value)) return false;
+  const ids = new Set(requestIds);
+  return Object.entries(value).every(([id, amount]) => ids.has(id) && nonNegativeFinite(amount));
+}
+
+function rememberSettledRequest(ledger: GateLedger, requestId: string, fencedEstimateUsd?: number): void {
+  // Only bounded speech IDs require this replay metadata. Duplicating arbitrary
+  // 128-byte request IDs can exhaust the existing 512 KiB ledger bound.
+  const speechRequest = /^speech:[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}:(stt|tts)$/i.test(requestId);
+  if (speechRequest && fencedEstimateUsd !== undefined) {
+    ledger.settledFenceEstimates = { ...ledger.settledFenceEstimates, [requestId]: fencedEstimateUsd };
+  }
   ledger.settledRequestIds.push(requestId);
   if (ledger.settledRequestIds.length > MAX_SETTLED_REQUEST_IDS) {
-    ledger.settledRequestIds.splice(
+    const removed = ledger.settledRequestIds.splice(
       0,
       ledger.settledRequestIds.length - MAX_SETTLED_REQUEST_IDS,
     );
+    for (const id of removed) delete ledger.settledFenceEstimates?.[id];
   }
 }
 
@@ -759,6 +775,7 @@ export class InferenceAdmissionGate {
             this.ledger.nextAlarmAt <= 0)) ||
         !Array.isArray(this.ledger.settledRequestIds) ||
         this.ledger.settledRequestIds.length > MAX_SETTLED_REQUEST_IDS ||
+        !validSettledFenceEstimates(this.ledger.settledFenceEstimates, this.ledger.settledRequestIds) ||
         (this.ledger.policyGeneration !== undefined &&
           balanceRevision(this.ledger.policyGeneration) === null) ||
         this.ledger.settledRequestIds.some(
@@ -1262,7 +1279,7 @@ export class InferenceAdmissionGate {
       request.balanceView,
     );
     recomputeAvailable(ledger);
-    rememberSettledRequest(ledger, request.requestId);
+    rememberSettledRequest(ledger, request.requestId, lease.estimatedCostUsd);
     await this.save(ledger, {
       delete: [{ requestId: request.requestId, lease }],
     });
@@ -1354,7 +1371,10 @@ export class InferenceAdmissionGate {
       return jsonError("Inference admission ledger is unavailable", 503);
     }
     if (existing.settledRequestIds.includes(request.requestId)) {
-      return jsonError("Request ID was already settled", 409);
+      const estimate = existing.settledFenceEstimates?.[request.requestId];
+      if (estimate === undefined || estimate !== request.estimatedCostUsd)
+        return jsonError("Settled request fence target is unavailable or changed", 409);
+      return Response.json({ settlementFenced: true, estimatedCostUsd: estimate, duplicate: true });
     }
     const ledger = cloneLedger(existing);
     const lease = await this.loadLease(request.requestId);
