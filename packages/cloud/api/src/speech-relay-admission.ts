@@ -4,11 +4,11 @@
  * No per-frame database or funding work occurs.
  */
 import { PLATFORM_MARKUP_MULTIPLIER } from "@elizaos/cloud-shared/lib/pricing-constants";
-import { InferenceBalanceCacheWarmingError } from "@elizaos/cloud-shared/lib/services/inference-billing-fast-path";
 import {
-  InsufficientCreditsError,
   type CreditReconciliationResult,
+  InsufficientCreditsError,
 } from "@elizaos/cloud-shared/lib/services/credits";
+import { InferenceBalanceCacheWarmingError } from "@elizaos/cloud-shared/lib/services/inference-billing-fast-path";
 import {
   admitOrganizationInference,
   type OrganizationInferenceAdmission,
@@ -17,8 +17,8 @@ import { CARTESIA_SONIC_MODEL_ID } from "@elizaos/host/voice/cartesia-sonic-tts"
 import type { SpeechRelayCreditReservation } from "@elizaos/host/voice/speech-relay-session";
 import { SPEECH_RELAY_BUDGET } from "@elizaos/host/voice/speech-relay-session";
 import type { SpeechSettlementOutcome } from "@elizaos/host/voice/speech-relay-wire";
-import type { SettlementProgress } from "./speech-retirement-state";
 import type { GenerativeRouteCaller } from "./lib/generative-route-auth";
+import type { SettlementProgress } from "./speech-retirement-state";
 
 const round = (value: number) =>
   Math.round((value + Number.EPSILON) * 1e6) / 1e6;
@@ -61,9 +61,10 @@ export async function reserveSpeechRelayAdmission(input: {
     const receipt = result?.terminalReceipt;
     return (
       receipt?.version === 1 &&
-      receipt.status === (admission.mode === "durable_object_funded_budget"
-        ? "funded_persisted"
-        : "canonical_completed") &&
+      receipt.status ===
+        (admission.mode === "durable_object_funded_budget"
+          ? "funded_persisted"
+          : "canonical_completed") &&
       receipt.organizationId === caller.user.organization_id &&
       receipt.requestId === requestId &&
       receipt.amountUsd === amount.toFixed(6) &&

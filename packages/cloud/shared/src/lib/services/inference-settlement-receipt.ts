@@ -1,4 +1,7 @@
-import type { OrganizationInferenceAdmission, OrganizationInferenceAdmissionParams } from "./organization-inference-admission";
+import type {
+  OrganizationInferenceAdmission,
+  OrganizationInferenceAdmissionParams,
+} from "./organization-inference-admission";
 
 /** Attach an exact receipt only to a completed, collected canonical result.
  * Missing sweep claims/null and uncollected outcomes are not terminal evidence.
@@ -11,33 +14,57 @@ export function withCanonicalSettlementReceipt(
   const settle = admission.settle;
   const mode = admission.mode;
   const { organizationId, requestId } = context;
-  return { ...admission, settle: async amount => {
-    const result = await settle.call(admission, amount);
-    if (!result) return result;
-    const collected = result.collectedAmount ?? result.reservedAmount;
-    const authoritative = mode !== "durable_object_funded_budget" &&
-      Number.isFinite(amount) && amount >= 0 && result.actualCost === amount &&
-      ["none", "refund", "overage"].includes(result.adjustmentType) && Number.isFinite(collected) && collected >= amount &&
-      Array.isArray(result.settlementTransactionIds) &&
-      (amount === 0 || result.settlementTransactionIds.length > 0) &&
-      result.settlementTransactionIds.every(id => typeof id === "string" && id.length > 0);
-    const prior = result.terminalReceipt;
-    if (prior) {
-      const verified =
-        mode === "durable_object_funded_budget"
-          ? prior.status === "funded_persisted" &&
-            Number.isFinite(amount) && amount >= 0 &&
-            result.actualCost === amount && result.collectedAmount === amount
-          : authoritative && prior.status === "canonical_completed";
-      if (!verified || prior.version !== 1 ||
-          prior.organizationId !== organizationId || prior.requestId !== requestId ||
-          prior.amountUsd !== amount.toFixed(6) || prior.mode !== mode)
-        throw Error("Canonical settlement receipt identity mismatch");
-      return result;
-    }
-    return { ...result, terminalReceipt: authoritative ? {
-      version: 1 as const, organizationId: organizationId, requestId,
-      amountUsd: amount.toFixed(6), mode, status: "canonical_completed" as const,
-    } : undefined };
-  } };
+  return {
+    ...admission,
+    settle: async (amount) => {
+      const result = await settle.call(admission, amount);
+      if (!result) return result;
+      const collected = result.collectedAmount ?? result.reservedAmount;
+      const authoritative =
+        mode !== "durable_object_funded_budget" &&
+        Number.isFinite(amount) &&
+        amount >= 0 &&
+        result.actualCost === amount &&
+        ["none", "refund", "overage"].includes(result.adjustmentType) &&
+        Number.isFinite(collected) &&
+        collected >= amount &&
+        Array.isArray(result.settlementTransactionIds) &&
+        (amount === 0 || result.settlementTransactionIds.length > 0) &&
+        result.settlementTransactionIds.every((id) => typeof id === "string" && id.length > 0);
+      const prior = result.terminalReceipt;
+      if (prior) {
+        const verified =
+          mode === "durable_object_funded_budget"
+            ? prior.status === "funded_persisted" &&
+              Number.isFinite(amount) &&
+              amount >= 0 &&
+              result.actualCost === amount &&
+              result.collectedAmount === amount
+            : authoritative && prior.status === "canonical_completed";
+        if (
+          !verified ||
+          prior.version !== 1 ||
+          prior.organizationId !== organizationId ||
+          prior.requestId !== requestId ||
+          prior.amountUsd !== amount.toFixed(6) ||
+          prior.mode !== mode
+        )
+          throw Error("Canonical settlement receipt identity mismatch");
+        return result;
+      }
+      return {
+        ...result,
+        terminalReceipt: authoritative
+          ? {
+              version: 1 as const,
+              organizationId: organizationId,
+              requestId,
+              amountUsd: amount.toFixed(6),
+              mode,
+              status: "canonical_completed" as const,
+            }
+          : undefined,
+      };
+    },
+  };
 }
