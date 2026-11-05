@@ -1,4 +1,8 @@
 import {
+  setInferenceOrganizationActive,
+  setInferenceSubjectActive,
+} from "../../lib/services/inference-credential-revocation";
+import {
   clearDisabledInferencePolicyForAccountDeletion,
   withInferenceUserPolicyMutation,
 } from "../../lib/services/inference-policy-fence";
@@ -475,6 +479,10 @@ export class AccountDeletionRequestsRepository {
         return { outcome: "transfer_required", activeOwnerCount: activeOwners.length };
       }
 
+      // Fence the gate first: a failed write here leaves the account denied, and
+      // cancellation restores it inside its own retried transaction.
+      await setInferenceOrganizationActive(organization.id, false);
+      await setInferenceSubjectActive(organization.id, current.id, false, "account");
       await tx
         .update(users)
         .set({
@@ -2071,6 +2079,10 @@ export class AccountDeletionRequestsRepository {
       }
 
       const restoredRevision = request.lifecycle_revision + 1;
+      // Inside the transaction: a gate failure rolls back and the cancellation
+      // retries. After commit, a failure would leave the account denied for good.
+      await setInferenceSubjectActive(organization.id, user.id, true, "account");
+      await setInferenceOrganizationActive(organization.id, true);
       await tx
         .update(organizations)
         .set({

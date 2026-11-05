@@ -10,6 +10,7 @@ import type { CliAuthSession } from "../../db/schemas/cli-auth-sessions";
 import { organizationCreatedBySignIn } from "../auth/new-organization";
 import { apiKeysService } from "./api-keys";
 import { cliAuthSessionCompletionService } from "./cli-auth-session-completion";
+import { revokeInferenceApiKey } from "./inference-credential-revocation";
 
 /**
  * Session expiry time in minutes.
@@ -320,6 +321,7 @@ export class CliAuthSessionsService {
       await cliAuthSessionsRepository.reapExpiredSessions();
 
     for (const key of revokedOrphanKeys) {
+      await revokeInferenceApiKey(key.organization_id, key.id);
       await apiKeysService.invalidateCache(key.key_hash);
     }
 

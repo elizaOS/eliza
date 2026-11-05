@@ -33,6 +33,7 @@ import { CacheKeys, CacheTTL } from "../cache/keys";
 import { isAllowedOrigin } from "../security/origin-validation";
 import { logger } from "../utils/logger";
 import { apiKeysService } from "./api-keys";
+import { revokeInferenceApiKey } from "./inference-credential-revocation";
 import { lockInferencePolicyUsers } from "./inference-policy-fence";
 import { managedDomainsService } from "./managed-domains";
 
@@ -92,6 +93,11 @@ export class AppCreationLimitError extends Error {
 /**
  * Service for app CRUD operations and app management.
  */
+/** The rows are already inactive; live speech and the gate learn it here. */
+async function revokeAppKeys(keys: { id: string; organizationId: string }[]): Promise<void> {
+  await Promise.all(keys.map((key) => revokeInferenceApiKey(key.organizationId, key.id)));
+}
+
 export class AppsService {
   private generateSlug(name: string): string {
     return name
@@ -533,6 +539,7 @@ export class AppsService {
     if (revokesMobileAuth) {
       const mutation = await appsRepository.updateWithMobileAuthRevocation(id, data);
       updated = mutation.app;
+      await revokeAppKeys(mutation.revokedKeys);
       if (mutation.revokedKeyHashes.length > 0) {
         logger.info("[Apps] Revoked mobile credentials for inactive app", {
           appId: id,
@@ -593,6 +600,7 @@ export class AppsService {
     // slow or fail independently, so credentials stop working before it starts.
     const mutation = await appsRepository.prepareDeleteWithMobileAuthRevocation(id);
     const app = mutation.app;
+    await revokeAppKeys(mutation.revokedKeys);
 
     // The primary transaction's row is the only safe teardown input. A replica
     // miss must not skip the ordinary app key or external resource cleanup.
