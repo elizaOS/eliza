@@ -584,7 +584,17 @@ export async function handleVoiceModelsRoutes(
 		if (action === "pin") {
 			const body = await readCompatJsonBody(req, res);
 			if (!body) return true;
-			const pinned = body.pinned === true;
+			// An omitted `pinned` must not be read as "unpin": that would remove an
+			// existing pin on a request that did not ask to change it.
+			if (typeof body.pinned !== "boolean") {
+				sendJsonError(
+					res,
+					"pin requires pinned: true to pin or false to unpin",
+					400,
+				);
+				return true;
+			}
+			const pinned = body.pinned;
 			const pins = await readPins();
 			if (pinned) pins.add(id);
 			else pins.delete(id);
