@@ -379,7 +379,8 @@ export class VoiceSession implements LiveVoiceSession, VoiceSessionLike {
   private turnTerminalSupported = false;
 
   setTurnTerminalSupport(supported: true): void {
-    if (this.started || this.closed) throw new Error("Voice capability negotiation is closed");
+    if (this.started || this.closed)
+      throw new Error("Voice capability negotiation is closed");
     this.turnTerminalSupported = supported;
   }
   private assistantReferenceText = "";
@@ -658,7 +659,7 @@ export class VoiceSession implements LiveVoiceSession, VoiceSessionLike {
       traceId: sessionTrace,
       uiContext: true,
       playbackCompletion: true,
-      ...(this.turnTerminalSupported ? {turnTerminal: true as const} : {}),
+      ...(this.turnTerminalSupported ? { turnTerminal: true as const } : {}),
     });
     if (this.config.openingPrompt?.trim()) {
       const traceId = this.mintTraceId("turn");
@@ -1717,12 +1718,25 @@ export class VoiceSession implements LiveVoiceSession, VoiceSessionLike {
         return;
       if (result.turnOutcome) {
         if (result.turnOutcome.outcome === "failed") {
-          logger.warn({traceId: pending.traceId,
-            code: result.terminalFailure?.code && /^[A-Za-z0-9_]{1,64}$/.test(result.terminalFailure.code) ? result.terminalFailure.code : result.turnOutcome.code,
-            transient: result.terminalFailure?.transient}, "[voice-session] canonical overlap turn failed");
+          logger.warn(
+            {
+              traceId: pending.traceId,
+              code:
+                result.terminalFailure?.code &&
+                /^[A-Za-z0-9_]{1,64}$/.test(result.terminalFailure.code)
+                  ? result.terminalFailure.code
+                  : result.turnOutcome.code,
+              transient: result.terminalFailure?.transient,
+            },
+            "[voice-session] canonical overlap turn failed",
+          );
         }
         this.pendingOverlapTurn = null;
-        this.send({t: "turn_terminal", traceId: pending.traceId, ...result.turnOutcome});
+        this.send({
+          t: "turn_terminal",
+          traceId: pending.traceId,
+          ...result.turnOutcome,
+        });
         return;
       }
       if (result.completed) {
@@ -1754,16 +1768,23 @@ export class VoiceSession implements LiveVoiceSession, VoiceSessionLike {
       );
       if (this.pendingOverlapTurn === pending) this.pendingOverlapTurn = null;
       if (this.turnTerminalSupported) {
-        const bridgeError = error instanceof ElizaSseBridgeError ? error : undefined;
+        const bridgeError =
+          error instanceof ElizaSseBridgeError ? error : undefined;
         this.send({
           t: "error",
           code: bridgeError?.upstreamCode ?? bridgeError?.code ?? "llm_error",
           retryable: bridgeError?.retryable ?? true,
-          ...(bridgeError?.status ? {upstreamStatus: bridgeError.status} : {}),
+          ...(bridgeError?.status
+            ? { upstreamStatus: bridgeError.status }
+            : {}),
         });
-        this.send({t: "turn_terminal", traceId: pending.traceId, outcome: "failed"});
+        this.send({
+          t: "turn_terminal",
+          traceId: pending.traceId,
+          outcome: "failed",
+        });
       } else {
-        this.send({t: "error", code: "llm_error", retryable: true});
+        this.send({ t: "error", code: "llm_error", retryable: true });
       }
     } finally {
       this.overlapRequests.delete(pending.abort);
@@ -2479,12 +2500,22 @@ export class VoiceSession implements LiveVoiceSession, VoiceSessionLike {
       // acknowledgement already consumed the first speaking_start event.
       if (result.turnOutcome) {
         if (result.turnOutcome.outcome === "failed") {
-          logger.warn({traceId,
-            code: result.terminalFailure?.code && /^[A-Za-z0-9_]{1,64}$/.test(result.terminalFailure.code) ? result.terminalFailure.code : result.turnOutcome.code,
-            transient: result.terminalFailure?.transient}, "[voice-session] canonical turn failed");
+          logger.warn(
+            {
+              traceId,
+              code:
+                result.terminalFailure?.code &&
+                /^[A-Za-z0-9_]{1,64}$/.test(result.terminalFailure.code)
+                  ? result.terminalFailure.code
+                  : result.turnOutcome.code,
+              transient: result.terminalFailure?.transient,
+            },
+            "[voice-session] canonical turn failed",
+          );
         }
-        turnOutcome = result.turnOutcome.outcome === "failed" ? "error" : "completed";
-        this.send({t: "turn_terminal", traceId, ...result.turnOutcome});
+        turnOutcome =
+          result.turnOutcome.outcome === "failed" ? "error" : "completed";
+        this.send({ t: "turn_terminal", traceId, ...result.turnOutcome });
       }
       if (result.completed)
         this.send({
@@ -2578,7 +2609,8 @@ export class VoiceSession implements LiveVoiceSession, VoiceSessionLike {
           ? { upstreamSnippet: bridgeError.upstreamSnippet }
           : {}),
       });
-      if (this.turnTerminalSupported) this.send({t: "turn_terminal", traceId, outcome: "failed"});
+      if (this.turnTerminalSupported)
+        this.send({ t: "turn_terminal", traceId, outcome: "failed" });
       // The socket is already open because it was prewarmed before the LLM
       // request. Do not leak an idle provider connection when that request or
       // stream fails before a terminal TTS phrase is sent. finishTurn has not
@@ -2657,7 +2689,7 @@ export class VoiceSession implements LiveVoiceSession, VoiceSessionLike {
     // Legacy clients retain their established usage-then-interruption order.
     if (this.turnTerminalSupported) {
       this.state = "interrupted";
-      this.send({t: "interrupted", reason, traceId});
+      this.send({ t: "interrupted", reason, traceId });
     }
     // 5. Report the interrupted turn's usage (STT accrued + TTS chars emitted so
     //    far) so the client sees accurate accounting, then reset the per-turn
@@ -2674,7 +2706,8 @@ export class VoiceSession implements LiveVoiceSession, VoiceSessionLike {
     this.llmAbort = null;
     // 6. Emit interrupted and return to listening.
     this.state = "interrupted";
-    if (!this.turnTerminalSupported) this.send({ t: "interrupted", reason, traceId });
+    if (!this.turnTerminalSupported)
+      this.send({ t: "interrupted", reason, traceId });
     this.state = "listening";
   }
 

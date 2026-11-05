@@ -23,8 +23,8 @@
 import type { VoiceUiContext } from "../protocol";
 import type { ServerControlFrame } from "./protocol";
 import {
-  parseClientControlFrame,
   type ClientControlFrame,
+  parseClientControlFrame,
   serializeServerFrame,
   VOICE_SESSION_PROTOCOL_VERSION,
   validateAudioFrame,
@@ -318,9 +318,17 @@ export function attachVoiceWsHandler(
         session.endUplink?.();
         return;
       case "bye":
-        try { deps.authorizeBye?.(frame); }
-        catch {
-          safeSend(socket, serializeServerFrame({ t: "error", code: "bye_intent_invalid", retryable: true }));
+        try {
+          deps.authorizeBye?.(frame);
+        } catch {
+          safeSend(
+            socket,
+            serializeServerFrame({
+              t: "error",
+              code: "bye_intent_invalid",
+              retryable: true,
+            }),
+          );
           return;
         }
         session.bye();
@@ -343,7 +351,11 @@ export function attachVoiceWsHandler(
     session?.sever("error");
   });
 
-  async function handleHello(token: string, protocol: number, turnTerminal?: true): Promise<void> {
+  async function handleHello(
+    token: string,
+    protocol: number,
+    turnTerminal?: true,
+  ): Promise<void> {
     // Refuse incompatible clients before token claim or paid provider admission.
     // Version 1 is unchanged; this is an explicit required capability.
     if (deps.requireTurnTerminal === true && turnTerminal !== true) {
@@ -446,7 +458,8 @@ export function attachVoiceWsHandler(
         return;
       }
       session = builtSession;
-      if (deps.requireTurnTerminal === true && turnTerminal === true) session.setTurnTerminalSupport?.(true);
+      if (deps.requireTurnTerminal === true && turnTerminal === true)
+        session.setTurnTerminalSupport?.(true);
       state = "active";
       session.start();
     } catch (error) {

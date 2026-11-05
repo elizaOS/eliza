@@ -266,7 +266,8 @@ test("bounded voice policy survives the actual SSE bridge and loopback adapter",
   }
 });
 
-
 test("valid legacy and negotiated success handoffs retain the same navigation", async () => {
-  expect(await bridge([action("VIEWS_SHOW", "notes")], true)).toEqual(await bridge([action("VIEWS_SHOW", "notes")], false));
+  expect(await bridge([action("VIEWS_SHOW", "notes")], true)).toEqual(
+    await bridge([action("VIEWS_SHOW", "notes")], false),
+  );
 });

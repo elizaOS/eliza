@@ -69,7 +69,12 @@ export interface ClientBargeInFrame {
 
 export interface ClientByeFrame {
   t: "bye";
-  intent?: { version: 1; kind: "user_stop" | "budget_rotation"; generation: string; successorSessionId?: string };
+  intent?: {
+    version: 1;
+    kind: "user_stop" | "budget_rotation";
+    generation: string;
+    successorSessionId?: string;
+  };
 }
 
 /**
@@ -111,7 +116,12 @@ export type ServerControlFrame =
   | { t: "stt_final"; text: string; traceId: string }
   | { t: "llm_first_text"; traceId: string }
   | { t: "reply_complete"; traceId: string; userMessageId?: string }
-  | {t: "turn_terminal"; traceId: string; outcome: "failed" | "ignored"; code?: string}
+  | {
+      t: "turn_terminal";
+      traceId: string;
+      outcome: "failed" | "ignored";
+      code?: string;
+    }
   | { t: "progress"; text: string; traceId: string }
   | { t: "activity"; label: string; traceId: string }
   | { t: "speaking_start"; traceId: string }
@@ -234,15 +244,41 @@ export function parseClientControlFrame(
     case "bye": {
       if (parsed.intent === undefined) return { ok: true, value: { t: "bye" } };
       const intent = parsed.intent;
-      if (!intent || typeof intent !== "object" || Array.isArray(intent) ||
-          Object.keys(parsed).some(key => key !== "t" && key !== "intent")) return fail("bye_intent_invalid", "Invalid stop intent");
-      const value = intent as Record<string, unknown>;
-      if (value.version !== 1 || !["user_stop", "budget_rotation"].includes(String(value.kind)) ||
-          typeof value.kind !== "string" || typeof value.generation !== "string" || !value.generation || value.generation.length > 256 ||
-          Object.keys(value).some(key => !["version", "kind", "generation", "successorSessionId"].includes(key)) ||
-          (value.successorSessionId !== undefined && (value.kind !== "budget_rotation" || typeof value.successorSessionId !== "string" || !value.successorSessionId || value.successorSessionId.length > 256)))
+      if (
+        !intent ||
+        typeof intent !== "object" ||
+        Array.isArray(intent) ||
+        Object.keys(parsed).some((key) => key !== "t" && key !== "intent")
+      )
         return fail("bye_intent_invalid", "Invalid stop intent");
-      return { ok: true, value: { t: "bye", intent: value as NonNullable<ClientByeFrame["intent"]> } };
+      const value = intent as Record<string, unknown>;
+      if (
+        value.version !== 1 ||
+        !["user_stop", "budget_rotation"].includes(String(value.kind)) ||
+        typeof value.kind !== "string" ||
+        typeof value.generation !== "string" ||
+        !value.generation ||
+        value.generation.length > 256 ||
+        Object.keys(value).some(
+          (key) =>
+            !["version", "kind", "generation", "successorSessionId"].includes(
+              key,
+            ),
+        ) ||
+        (value.successorSessionId !== undefined &&
+          (value.kind !== "budget_rotation" ||
+            typeof value.successorSessionId !== "string" ||
+            !value.successorSessionId ||
+            value.successorSessionId.length > 256))
+      )
+        return fail("bye_intent_invalid", "Invalid stop intent");
+      return {
+        ok: true,
+        value: {
+          t: "bye",
+          intent: value as NonNullable<ClientByeFrame["intent"]>,
+        },
+      };
     }
     case "end_audio":
       return { ok: true, value: { t: "end_audio" } };
@@ -322,7 +358,7 @@ function parseHello(
     value: {
       t: "hello",
       token: v.token,
-      ...(v.turnTerminal === true ? {turnTerminal: true as const} : {}),
+      ...(v.turnTerminal === true ? { turnTerminal: true as const } : {}),
       protocol: VOICE_SESSION_PROTOCOL_VERSION,
       uplinkCodec: uplinkCodec as VoiceUplinkCodec,
       downlinkCodec: downlinkCodec as VoiceDownlinkCodec,

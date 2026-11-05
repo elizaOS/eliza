@@ -20,12 +20,12 @@
  * decoding path, no live model.
  */
 
-import { stringToUuid, validateUuid } from "@elizaos/core";
 import {
   type ChatTerminalFailure,
   parseChatFailureKind,
   parseChatTerminalFailure,
 } from "@elizaos/contracts";
+import { stringToUuid, validateUuid } from "@elizaos/core";
 import {
   findViewActionHandoff,
   normalizeCompletedActionHandoffId,
@@ -204,7 +204,7 @@ export interface ElizaSseBridgeResult {
   /** True if the stream was aborted (interruption / disconnect). */
   aborted: boolean;
   /** An intentional silent terminal is not a successful assistant reply. */
-  turnOutcome?: {outcome: "failed" | "ignored"; code?: string};
+  turnOutcome?: { outcome: "failed" | "ignored"; code?: string };
   terminalFailure?: ChatTerminalFailure;
   /** Successful model-selected VIEWS handoff carried by the terminal frame. */
   viewHandoff?: ElizaVoiceViewHandoff;
@@ -396,12 +396,28 @@ export async function streamElizaConversation(
     } catch {
       // error-policy:J3 A malformed terminal cannot authorize buffered speech.
       throw new ElizaSseBridgeError(
-        "Invalid canonical terminal JSON", "protocol_error", undefined, undefined, false, undefined, undefined, undefined, true,
+        "Invalid canonical terminal JSON",
+        "protocol_error",
+        undefined,
+        undefined,
+        false,
+        undefined,
+        undefined,
+        undefined,
+        true,
       );
     }
     if (!isRecord(terminal)) {
       throw new ElizaSseBridgeError(
-        "Invalid canonical terminal envelope", "protocol_error", undefined, undefined, false, undefined, undefined, undefined, true,
+        "Invalid canonical terminal envelope",
+        "protocol_error",
+        undefined,
+        undefined,
+        false,
+        undefined,
+        undefined,
+        undefined,
+        true,
       );
     }
     const failureKind = parseChatFailureKind(terminal.failureKind);
@@ -409,15 +425,26 @@ export async function streamElizaConversation(
     if (
       (terminal.type !== undefined && typeof terminal.type !== "string") ||
       (terminal.text !== undefined && typeof terminal.text !== "string") ||
-      (terminal.fullText !== undefined && typeof terminal.fullText !== "string") ||
+      (terminal.fullText !== undefined &&
+        typeof terminal.fullText !== "string") ||
       (terminal.failureKind !== undefined && !failureKind) ||
       (terminal.terminalFailure !== undefined && !failure) ||
       (failureKind && failure && failureKind !== failure.kind) ||
-      (terminal.noResponseReason !== undefined && terminal.noResponseReason !== "ignored") ||
-      (terminal.userMessageId !== undefined && !validateUuid(terminal.userMessageId))
+      (terminal.noResponseReason !== undefined &&
+        terminal.noResponseReason !== "ignored") ||
+      (terminal.userMessageId !== undefined &&
+        !validateUuid(terminal.userMessageId))
     ) {
       throw new ElizaSseBridgeError(
-        "Invalid canonical terminal outcome", "protocol_error", undefined, undefined, false, undefined, undefined, undefined, true,
+        "Invalid canonical terminal outcome",
+        "protocol_error",
+        undefined,
+        undefined,
+        false,
+        undefined,
+        undefined,
+        undefined,
+        true,
       );
     }
     if (failureKind || failure) {
@@ -427,8 +454,14 @@ export async function streamElizaConversation(
       // The specific code and transient flag remain on the internal receipt.
       throw new ElizaSseBridgeError(
         "Canonical conversation did not produce a successful reply",
-        "upstream_error", undefined, failure?.kind ?? failureKind, false,
-        undefined, undefined, failure, true,
+        "upstream_error",
+        undefined,
+        failure?.kind ?? failureKind,
+        false,
+        undefined,
+        undefined,
+        failure,
+        true,
       );
     }
     return terminal;
@@ -534,11 +567,14 @@ export async function streamElizaConversation(
       if (chunk.done) break;
       buffered += decoder.decode(chunk.value, { stream: true });
 
-      let newlineIndex: number;
       // SSE events are separated by blank lines; a single event may carry
       // multiple `data:` lines. We process line-by-line and only act on
       // `data:` payloads, which is what the OpenAI-shaped stream emits.
-      while ((newlineIndex = buffered.indexOf("\n")) !== -1) {
+      for (
+        let newlineIndex = buffered.indexOf("\n");
+        newlineIndex !== -1;
+        newlineIndex = buffered.indexOf("\n")
+      ) {
         if (request.signal.aborted) return { completed: false, aborted: true };
         const line = buffered.slice(0, newlineIndex).trimEnd();
         buffered = buffered.slice(newlineIndex + 1);
@@ -554,10 +590,32 @@ export async function streamElizaConversation(
         const payload = line.slice(5).trim();
         if (payload === "") continue;
         const payloadType = extractPayloadType(payload);
-        if ((eventType === "error" || payloadType === "error") &&
-            (request.requireTurnTerminal === true || !(eventType === "done" || payloadType === "done" || payload === "[DONE]"))) {
-          if (request.requireTurnTerminal === true && (eventType === "done" || payloadType === "done" || payload === "[DONE]")) {
-            throw new ElizaSseBridgeError("Conflicting canonical terminal envelope", "protocol_error", undefined, undefined, false, undefined, undefined, undefined, true);
+        if (
+          (eventType === "error" || payloadType === "error") &&
+          (request.requireTurnTerminal === true ||
+            !(
+              eventType === "done" ||
+              payloadType === "done" ||
+              payload === "[DONE]"
+            ))
+        ) {
+          if (
+            request.requireTurnTerminal === true &&
+            (eventType === "done" ||
+              payloadType === "done" ||
+              payload === "[DONE]")
+          ) {
+            throw new ElizaSseBridgeError(
+              "Conflicting canonical terminal envelope",
+              "protocol_error",
+              undefined,
+              undefined,
+              false,
+              undefined,
+              undefined,
+              undefined,
+              true,
+            );
           }
           throw new ElizaSseBridgeError(
             `Eliza agent stream error: ${extractErrorMessage(payload)}`,
@@ -569,14 +627,37 @@ export async function streamElizaConversation(
           eventType === "done" ||
           payloadType === "done"
         ) {
-          if (request.requireTurnTerminal === true && payload !== "[DONE]" && payloadType !== null && payloadType !== "done") {
-            throw new ElizaSseBridgeError("Conflicting canonical terminal envelope", "protocol_error", undefined, undefined, false, undefined, undefined, undefined, true);
+          if (
+            request.requireTurnTerminal === true &&
+            payload !== "[DONE]" &&
+            payloadType !== null &&
+            payloadType !== "done"
+          ) {
+            throw new ElizaSseBridgeError(
+              "Conflicting canonical terminal envelope",
+              "protocol_error",
+              undefined,
+              undefined,
+              false,
+              undefined,
+              undefined,
+              undefined,
+              true,
+            );
           }
-          const terminal = payload === "[DONE]" ? null : request.requireTurnTerminal === true ? readCanonicalOutcome(payload) : JSON.parse(payload);
+          const terminal =
+            payload === "[DONE]"
+              ? null
+              : request.requireTurnTerminal === true
+                ? readCanonicalOutcome(payload)
+                : JSON.parse(payload);
           if (request.requireTurnTerminal === true && payload !== "[DONE]") {
-            const outcome = terminal!;
-            if (outcome.noResponseReason === "ignored") {
-              return {completed: false, aborted: false, turnOutcome: {outcome: "ignored"}};
+            if (terminal?.noResponseReason === "ignored") {
+              return {
+                completed: false,
+                aborted: false,
+                turnOutcome: { outcome: "ignored" },
+              };
             }
           }
           finishAuthoritativeText(payload);
@@ -602,7 +683,17 @@ export async function streamElizaConversation(
           if (request.requireTurnTerminal === true) {
             const outcome = readCanonicalOutcome(payload);
             if (outcome.noResponseReason === "ignored") {
-              throw new ElizaSseBridgeError("Silent outcome cannot authorize an early reply", "protocol_error", undefined, undefined, false, undefined, undefined, undefined, true);
+              throw new ElizaSseBridgeError(
+                "Silent outcome cannot authorize an early reply",
+                "protocol_error",
+                undefined,
+                undefined,
+                false,
+                undefined,
+                undefined,
+                undefined,
+                true,
+              );
             }
           }
           finishAuthoritativeText(payload);
@@ -652,12 +743,18 @@ export async function streamElizaConversation(
       }
     }
   } catch (error) {
-    if (request.signal.aborted) return {completed: false, aborted: true};
+    if (request.signal.aborted) return { completed: false, aborted: true };
     if (error instanceof ElizaSseBridgeError && error.canonicalTerminal) {
       return {
-        completed: false, aborted: false,
-        turnOutcome: {outcome: "failed", code: error.upstreamCode ?? error.code},
-        ...(error.terminalFailure ? {terminalFailure: error.terminalFailure} : {}),
+        completed: false,
+        aborted: false,
+        turnOutcome: {
+          outcome: "failed",
+          code: error.upstreamCode ?? error.code,
+        },
+        ...(error.terminalFailure
+          ? { terminalFailure: error.terminalFailure }
+          : {}),
       };
     }
     throw error;

@@ -1,5 +1,8 @@
 import { expect, test } from "vitest";
-import { CloudSpeechRelayClientError, createCloudSpeechRelayPorts } from "./cloud-speech-relay-client";
+import {
+  CloudSpeechRelayClientError,
+  createCloudSpeechRelayPorts,
+} from "./cloud-speech-relay-client";
 
 test("HTTP availability is transport, not authorization, and never retries consent or mint", async () => {
   for (const failedPath of ["/consent", "/session"])
@@ -26,20 +29,21 @@ test("HTTP availability is transport, not authorization, and never retries conse
             { status },
           );
         return Response.json({
-          consentNonce: crypto.randomUUID(), retirementProofVersion: 1,
+          consentNonce: crypto.randomUUID(),
+          retirementProofVersion: 1,
           expiresAt: new Date(Date.now() + 300000).toISOString(),
         });
       };
       const startup = createCloudSpeechRelayPorts({
-          enabled: true,
-          origin: "https://api-staging.eliza.app",
-          credential: async () => "fixture-only",
-          assertCurrent() {},
-          fetch: fakeFetch as typeof fetch,
-          websocket() {
-            throw Error("must not open socket");
-          },
-        });
+        enabled: true,
+        origin: "https://api-staging.eliza.app",
+        credential: async () => "fixture-only",
+        assertCurrent() {},
+        fetch: fakeFetch as typeof fetch,
+        websocket() {
+          throw Error("must not open socket");
+        },
+      });
       await expect(startup).rejects.toMatchObject({ code });
       if (failedPath === "/session") {
         const failure = await startup.catch((error: unknown) => error);
