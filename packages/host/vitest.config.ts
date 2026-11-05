@@ -7,7 +7,9 @@ export default defineConfig({
     resolve: {
       conditions: [
         "eliza-source",
-        ...defaultServerConditions.filter((condition) => condition !== "module"),
+        ...defaultServerConditions.filter(
+          (condition) => condition !== "module",
+        ),
       ],
       externalConditions: ["eliza-source", ...defaultExternalConditions],
     },

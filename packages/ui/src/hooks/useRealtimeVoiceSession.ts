@@ -202,7 +202,11 @@ export interface UseRealtimeVoiceSessionState {
 
 function classifyError(error: Error): RealtimeVoiceError {
   if (error instanceof VoiceSessionRefusedError) {
-    return { kind: "refused", message: error.quiet ? "" : error.message, actionable: false };
+    return {
+      kind: "refused",
+      message: error.quiet ? "" : error.message,
+      actionable: false,
+    };
   }
   if (error instanceof VoiceMicCaptureError) {
     if (error.code === "permission_denied") {
@@ -308,7 +312,10 @@ export function useRealtimeVoiceSession(
 
   const [refused, setRefused] = useState(false);
   const refusedRef = useRef(false);
-  const resetRefusal = useCallback(() => { refusedRef.current = false; setRefused(false); }, []);
+  const resetRefusal = useCallback(() => {
+    refusedRef.current = false;
+    setRefused(false);
+  }, []);
   const [status, setStatus] = useState<VoiceContinuousStatus>("idle");
   const [progressText, setProgressText] = useState<string>();
   const [transcriptPartial, setTranscriptPartial] = useState("");
@@ -549,7 +556,9 @@ export function useRealtimeVoiceSession(
       );
     };
 
-    const settleQuietRefusal = (refusal: VoiceSessionRefusedError): Promise<void> => {
+    const settleQuietRefusal = (
+      refusal: VoiceSessionRefusedError,
+    ): Promise<void> => {
       if (teardownRef.current) return teardownRef.current;
       clearReadyTimer();
       refusedRef.current = true;
@@ -564,13 +573,20 @@ export function useRealtimeVoiceSession(
           if (teardownRef.current === pending) teardownRef.current = null;
           if (isCurrent()) {
             setActive(false);
-            resolveStartOutcome(gen, { kind: "refused", code: "voice_retirement_unconfirmed" });
+            resolveStartOutcome(gen, {
+              kind: "refused",
+              code: "voice_retirement_unconfirmed",
+            });
           }
         },
         (error) => {
           // Failed shutdown is not release evidence. Keep both references so
           // another Talk, Stop, or identity change cannot bypass this fence.
-          if (isCurrent()) resolveStartOutcome(gen, { kind: "refused", code: "voice_retirement_unconfirmed" });
+          if (isCurrent())
+            resolveStartOutcome(gen, {
+              kind: "refused",
+              code: "voice_retirement_unconfirmed",
+            });
           throw error;
         },
       );
@@ -641,7 +657,9 @@ export function useRealtimeVoiceSession(
         applyServerEventToTranscript(event);
         if (event.t === "turn_terminal" && event.outcome === "failed") {
           // Existing nonpersistent error presentation; no session teardown.
-          setError(classifyError(new Error(event.code ?? "reply_generation_error")));
+          setError(
+            classifyError(new Error(event.code ?? "reply_generation_error")),
+          );
         }
         clientOptionsRef.current?.onServerEvent?.(event);
       },
@@ -738,7 +756,11 @@ export function useRealtimeVoiceSession(
         await settleQuietRefusal(realError).catch(() => {});
         return await outcomePromise;
       }
-      setError(realError instanceof VoiceSessionRefusedError && realError.quiet ? null : classified);
+      setError(
+        realError instanceof VoiceSessionRefusedError && realError.quiet
+          ? null
+          : classified,
+      );
       // Same latch policy as onError: only failures whose copy promises the
       // batch path disarm realtime; actionable kinds stay retryable.
       clientRef.current = null;
@@ -861,7 +883,12 @@ export function useRealtimeVoiceSession(
       const { agentId: nextAgentId, conversationId: nextConversationId } =
         idsRef.current;
       identityRestartPendingRef.current = false;
-      if (!refusedRef.current && flagEnabled && nextAgentId && nextConversationId) {
+      if (
+        !refusedRef.current &&
+        flagEnabled &&
+        nextAgentId &&
+        nextConversationId
+      ) {
         await start();
       }
     })();

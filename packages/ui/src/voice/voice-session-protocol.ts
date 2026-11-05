@@ -62,7 +62,12 @@ export interface ClientBargeInFrame {
 }
 export interface ClientByeFrame {
   t: "bye";
-  intent?: { version: 1; kind: "user_stop" | "budget_rotation"; generation: string; successorSessionId?: string };
+  intent?: {
+    version: 1;
+    kind: "user_stop" | "budget_rotation";
+    generation: string;
+    successorSessionId?: string;
+  };
 }
 export type ClientControlFrame =
   | {
@@ -175,7 +180,12 @@ export interface ServerUsageEvent {
   traceId: string;
 }
 export type ServerControlFrame =
-  | {t: "turn_terminal"; traceId: string; outcome: "failed" | "ignored"; code?: string}
+  | {
+      t: "turn_terminal";
+      traceId: string;
+      outcome: "failed" | "ignored";
+      code?: string;
+    }
   | {
       t: "reply_complete";
       traceId: string;
@@ -245,11 +255,26 @@ export function parseServerControl(raw: string): ServerControlFrame | null {
   if (!isKnownServerType(t)) return null;
   if (t === "turn_terminal") {
     const frame = parsed as Record<string, unknown>;
-    if (typeof frame.traceId !== "string" || !frame.traceId || frame.traceId.length > 256 ||
-        (frame.outcome !== "failed" && frame.outcome !== "ignored") ||
-        (frame.code !== undefined && (frame.outcome !== "failed" || typeof frame.code !== "string" || !/^[A-Za-z0-9_]{1,64}$/.test(frame.code))) ||
-        Object.keys(frame).some(key => !["t", "traceId", "outcome", "code"].includes(key))) return null;
-    return {t, traceId: frame.traceId, outcome: frame.outcome, ...(typeof frame.code === "string" ? {code: frame.code} : {})};
+    if (
+      typeof frame.traceId !== "string" ||
+      !frame.traceId ||
+      frame.traceId.length > 256 ||
+      (frame.outcome !== "failed" && frame.outcome !== "ignored") ||
+      (frame.code !== undefined &&
+        (frame.outcome !== "failed" ||
+          typeof frame.code !== "string" ||
+          !/^[A-Za-z0-9_]{1,64}$/.test(frame.code))) ||
+      Object.keys(frame).some(
+        (key) => !["t", "traceId", "outcome", "code"].includes(key),
+      )
+    )
+      return null;
+    return {
+      t,
+      traceId: frame.traceId,
+      outcome: frame.outcome,
+      ...(typeof frame.code === "string" ? { code: frame.code } : {}),
+    };
   }
   if (t === "reply_complete") {
     const frame = parsed as Record<string, unknown>;
@@ -427,7 +452,8 @@ export function isUsableMintResponse(
     v.wsUrl.length > 0 &&
     typeof v.token === "string" &&
     v.token.length > 0 &&
-    ((v.stopIntentVersion === undefined && v.stopIntentGeneration === undefined) ||
+    ((v.stopIntentVersion === undefined &&
+      v.stopIntentGeneration === undefined) ||
       (v.stopIntentVersion === 1 && v.stopIntentGeneration === v.sessionId))
   );
 }

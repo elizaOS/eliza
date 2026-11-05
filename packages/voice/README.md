@@ -108,12 +108,12 @@ Eliza Cloud, and it is not Clef, network or latency evidence.
 which products render instead of writing their own copy (`SPEECH_DISCLOSURES`,
 `speechDisclosures({ serviceName, deviceNoun })`, `speechDisclosure(route)`):
 
-| Route | Leaves the device |
-| --- | --- |
-| `local-turn`, `local-stt`, `local-tts` | nothing |
-| `clef-turn` | the current transcript text and at most 6 recent text turns; never audio |
-| `cloud-stt` | the recorded audio |
-| `cloud-tts` | the reply text |
+| Route                                  | Leaves the device                                                        |
+| -------------------------------------- | ------------------------------------------------------------------------ |
+| `local-turn`, `local-stt`, `local-tts` | nothing                                                                  |
+| `clef-turn`                            | the current transcript text and at most 6 recent text turns; never audio |
+| `cloud-stt`                            | the recorded audio                                                       |
+| `cloud-tts`                            | the reply text                                                           |
 
 Only the service name and the device noun can be substituted. The table covers speech routes;
 conversation text sent to a language model is the model setting's disclosure.

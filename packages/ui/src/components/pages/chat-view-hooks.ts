@@ -943,7 +943,8 @@ export function useChatVoiceController(options: {
   const continuous = useContinuousChat({
     voice,
     mode: continuousMode,
-    disabled: isComposerLocked || realtime.active || realtimeWanted || realtime.refused,
+    disabled:
+      isComposerLocked || realtime.active || realtimeWanted || realtime.refused,
     latency: continuousChatLatency,
     speaker: voiceSpeaker,
     assistantGenerating: chatSending && !chatFirstTokenReceived,

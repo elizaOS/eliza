@@ -201,8 +201,11 @@ export function applyServerEvent(
         : state;
     case "turn_terminal":
       if (state.traceId !== event.traceId) return state;
-      return {...state, progressText: undefined,
-        ...(state.phase === "speaking" ? {} : {phase: "complete" as const})};
+      return {
+        ...state,
+        progressText: undefined,
+        ...(state.phase === "speaking" ? {} : { phase: "complete" as const }),
+      };
     case "reply_complete":
       // Transcript reconciliation is separate from audible playback state.
       return state;

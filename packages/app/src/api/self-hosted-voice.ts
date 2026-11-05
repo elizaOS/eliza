@@ -1,4 +1,3 @@
-import {readDirectRecording,transcribeDirectRecording,DirectTranscriptionError} from './self-hosted-transcription.js';
 /** Authenticated, process-local voice composition for a single self-hosted agent. */
 import { createHash, randomBytes, randomUUID } from "node:crypto";
 import { readFile, stat } from "node:fs/promises";
@@ -8,7 +7,11 @@ import type { Duplex } from "node:stream";
 import { isAllowedHost, isCredentialedCorsOrigin } from "@elizaos/agent";
 import { type AgentRuntime, logger, resolveStateDir } from "@elizaos/core";
 import type { CartesiaWebSocketFactory } from "@elizaos/host/voice/cartesia-sonic-tts";
-import { createCloudSpeechRelayPorts, CloudSpeechRelayClientError, type CloudSpeechRelayRetirement } from "@elizaos/host/voice/cloud-speech-relay-client";
+import {
+  CloudSpeechRelayClientError,
+  type CloudSpeechRelayRetirement,
+  createCloudSpeechRelayPorts,
+} from "@elizaos/host/voice/cloud-speech-relay-client";
 import { createLocalRuntimeConversationFetch } from "@elizaos/host/voice/local-runtime-conversation-fetch";
 import {
   VoiceSession,
@@ -36,19 +39,24 @@ import {
   tokenMatches,
 } from "./auth";
 import { bindSessionSocket } from "./auth/session-sockets";
-import { cloudSpeechRecoveryJournal } from "./cloud-speech-recovery-journal";
 import {
   CSRF_HEADER_NAME,
   deriveCsrfToken,
   findActiveSession,
   SESSION_COOKIE_NAME,
 } from "./auth/sessions";
+import { cloudSpeechRecoveryJournal } from "./cloud-speech-recovery-journal";
 import {
   type CompatRuntimeState,
   readCompatJsonBody,
 } from "./compat-route-shared";
 import { sendJson } from "./response";
 import { synthesizeDirectReadAloud } from "./self-hosted-read-aloud.js";
+import {
+  DirectTranscriptionError,
+  readDirectRecording,
+  transcribeDirectRecording,
+} from "./self-hosted-transcription.js";
 import { adaptVoiceWebSocket } from "./voice-websocket-transport";
 
 const BASE = "/api/v1/voice/session";
@@ -79,27 +87,53 @@ interface Ticket extends Binding {
 }
 // Retained across host recreation in this process; only confirmed retirement removes an entry.
 const retiringCloudTickets = new Set<Ticket>();
-interface AcquisitionSlot { tail: Promise<void>; current?: Ticket; waiting: number }
-const acquisitionSlots = new WeakMap<AgentRuntime, Map<string, AcquisitionSlot>>();
+interface AcquisitionSlot {
+  tail: Promise<void>;
+  current?: Ticket;
+  waiting: number;
+}
+const acquisitionSlots = new WeakMap<
+  AgentRuntime,
+  Map<string, AcquisitionSlot>
+>();
 /** Reserve synchronously; no two same-conversation requests can pass an await together. */
 function reserveAcquisition(ticket: Ticket) {
   let scopes = acquisitionSlots.get(ticket.runtime);
-  if (!scopes) { scopes = new Map(); acquisitionSlots.set(ticket.runtime, scopes); }
+  if (!scopes) {
+    scopes = new Map();
+    acquisitionSlots.set(ticket.runtime, scopes);
+  }
   const key = JSON.stringify([ticket.identityId, ticket.claims.conversationId]);
   let slot = scopes.get(key);
-  if (!slot) { slot = { tail: Promise.resolve(), waiting: 0 }; scopes.set(key, slot); }
+  if (!slot) {
+    slot = { tail: Promise.resolve(), waiting: 0 };
+    scopes.set(key, slot);
+  }
   const previous = slot.tail;
   let release!: () => void;
-  slot.tail = new Promise<void>(resolve => { release = resolve; });
+  slot.tail = new Promise<void>((resolve) => {
+    release = resolve;
+  });
   slot.waiting++;
   const owned = slot;
-  const prune = () => { if (!owned.waiting && !owned.current && scopes!.get(key) === owned) scopes!.delete(key); };
-  return { slot: owned, previous,
-    retired() { if (owned.current === ticket) owned.current = undefined; prune(); },
-    release() { owned.waiting--; release(); prune(); },
+  const prune = () => {
+    if (!owned.waiting && !owned.current && scopes!.get(key) === owned)
+      scopes!.delete(key);
+  };
+  return {
+    slot: owned,
+    previous,
+    retired() {
+      if (owned.current === ticket) owned.current = undefined;
+      prune();
+    },
+    release() {
+      owned.waiting--;
+      release();
+      prune();
+    },
   };
 }
-
 
 type Configuration =
   | { route: "direct"; apiKey: string; voiceId: string }
@@ -193,7 +227,9 @@ export function createSelfHostedVoice(
   });
   let closed = false;
   const activeCloudTickets = new Set<Ticket>();
-  const pendingCloudAcquisitions = new Set<Promise<Awaited<ReturnType<typeof createCloudSpeechRelayPorts>>>>();
+  const pendingCloudAcquisitions = new Set<
+    Promise<Awaited<ReturnType<typeof createCloudSpeechRelayPorts>>>
+  >();
   let closing: Promise<void> | undefined;
   const batchRequests = new Set<AbortController>();
 
@@ -333,31 +369,80 @@ export function createSelfHostedVoice(
         throw new VoiceAdmissionError(503, "voice_realtime_unavailable");
       prune();
       if (req.method === "POST" && url.pathname === `${BASE}/transcribe`) {
-        if(configured.route!=="direct")throw new VoiceAdmissionError(409,"voice_direct_route_required");
-        const requestId=req.headers["x-request-id"];
-        if(url.search||typeof requestId!=="string"||!UUID.test(requestId))throw new VoiceAdmissionError(400,"voice_invalid_transcription");
-        if(batchRequests.size)throw new VoiceAdmissionError(429,"voice_transcription_busy");
-        const controller=new AbortController();batchRequests.add(controller);
-        const abort=()=>controller.abort(),cancel=()=>{if(!res.writableEnded)abort();};
-        req.once("aborted",abort);req.socket.once("close",abort);res.on("close",cancel);
-        const deadline=setTimeout(()=>{abort();req.destroy();},120_000);let checking=false;
-        const current=async()=>{
+        if (configured.route !== "direct")
+          throw new VoiceAdmissionError(409, "voice_direct_route_required");
+        const requestId = req.headers["x-request-id"];
+        if (
+          url.search ||
+          typeof requestId !== "string" ||
+          !UUID.test(requestId)
+        )
+          throw new VoiceAdmissionError(400, "voice_invalid_transcription");
+        if (batchRequests.size)
+          throw new VoiceAdmissionError(429, "voice_transcription_busy");
+        const controller = new AbortController();
+        batchRequests.add(controller);
+        const abort = () => controller.abort(),
+          cancel = () => {
+            if (!res.writableEnded) abort();
+          };
+        req.once("aborted", abort);
+        req.socket.once("close", abort);
+        res.on("close", cancel);
+        const deadline = setTimeout(() => {
+          abort();
+          req.destroy();
+        }, 120_000);
+        let checking = false;
+        const current = async () => {
           controller.signal.throwIfAborted();
-          if(!(await active(binding)))throw new VoiceAdmissionError(401,"voice_session_revoked");
-          const next=await configuration(binding.runtime);
-          if(next?.route!=="direct"||next.apiKey!==configured.apiKey)throw new VoiceAdmissionError(409,"voice_selection_changed");
+          if (!(await active(binding)))
+            throw new VoiceAdmissionError(401, "voice_session_revoked");
+          const next = await configuration(binding.runtime);
+          if (next?.route !== "direct" || next.apiKey !== configured.apiKey)
+            throw new VoiceAdmissionError(409, "voice_selection_changed");
           controller.signal.throwIfAborted();
         };
-        const poll=setInterval(()=>{if(checking)return;checking=true;void current().catch(error=>controller.abort(error)).finally(()=>{checking=false;});},1000);
-        try{
-          const audio=await readDirectRecording(req,controller.signal);
-          const text=await transcribeDirectRecording({audio,apiKey:configured.apiKey,signal:controller.signal,current,fetchImpl});
+        const poll = setInterval(() => {
+          if (checking) return;
+          checking = true;
+          void current()
+            .catch((error) => controller.abort(error))
+            .finally(() => {
+              checking = false;
+            });
+        }, 1000);
+        try {
+          const audio = await readDirectRecording(req, controller.signal);
+          const text = await transcribeDirectRecording({
+            audio,
+            apiKey: configured.apiKey,
+            signal: controller.signal,
+            current,
+            fetchImpl,
+          });
           await current();
-          res.setHeader("X-Request-Id",requestId);res.setHeader("X-Eliza-STT-Provider","cartesia");res.setHeader("X-Eliza-Speech-Route","direct");
-          sendJson(res,200,{text});
-        }catch(error){if(error instanceof DirectTranscriptionError)throw new VoiceAdmissionError(error.status,error.code);throw error;}
-        finally{clearInterval(poll);clearTimeout(deadline);req.off("aborted",abort);req.socket.off("close",abort);res.off("close",cancel);controller.abort();batchRequests.delete(controller);}
-      } else if (req.method === "POST" && url.pathname === `${BASE}/read-aloud`) {
+          res.setHeader("X-Request-Id", requestId);
+          res.setHeader("X-Eliza-STT-Provider", "cartesia");
+          res.setHeader("X-Eliza-Speech-Route", "direct");
+          sendJson(res, 200, { text });
+        } catch (error) {
+          if (error instanceof DirectTranscriptionError)
+            throw new VoiceAdmissionError(error.status, error.code);
+          throw error;
+        } finally {
+          clearInterval(poll);
+          clearTimeout(deadline);
+          req.off("aborted", abort);
+          req.socket.off("close", abort);
+          res.off("close", cancel);
+          controller.abort();
+          batchRequests.delete(controller);
+        }
+      } else if (
+        req.method === "POST" &&
+        url.pathname === `${BASE}/read-aloud`
+      ) {
         // This is local self-hosted speech only. Never use a direct key to
         // service a Cloud-configured runtime, or silently fall back providers.
         if (configured.route !== "direct")
@@ -487,12 +572,18 @@ export function createSelfHostedVoice(
         if (body.predecessorSessionId !== undefined) {
           const id = body.predecessorSessionId;
           predecessor = typeof id === "string" ? tickets.get(id) : undefined;
-          if (configured.route !== "cloud" || !predecessor?.claimed ||
-              !predecessor.retire || predecessor.successorId || predecessor.admissionClosed || predecessor.expiresAt <= now() ||
-              predecessor.identityId !== binding.identityId ||
-              predecessor.sessionId !== binding.sessionId ||
-              predecessor.runtime !== binding.runtime ||
-              predecessor.claims.conversationId !== conversationId)
+          if (
+            configured.route !== "cloud" ||
+            !predecessor?.claimed ||
+            !predecessor.retire ||
+            predecessor.successorId ||
+            predecessor.admissionClosed ||
+            predecessor.expiresAt <= now() ||
+            predecessor.identityId !== binding.identityId ||
+            predecessor.sessionId !== binding.sessionId ||
+            predecessor.runtime !== binding.runtime ||
+            predecessor.claims.conversationId !== conversationId
+          )
             throw new VoiceAdmissionError(403, "voice_predecessor_mismatch");
         }
         if (tickets.size >= MAX_PENDING)
@@ -541,7 +632,8 @@ export function createSelfHostedVoice(
           stopIntentVersion: 1,
           stopIntentGeneration: sessionId,
           ...(configured.route === "cloud"
-            ? { rotationPreparation: "retire-before-open-v1" } : {}),
+            ? { rotationPreparation: "retire-before-open-v1" }
+            : {}),
         });
       } else throw new VoiceAdmissionError(404, "voice_route_not_found");
     } catch (error) {
@@ -646,20 +738,34 @@ export function createSelfHostedVoice(
           authorizeBye: (frame) => {
             const intent = frame.intent;
             if (!intent) return; // Legacy bye is transport closure, not a cancellation receipt.
-            if (intent.version !== 1 || intent.generation !== ticket.claims.sessionId)
-              throw new VoiceAdmissionError(403, "voice_stop_generation_mismatch");
+            if (
+              intent.version !== 1 ||
+              intent.generation !== ticket.claims.sessionId
+            )
+              throw new VoiceAdmissionError(
+                403,
+                "voice_stop_generation_mismatch",
+              );
             if (intent.kind === "user_stop") {
               ticket.admissionClosed = true;
               if (ticket.successorId) revoke(ticket.successorId);
               ticket.successorId = undefined;
             } else {
-              if (ticket.admissionClosed || tickets.get(ticket.claims.sessionId) !== ticket || intent.successorSessionId !== ticket.successorId)
-                throw new VoiceAdmissionError(403, "voice_rotation_successor_mismatch");
+              if (
+                ticket.admissionClosed ||
+                tickets.get(ticket.claims.sessionId) !== ticket ||
+                intent.successorSessionId !== ticket.successorId
+              )
+                throw new VoiceAdmissionError(
+                  403,
+                  "voice_rotation_successor_mismatch",
+                );
             }
           },
           admitSession: () => registry.size() < MAX_SOCKETS,
           buildSession: async ({ claims, jti, tokenExpSeconds, downlink }) => {
-            const acquisitionGate = config.route === "cloud" ? reserveAcquisition(ticket) : undefined;
+            const acquisitionGate =
+              config.route === "cloud" ? reserveAcquisition(ticket) : undefined;
             let relay:
               | Awaited<ReturnType<typeof createCloudSpeechRelayPorts>>
               | undefined;
@@ -680,7 +786,9 @@ export function createSelfHostedVoice(
                 const retry = retirementAttempted;
                 retirementAttempted = true;
                 const attempt = (async () => {
-                  await (retry ? (handle.retryRetirement?.() ?? handle.close()) : handle.close());
+                  await (retry
+                    ? (handle.retryRetirement?.() ?? handle.close())
+                    : handle.close());
                   activeCloudTickets.delete(ticket);
                   retiringCloudTickets.delete(ticket);
                   acquisitionGate?.retired();
@@ -694,236 +802,314 @@ export function createSelfHostedVoice(
               }
               return retirement;
             };
-            const retireAfterFailure = async (error: unknown): Promise<never> => {
-              try { await retire(); }
-              catch (cleanupError) {
-                const cause = new AggregateError([error, cleanupError], "Voice startup failed with unconfirmed retirement");
+            const retireAfterFailure = async (
+              error: unknown,
+            ): Promise<never> => {
+              try {
+                await retire();
+              } catch (cleanupError) {
+                const cause = new AggregateError(
+                  [error, cleanupError],
+                  "Voice startup failed with unconfirmed retirement",
+                );
                 if (error instanceof CloudSpeechRelayClientError)
-                  throw new CloudSpeechRelayClientError(error.code, error.message, { cause });
+                  throw new CloudSpeechRelayClientError(
+                    error.code,
+                    error.message,
+                    { cause },
+                  );
                 if (error instanceof VoiceAdmissionError)
-                  throw new VoiceAdmissionError(error.status, error.code, { cause });
+                  throw new VoiceAdmissionError(error.status, error.code, {
+                    cause,
+                  });
                 throw cause;
               }
               throw error;
             };
             ticket.retire = async () => {
-              try { session?.bye(); }
-              finally { await retire(); }
+              try {
+                session?.bye();
+              } finally {
+                await retire();
+              }
             };
             try {
-              const awaitRetirement = async (retire: (() => Promise<void>) | undefined) => {
-                if (!retire) throw new VoiceAdmissionError(503, "voice_retirement_unconfirmed");
-                try { await retire(); }
-                catch (cause) { throw new VoiceAdmissionError(503, "voice_retirement_unconfirmed", { cause }); }
+              const awaitRetirement = async (
+                retire: (() => Promise<void>) | undefined,
+              ) => {
+                if (!retire)
+                  throw new VoiceAdmissionError(
+                    503,
+                    "voice_retirement_unconfirmed",
+                  );
+                try {
+                  await retire();
+                } catch (cause) {
+                  throw new VoiceAdmissionError(
+                    503,
+                    "voice_retirement_unconfirmed",
+                    { cause },
+                  );
+                }
               };
               if (acquisitionGate) {
                 await acquisitionGate.previous;
-                if (!(await active(ticket)) || providerLifetime.signal.aborted || ticket.expiresAt <= now())
+                if (
+                  !(await active(ticket)) ||
+                  providerLifetime.signal.aborted ||
+                  ticket.expiresAt <= now()
+                )
                   throw new VoiceAdmissionError(401, "voice_session_revoked");
                 const prior = acquisitionGate.slot.current;
                 if (prior && prior !== ticket) {
-                  if (!prior.retire) throw new VoiceAdmissionError(503, "voice_retirement_unconfirmed");
+                  if (!prior.retire)
+                    throw new VoiceAdmissionError(
+                      503,
+                      "voice_retirement_unconfirmed",
+                    );
                   await awaitRetirement(prior.retire);
                 }
-                if (!(await active(ticket)) || providerLifetime.signal.aborted || ticket.expiresAt <= now())
+                if (
+                  !(await active(ticket)) ||
+                  providerLifetime.signal.aborted ||
+                  ticket.expiresAt <= now()
+                )
                   throw new VoiceAdmissionError(401, "voice_session_revoked");
                 acquisitionGate.slot.current = ticket;
               }
-            if (config.route === "cloud") {
-              // A prefetched ticket has no provider. Retire its exact bound
-              // predecessor and await the Cloud cleanup receipt before opening.
-              if (ticket.predecessor) {
-                const retirePredecessor = ticket.predecessor.retire;
-                if (!retirePredecessor) throw new VoiceAdmissionError(409, "voice_predecessor_unavailable");
-                if (ticket.predecessor.admissionClosed || ticket.predecessor.successorId !== ticket.claims.sessionId)
-                  throw new VoiceAdmissionError(403, "voice_rotation_successor_mismatch");
-                await awaitRetirement(retirePredecessor);
-                ticket.predecessor = undefined;
-                if (!(await active(ticket)) || providerLifetime.signal.aborted ||
-                    tickets.get(ticket.claims.sessionId) !== ticket ||
-                    ticket.expiresAt <= now())
-                  throw new VoiceAdmissionError(401, "voice_session_revoked");
-              }
-              // An unlinked retry or new Talk must not overlap another live
-              // same-owner conversation merely because retirement has not begun.
-              for (const previous of [...activeCloudTickets]) {
-                if (previous !== ticket && previous.runtime === ticket.runtime &&
-                    previous.identityId === ticket.identityId &&
-                    previous.claims.conversationId === ticket.claims.conversationId) {
-                  if (!previous.retire) throw new VoiceAdmissionError(503, "voice_retirement_unconfirmed");
-                  previous.admissionClosed = true;
-                  if (previous.successorId && previous.successorId !== ticket.claims.sessionId) revoke(previous.successorId);
-                  await awaitRetirement(previous.retire);
-                }
-              }
-              for (const pending of retiringCloudTickets) {
-                if (!pending.retire) throw new VoiceAdmissionError(503, "voice_retirement_unconfirmed");
-                await awaitRetirement(pending.retire);
-              }
-              if (!(await active(ticket)) || providerLifetime.signal.aborted ||
-                  tickets.get(ticket.claims.sessionId) !== ticket || ticket.expiresAt <= now())
-                throw new VoiceAdmissionError(401, "voice_session_revoked");
-              const acquisition = (
-                options.createCloudSpeechPorts ?? createCloudSpeechRelayPorts
-              )({
-                enabled: true,
-                origin: config.origin,
-                credential: async () => config.apiKey,
-                signal: providerLifetime.signal,
-                recoveryJournal: cloudSpeechRecoveryJournal(
-                  resolveStateDir(),
-                  ticket.identityId,
-                  config.origin,
-                  ticket.claims.conversationId,
-                ),
-                registerRetirement: (handle) => {
-                  cleanup = handle;
-                  activeCloudTickets.add(ticket);
-                },
-                assertCurrent: () => {
-                  const current = cloudSpeechConfiguration(ticket.runtime);
+              if (config.route === "cloud") {
+                // A prefetched ticket has no provider. Retire its exact bound
+                // predecessor and await the Cloud cleanup receipt before opening.
+                if (ticket.predecessor) {
+                  const retirePredecessor = ticket.predecessor.retire;
+                  if (!retirePredecessor)
+                    throw new VoiceAdmissionError(
+                      409,
+                      "voice_predecessor_unavailable",
+                    );
                   if (
-                    closed ||
-                    process.env.ELIZA_SELF_HOSTED_VOICE_ENABLED !== "1" ||
-                    process.env.ELIZA_SELF_HOSTED_VOICE_CLOUD_RELAY_ENABLED !==
-                      "1" ||
-                    state.current !== ticket.runtime ||
-                    tickets.get(ticket.claims.sessionId) !== ticket ||
-                    ticket.expiresAt <= now() ||
-                    current.apiKey !== config.apiKey ||
-                    current.origin !== config.origin
+                    ticket.predecessor.admissionClosed ||
+                    ticket.predecessor.successorId !== ticket.claims.sessionId
                   )
                     throw new VoiceAdmissionError(
-                      401,
-                      "voice_cloud_owner_changed",
+                      403,
+                      "voice_rotation_successor_mismatch",
                     );
-                },
-              });
-              pendingCloudAcquisitions.add(acquisition);
-              try {
-                relay = await acquisition;
-                // Track before another await or owner/Stop validation can fail.
-                activeCloudTickets.add(ticket);
-              } catch (error) {
-                return await retireAfterFailure(error);
-              } finally {
-                pendingCloudAcquisitions.delete(acquisition);
-              }
-              try {
-                if (!(await active(ticket)) || providerLifetime.signal.aborted)
-                  throw new VoiceAdmissionError(401, "voice_session_revoked");
-              } catch (error) {
-                return await retireAfterFailure(error);
-              }
-              try {
-                logger.info(
-                  {
-                    event: "cloud_speech_admitted",
-                    localVoiceSessionId: claims.sessionId,
-                    speechSessionDigest: createHash("sha256")
-                      .update(
-                        JSON.stringify({ cloudSessionId: relay.sessionId }),
-                      )
-                      .digest("hex"),
-                    expiresAt: relay.expiresAt,
-                  },
-                  "[voice-session] Cloud speech admitted",
-                );
-              } catch {
-                // Diagnostics cannot deny an otherwise admitted voice session.
-              }
-            }
-            const authenticatedFetch = (async (
-              input: RequestInfo | URL,
-              init?: RequestInit,
-            ) => {
-              if (!(await active(ticket)))
-                throw new VoiceAdmissionError(401, "voice_session_revoked");
-              const headers = new Headers(init?.headers);
-              // Cookie auth preserves the owner while retaining cancellation on a
-              // voice barge-in. Paired bearer text turns deliberately outlive disconnect.
-              headers.set(
-                "Cookie",
-                `${SESSION_COOKIE_NAME}=${ticket.sessionId}`,
-              );
-              headers.set(
-                CSRF_HEADER_NAME,
-                deriveCsrfToken({
-                  id: ticket.sessionId,
-                  csrfSecret: ticket.csrfSecret,
-                }),
-              );
-              return fetchImpl(input, { ...init, headers });
-            }) as typeof fetch;
-            const commonConfig = {
-              ...claims,
-              jti,
-              tokenExpSeconds,
-              elizaEndpoint: ticket.origin,
-              elizaAuthorization: "",
-              elizaModel: "runtime-selected",
-              fetchImpl: createLocalRuntimeConversationFetch(
-                ticket.origin,
-                {
-                  ...claims,
-                  boundHostAddress: new URL(ticket.origin).hostname,
-                },
-                authenticatedFetch,
-              ),
-              usageStore,
-              usageLimits: {
-                organizationDailyMinutes: 60,
-                userDailyMinutes: 60,
-              },
-              registry,
-              downlink,
-              isRevoked: async () =>
-                tickets.get(claims.sessionId) !== ticket ||
-                !(await active(ticket)),
-              onTeardown: async (reason: string) => {
-                if (reason !== "completed") {
-                  ticket.admissionClosed = true;
-                  if (ticket.successorId) revoke(ticket.successorId);
+                  await awaitRetirement(retirePredecessor);
+                  ticket.predecessor = undefined;
+                  if (
+                    !(await active(ticket)) ||
+                    providerLifetime.signal.aborted ||
+                    tickets.get(ticket.claims.sessionId) !== ticket ||
+                    ticket.expiresAt <= now()
+                  )
+                    throw new VoiceAdmissionError(401, "voice_session_revoked");
                 }
-                await retire();
-              },
-            };
-            let sessionConfig: VoiceSessionConfig;
-            if (config.route === "cloud") {
-              if (!relay)
-                throw new VoiceAdmissionError(
-                  503,
-                  "voice_cloud_transport_unavailable",
+                // An unlinked retry or new Talk must not overlap another live
+                // same-owner conversation merely because retirement has not begun.
+                for (const previous of [...activeCloudTickets]) {
+                  if (
+                    previous !== ticket &&
+                    previous.runtime === ticket.runtime &&
+                    previous.identityId === ticket.identityId &&
+                    previous.claims.conversationId ===
+                      ticket.claims.conversationId
+                  ) {
+                    if (!previous.retire)
+                      throw new VoiceAdmissionError(
+                        503,
+                        "voice_retirement_unconfirmed",
+                      );
+                    previous.admissionClosed = true;
+                    if (
+                      previous.successorId &&
+                      previous.successorId !== ticket.claims.sessionId
+                    )
+                      revoke(previous.successorId);
+                    await awaitRetirement(previous.retire);
+                  }
+                }
+                for (const pending of retiringCloudTickets) {
+                  if (!pending.retire)
+                    throw new VoiceAdmissionError(
+                      503,
+                      "voice_retirement_unconfirmed",
+                    );
+                  await awaitRetirement(pending.retire);
+                }
+                if (
+                  !(await active(ticket)) ||
+                  providerLifetime.signal.aborted ||
+                  tickets.get(ticket.claims.sessionId) !== ticket ||
+                  ticket.expiresAt <= now()
+                )
+                  throw new VoiceAdmissionError(401, "voice_session_revoked");
+                const acquisition = (
+                  options.createCloudSpeechPorts ?? createCloudSpeechRelayPorts
+                )({
+                  enabled: true,
+                  origin: config.origin,
+                  credential: async () => config.apiKey,
+                  signal: providerLifetime.signal,
+                  recoveryJournal: cloudSpeechRecoveryJournal(
+                    resolveStateDir(),
+                    ticket.identityId,
+                    config.origin,
+                    ticket.claims.conversationId,
+                  ),
+                  registerRetirement: (handle) => {
+                    cleanup = handle;
+                    activeCloudTickets.add(ticket);
+                  },
+                  assertCurrent: () => {
+                    const current = cloudSpeechConfiguration(ticket.runtime);
+                    if (
+                      closed ||
+                      process.env.ELIZA_SELF_HOSTED_VOICE_ENABLED !== "1" ||
+                      process.env
+                        .ELIZA_SELF_HOSTED_VOICE_CLOUD_RELAY_ENABLED !== "1" ||
+                      state.current !== ticket.runtime ||
+                      tickets.get(ticket.claims.sessionId) !== ticket ||
+                      ticket.expiresAt <= now() ||
+                      current.apiKey !== config.apiKey ||
+                      current.origin !== config.origin
+                    )
+                      throw new VoiceAdmissionError(
+                        401,
+                        "voice_cloud_owner_changed",
+                      );
+                  },
+                });
+                pendingCloudAcquisitions.add(acquisition);
+                try {
+                  relay = await acquisition;
+                  // Track before another await or owner/Stop validation can fail.
+                  activeCloudTickets.add(ticket);
+                } catch (error) {
+                  return await retireAfterFailure(error);
+                } finally {
+                  pendingCloudAcquisitions.delete(acquisition);
+                }
+                try {
+                  if (
+                    !(await active(ticket)) ||
+                    providerLifetime.signal.aborted
+                  )
+                    throw new VoiceAdmissionError(401, "voice_session_revoked");
+                } catch (error) {
+                  return await retireAfterFailure(error);
+                }
+                try {
+                  logger.info(
+                    {
+                      event: "cloud_speech_admitted",
+                      localVoiceSessionId: claims.sessionId,
+                      speechSessionDigest: createHash("sha256")
+                        .update(
+                          JSON.stringify({ cloudSessionId: relay.sessionId }),
+                        )
+                        .digest("hex"),
+                      expiresAt: relay.expiresAt,
+                    },
+                    "[voice-session] Cloud speech admitted",
+                  );
+                } catch {
+                  // Diagnostics cannot deny an otherwise admitted voice session.
+                }
+              }
+              const authenticatedFetch = (async (
+                input: RequestInfo | URL,
+                init?: RequestInit,
+              ) => {
+                if (!(await active(ticket)))
+                  throw new VoiceAdmissionError(401, "voice_session_revoked");
+                const headers = new Headers(init?.headers);
+                // Cookie auth preserves the owner while retaining cancellation on a
+                // voice barge-in. Paired bearer text turns deliberately outlive disconnect.
+                headers.set(
+                  "Cookie",
+                  `${SESSION_COOKIE_NAME}=${ticket.sessionId}`,
                 );
-              sessionConfig = {
-                ...commonConfig,
-                speechProvider: "injected",
-                speechPorts: relay.speechPorts,
+                headers.set(
+                  CSRF_HEADER_NAME,
+                  deriveCsrfToken({
+                    id: ticket.sessionId,
+                    csrfSecret: ticket.csrfSecret,
+                  }),
+                );
+                return fetchImpl(input, { ...init, headers });
+              }) as typeof fetch;
+              const commonConfig = {
+                ...claims,
+                jti,
+                tokenExpSeconds,
+                elizaEndpoint: ticket.origin,
+                elizaAuthorization: "",
+                elizaModel: "runtime-selected",
+                fetchImpl: createLocalRuntimeConversationFetch(
+                  ticket.origin,
+                  {
+                    ...claims,
+                    boundHostAddress: new URL(ticket.origin).hostname,
+                  },
+                  authenticatedFetch,
+                ),
+                usageStore,
+                usageLimits: {
+                  organizationDailyMinutes: 60,
+                  userDailyMinutes: 60,
+                },
+                registry,
+                downlink,
+                isRevoked: async () =>
+                  tickets.get(claims.sessionId) !== ticket ||
+                  !(await active(ticket)),
+                onTeardown: async (reason: string) => {
+                  if (reason !== "completed") {
+                    ticket.admissionClosed = true;
+                    if (ticket.successorId) revoke(ticket.successorId);
+                  }
+                  await retire();
+                },
               };
-            } else {
-              sessionConfig = {
-                ...commonConfig,
-                cartesiaApiKey: config.apiKey,
-                cartesiaVoiceId: config.voiceId,
-                cartesiaInkWebSocketFactory: (request) =>
-                  adaptVoiceWebSocket(
-                    new WebSocket(request.url, { headers: request.headers }),
-                  ),
-                cartesiaWebSocketFactory: (url, providerOptions) =>
-                  adaptVoiceWebSocket(
-                    new WebSocket(url, { headers: providerOptions.headers }),
-                  ),
-              };
+              let sessionConfig: VoiceSessionConfig;
+              if (config.route === "cloud") {
+                if (!relay)
+                  throw new VoiceAdmissionError(
+                    503,
+                    "voice_cloud_transport_unavailable",
+                  );
+                sessionConfig = {
+                  ...commonConfig,
+                  speechProvider: "injected",
+                  speechPorts: relay.speechPorts,
+                };
+              } else {
+                sessionConfig = {
+                  ...commonConfig,
+                  cartesiaApiKey: config.apiKey,
+                  cartesiaVoiceId: config.voiceId,
+                  cartesiaInkWebSocketFactory: (request) =>
+                    adaptVoiceWebSocket(
+                      new WebSocket(request.url, { headers: request.headers }),
+                    ),
+                  cartesiaWebSocketFactory: (url, providerOptions) =>
+                    adaptVoiceWebSocket(
+                      new WebSocket(url, { headers: providerOptions.headers }),
+                    ),
+                };
+              }
+              try {
+                session = options.buildSession
+                  ? options.buildSession(sessionConfig)
+                  : new VoiceSession(sessionConfig);
+                return session;
+              } catch (error) {
+                return await retireAfterFailure(error);
+              }
+            } finally {
+              acquisitionGate?.release();
             }
-            try {
-              session = options.buildSession
-                ? options.buildSession(sessionConfig)
-                : new VoiceSession(sessionConfig);
-              return session;
-            } catch (error) {
-              return await retireAfterFailure(error);
-            }
-            } finally { acquisitionGate?.release(); }
           },
         });
       });
@@ -950,16 +1136,30 @@ export function createSelfHostedVoice(
     reset();
     const attempt = (async () => {
       await Promise.allSettled([...pendingCloudAcquisitions]);
-      const results = await Promise.allSettled([...new Set([...activeCloudTickets, ...retiringCloudTickets])].map(ticket => {
-        if (!ticket.retire) throw new Error("Cloud retirement is unavailable");
-        return ticket.retire();
-      }));
+      const results = await Promise.allSettled(
+        [...new Set([...activeCloudTickets, ...retiringCloudTickets])].map(
+          (ticket) => {
+            if (!ticket.retire)
+              throw new Error("Cloud retirement is unavailable");
+            return ticket.retire();
+          },
+        ),
+      );
       wss.close();
-      const failures = results.filter((result): result is PromiseRejectedResult => result.status === "rejected");
-      if (failures.length) throw new AggregateError(failures.map(result => result.reason), "Cloud retirement was not confirmed");
+      const failures = results.filter(
+        (result): result is PromiseRejectedResult =>
+          result.status === "rejected",
+      );
+      if (failures.length)
+        throw new AggregateError(
+          failures.map((result) => result.reason),
+          "Cloud retirement was not confirmed",
+        );
     })();
     closing = attempt;
-    void attempt.catch(() => { if (closing === attempt) closing = undefined; });
+    void attempt.catch(() => {
+      if (closing === attempt) closing = undefined;
+    });
     return attempt;
   }
   return { handleRequest, handleUpgrade, reset, close };

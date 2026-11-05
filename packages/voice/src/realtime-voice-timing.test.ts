@@ -36,9 +36,16 @@ function fixture() {
 }
 
 const causes = [
-  "foreground-check-failed", "owned-navigation-unconfirmed", "renderer-closed",
-  "binding-check-failed", "notes-left-unowned", "shell-navigation-unowned",
-  "component-unmounted", "document-hidden", "page-hidden", "connection-opened",
+  "foreground-check-failed",
+  "owned-navigation-unconfirmed",
+  "renderer-closed",
+  "binding-check-failed",
+  "notes-left-unowned",
+  "shell-navigation-unowned",
+  "component-unmounted",
+  "document-hidden",
+  "page-hidden",
+  "connection-opened",
   "account-changed",
 ] as const satisfies readonly RealtimeCancellationCause[];
 
@@ -49,9 +56,14 @@ describe("realtime cancellation diagnostics", () => {
     handle.acceptedFinal("private-trace-must-not-persist");
     handle.noteCancellation(cause);
     handle.stop();
-    expect(f.rows().map((row: { cancellationCause?: string }) => row.cancellationCause))
-      .toEqual([cause, cause]);
-    expect(f.timing.exportJson()).not.toContain("private-trace-must-not-persist");
+    expect(
+      f
+        .rows()
+        .map((row: { cancellationCause?: string }) => row.cancellationCause),
+    ).toEqual([cause, cause]);
+    expect(f.timing.exportJson()).not.toContain(
+      "private-trace-must-not-persist",
+    );
   });
 
   it("keeps the first valid cause in memory without storage access until existing stop writes", () => {
@@ -63,10 +75,15 @@ describe("realtime cancellation diagnostics", () => {
     handle.noteCancellation("document-hidden");
     handle.noteCancellation("page-hidden");
     expect(f.accesses()).toEqual(before);
-    expect(f.rows().every((row: object) => !("cancellationCause" in row))).toBe(true);
+    expect(f.rows().every((row: object) => !("cancellationCause" in row))).toBe(
+      true,
+    );
     handle.stop();
-    expect(f.rows().map((row: { cancellationCause?: string }) => row.cancellationCause))
-      .toEqual(["document-hidden", "document-hidden"]);
+    expect(
+      f
+        .rows()
+        .map((row: { cancellationCause?: string }) => row.cancellationCause),
+    ).toEqual(["document-hidden", "document-hidden"]);
   });
 
   it("does not reopen or annotate a stopped handle or its replacement", () => {
@@ -81,12 +98,18 @@ describe("realtime cancellation diagnostics", () => {
     old.noteCancellation("component-unmounted");
     expect(f.accesses()).toEqual(accesses);
     expect(f.rows().slice(0, 2)).toEqual(before);
-    expect(f.rows().every((row: object) => !("cancellationCause" in row))).toBe(true);
+    expect(f.rows().every((row: object) => !("cancellationCause" in row))).toBe(
+      true,
+    );
     current.noteCancellation("account-changed");
     current.stop();
     expect(f.rows().slice(0, 2)).toEqual(before);
-    expect(f.rows().slice(2).map((row: { cancellationCause?: string }) => row.cancellationCause))
-      .toEqual(["account-changed", "account-changed"]);
+    expect(
+      f
+        .rows()
+        .slice(2)
+        .map((row: { cancellationCause?: string }) => row.cancellationCause),
+    ).toEqual(["account-changed", "account-changed"]);
   });
 
   it("does not retrofit rows after error closes the collector", () => {
@@ -99,7 +122,9 @@ describe("realtime cancellation diagnostics", () => {
     handle.noteCancellation("renderer-closed");
     expect(f.accesses()).toEqual(accesses);
     expect(f.rows()).toEqual(before);
-    expect(before.every((row: { outcome: string }) => row.outcome === "error")).toBe(true);
+    expect(
+      before.every((row: { outcome: string }) => row.outcome === "error"),
+    ).toBe(true);
   });
 
   it.each(["reply_complete", "interrupted", "fatal-error"])(
@@ -109,12 +134,18 @@ describe("realtime cancellation diagnostics", () => {
       const handle = f.timing.start("direct-cartesia");
       handle.acceptedFinal("trace");
       handle.control(control, "trace");
-      const prior = f.rows().find((row: { kind: string }) => row.kind === "turn");
+      const prior = f
+        .rows()
+        .find((row: { kind: string }) => row.kind === "turn");
       handle.noteCancellation("page-hidden");
       handle.stop();
-      expect(f.rows().find((row: { kind: string }) => row.kind === "turn")).toEqual(prior);
-      expect(f.rows().find((row: { kind: string }) => row.kind === "session").cancellationCause)
-        .toBe("page-hidden");
+      expect(
+        f.rows().find((row: { kind: string }) => row.kind === "turn"),
+      ).toEqual(prior);
+      expect(
+        f.rows().find((row: { kind: string }) => row.kind === "session")
+          .cancellationCause,
+      ).toBe("page-hidden");
     },
   );
 
@@ -123,15 +154,22 @@ describe("realtime cancellation diagnostics", () => {
     const handle = f.timing.start("direct-cartesia");
     handle.acceptedFinal("old");
     handle.acceptedFinal("current");
-    const superseded = f.rows().find((row: { outcome: string }) => row.outcome === "superseded");
+    const superseded = f
+      .rows()
+      .find((row: { outcome: string }) => row.outcome === "superseded");
     handle.noteCancellation("notes-left-unowned");
     handle.acceptedFinal("future");
     handle.stop();
     const rows = f.rows();
-    expect(rows.find((row: { id: string }) => row.id === superseded.id)).toEqual(superseded);
+    expect(
+      rows.find((row: { id: string }) => row.id === superseded.id),
+    ).toEqual(superseded);
     expect(rows.at(-1).cancellationCause).toBeUndefined();
-    expect(rows.filter((row: { cancellationCause?: string }) => row.cancellationCause)
-      .map((row: { kind: string }) => row.kind)).toEqual(["session", "turn"]);
+    expect(
+      rows
+        .filter((row: { cancellationCause?: string }) => row.cancellationCause)
+        .map((row: { kind: string }) => row.kind),
+    ).toEqual(["session", "turn"]);
   });
 
   it("persists a pending cause through existing error writes without another diagnostic write", () => {
@@ -140,9 +178,16 @@ describe("realtime cancellation diagnostics", () => {
     handle.acceptedFinal("trace");
     handle.noteCancellation("binding-check-failed");
     handle.error();
-    expect(f.rows().map((row: { outcome: string; cancellationCause?: string }) =>
-      [row.outcome, row.cancellationCause])).toEqual([
-      ["error", "binding-check-failed"], ["error", "binding-check-failed"],
+    expect(
+      f
+        .rows()
+        .map((row: { outcome: string; cancellationCause?: string }) => [
+          row.outcome,
+          row.cancellationCause,
+        ]),
+    ).toEqual([
+      ["error", "binding-check-failed"],
+      ["error", "binding-check-failed"],
     ]);
   });
 
@@ -150,10 +195,27 @@ describe("realtime cancellation diagnostics", () => {
     const f = fixture();
     f.timing.start("direct-cartesia").stop();
     const legacy = JSON.parse(f.timing.exportJson());
-    expect(sanitizeRealtimeTiming(JSON.stringify(legacy)).records).toEqual(legacy.records);
-    for (const cancellationCause of ["", "unknown", "raw error text", "user@example.test", 1, true, null, [], {}]) {
-      const doc = { ...legacy, records: [{ ...legacy.records[0], cancellationCause }] };
-      expect(sanitizeRealtimeTiming(JSON.stringify(doc)).records).toEqual(legacy.records);
+    expect(sanitizeRealtimeTiming(JSON.stringify(legacy)).records).toEqual(
+      legacy.records,
+    );
+    for (const cancellationCause of [
+      "",
+      "unknown",
+      "raw error text",
+      "user@example.test",
+      1,
+      true,
+      null,
+      [],
+      {},
+    ]) {
+      const doc = {
+        ...legacy,
+        records: [{ ...legacy.records[0], cancellationCause }],
+      };
+      expect(sanitizeRealtimeTiming(JSON.stringify(doc)).records).toEqual(
+        legacy.records,
+      );
     }
   });
 
@@ -165,8 +227,13 @@ describe("realtime cancellation diagnostics", () => {
       handle.stop();
     }
     expect(f.rows()).toHaveLength(200);
-    expect(new TextEncoder().encode(f.timing.exportJson()).byteLength).toBeLessThanOrEqual(REALTIME_TIMING_LIMIT);
-    const oversized = JSON.stringify({ ...JSON.parse(f.timing.exportJson()), padding: "☃".repeat(100000) });
+    expect(
+      new TextEncoder().encode(f.timing.exportJson()).byteLength,
+    ).toBeLessThanOrEqual(REALTIME_TIMING_LIMIT);
+    const oversized = JSON.stringify({
+      ...JSON.parse(f.timing.exportJson()),
+      padding: "☃".repeat(100000),
+    });
     expect(sanitizeRealtimeTiming(oversized).records).toEqual([]);
   });
 });

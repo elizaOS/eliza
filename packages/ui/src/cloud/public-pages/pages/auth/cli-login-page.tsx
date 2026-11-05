@@ -446,7 +446,8 @@ function CliLoginConfirmation({
 
 export function cliLoginSignInHref(searchParams: URLSearchParams): string {
   const query = new URLSearchParams(searchParams);
-  const google = query.getAll("provider").length === 1 && query.get("provider") === "google";
+  const google =
+    query.getAll("provider").length === 1 && query.get("provider") === "google";
   query.delete("provider");
   const returnTo = `/auth/cli-login${query.size ? `?${query}` : ""}`;
   return `/login?returnTo=${encodeURIComponent(returnTo)}${google ? "&nativeProvider=google" : ""}`;

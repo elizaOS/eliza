@@ -22,24 +22,27 @@ import {
   AgentRuntime,
   APP_SESSION_SERVICE_TYPE,
   attestAuthenticatedApiDeliveryAudience,
-  OWNER_EXCLUSIVE_DISCLOSURE_GATE,
-  type UUID,
-  type GenerateTextParams,
   type ContextObject,
+  type GenerateTextParams,
   type IAgentRuntime,
   InferenceTurnTimer,
   type Memory,
+  OWNER_EXCLUSIVE_DISCLOSURE_GATE,
   projectDeferredProviders,
   runWithInferenceTiming,
   type State,
+  type UUID,
 } from "@elizaos/core";
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { initializeTestRuntime } from "@elizaos/testing/runtime";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { applyPluginRoleGating } from "../../../../packages/agent/src/runtime/plugin-role-gating.ts";
 import { gatePluginSessionForHostedApp } from "../../../../packages/agent/src/services/app-session-gate.ts";
-import { createV5MessageContextObject } from "../../../plugin-assistant/src/services/message/context-assembly.ts";
-import { runStage1, stage1Response } from "../../../plugin-assistant/src/__tests__/stage1/fixtures.ts";
+import {
+  runStage1,
+  stage1Response,
+} from "../../../plugin-assistant/src/__tests__/stage1/fixtures.ts";
 import { BUILTIN_RESPONSE_HANDLER_FIELD_EVALUATORS } from "../../../plugin-assistant/src/runtime/builtin-field-evaluators.ts";
+import { createV5MessageContextObject } from "../../../plugin-assistant/src/services/message/context-assembly.ts";
 import type {
   ConnectorContribution,
   ConnectorStatus,
@@ -982,98 +985,203 @@ describe("LifeOps reference-body deferral (planner recompose)", () => {
   });
 });
 
-
 describe("LifeOps registered provider planner restoration", () => {
-  it.each(["active", "no-calendar", "owner-revoked", "session-revoked"] as const)("restores the registered LifeOps provider through the actual planner (%s)", async (mode) => {
-    const noCalendar = mode === "no-calendar";
-    wireImmediate();
-    if (noCalendar) reads.getGoogleConnectorAccounts.mockResolvedValue([]);
-    const runtime = new AgentRuntime({
-      agentId: ids.agentId as UUID,
-      character: { name: "LifeOps integration", settings: { ELIZA_ADMIN_ENTITY_ID: ids.ownerId } },
-    });
-    await initializeTestRuntime(runtime, { skipMigrations: true });
-    try {
-      vi.spyOn(runtime, "getRoom").mockResolvedValue(null);
-      vi.spyOn(runtime, "getParticipantsForRoom").mockResolvedValue([ids.ownerId as UUID, ids.agentId as UUID]);
-      const getService = runtime.getService.bind(runtime);
-      let sessionActive = true;
-      vi.spyOn(runtime, "getService").mockImplementation((name) =>
-        name === APP_SESSION_SERVICE_TYPE
-          ? { getRuns: () => sessionActive ? [{ appName: "alpha", status: "running" }] : [] } as never
-          : getService(name),
-      );
-      const registry = createConnectorRegistry();
-      registerConnectorRegistry(runtime, registry);
-      const plugin = gatePluginSessionForHostedApp({
-        name: "lifeops-integration",
-        description: "Registered LifeOps integration fixture",
-        providers: [{ ...lifeOpsProvider, disclosureGate: OWNER_EXCLUSIVE_DISCLOSURE_GATE }],
-      }, "alpha");
-      applyPluginRoleGating([plugin]);
-      runtime.registerProvider(plugin.providers![0]);
-      const turn: Memory = { ...message, content: { text: "Check my calendar", source: "client_chat", channelType: "API" } };
-      await attestAuthenticatedApiDeliveryAudience(runtime, turn, { kind: "owner_session", principalId: "lifeops-integration" });
-      const deferred = await runtime.composeState(turn, [lifeOpsProvider.name], true, false, [], {
-        deferredReferenceProviders: [lifeOpsProvider.name],
+  it.each([
+    "active",
+    "no-calendar",
+    "owner-revoked",
+    "session-revoked",
+  ] as const)(
+    "restores the registered LifeOps provider through the actual planner (%s)",
+    async (mode) => {
+      const noCalendar = mode === "no-calendar";
+      wireImmediate();
+      if (noCalendar) reads.getGoogleConnectorAccounts.mockResolvedValue([]);
+      const runtime = new AgentRuntime({
+        agentId: ids.agentId as UUID,
+        character: {
+          name: "LifeOps integration",
+          settings: { ELIZA_ADMIN_ENTITY_ID: ids.ownerId },
+        },
       });
-      expect(reads.getNextCalendarEventContext).not.toHaveBeenCalled();
-      const makeContext = async (state: State) => {
-        const context = await createV5MessageContextObject({ runtime, message: turn, state, selectedContexts: ["calendar"], userRoles: ["OWNER"], includeTools: false, providerPhase: "planning" });
-        return { ...context, metadata: { ...context.metadata, providerDiscoveryEnabled: true, loadedContextProviders: [] } };
-      };
-      const context = await makeContext(deferred);
-      const source = context.events.find((event) => event.type === "provider" && event.name === lifeOpsProvider.name);
-      expect(
-        source?.type === "provider" &&
-        "referenceBodyDeferred" in source &&
-        source.referenceBodyDeferred,
-      ).toBe(true);
-      expect(projectDeferredProviders(context).available).toContain(lifeOpsProvider.name);
-      if (noCalendar) reads.getNextCalendarEventContext.mockRejectedValue(new Error("CALENDAR_SOURCES_UNAVAILABLE"));
-      const compose = vi.spyOn(runtime, "composeState");
-      expect(runtime.contexts.get("calendar")).toBeDefined();
-      for (const evaluator of BUILTIN_RESPONSE_HANDLER_FIELD_EVALUATORS) {
-        runtime.registerResponseHandlerFieldEvaluator(evaluator);
-      }
-      const responses = [
-        stage1Response({ contexts: ["calendar"], intents: ["check the connected calendar"], replyText: "" }),
-        { text: "", toolCalls: [{ id: "restore-lifeops", name: "RESTORE_CONTEXT", arguments: { scope: "providers", reason: "Read the connected calendar source." } }] },
-        { text: "", toolCalls: [{ id: "reply-lifeops", name: "REPLY", arguments: { text: "Calendar check finished." } }] },
-      ];
-      let modelCalls = 0;
-      // Preserve the initialized registry, provider owner and audience identity.
-      // Only the model boundary is scripted; the planner and restore callback are real.
-      const model = vi.spyOn(runtime, "useModel").mockImplementation((async () => {
-        modelCalls += 1;
-        if (modelCalls === 2) {
-          if (mode === "owner-revoked") reads.hasLifeOpsAccess.mockResolvedValue(false);
-          if (mode === "session-revoked") sessionActive = false;
+      await initializeTestRuntime(runtime, { skipMigrations: true });
+      try {
+        vi.spyOn(runtime, "getRoom").mockResolvedValue(null);
+        vi.spyOn(runtime, "getParticipantsForRoom").mockResolvedValue([
+          ids.ownerId as UUID,
+          ids.agentId as UUID,
+        ]);
+        const getService = runtime.getService.bind(runtime);
+        let sessionActive = true;
+        vi.spyOn(runtime, "getService").mockImplementation((name) =>
+          name === APP_SESSION_SERVICE_TYPE
+            ? ({
+                getRuns: () =>
+                  sessionActive
+                    ? [{ appName: "alpha", status: "running" }]
+                    : [],
+              } as never)
+            : getService(name),
+        );
+        const registry = createConnectorRegistry();
+        registerConnectorRegistry(runtime, registry);
+        const plugin = gatePluginSessionForHostedApp(
+          {
+            name: "lifeops-integration",
+            description: "Registered LifeOps integration fixture",
+            providers: [
+              {
+                ...lifeOpsProvider,
+                disclosureGate: OWNER_EXCLUSIVE_DISCLOSURE_GATE,
+              },
+            ],
+          },
+          "alpha",
+        );
+        applyPluginRoleGating([plugin]);
+        runtime.registerProvider(plugin.providers![0]);
+        const turn: Memory = {
+          ...message,
+          content: {
+            text: "Check my calendar",
+            source: "client_chat",
+            channelType: "API",
+          },
+        };
+        await attestAuthenticatedApiDeliveryAudience(runtime, turn, {
+          kind: "owner_session",
+          principalId: "lifeops-integration",
+        });
+        const deferred = await runtime.composeState(
+          turn,
+          [lifeOpsProvider.name],
+          true,
+          false,
+          [],
+          {
+            deferredReferenceProviders: [lifeOpsProvider.name],
+          },
+        );
+        expect(reads.getNextCalendarEventContext).not.toHaveBeenCalled();
+        const makeContext = async (state: State) => {
+          const context = await createV5MessageContextObject({
+            runtime,
+            message: turn,
+            state,
+            selectedContexts: ["calendar"],
+            userRoles: ["OWNER"],
+            includeTools: false,
+            providerPhase: "planning",
+          });
+          return {
+            ...context,
+            metadata: {
+              ...context.metadata,
+              providerDiscoveryEnabled: true,
+              loadedContextProviders: [],
+            },
+          };
+        };
+        const context = await makeContext(deferred);
+        const source = context.events.find(
+          (event) =>
+            event.type === "provider" && event.name === lifeOpsProvider.name,
+        );
+        expect(
+          source?.type === "provider" &&
+            "referenceBodyDeferred" in source &&
+            source.referenceBodyDeferred,
+        ).toBe(true);
+        expect(projectDeferredProviders(context).available).toContain(
+          lifeOpsProvider.name,
+        );
+        if (noCalendar)
+          reads.getNextCalendarEventContext.mockRejectedValue(
+            new Error("CALENDAR_SOURCES_UNAVAILABLE"),
+          );
+        const compose = vi.spyOn(runtime, "composeState");
+        expect(runtime.contexts.get("calendar")).toBeDefined();
+        for (const evaluator of BUILTIN_RESPONSE_HANDLER_FIELD_EVALUATORS) {
+          runtime.registerResponseHandlerFieldEvaluator(evaluator);
         }
-        if (!responses.length) throw new Error("Unexpected model call");
-        return responses.shift();
-      }) as typeof runtime.useModel);
-      const result = await runStage1({ runtime, message: turn, state: { text: "", values: {}, data: {} } });
-      expect(result.kind).toBe("planned_reply");
-      const restoreCall = compose.mock.calls.find((args) => args[1]?.includes(lifeOpsProvider.name) && args[5] === undefined);
-      expect(restoreCall).toBeDefined();
-      const revoked = mode === "owner-revoked" || mode === "session-revoked";
-      expect(reads.getNextCalendarEventContext).toHaveBeenCalledTimes(revoked ? 0 : 1);
-      const beforeRestore = model.mock.calls[1]?.[1] as GenerateTextParams;
-      expect(beforeRestore).toBeDefined();
-      expect(beforeRestore.tools?.some((tool) => tool.name === "RESTORE_CONTEXT")).toBe(true);
-      const referenceInput = JSON.stringify(beforeRestore.messages);
-      expect(referenceInput).toContain("lifeops");
-      expect(referenceInput).toContain("Complete owner operations, counts");
-      expect(referenceInput).not.toContain("Next event: Standup");
-      const afterRestore = model.mock.calls[2]?.[1] as GenerateTextParams;
-      expect(afterRestore).toBeDefined();
-      const restoredInput = JSON.stringify(afterRestore.messages);
-      if (revoked || noCalendar) expect(restoredInput).not.toContain("Next event: Standup");
-      else expect(restoredInput).toContain("Next event: Standup");
-
-    } finally {
-      await runtime.stop();
-    }
-  });
+        const responses = [
+          stage1Response({
+            contexts: ["calendar"],
+            intents: ["check the connected calendar"],
+            replyText: "",
+          }),
+          {
+            text: "",
+            toolCalls: [
+              {
+                id: "restore-lifeops",
+                name: "RESTORE_CONTEXT",
+                arguments: {
+                  scope: "providers",
+                  reason: "Read the connected calendar source.",
+                },
+              },
+            ],
+          },
+          {
+            text: "",
+            toolCalls: [
+              {
+                id: "reply-lifeops",
+                name: "REPLY",
+                arguments: { text: "Calendar check finished." },
+              },
+            ],
+          },
+        ];
+        let modelCalls = 0;
+        // Preserve the initialized registry, provider owner and audience identity.
+        // Only the model boundary is scripted; the planner and restore callback are real.
+        const model = vi
+          .spyOn(runtime, "useModel")
+          .mockImplementation((async () => {
+            modelCalls += 1;
+            if (modelCalls === 2) {
+              if (mode === "owner-revoked")
+                reads.hasLifeOpsAccess.mockResolvedValue(false);
+              if (mode === "session-revoked") sessionActive = false;
+            }
+            if (!responses.length) throw new Error("Unexpected model call");
+            return responses.shift();
+          }) as typeof runtime.useModel);
+        const result = await runStage1({
+          runtime,
+          message: turn,
+          state: { text: "", values: {}, data: {} },
+        });
+        expect(result.kind).toBe("planned_reply");
+        const restoreCall = compose.mock.calls.find(
+          (args) =>
+            args[1]?.includes(lifeOpsProvider.name) && args[5] === undefined,
+        );
+        expect(restoreCall).toBeDefined();
+        const revoked = mode === "owner-revoked" || mode === "session-revoked";
+        expect(reads.getNextCalendarEventContext).toHaveBeenCalledTimes(
+          revoked ? 0 : 1,
+        );
+        const beforeRestore = model.mock.calls[1]?.[1] as GenerateTextParams;
+        expect(beforeRestore).toBeDefined();
+        expect(
+          beforeRestore.tools?.some((tool) => tool.name === "RESTORE_CONTEXT"),
+        ).toBe(true);
+        const referenceInput = JSON.stringify(beforeRestore.messages);
+        expect(referenceInput).toContain("lifeops");
+        expect(referenceInput).toContain("Complete owner operations, counts");
+        expect(referenceInput).not.toContain("Next event: Standup");
+        const afterRestore = model.mock.calls[2]?.[1] as GenerateTextParams;
+        expect(afterRestore).toBeDefined();
+        const restoredInput = JSON.stringify(afterRestore.messages);
+        if (revoked || noCalendar)
+          expect(restoredInput).not.toContain("Next event: Standup");
+        else expect(restoredInput).toContain("Next event: Standup");
+      } finally {
+        await runtime.stop();
+      }
+    },
+  );
 });

@@ -653,7 +653,7 @@ export const lifeOpsProvider: Provider = {
               calendarLines.push("Calendar context hidden by privacy policy.");
             } else if (context?.referenceBodyDeferred === true) {
               calendarReadDeferred = true;
-            calendarLines.push(CALENDAR_READ_DEFERRED_LINE);
+              calendarLines.push(CALENDAR_READ_DEFERRED_LINE);
             } else {
               try {
                 nextEventContext = await timeInferenceSpan(
@@ -787,7 +787,9 @@ export const lifeOpsProvider: Provider = {
         ...summarizeOwnerTimingFacts(ownerFacts),
       ];
       return {
-        ...(calendarReadDeferred ? { referenceBodyDeferred: true as const } : {}),
+        ...(calendarReadDeferred
+          ? { referenceBodyDeferred: true as const }
+          : {}),
         discoveryText: [
           ...instructions,
           ...ownerContext,
