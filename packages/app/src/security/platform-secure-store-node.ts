@@ -250,7 +250,9 @@ function loadBundledNativeKeyring(): NativeKeyringModule {
     platform: process.platform,
   });
   if (!bindingPath) {
-    throw new Error("Bundled native Keychain binding was not found.");
+    throw new NativeKeyringAbsentError(
+      "Bundled native Keychain binding was not found.",
+    );
   }
 
   const nativeModule: { exports: unknown } = { exports: {} };
@@ -276,6 +278,15 @@ async function importNativeKeyring(): Promise<NativeKeyringModule> {
     try {
       return loadBundledNativeKeyring();
     } catch (bundledError) {
+      if (
+        isAbsentNativeKeyringError(importError) &&
+        isAbsentNativeKeyringError(bundledError)
+      ) {
+        throw new NativeKeyringAbsentError(
+          "Native Keychain binding is not present on this host.",
+          { cause: bundledError },
+        );
+      }
       throw new AggregateError(
         [importError, bundledError],
         "Native Keychain binding is unavailable.",
@@ -289,6 +300,31 @@ function loadNativeKeyring(): Promise<NativeKeyringModule> {
   return nativeKeyringModule;
 }
 
+/**
+ * Raised only when this host genuinely has no native Keychain binding: the
+ * `@napi-rs/keyring` package is not installed and the packaged runtime dir
+ * holds no binding for this platform. Absence is a supported layout.
+ */
+class NativeKeyringAbsentError extends Error {
+  name = "NativeKeyringAbsentError";
+}
+
+/**
+ * True only for "no binding on this host". A binding that is present but
+ * cannot load (dlopen failure, invalid exports, unreadable runtime dir) is a
+ * fault and must never be classified as absence.
+ */
+function isAbsentNativeKeyringError(error: unknown): boolean {
+  if (error instanceof NativeKeyringAbsentError) return true;
+  if (error instanceof AggregateError) {
+    return (
+      error.errors.length > 0 && error.errors.every(isAbsentNativeKeyringError)
+    );
+  }
+  const code = (error as NodeJS.ErrnoException | null)?.code;
+  return code === "ERR_MODULE_NOT_FOUND" || code === "MODULE_NOT_FOUND";
+}
+
 class NativeKeyringPlatformSecureStore implements PlatformSecureStore {
   constructor(
     readonly backend: PlatformSecureStoreBackend,
@@ -299,9 +335,13 @@ class NativeKeyringPlatformSecureStore implements PlatformSecureStore {
     try {
       await this.keyringLoader();
       return true;
-    } catch {
-      // error-policy:J4 native Keychain binding unavailable (probe)
-      return false;
+    } catch (err: unknown) {
+      // error-policy:J4 a host without a native binding is a supported
+      // layout and stays `false`; a binding that exists but cannot load is a
+      // real fault. Reporting it as absence made callers treat broken
+      // keychain setups as an empty keychain.
+      if (isAbsentNativeKeyringError(err)) return false;
+      throw err;
     }
   }
 
