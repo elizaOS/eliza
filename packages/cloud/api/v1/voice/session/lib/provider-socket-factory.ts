@@ -28,7 +28,11 @@ import type {
 
 interface WorkerUpgradeSocket {
   accept?(): void;
-  retirementState?(): "pending" | "not_dispatched" | "transport_closed" | "unknown";
+  retirementState?():
+    | "pending"
+    | "not_dispatched"
+    | "transport_closed"
+    | "unknown";
   send(data: string | ArrayBuffer | ArrayBufferView): void;
   close(code?: number, reason?: string): void;
   addEventListener(type: string, listener: (event: unknown) => void): void;
@@ -99,7 +103,9 @@ function openWorkerSocket(
         .webSocket;
       if (!ws) {
         await response.body?.cancel();
-        proxy.failOpen(new Error(`outbound WS upgrade failed: HTTP ${response.status}`));
+        proxy.failOpen(
+          new Error(`outbound WS upgrade failed: HTTP ${response.status}`),
+        );
         return;
       }
       proxy.bind(ws);
@@ -136,12 +142,23 @@ class DeferredWorkerSocket implements WorkerUpgradeSocket {
   private observedCleanClose = false;
   private dispatchAttempted = false;
 
-  markUpgradeSettled(): void { this.upgradeFinished = true; }
+  markUpgradeSettled(): void {
+    this.upgradeFinished = true;
+  }
 
-  retirementState(): "pending" | "not_dispatched" | "transport_closed" | "unknown" {
-    if (this.real) return this.observedCleanClose
-      ? (this.dispatchAttempted ? "transport_closed" : "not_dispatched")
-      : this.observedRealClose ? "unknown" : "pending";
+  retirementState():
+    | "pending"
+    | "not_dispatched"
+    | "transport_closed"
+    | "unknown" {
+    if (this.real)
+      return this.observedCleanClose
+        ? this.dispatchAttempted
+          ? "transport_closed"
+          : "not_dispatched"
+        : this.observedRealClose
+          ? "unknown"
+          : "pending";
     return this.upgradeFinished ? "unknown" : "pending";
   }
   private readonly pendingSends: (string | ArrayBuffer | ArrayBufferView)[] =
@@ -194,14 +211,15 @@ class DeferredWorkerSocket implements WorkerUpgradeSocket {
 
   bind(real: WorkerUpgradeSocket): void {
     this.real = real;
-    real.addEventListener("close", event => {
+    real.addEventListener("close", (event) => {
       this.observedRealClose = true;
       const close = event as { code?: number; wasClean?: boolean };
       this.observedCleanClose = close.code === 1000 && close.wasClean === true;
       this.readyState = 3;
     });
     // Observe a late provider close even when an earlier cancellation won.
-    for (const [type, listener] of this.listeners) real.addEventListener(type, listener);
+    for (const [type, listener] of this.listeners)
+      real.addEventListener(type, listener);
     real.accept?.();
 
     // If the session was severed/closed BEFORE the outbound upgrade completed
@@ -216,9 +234,15 @@ class DeferredWorkerSocket implements WorkerUpgradeSocket {
       return;
     }
 
-    if (this.observedRealClose) { this.pendingSends.length = 0; return; }
+    if (this.observedRealClose) {
+      this.pendingSends.length = 0;
+      return;
+    }
     this.readyState = 1;
-    for (const data of this.pendingSends) { this.dispatchAttempted = true; real.send(data); }
+    for (const data of this.pendingSends) {
+      this.dispatchAttempted = true;
+      real.send(data);
+    }
     this.pendingSends.length = 0;
     // Synthesize an `open` for adapters that expect it after binding.
     for (const [type, listener] of this.listeners) {
@@ -233,7 +257,11 @@ class DeferredWorkerSocket implements WorkerUpgradeSocket {
     if (this.real && !this.observedRealClose) {
       this.closedEarly ??= { code: 1000, reason: "upgrade failed" };
       this.readyState = 2;
-      try { this.real.close(1000, "upgrade failed"); } catch { /* Retain unknown until an actual close. */ }
+      try {
+        this.real.close(1000, "upgrade failed");
+      } catch {
+        /* Retain unknown until an actual close. */
+      }
     } else this.readyState = 3;
     for (const [type, listener] of this.listeners) {
       if (type === "error") listener({ error });
