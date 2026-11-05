@@ -84,6 +84,9 @@ export const WRAPPED_NATIVE: Record<number, string> = {
   42161: "0x82aF49447D8a07e3bd95BD0d56f35241523fBab1", // WETH (Arbitrum)
   10: "0x4200000000000000000000000000000000000006", // WETH (Optimism)
   43114: "0xB31f66AA3C1e785363F0875A1B74E27b85FD66c7", // WAVAX
+  // Wrapped SOL mint. Without it every USD-denominated rule on Solana has no
+  // native price, so daily and weekly USD caps refused every transfer.
+  101: "So11111111111111111111111111111111111111112", // wSOL
 };
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────

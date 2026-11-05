@@ -1080,7 +1080,7 @@ async function evaluateAutoApprove(
       ctx.request.tokenAddress,
     );
 
-    if (txUsd === null) {
+    if (txUsd === null || !Number.isFinite(txUsd) || txUsd < 0) {
       return {
         ...base,
         passed: false,

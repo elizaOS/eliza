@@ -12,7 +12,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { Keypair } from "@solana/web3.js";
 import { generatePrivateKey, privateKeyToAccount } from "viem/accounts";
-import { MONERO_ON_SOLANA } from "../shared/tokens";
+import { MONERO_ON_SOLANA, WRAPPED_NATIVE } from "../shared/tokens";
 
 const appOrigin = "https://eliza.app";
 const tokenProgram = "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA";
@@ -148,13 +148,43 @@ test("USD spending limits price SPL token transfers with the token mint", async 
   delete process.env.STEWARD_KDF_SALT;
   delete process.env.STEWARD_AUDIT_HMAC_KEY;
 
-  // Fixed market prices: SOL $150, the stablecoin $1, wXMR $150.
-  const { priceOracle } = await import("../api/services/context");
-  const previousNativePrice = priceOracle.getNativeUsdPrice;
-  const previousTokenPrice = priceOracle.getTokenUsdPrice;
-  priceOracle.getNativeUsdPrice = async () => 150;
-  priceOracle.getTokenUsdPrice = async (_chainId, tokenAddress) =>
-    tokenAddress === stablecoinMint ? 1 : 150;
+  // The real price oracle runs unchanged. Only the DexScreener endpoint is
+  // answered locally: SOL (through the wrapped SOL mint) $150, the
+  // stablecoin $1, wXMR $150. Everything else, including the native SOL
+  // price the daily and weekly caps need, goes through the shipped code.
+  const dexPrices: Record<string, number> = {
+    [WRAPPED_NATIVE[101]]: 150,
+    [stablecoinMint]: 1,
+    [MONERO_ON_SOLANA.address]: 150,
+  };
+  const dexTokensUrl = "https://api.dexscreener.com/latest/dex/tokens/";
+  const realFetch = globalThis.fetch;
+  const localDexFetch = async (
+    input: string | URL | Request,
+    init?: RequestInit,
+  ): Promise<Response> => {
+    const url =
+      typeof input === "string"
+        ? input
+        : input instanceof URL
+          ? input.href
+          : input.url;
+    if (!url.startsWith(dexTokensUrl)) return realFetch(input, init);
+    const price = dexPrices[decodeURIComponent(url.slice(dexTokensUrl.length))];
+    return Response.json({
+      pairs:
+        price === undefined
+          ? []
+          : [
+              {
+                chainId: "solana",
+                priceUsd: String(price),
+                liquidity: { usd: 1_000_000 },
+              },
+            ],
+    });
+  };
+  globalThis.fetch = localDexFetch as typeof fetch;
 
   const { startEmbeddedLogin } = await import("../embedded");
   const { generateTotp } = await import("../auth/totp");
@@ -280,7 +310,18 @@ test("USD spending limits price SPL token transfers with the token mint", async 
       reasons: ["USD spending limit cannot be evaluated for chain 101"],
     });
 
-    // 0.5 wXMR at $150 is $75, under the $100 cap.
+    // 0.1 SOL at $150 is $15: native SOL is priced through the wrapped mint.
+    const sol = await transfer("native", "100000000");
+    const solBody = await sol.json();
+    expect({
+      status: sol.status,
+      reasons: solBody.data?.policyResults
+        ?.filter((result: { passed: boolean }) => !result.passed)
+        .map((result: { reason: string }) => result.reason),
+    }).toEqual({ status: 200, reasons: [] });
+
+    // 0.5 wXMR at $150 is $75. The daily and weekly caps price the 0.1 SOL
+    // spent so far through the native price: $15 + $75 stays under $100.
     const monero = await transfer(MONERO_ON_SOLANA.address, "500000000000");
     const moneroBody = await monero.json();
     expect({ status: monero.status, error: moneroBody.error }).toEqual({
@@ -289,8 +330,7 @@ test("USD spending limits price SPL token transfers with the token mint", async 
     });
   } finally {
     await server?.stop();
-    priceOracle.getNativeUsdPrice = previousNativePrice;
-    priceOracle.getTokenUsdPrice = previousTokenPrice;
+    globalThis.fetch = realFetch;
     await new Promise((resolve) => rpc.close(resolve));
     for (const [key, value] of previous) {
       if (value === undefined) delete process.env[key];
