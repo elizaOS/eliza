@@ -366,7 +366,14 @@ export const ownerProfileExtractionEvaluator: ResponseHandlerEvaluator = {
         recordedAt,
         note: `travel-state extraction from ${evidenceId}`,
       };
-      if (extraction.travel.kind === "clear") {
+      // A record a booking or the owner's device opened carries the
+      // destination zone and the real dates. A sentence such as "I'm away
+      // from my desk" or "got back from dinner" must not replace or clear
+      // it; only the writer that opened it does.
+      const current = (await store.read()).activeTravel;
+      if (current && current.provenance.source !== "agent_inferred") {
+        debug.push("travel=kept");
+      } else if (extraction.travel.kind === "clear") {
         await store.setActiveTravel(null, provenance);
         debug.push("travel=clear");
       } else {
