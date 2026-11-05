@@ -7,9 +7,20 @@ import { randomBytes as nodeRandomBytes } from "node:crypto";
 
 export type BufferLike = NodeBuffer | Uint8Array;
 
-/** Decode hexadecimal text, ignoring non-hex separators. */
+/**
+ * Decode hexadecimal text, ignoring non-hex separators. An odd number of hex
+ * digits is an error: Node's hex decoder silently drops the final nibble
+ * (fromHex("0x12") used to return [0x01]), so refuse it instead of returning
+ * truncated bytes.
+ */
 export function fromHex(hex: string): BufferLike {
-	return NodeBuffer.from(hex.replace(/[^0-9a-fA-F]/g, ""), "hex");
+	const stripped = hex.replace(/[^0-9a-fA-F]/g, "");
+	if (stripped.length % 2 !== 0) {
+		throw new RangeError(
+			`fromHex: odd number of hex digits (${stripped.length}) in input`,
+		);
+	}
+	return NodeBuffer.from(stripped, "hex");
 }
 
 export function fromString(
