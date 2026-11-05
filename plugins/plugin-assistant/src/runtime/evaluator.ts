@@ -36,6 +36,7 @@ import type {
   EvaluatorOutput,
   EvaluatorRoute,
   EvaluatorRuntime,
+  JSONSchema,
   PlannerToolCall,
   PlannerTrajectory,
   RecordedStage,
@@ -391,6 +392,10 @@ const UNCONFIRMED_CALENDAR_READ_COPY = {
   search_events: {
     unread: "I couldn't look up that event in your calendar just now.",
     partial: "I couldn't confirm that event.",
+  },
+  read_selected: {
+    unread: "I couldn't read the selected calendar event just now.",
+    partial: "I couldn't confirm the selected calendar event.",
   },
   check_availability: {
     unread: "I couldn't check whether that time is free just now.",

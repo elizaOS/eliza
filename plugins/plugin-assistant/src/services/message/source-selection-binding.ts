@@ -48,7 +48,7 @@ export function createSourceSelectionBinding(
           (field.enum !== undefined && !(Array.isArray(field.enum) && field.enum.length === 1 && Array.isArray(field.enum[0]) && field.enum[0].length === 0))) {
         ordinalMaps.clear(); break;
       }
-      const allowed = new Set(items.enum);
+      const allowed = new Set<unknown>(items.enum);
       if (snapshot.sources.some((source,index) => source.id !== `h${index+1}`) ||
           [...allowed].some(id => typeof id !== "string" || !snapshot.sources.some(source => source.id === id))) {
         ordinalMaps.clear(); break;
