@@ -42,6 +42,7 @@ import {
   stage1Response,
 } from "../../../plugin-assistant/src/__tests__/stage1/fixtures.ts";
 import { BUILTIN_RESPONSE_HANDLER_FIELD_EVALUATORS } from "../../../plugin-assistant/src/runtime/builtin-field-evaluators.ts";
+import { DEFAULT_CONTEXT_DEFINITIONS } from "../../../plugin-assistant/src/runtime/default-contexts.ts";
 import { createV5MessageContextObject } from "../../../plugin-assistant/src/services/message/context-assembly.ts";
 import type {
   ConnectorContribution,
@@ -1006,7 +1007,20 @@ describe("LifeOps registered provider planner restoration", () => {
       });
       await initializeTestRuntime(runtime, { skipMigrations: true });
       try {
-        vi.spyOn(runtime, "getRoom").mockResolvedValue(null);
+        // The role gate reads the owner from the room's world, as a real
+        // connection records it; the configured admin id alone is not a role.
+        const worldId = "00000000-0000-0000-0000-00000000000a" as UUID;
+        vi.spyOn(runtime, "getRoom").mockResolvedValue({
+          id: ids.roomId as UUID,
+          worldId,
+        } as never);
+        vi.spyOn(runtime, "getWorld").mockResolvedValue({
+          id: worldId,
+          agentId: ids.agentId as UUID,
+          metadata: { ownership: { ownerId: ids.ownerId } },
+        } as never);
+        // The assistant plugin registers these contexts at init.
+        runtime.contexts.tryRegisterMany(DEFAULT_CONTEXT_DEFINITIONS);
         vi.spyOn(runtime, "getParticipantsForRoom").mockResolvedValue([
           ids.ownerId as UUID,
           ids.agentId as UUID,
