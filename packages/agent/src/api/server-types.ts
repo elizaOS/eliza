@@ -128,6 +128,12 @@ export interface PluginEntry {
 }
 
 export interface ServerState {
+  /**
+   * Re-reads the durable config file into the live `config` graph. Set only
+   * when this server owns the config file; a host-owned config has no such
+   * refresh and the field stays undefined.
+   */
+  reloadConfigFromDisk?: () => void;
   runtime: AgentRuntime | null;
   config: ElizaConfig;
   agentState:
