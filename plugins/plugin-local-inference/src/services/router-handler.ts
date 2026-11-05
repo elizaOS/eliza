@@ -738,7 +738,8 @@ export function installRouterHandler(
 				)
 					return;
 
-				if (!isLocalProvider(context.provider)) {
+				const provider = context.provider ?? "";
+				if (!isLocalProvider(provider)) {
 					// Chat calls RESPONSE_HANDLER / ACTION_PLANNER / TEXT_COMPLETION
 					// directly, not through the router, so a remote registration can
 					// serve them. Refuse it under an on-device-only slot policy: the
@@ -754,12 +755,12 @@ export function installRouterHandler(
 						throw new LocalInferenceUnavailableError(
 							context.resolvedModelKey,
 							"capability_unavailable",
-							`${slot} is set to on-device only; ${context.provider} was not used.`,
+							`${slot} is set to on-device only; ${provider || "an unnamed provider"} was not used.`,
 						);
 					}
 					return;
 				}
-				if (context.provider !== "eliza-local-inference") return;
+				if (provider !== "eliza-local-inference") return;
 
 				// The outer runtime can reach a direct local registration after
 				// the router exhausts its candidates. Reuse the same live admission
