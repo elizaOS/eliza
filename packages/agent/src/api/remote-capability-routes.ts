@@ -676,6 +676,13 @@ function readTrustAuditRecords(
     return record;
   });
 }
+/**
+ * Newest trust-audit records retained. The connect path re-reads and
+ * re-validates the whole trail on every connect, so the persisted env value
+ * and the per-connect validation cost both stay bounded — the same
+ * slice-the-newest bounding pattern media-store applies to background pins.
+ */
+const MAX_TRUST_AUDIT_RECORDS = 100;
 function appendTrustAuditRecord(
   existing: CapabilityRouterTrustAuditRecord[],
   audit: CapabilityRouterTrustAuditInput,
@@ -695,7 +702,7 @@ function appendTrustAuditRecord(
         ...decision,
       })),
     },
-  ];
+  ].slice(-MAX_TRUST_AUDIT_RECORDS);
 }
 function isTrustAuditRecord(
   value: unknown,
