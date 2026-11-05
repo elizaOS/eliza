@@ -11,14 +11,41 @@ import {
   logger,
   type UUID,
 } from "@elizaos/core";
+import { ApiResponseError, TwitterApi } from "twitter-api-v2";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { ClientBase } from "./base";
 import type { Tweet } from "./client";
+import type { TwitterAuth } from "./client/auth";
+import { createCreateTweetRequest } from "./client/tweets";
 import { TwitterInteractionClient } from "./interactions";
 import type { TwitterClientState } from "./types";
 import { sendTextAsTweetThread } from "./utils";
 
 const PROFILE_ID = "bot-user";
+
+/**
+ * Auth for a real twitter-api-v2 client whose requests X refuses with `code`.
+ * A plugin raises the library's own ApiResponseError before any network I/O.
+ */
+function refusingAuth(
+  code: number,
+  data: Record<string, unknown>,
+): TwitterAuth {
+  const api = new TwitterApi("test-bearer-token", {
+    plugins: [
+      {
+        onBeforeRequestConfig: async () => {
+          throw new ApiResponseError(`Request failed with code ${code}`, {
+            code,
+            data,
+            headers: {},
+          } as unknown as ConstructorParameters<typeof ApiResponseError>[1]);
+        },
+      },
+    ],
+  });
+  return { getV2Client: async () => api } as unknown as TwitterAuth;
+}
 
 function createRuntime(settings: Record<string, string> = {}) {
   const cache = new Map<string, unknown>();
@@ -276,6 +303,71 @@ describe("mention reply is posted at most once", () => {
     await poll(interactions);
 
     expect(handleMessageOf(runtime)).toHaveBeenCalledTimes(2);
+  });
+
+  it("retries a reply X rate-limited through the real create-tweet request", async () => {
+    const runtime = replyingRuntime();
+    let sends = 0;
+    const send = vi.fn(async (text: string, replyTo?: string) => {
+      sends += 1;
+      if (sends === 1) {
+        return createCreateTweetRequest(
+          text,
+          refusingAuth(429, {
+            title: "Too Many Requests",
+            detail: "Too Many Requests",
+            type: "about:blank",
+            status: 429,
+          }),
+          replyTo,
+        );
+      }
+      return {
+        data: { data: { id: `20000000000000000${sends}`, text: "ok" } },
+      };
+    });
+    const client = createClient(runtime, send);
+    const interactions = new TwitterInteractionClient(
+      client,
+      runtime,
+      {} as TwitterClientState,
+    );
+
+    await poll(interactions);
+    await poll(interactions);
+
+    expect(handleMessageOf(runtime)).toHaveBeenCalledTimes(2);
+  });
+
+  it("settles a reply X refuses for this conversation through the real create-tweet request", async () => {
+    const runtime = replyingRuntime();
+    const send = vi.fn(async (text: string, replyTo?: string) =>
+      createCreateTweetRequest(
+        text,
+        refusingAuth(403, {
+          title: "Forbidden",
+          detail:
+            "Reply to this conversation is not allowed because you have not been mentioned or otherwise engaged by the author of the post you are replying to.",
+          type: "about:blank",
+          status: 403,
+        }),
+        replyTo,
+      ),
+    );
+    const client = createClient(runtime, send);
+    const interactions = new TwitterInteractionClient(
+      client,
+      runtime,
+      {} as TwitterClientState,
+    );
+
+    await poll(interactions);
+    await poll(interactions);
+
+    expect(send).toHaveBeenCalledTimes(1);
+    expect(runtime.cache.get(`x:mention-reply:default:${mention().id}`)).toBe(
+      "rejected",
+    );
   });
 
   it("retries a reply when credentials rotate before its first chunk is sent", async () => {

@@ -645,7 +645,9 @@ export async function createCreateTweetRequest(
       data: result,
     };
   } catch (error) {
-    throw new Error(`Failed to create tweet: ${errorMessage(error)}`);
+    throw new Error(`Failed to create tweet: ${errorMessage(error)}`, {
+      cause: error,
+    });
   }
 }
 

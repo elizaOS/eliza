@@ -79,17 +79,21 @@ function directProviderStatus(error: unknown): number | undefined {
   return undefined;
 }
 
-/** Returns the first structured HTTP status retained by an error/cause chain. */
-export function getTwitterProviderStatus(error: unknown): number | undefined {
+/** Returns the first error in an error/cause chain that retains an HTTP status. */
+function providerStatusError(error: unknown): unknown {
   const seen = new Set<unknown>();
   let current: unknown = error;
   while (current !== undefined && !seen.has(current)) {
     seen.add(current);
-    const status = directProviderStatus(current);
-    if (status !== undefined) return status;
+    if (directProviderStatus(current) !== undefined) return current;
     current = nestedProviderError(current);
   }
   return undefined;
+}
+
+/** Returns the first structured HTTP status retained by an error/cause chain. */
+export function getTwitterProviderStatus(error: unknown): number | undefined {
+  return directProviderStatus(providerStatusError(error));
 }
 
 function structuredProviderErrorType(
@@ -172,7 +176,7 @@ function errorCode(error: unknown): number | undefined {
 
 /** A concrete 4xx response proves the provider rejected the write pre-acceptance. */
 export function isExplicitTwitterRejection(error: unknown): boolean {
-  const status = errorCode(error);
+  const status = errorCode(providerStatusError(error));
   return status !== undefined && status >= 400 && status < 500;
 }
 
@@ -237,11 +241,12 @@ function providerProblemEvidence(error: unknown): {
  */
 export function isPermanentTwitterRejection(error: unknown): boolean {
   if (!isExplicitTwitterRejection(error)) return false;
-  const status = errorCode(error);
+  const providerError = providerStatusError(error);
+  const status = errorCode(providerError);
   if (status === 401 || status === 402 || status === 408 || status === 429) {
     return false;
   }
-  const { texts, codes } = providerProblemEvidence(error);
+  const { texts, codes } = providerProblemEvidence(providerError);
   if (texts.some((text) => APP_LEVEL_PROBLEM_PATTERN.test(text))) return false;
   if (status !== 403) return true;
   return (
