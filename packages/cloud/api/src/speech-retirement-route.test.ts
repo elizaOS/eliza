@@ -10,7 +10,7 @@ import { HTTPException } from "hono/http-exception";
 const data = {
   generated: 0,
   owner: 0,
-  calls: [] as { url: unknown; body: unknown }[],
+  calls: [] as { url: unknown; body: Record<string, unknown> }[],
   authStatus: undefined as 429 | undefined,
   initializeStatus: 200,
   initializeThrows: false,
@@ -51,7 +51,10 @@ const env = (enabled = true, proof = true) => ({
     getByName: () => ({
       fetch: async (url: unknown, init: RequestInit) => {
         if (typeof init.body !== "string") throw Error("Expected JSON request");
-        data.calls.push({ url, body: JSON.parse(init.body) });
+        const body: unknown = JSON.parse(init.body);
+        if (!body || typeof body !== "object" || Array.isArray(body))
+          throw Error("Expected JSON request object");
+        data.calls.push({ url, body: body as Record<string, unknown> });
         if (data.initializeThrows)
           throw Error("lost initialize acknowledgement");
         return Response.json(
