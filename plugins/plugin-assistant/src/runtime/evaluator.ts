@@ -3128,6 +3128,27 @@ export function calendarReadCoverage(
         );
       const reply = data.replyContext;
       if (!isObjectRecord(reply) || reply.domain !== "calendar") return false;
+      if (binding.operation === "read_selected") {
+        const target = binding.selectedTarget;
+        const proof = data.selectionProof;
+        const event = data.event;
+        if (!target || !isObjectRecord(proof) || !isObjectRecord(event) ||
+            reply.scenario !== "selected_event" ||
+            !["id", "revision", "accountId", "sourceRevision"].every(key =>
+              typeof target[key as keyof typeof target] === "string" &&
+              !!target[key as keyof typeof target] && proof[key] === target[key as keyof typeof target]) ||
+            proof.sourceMessageId !== binding.sourceMessageId || proof.actorId !== binding.actorId ||
+            proof.roomId !== binding.roomId || proof.requestedAt !== binding.requestedAt ||
+            event.id !== target.id || event.grantId !== target.accountId ||
+            !isObjectRecord(event.metadata) || event.metadata.etag !== target.revision ||
+            !step.result.effectReceipts?.some(receipt =>
+              receipt.operation === "calendar.event.selected.read" && receipt.resource.kind === "calendar.event" &&
+              receipt.resource.id === target.id && receipt.resource.version === target.revision &&
+              receipt.outcome === "noop" && receipt.idempotency.replayed === false &&
+              Date.parse(receipt.observedAt) >= binding.requestedAt))
+          return rejectEvidence("CALENDAR_READ_TARGET_SNAPSHOT_INVALID");
+        return true;
+      }
       if (binding.operation === "feed") {
         const scope = reply.context;
         if (

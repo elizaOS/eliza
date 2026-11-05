@@ -122,6 +122,37 @@ function fixture() {
   return { context, trajectory, output };
 }
 
+describe("selected Calendar record coverage", () => {
+  function selectedFixture() {
+    const f = fixture();
+    const target = { id: "selected-event", revision: '"v1"', accountId: "selected-grant", sourceRevision: "a".repeat(64) };
+    const binding = f.context.metadata!.calendarReadBindings![0] as CalendarReadBinding;
+    binding.operation = "read_selected";
+    binding.selectedTarget = target;
+    const step = f.trajectory.steps[0]!;
+    step.toolCall = { id: "selected-read", name: "CALENDAR_READ_SELECTED", params: {} };
+    step.result = { success: true, effectReceipts: [{ receiptId: "selected-receipt",
+      operation: "calendar.event.selected.read", resource: { kind: "calendar.event", id: target.id, version: target.revision },
+      artifacts: [], idempotency: { key: null, replayed: false }, observedAt: "2026-10-04T01:19:36Z", outcome: "noop", reason: "Read only" }],
+      data: { event: { id: target.id, grantId: target.accountId, metadata: { etag: target.revision } },
+        replyContext: { domain: "calendar", scenario: "selected_event" },
+        selectionProof: { ...target, sourceMessageId: binding.sourceMessageId, roomId: binding.roomId,
+          actorId: binding.actorId, requestedAt: binding.requestedAt } } };
+    return { ...f, binding, step };
+  }
+  it("requires the exact current selection and request-bound read receipt", () => {
+    const f = selectedFixture();
+    expect(calendarReadCoverage(f.output, f.context, f.trajectory).verified).toBe(true);
+  });
+  it.each(["id", "revision", "accountId", "sourceRevision", "sourceMessageId", "roomId", "actorId", "requestedAt", "receipt", "search-substitution"])("rejects changed %s", key => {
+    const f = selectedFixture();
+    if (key === "receipt") f.step.result!.effectReceipts = [];
+    else if (key === "search-substitution") f.step.toolCall!.name = "CALENDAR_SEARCH_EVENTS";
+    else (f.step.result!.data!.selectionProof as Record<string, unknown>)[key] = "changed";
+    expect(calendarReadCoverage(f.output, f.context, f.trajectory).verified).toBe(false);
+  });
+});
+
 describe("request-bound Calendar read coverage", () => {
   it("uses the real empty NEXT producer's human channel without exposing its model instructions", async () => {
     const f = fixture();
