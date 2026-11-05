@@ -400,6 +400,7 @@ export async function admitFundedBudgetInference(
     settlementAmount = amount.toFixed(0);
     return (settlement ??= (async () => {
       if (amount.gt(0)) await markProviderDispatched();
+      let terminalReceipt: import("./credits").CreditReconciliationResult["terminalReceipt"];
       if (dispatched) {
         const result = await inferenceBudgetGateRequest<{
           receipt: InferenceFundingBudgetConsumption;
@@ -416,9 +417,22 @@ export async function admitFundedBudgetInference(
           throw new InferenceFundingBudgetUnavailableError(
             "Funded settlement receipt does not match its request",
           );
-        params.executionCtx!.waitUntil(persistInferenceBudgetConsumption(result.receipt));
+        if (params.requireTerminalSettlementReceipt) {
+          await persistInferenceBudgetConsumption(result.receipt);
+          terminalReceipt = {
+            version: 1,
+            status: "funded_persisted",
+            mode: "durable_object_funded_budget",
+            organizationId: result.receipt.organizationId,
+            requestId: result.receipt.requestId,
+            amountUsd: amount.div(1e6).toFixed(6),
+          };
+        } else {
+          params.executionCtx!.waitUntil(persistInferenceBudgetConsumption(result.receipt));
+        }
       }
       return {
+        ...(terminalReceipt ? { terminalReceipt } : {}),
         reservedAmount: maximumMicros.div(1e6).toNumber(),
         actualCost: actualCostUsd,
         collectedAmount: amount.div(1e6).toNumber(),
@@ -455,5 +469,11 @@ export async function persistInferenceBudgetConsumption(
 ): Promise<void> {
   const { recordConsumption } = await import("../../db/repositories/inference-funding-budgets");
   await recordConsumption(receipt);
-  await inferenceBudgetGateRequest(receipt.organizationId, "/budget/acknowledge", { receipt });
+  const acknowledgment = await inferenceBudgetGateRequest<{ acknowledged?: boolean }>(
+    receipt.organizationId,
+    "/budget/acknowledge",
+    { receipt },
+  );
+  if (acknowledgment.acknowledged !== true)
+    throw new InferenceFundingBudgetUnavailableError("Funded settlement acknowledgment is unknown");
 }
