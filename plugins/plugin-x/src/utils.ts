@@ -396,6 +396,9 @@ export async function sendChunkedTweet(
  * Split content into ordered posts without rewriting or dropping any text.
  * URL boundaries come from twitter-text, the same parser used to enforce X's
  * weighted limit, so trailing punctuation remains ordinary splittable text.
+ * The one exception is whitespace that would fill a post of its own after the
+ * first one, such as newlines that end a reply past the limit: X refuses a
+ * blank post, so that whitespace is dropped.
  */
 export function splitTweetContent(
   content: string,
@@ -466,7 +469,7 @@ export function splitTweetContent(
       }
     }
 
-    chunks.push(chunk);
+    if (chunks.length === 0 || /\S/u.test(chunk)) chunks.push(chunk);
     start = end;
   }
   return chunks;
