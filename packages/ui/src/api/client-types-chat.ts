@@ -435,6 +435,12 @@ export interface ConversationMessageSearchResult {
   conversationId: string;
   roomId: string;
   role: "user" | "assistant";
+  /** Sender display name, as in the transcript (absent for the owner's own turns). */
+  from?: string;
+  /** Sender handle on the source platform, when known. */
+  fromUserName?: string;
+  /** Message source (e.g. a connector); absent for the app's own chat. */
+  source?: string;
   text: string;
   /** A `…keyword…` excerpt around the first match, for the result row. */
   snippet: string;

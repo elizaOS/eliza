@@ -3249,6 +3249,24 @@ async function searchConversationMessages(
       if (typeof text !== "string") return [];
       const rawText = text.trim();
       const score = hit.ftsRank > 0 ? hit.ftsRank : hit.trigramSimilarity;
+      // Carry the sender the transcript shows (GET /messages), so a hit from a
+      // connector user or another room member is not labelled as the owner.
+      const meta = hit.memory.metadata as Record<string, unknown> | undefined;
+      const from =
+        typeof meta?.entityName === "string" && meta.entityName.length > 0
+          ? meta.entityName
+          : undefined;
+      const fromUserName =
+        typeof meta?.entityUserName === "string" &&
+        meta.entityUserName.length > 0
+          ? meta.entityUserName
+          : undefined;
+      const source =
+        typeof content.source === "string" &&
+        content.source.length > 0 &&
+        content.source !== MESSAGE_SOURCE_CLIENT_CHAT
+          ? content.source
+          : undefined;
       return [
         {
           messageId: hit.memory.id,
@@ -3257,6 +3275,9 @@ async function searchConversationMessages(
           role: (hit.memory.entityId === runtime.agentId
             ? "assistant"
             : "user") as "assistant" | "user",
+          ...(from ? { from } : {}),
+          ...(fromUserName ? { fromUserName } : {}),
+          ...(source ? { source } : {}),
           text: rawText,
           snippet: buildMessageSearchSnippet(rawText, query),
           createdAt: hit.memory.createdAt as number,

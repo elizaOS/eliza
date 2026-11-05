@@ -198,7 +198,7 @@ export function MessageSearchPanel({
               className="w-full"
             >
               <span className="text-xs-tight uppercase tracking-wider text-muted-foreground">
-                {result.role === "assistant" ? "Eliza" : "You"} ·{" "}
+                {searchResultSenderLabel(result)} ·{" "}
                 {formatTimestamp(result.createdAt)}
               </span>
               <span className="line-clamp-2 text-sm text-foreground">
@@ -259,6 +259,20 @@ export function MessageSearchPanel({
       {resultsListEl}
     </Card>
   );
+}
+
+/**
+ * The sender label for a result row. Non-agent hits may come from a connector
+ * user or another room member, so only an unnamed user turn is "You".
+ */
+export function searchResultSenderLabel(
+  result: Pick<
+    ConversationMessageSearchResult,
+    "role" | "from" | "fromUserName"
+  >,
+): string {
+  if (result.role === "assistant") return "Eliza";
+  return result.from?.trim() || result.fromUserName?.trim() || "You";
 }
 
 function formatTimestamp(createdAt: number): string {
