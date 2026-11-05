@@ -510,6 +510,18 @@ describe("merged schedule state", () => {
         await tick("2026-04-20T21:45:00.000Z", 165, "2026-04-21T00:30:00.000Z"),
       ).toMatchObject([{ kind: "night", status: "delivered" }]);
       expect(sent).toHaveLength(2);
+      // A late night: the next bedtime is 03:00, so its check-in goes out
+      // after midnight, at 00:10 on Apr 22.
+      expect(
+        await tick("2026-04-22T00:10:00.000Z", 170, "2026-04-22T03:00:00.000Z"),
+      ).toMatchObject([{ kind: "night", status: "delivered" }]);
+      expect(sent).toHaveLength(3);
+      // The evening window of that same calendar day (bedtime Apr 23 00:30)
+      // is the next night: the 00:10 check-in must not suppress it.
+      expect(
+        await tick("2026-04-22T21:45:00.000Z", 165, "2026-04-23T00:30:00.000Z"),
+      ).toMatchObject([{ kind: "night", status: "delivered" }]);
+      expect(sent).toHaveLength(4);
     } finally {
       model.mockRestore();
       await fixture.cleanup();
