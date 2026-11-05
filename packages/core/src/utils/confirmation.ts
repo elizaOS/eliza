@@ -14,6 +14,15 @@
  * follows the same UX, the same TTL behavior, and the same cancel
  * semantics.
  *
+ * A cancel has no sentence for the user. `requireConfirmation` returns
+ * `{ status: "cancelled" }` and does not call `callback`. The caller owns
+ * the words the user sees. Callers in this repository use their own text,
+ * such as "Cancelled.", "Wallet operation cancelled.", or "Unsubscribe
+ * cancelled." None of those sentences tell the user to reply with just
+ * "yes". A caller that wants that hint must put it in its own cancel
+ * sentence. A later message that is only "yes" does not run the cleared
+ * action. The next call returns pending and shows the prompt again.
+ *
  * Usage:
  * const decision = await requireConfirmation({
  * runtime,
@@ -27,6 +36,7 @@
  * return { success: true, data: { awaitingUserInput: true } };
  * }
  * if (decision.status === "cancelled") {
+ * // The helper returns no sentence. The caller chooses the text.
  * return { success: true, text: "Cancelled." };
  * }
  * // status === "confirmed" — proceed with the destructive op
@@ -40,13 +50,53 @@ import type { IAgentRuntime } from "../types/runtime";
 const DEFAULT_TTL_MS = 5 * 60_000;
 
 /**
- * Default broad multilingual yes detector. A single opening quote/bracket may
- * precede the token. Non-ASCII tokens terminate at Unicode punctuation,
- * symbols, whitespace, or end-of-input instead of relying on ASCII `\b`.
- * Consumers can pass a custom `confirmRegex` for a stricter contract.
+ * Whole-reply yes words. A destructive confirmation used to accept any message
+ * that started with one of these words, so "yes, but don't" and "go ahead and
+ * delete the rest" ran the operation. The reply must be only the yes word.
+ * One optional "please", one opening quote or bracket, and trailing punctuation
+ * other than a question mark are still a yes. Anything else cancels.
+ * "Yes, delete it" and "yes 👍" cancel. The extra words stay in the reply.
+ * The emoji is a symbol, so it is not stripped with the punctuation.
+ * Consumers can pass a custom `confirmRegex` for a different contract.
  */
-const DEFAULT_CONFIRM_REGEX =
-	/^\s*[\p{Pi}\p{Ps}]?(?:(yes|yeah|yep|y|ok|okay|sure|confirm|confirmed|do it|go ahead|proceed|approve|approved|si|oui|ja|hai)\b|(sí|はい|确认|確認|확인)(?=[\s\p{P}\p{S}]|$))/iu;
+const AFFIRMATIVE_REPLY =
+	/^(?:yes please|yes|yeah|yep|y|okay please|okay|ok please|ok|sure|confirmed|confirm|do it|go ahead|proceed|approved|approve|sí|si|oui|ja|hai|はい|确认|確認|확인)$/u;
+const OPENING_QUOTE_OR_BRACKET = /^[\p{Pi}\p{Ps}]/u;
+const QUESTION_MARK = /^[?¿？]$/u;
+const TRAILING_CLOSER = /^[\p{Pe}\p{Pf}\p{Po}]$/u;
+
+function lastCodePoint(value: string): { char: string; rest: string } | null {
+	if (value.length === 0) return null;
+	let start = value.length - 1;
+	const tail = value.charCodeAt(start);
+	if (tail >= 0xdc00 && tail <= 0xdfff && start > 0) {
+		const head = value.charCodeAt(start - 1);
+		if (head >= 0xd800 && head <= 0xdbff) start -= 1;
+	}
+	return { char: value.slice(start), rest: value.slice(0, start) };
+}
+
+function isWholeAffirmativeReply(text: string): boolean {
+	let value = text.trim();
+	const opening = OPENING_QUOTE_OR_BRACKET.exec(value);
+	if (opening?.[0]) {
+		value = value.slice(opening[0].length).trimStart();
+	}
+	for (;;) {
+		const last = lastCodePoint(value.trimEnd());
+		if (!last || QUESTION_MARK.test(last.char)) break;
+		if (!TRAILING_CLOSER.test(last.char)) break;
+		value = last.rest;
+	}
+	const normalized = value
+		.trim()
+		.toLowerCase()
+		.replace(/[ \t\f\v]+/g, " ")
+		.replace(/,\s*/g, " ")
+		.replace(/ +/g, " ")
+		.trim();
+	return AFFIRMATIVE_REPLY.test(normalized);
+}
 
 export type ConfirmationStatus = "pending" | "confirmed" | "cancelled";
 
@@ -118,9 +168,11 @@ function readUserText(message: Memory): string {
  */
 export function isAffirmativeConfirmationReply(
 	message: Memory,
-	confirmRegex: RegExp = DEFAULT_CONFIRM_REGEX,
+	confirmRegex?: RegExp,
 ): boolean {
-	return confirmRegex.test(readUserText(message));
+	const text = readUserText(message);
+	if (confirmRegex) return confirmRegex.test(text);
+	return isWholeAffirmativeReply(text);
 }
 
 /**
@@ -136,8 +188,11 @@ export function isAffirmativeConfirmationReply(
  * Caller should perform the destructive op.
  *
  * - `{ status: "cancelled", metadata }` on the SECOND invocation when the user
- * replied with a no-shaped message OR anything not matching yes. The pending
- * record has been cleared. Caller should not perform the op.
+ * replied with a no-shaped message OR anything not matching yes, including
+ * "Yes, delete it" and "yes 👍". The pending record has been cleared. The
+ * return value has no text, and `callback` is not called. The caller owns
+ * the cancel sentence. Caller should not perform the op. A later reply that
+ * is only "yes" starts a new preview. It does not run this cleared action.
  *
  * Expired pending records (older than ttlMs) are treated as fresh first calls.
  */
@@ -150,7 +205,6 @@ export async function requireConfirmation(
 		args.ttlMs > 0
 			? args.ttlMs
 			: DEFAULT_TTL_MS;
-	const confirmRegex = args.confirmRegex ?? DEFAULT_CONFIRM_REGEX;
 	const userId = String(args.message.entityId);
 	const cacheKey = buildCacheKey(userId, args.actionName, args.pendingKey);
 
@@ -192,7 +246,7 @@ export async function requireConfirmation(
 
 	const status: ConfirmationStatus = isAffirmativeConfirmationReply(
 		args.message,
-		confirmRegex,
+		args.confirmRegex,
 	)
 		? "confirmed"
 		: "cancelled";
