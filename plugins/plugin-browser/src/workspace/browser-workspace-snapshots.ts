@@ -184,7 +184,7 @@ export function applyBrowserWorkspaceStateToWebDocument(
   const cookies =
     snapshot.cookies && typeof snapshot.cookies === "object"
       ? (snapshot.cookies as Record<string, unknown>)
-      : {};
+      : null;
 
   document.defaultView?.localStorage.clear();
   for (const [key, value] of Object.entries(localEntries)) {
@@ -194,7 +194,15 @@ export function applyBrowserWorkspaceStateToWebDocument(
   for (const [key, value] of Object.entries(sessionEntries)) {
     document.defaultView?.sessionStorage.setItem(key, String(value ?? ""));
   }
-  for (const [key, value] of Object.entries(cookies)) {
-    document.cookie = `${key}=${String(value ?? "")}; path=/`;
+  // Storage is replaced. Cookies used to be merged, so a cookie set after the
+  // save survived load and the restored page still presented it.
+  if (cookies) {
+    for (const key of Object.keys(readBrowserWorkspaceCookies(document))) {
+      document.cookie = `${key}=; expires=Thu, 01 Jan 1970 00:00:00 GMT; path=/`;
+    }
+    for (const [key, value] of Object.entries(cookies)) {
+      if (!key) continue;
+      document.cookie = `${key}=${String(value ?? "")}; path=/`;
+    }
   }
 }
