@@ -33,11 +33,13 @@ function buildFixture({
   locales = {},
   source = 'export const x = t("app.title");\n',
   allowlist,
+  rawLocales = {},
 }: {
   en?: Record<string, string>;
   locales?: Record<string, Record<string, string>>;
   source?: string;
   allowlist?: unknown;
+  rawLocales?: Record<string, string>;
 }): { root: string; options: Record<string, unknown> } {
   const root = mkdtempSync(join(tmpdir(), "check-i18n-"));
   const localeDir = join(root, "locales");
@@ -47,6 +49,9 @@ function buildFixture({
   writeFileSync(join(localeDir, "en.json"), JSON.stringify(en));
   for (const [lang, data] of Object.entries(locales)) {
     writeFileSync(join(localeDir, `${lang}.json`), JSON.stringify(data));
+  }
+  for (const [lang, text] of Object.entries(rawLocales)) {
+    writeFileSync(join(localeDir, `${lang}.json`), text);
   }
   writeFileSync(join(srcDir, "app.tsx"), source);
   // Always write one. The checker now fails closed on a MISSING allowlist,
@@ -330,6 +335,16 @@ describe("check-i18n contract", () => {
     const fixture = buildFixture({});
     rmSync(String(fixture.options.allowlistPath), { force: true });
     expect(() => run(fixture)).toThrow(/allowlist not found/);
+  });
+
+  test("fails closed when a locale file is not a key/value object", () => {
+    // `loadLocales` dropped any file whose parsed value was not an object
+    // (null, an array, a string). The language then left the checked set, so
+    // its missing used keys, missing translations, orphaned translations and
+    // `${...}` leaks all went unreported while the checker exited 0 — a
+    // malformed file on disk read exactly like a clean locale.
+    const fixture = buildFixture({ rawLocales: { de: "[]" } });
+    expect(() => run(fixture)).toThrow(/de\.json is not a key\/value object/);
   });
 
   test("an explicitly empty allowlist is honoured, not treated as missing", () => {
