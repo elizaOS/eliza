@@ -144,22 +144,49 @@ export class BatchQueue<T> {
 				let failures: Array<{ index: number; item: T; error: Error }>;
 				try {
 					const batchOutcomes = await processBatch(batch);
-					settled = batchOutcomes.map((outcome) =>
-						outcome.success ? outcome : undefined,
-					);
+					// Match outcomes to batch items by identity, not by
+					// position. A provider that reports fewer outcomes than
+					// items used to drop the unreported items silently:
+					// they left the queue, never ran per-item, and never
+					// reached onExhausted, while drain still reported the
+					// full batch as processed. Every batch item with no
+					// matching success outcome now fails through the normal
+					// retry / onExhausted path instead. Outcomes for items
+					// outside the batch are ignored.
+					settled = batch.map(() => undefined);
 					failures = [];
-					batchOutcomes.forEach((outcome, index) => {
-						if (outcome.success) return;
+					const matched = new Set<number>();
+					for (const outcome of batchOutcomes) {
+						const index = batch.findIndex(
+							(item, position) =>
+								!matched.has(position) && item === outcome.item,
+						);
+						if (index === -1) continue;
+						matched.add(index);
+						if (outcome.success) {
+							settled[index] = outcome;
+						} else {
+							failures.push({
+								index,
+								item: batch[index],
+								error:
+									outcome.error ??
+									new Error(
+										`BatchQueue "${this.options.name}" processBatch reported a failed item without an error`,
+									),
+							});
+						}
+					}
+					for (const [index, item] of batch.entries()) {
+						if (matched.has(index)) continue;
 						failures.push({
 							index,
-							item: outcome.item,
-							error:
-								outcome.error ??
-								new Error(
-									`BatchQueue "${this.options.name}" processBatch reported a failed item without an error`,
-								),
+							item,
+							error: new Error(
+								`BatchQueue "${this.options.name}" processBatch did not report an outcome for an item`,
+							),
 						});
-					});
+					}
 				} catch (error) {
 					// error-policy:J4 A batch-wide provider failure degrades to
 					// the per-item retry path and remains observable.
