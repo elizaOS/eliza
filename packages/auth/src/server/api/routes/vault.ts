@@ -3883,6 +3883,72 @@ vaultRoutes.post("/:agentId/actions/transfer", async (c) => {
             "[Login:vault] error",
           );
         }
+        // A lost response may still represent real spend. Account for it
+        // conservatively before releasing the per-agent spend lock, record
+        // the sponsored action and write the audit row, as /sign does.
+        recordVaultSpend(
+          agentId,
+          tenantId,
+          signRequest.value,
+          signRequest.chainId,
+        ).catch((err) =>
+          logger.error(
+            {
+              details: [
+                "[vault] Failed to record ambiguous transfer spend",
+                redactedThrownDiagnostics(err),
+              ],
+            },
+            "[Login:vault] error",
+          ),
+        );
+        try {
+          await recordAggregationEvent({
+            agentId,
+            valueRaw: signRequest.value,
+            to: signRequest.to,
+            chainId: signRequest.chainId,
+          });
+        } catch (err) {
+          logger.error(
+            {
+              details: [
+                "[vault] Failed to record ambiguous transfer aggregation event",
+                redactedThrownDiagnostics(err),
+              ],
+            },
+            "[Login:vault] error",
+          );
+        }
+        const outcomeUnknownTransactionHash =
+          e instanceof ExternalBroadcastOutcomeUnknownError
+            ? e.transactionHash
+            : undefined;
+        await recordSponsoredActionIfNeeded({
+          sponsorship: sponsorshipPayload,
+          tenantId,
+          agentId,
+          txId: actionId,
+          chainId: signRequest.chainId,
+          caip2: toCaip2(signRequest.chainId),
+          txHash: outcomeUnknownTransactionHash,
+          actionType: "transfer",
+          status: "submitted",
+        });
+        await writeOutcomeUnknownAudit(c, {
+          tenantId,
+          actorType: "agent",
+          actorId: agentId,
+          action: "vault.broadcast.outcome_unknown",
+          resourceType: "transaction",
+          resourceId: actionId,
+          metadata: {
+            agentId,
+            txId: actionId,
+            txHash: outcomeUnknownTransactionHash ?? null,
+            chainId: signRequest.chainId,
+          },
+        });
         return outcomeUnknown;
       }
       await db.insert(transactions).values({

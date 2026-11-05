@@ -294,6 +294,23 @@ test("lost broadcast response returns outcome-unknown and the retry does not pay
         actionType: "transfer",
       },
     ]);
+    // The ambiguous broadcast is accounted for like /sign does: the audit row
+    // is written (the spend aggregation it records alongside is kept in Redis
+    // and is not readable in this embedded test environment).
+    const { auditEvents } = await import("../db/schema");
+    const audits = await getDb()
+      .select({
+        action: auditEvents.action,
+        resourceId: auditEvents.resourceId,
+      })
+      .from(auditEvents)
+      .where(eq(auditEvents.action, "vault.broadcast.outcome_unknown"));
+    expect(audits).toEqual([
+      {
+        action: "vault.broadcast.outcome_unknown",
+        resourceId: firstBody.data.txId,
+      },
+    ]);
     const action = await fetch(
       `${origin}/vault/${agentId}/actions/${firstBody.data.txId}`,
       { headers: auth },
