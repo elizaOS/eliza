@@ -162,6 +162,18 @@ describe("PtySessionStore.start", () => {
     );
   });
 
+  it("keeps the retained scrollback tail well formed when the cap trims it", async () => {
+    const { store, fake } = makeStore();
+    const info = await store.start(spec());
+    const cap = 200_000; // DEFAULT_OUTPUT_BUFFER_CHARS
+    // Five code units of slack, so a cap trim (length - cap = 5) would cut the
+    // emoji at indexes 4 and 5 in half and keep only its low surrogate.
+    fake.ptys[0].emitData(`aaaa😀${"c".repeat(cap - 1)}`);
+    const buffered = store.getBufferedOutput(info.sessionId) ?? "";
+    expect(buffered.charCodeAt(0)).toBe(0x63);
+    expect(buffered.length).toBe(cap - 1);
+  });
+
   it("keeps sessions isolated — output carries the right sessionId", async () => {
     const { store, bridge, fake } = makeStore();
     const seen: SessionOutputEvent[] = [];

@@ -11,7 +11,7 @@ import { randomUUID } from "node:crypto";
 import { EventEmitter } from "node:events";
 import { promises as fs } from "node:fs";
 import path from "node:path";
-import { ElizaError, logger } from "@elizaos/core";
+import { ElizaError, logger, tailWellFormed } from "@elizaos/core";
 import { bunTruePtySpawn, isBunRuntime } from "./bun-pty-spawn";
 import type {
   ConsoleBridge,
@@ -450,11 +450,13 @@ export class PtySessionStore {
     if (!data) return;
     const session = this.sessions.get(sessionId);
     if (!session) return;
-    const next = session.outputBuffer + data;
-    session.outputBuffer =
-      next.length > DEFAULT_OUTPUT_BUFFER_CHARS
-        ? next.slice(next.length - DEFAULT_OUTPUT_BUFFER_CHARS)
-        : next;
+    // Keep the last `DEFAULT_OUTPUT_BUFFER_CHARS` code units without starting on
+    // the low half of a split surrogate pair: a late subscriber serializes this
+    // buffer as JSON, and a lone surrogate would reach the terminal as U+FFFD.
+    session.outputBuffer = tailWellFormed(
+      session.outputBuffer + data,
+      DEFAULT_OUTPUT_BUFFER_CHARS,
+    );
   }
 
   private handleExit(sessionId: string, exitCode: number | null): void {
