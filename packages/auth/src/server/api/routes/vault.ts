@@ -2471,6 +2471,7 @@ vaultRoutes.post("/:agentId/sign", async (c) => {
     }
 
     const executionTxId = crypto.randomUUID();
+    let signedResult: string | undefined;
     try {
       const txId = executionTxId;
       const txStatus: "broadcast" | "signed" = shouldBroadcast
@@ -2610,6 +2611,8 @@ vaultRoutes.post("/:agentId/sign", async (c) => {
                 status: txStatus,
               });
             })();
+
+      signedResult = result;
 
       await db
         .update(transactions)
@@ -2820,6 +2823,30 @@ vaultRoutes.post("/:agentId/sign", async (c) => {
           },
         });
         return outcomeUnknown;
+      }
+      if (signedResult !== undefined) {
+        // The vault already signed (and broadcast) and recorded the row. A
+        // later bookkeeping failure must not mark it failed or return a 5xx,
+        // which releases the Idempotency-Key and invites a second payment.
+        logger.error(
+          {
+            details: [
+              `[vault] Post-sign bookkeeping failed for agent ${agentId} after transaction ${executionTxId} was signed`,
+              redactedThrownDiagnostics(e),
+            ],
+          },
+          "[Login:vault] error",
+        );
+        if (shouldBroadcast) {
+          return c.json<ApiResponse<{ txId: string; txHash: string }>>({
+            ok: true,
+            data: { txId: executionTxId, txHash: signedResult },
+          });
+        }
+        return c.json<ApiResponse<{ txId: string; signedTx: string }>>({
+          ok: true,
+          data: { txId: executionTxId, signedTx: signedResult },
+        });
       }
       await db
         .update(transactions)
