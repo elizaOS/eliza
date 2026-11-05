@@ -33,6 +33,11 @@ import { CacheKeys, CacheTTL } from "../cache/keys";
 import { isAllowedOrigin } from "../security/origin-validation";
 import { logger } from "../utils/logger";
 import { apiKeysService } from "./api-keys";
+import {
+  InferenceCredentialRevocationUnavailableError,
+  revokeInferenceApiKey,
+  settlePostCommitRevocations,
+} from "./inference-credential-revocation";
 import { lockInferencePolicyUsers } from "./inference-policy-fence";
 import { managedDomainsService } from "./managed-domains";
 
@@ -92,6 +97,29 @@ export class AppCreationLimitError extends Error {
 /**
  * Service for app CRUD operations and app management.
  */
+/**
+ * The rows are already inactive; live speech and the gate learn it here. A
+ * repeated deactivation or deletion selects the same keys, so a failure is
+ * raised to the caller for that retry after every key has been attempted.
+ */
+async function revokeAppKeys(keys: { id: string; organizationId: string }[]): Promise<void> {
+  const failures = await settlePostCommitRevocations(keys, (key) => [
+    revokeInferenceApiKey(key.organizationId, key.id),
+  ]);
+  for (const { item, reasons } of failures) {
+    logger.error("[Apps] App key revocation was not confirmed", {
+      apiKeyId: item.id,
+      error: reasons.map(String).join("; "),
+    });
+  }
+  if (failures.length > 0) {
+    throw new InferenceCredentialRevocationUnavailableError(
+      `App key revocation was not confirmed for ${failures.length}/${keys.length} key(s)`,
+      { cause: failures[0]?.reasons[0] },
+    );
+  }
+}
+
 export class AppsService {
   private generateSlug(name: string): string {
     return name
@@ -533,6 +561,7 @@ export class AppsService {
     if (revokesMobileAuth) {
       const mutation = await appsRepository.updateWithMobileAuthRevocation(id, data);
       updated = mutation.app;
+      await revokeAppKeys(mutation.revokedKeys);
       if (mutation.revokedKeyHashes.length > 0) {
         logger.info("[Apps] Revoked mobile credentials for inactive app", {
           appId: id,
@@ -593,6 +622,7 @@ export class AppsService {
     // slow or fail independently, so credentials stop working before it starts.
     const mutation = await appsRepository.prepareDeleteWithMobileAuthRevocation(id);
     const app = mutation.app;
+    await revokeAppKeys(mutation.revokedKeys);
 
     // The primary transaction's row is the only safe teardown input. A replica
     // miss must not skip the ordinary app key or external resource cleanup.
