@@ -172,6 +172,13 @@ export function isSessionBusyError(err: unknown): boolean {
  * Deliver the broker reply back into the child session, waiting out the child's
  * in-flight turn. Returns false (without throwing) on a terminal delivery
  * failure or if the session never goes idle within the bound.
+ *
+ * A resolved send is not by itself proof of delivery: `sendToSession` reports
+ * a cancelled, stopped, or errored turn as a `PromptResult` receipt instead
+ * of throwing, and the reply counts as delivered only when its turn settles
+ * normally — the same classification `undeliveredReason` applies to
+ * follow-up prompts in api/agent-routes.ts. The turn has already settled at
+ * that point, so an abnormal receipt is terminal (no busy-retry).
  */
 async function deliverReplyToChild(
   acp: Pick<AcpService, "sendToSession">,
@@ -182,7 +189,21 @@ async function deliverReplyToChild(
   const deadline = Date.now() + REPLY_DELIVERY_TIMEOUT_MS;
   for (;;) {
     try {
-      await acp.sendToSession(sessionId, reply);
+      const delivery = await acp.sendToSession(sessionId, reply);
+      if (
+        delivery.error ||
+        delivery.stopReason === "cancelled" ||
+        delivery.stopReason === "stopped" ||
+        delivery.stopReason === "error"
+      ) {
+        log?.warn?.(
+          { src: DISPATCH_LOG_SRC, sessionId },
+          `parent-agent reply was not delivered: ${
+            delivery.error ?? `turn settled ${delivery.stopReason}`
+          }`,
+        );
+        return false;
+      }
       return true;
     } catch (err) {
       // error-policy:J1 transport-delivery boundary; a terminal send failure
