@@ -1316,6 +1316,80 @@ describe("household coordination — real PGlite", () => {
     expect((await warningTask(twoDay.id))?.taskId).toBe(twoDayTask?.taskId);
   });
 
+  it("links a warning a failed attempt already scheduled at its scheduled time inside the grant's final day", async () => {
+    const issuedAt = new Date("2027-05-10T12:00:00.000Z");
+    const childId = await person("warning-unlinked-child");
+    const caregiverId = await person("warning-unlinked-caregiver");
+    await bindFamily({ childId, caregiverId });
+    const runner = getScheduledTaskRunner(runtime, {
+      agentId: runtime.agentId,
+      now: () => new Date(issuedAt),
+    });
+    const unlinkedRunner: ScheduledTaskRunnerHandle = {
+      ...runner,
+      async schedule(task) {
+        await runner.schedule(task);
+        throw new Error("simulated failure after the warning task was stored");
+      },
+    };
+    const grant = await service(
+      () => new Date(issuedAt),
+      unlinkedRunner,
+    ).issueGrant({
+      principalEntityId: caregiverId,
+      role: "caregiver",
+      subjectEntityIds: [childId],
+      scopes: ["calendar.freebusy"],
+      issuedByEntityId: SELF_ENTITY_ID,
+      expiresAt: "2027-05-12T12:00:00.000Z",
+    });
+    const warningTasks = async () =>
+      (await runner.list({ kind: "watcher" })).filter((task) =>
+        task.idempotencyKey?.includes(grant.id),
+      );
+    const [scheduled] = await warningTasks();
+    expect(scheduled?.trigger).toEqual({
+      kind: "once",
+      atIso: "2027-05-11T12:00:00.000Z",
+    });
+    await expect(
+      householdRepository.getGrantExpiryWarningIntent(grant.id),
+    ).resolves.toMatchObject({ state: "pending", scheduledTaskId: null });
+
+    const tick = async (at: string) => {
+      const errorsBefore = runtime.getRecentReportedErrors().length;
+      const [receipt] = (
+        await service(() => new Date(at)).reconcileGrantExpiryWarnings()
+      ).filter((candidate) => candidate.grantId === grant.id);
+      const errors = runtime
+        .getRecentReportedErrors()
+        .slice(errorsBefore)
+        .filter((entry) => entry.context?.grantId === grant.id);
+      return { receipt, errors };
+    };
+    const ready = {
+      receipt: expect.objectContaining({
+        outcome: "ready",
+        scheduledTaskId: scheduled?.taskId,
+        warningAt: "2027-05-11T12:00:00.000Z",
+        deduplicated: true,
+      }),
+      errors: [],
+    };
+    expect({
+      claimedTick: await tick("2027-05-11T18:00:00.000Z"),
+      linkedTick: await tick("2027-05-11T19:00:00.000Z"),
+    }).toEqual({ claimedTick: ready, linkedTick: ready });
+    await expect(
+      householdRepository.getGrantExpiryWarningIntent(grant.id),
+    ).resolves.toMatchObject({
+      state: "scheduled",
+      scheduledTaskId: scheduled?.taskId,
+      warningAt: "2027-05-11T12:00:00.000Z",
+    });
+    expect(await warningTasks()).toHaveLength(1);
+  });
+
   it("durably reconciles a warning after scheduling fails without duplicating its grant", async () => {
     const clock = new Date("2027-04-21T12:00:00.000Z");
     const childId = await person("warning-outbox-child");
