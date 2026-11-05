@@ -95,13 +95,31 @@ describe("prompt secret scanner", () => {
     }
   });
 
+  it("flags Groq and xAI keys whose prefixes an sk- class cannot cross", () => {
+    // Groq uses `gsk_` and xAI uses `xai-`; neither starts with an sk- prefix,
+    // so both were previously only reachable through the review-only rule.
+    const tail = "a1B2c3D4e5F6g7H8i9J0k1L2m3N4o5P6q7R8s9T0u1V2";
+    const result = scanContent(
+      "prompts/example.ts",
+      [
+        `const groq = 'gsk_${tail}';`,
+        `const xai = 'xai-${tail}';`,
+        "const shortGroq = 'gsk_tooshort';",
+      ].join("\n"),
+    );
+
+    assert.deepStrictEqual(result.warnings, []);
+    assert.strictEqual(result.errors.length, 2);
+    assert.match(result.errors[0], /prompts\/example\.ts:1\s+Groq API key/);
+    assert.match(result.errors[1], /prompts\/example\.ts:2\s+xAI API key/);
+  });
+
   it("does not flag unrelated hyphenated sk- words or truncated keys", () => {
     const result = scanContent(
       "prompts/notes.ts",
-      [
-        "sk-learn-tutorial-explanation-of-everything",
-        "sk-proj-short",
-      ].join("\n"),
+      ["sk-learn-tutorial-explanation-of-everything", "sk-proj-short"].join(
+        "\n",
+      ),
     );
 
     assert.deepStrictEqual(result, { errors: [], warnings: [] });
