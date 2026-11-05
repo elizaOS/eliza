@@ -257,7 +257,15 @@ export async function runSmithersObservabilityMacro(
   let stderr = "";
 
   const respond = (response: PhaseResponse): void => {
-    if (proc.stdin.writable) proc.stdin.write(`${JSON.stringify(response)}\n`);
+    if (!proc.stdin.writable) return;
+    // The worker reads stdin with readline, which under Bun also ends a line
+    // at U+2028 and U+2029. JSON.stringify leaves both unescaped inside
+    // strings, so phase evidence or an error message containing one would be
+    // split, dropped by the worker, and the macro-run would hang.
+    const line = JSON.stringify(response)
+      .replace(/\u2028/g, "\\u2028")
+      .replace(/\u2029/g, "\\u2029");
+    proc.stdin.write(`${line}\n`);
   };
   const handleLine = (line: string): void => {
     const trimmed = line.trim();
