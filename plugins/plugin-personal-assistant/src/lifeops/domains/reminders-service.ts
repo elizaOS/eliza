@@ -95,6 +95,7 @@ import {
   buildSleepRecapFromSchedule,
   deriveSleepWakeEvents,
   type LifeOpsDerivedEvent,
+  NIGHT_CHECKIN_LEAD_MINUTES,
   normalizeHealthSignal,
   shouldRunNightCheckinFromSleepCycle,
 } from "@elizaos/plugin-health";
@@ -6917,6 +6918,14 @@ export class RemindersDomain {
         kind,
         now: args.now,
         timezone,
+        // The night window (bedtime minus the lead) can start before
+        // midnight and end after it: a night check-in sent earlier in the
+        // same window already served this bedtime.
+        ...(kind === "night"
+          ? {
+              sinceMs: args.now.getTime() - NIGHT_CHECKIN_LEAD_MINUTES * 60_000,
+            }
+          : {}),
       });
       if (alreadySent) {
         if (kind === "morning") {

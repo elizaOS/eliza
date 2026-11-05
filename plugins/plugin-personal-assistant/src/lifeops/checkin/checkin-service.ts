@@ -1680,16 +1680,25 @@ export class CheckinService {
     kind: CheckinKind;
     now: Date;
     timezone: string;
+    /**
+     * Also count a check-in generated at or after this instant. A night
+     * window that crosses midnight serves one bedtime from two local days.
+     */
+    sinceMs?: number;
   }): Promise<boolean> {
     const agentId = String(this.runtime.agentId);
     const day = localDayWindow(args.now, args.timezone);
+    const start =
+      args.sinceMs === undefined
+        ? day.start.getTime()
+        : Math.min(day.start.getTime(), args.sinceMs);
     const rows = await executeRawSql(
       this.runtime,
       `SELECT id
          FROM ${CHECKIN_REPORTS_TABLE}
         WHERE agent_id = ${sqlQuote(agentId)}
           AND kind = ${sqlQuote(args.kind)}
-          AND generated_at_ms >= ${day.start.getTime()}
+          AND generated_at_ms >= ${start}
           AND generated_at_ms < ${day.end.getTime()}
         LIMIT 1`,
     );
