@@ -1748,6 +1748,77 @@ it("keeps an acknowledged Calendar reminder quiet after a Google sync rewrites t
   vi.mocked(fixture.runtime.useModel).mockClear();
 });
 
+it("sends the Calendar reminder for the new time after a Google sync moves an acknowledged event", async () => {
+  const startAt = new Date("2026-10-21T15:00:00.000Z");
+  const movedStartAt = new Date("2026-10-21T17:00:00.000Z");
+  const first = new Date(startAt.getTime() - 30 * 60_000);
+  const row = {
+    id: `google-moved-${crypto.randomUUID()}`,
+    externalId: crypto.randomUUID(),
+    agentId: fixture.runtime.agentId,
+    provider: "google" as const,
+    side: "owner" as const,
+    calendarId: "primary",
+    title: "Team sync",
+    description: "",
+    location: "",
+    status: "confirmed",
+    startAt: startAt.toISOString(),
+    endAt: new Date(startAt.getTime() + 3_600_000).toISOString(),
+    isAllDay: false,
+    timezone: "UTC",
+    htmlLink: null,
+    conferenceLink: null,
+    organizer: null,
+    attendees: [],
+    metadata: { googlePlugin: true, etag: "v1" },
+    syncedAt: first.toISOString(),
+    updatedAt: first.toISOString(),
+  };
+  await service.repository.upsertCalendarEvent(row);
+  await service.repository.createReminderPlan(
+    createLifeOpsReminderPlan({
+      agentId: fixture.runtime.agentId,
+      ownerType: "calendar_event",
+      ownerId: row.id,
+      steps: [{ channel: "in_app", offsetMinutes: 30, label: "30m before" }],
+      mutePolicy: {},
+      quietHours: {},
+    }),
+  );
+  const deliveredFor = async () =>
+    (await service.repository.listReminderAttempts(fixture.runtime.agentId))
+      .filter(
+        (attempt) =>
+          attempt.ownerId === row.id && attempt.outcome === "delivered",
+      )
+      .map((attempt) => attempt.scheduledFor);
+
+  await service.processReminders({ now: first.toISOString() });
+  await service.acknowledgeReminder({
+    ownerType: "calendar_event",
+    ownerId: row.id,
+    acknowledgedAt: new Date(first.getTime() + 60_000).toISOString(),
+  });
+  // The organizer moves the meeting two hours later; Google syncs it.
+  const resync = new Date(first.getTime() + 5 * 60_000);
+  await service.repository.upsertCalendarEvent({
+    ...row,
+    startAt: movedStartAt.toISOString(),
+    endAt: new Date(movedStartAt.getTime() + 3_600_000).toISOString(),
+    metadata: { googlePlugin: true, etag: "v2" },
+    syncedAt: resync.toISOString(),
+    updatedAt: resync.toISOString(),
+  });
+  const secondDue = new Date(movedStartAt.getTime() - 30 * 60_000);
+  await service.processReminders({ now: secondDue.toISOString() });
+  expect(await deliveredFor()).toEqual([
+    first.toISOString(),
+    secondDue.toISOString(),
+  ]);
+  vi.mocked(fixture.runtime.useModel).mockClear();
+});
+
 it("sends the before-start reminder for built-in, Outlook and Apple calendar events", async () => {
   const now = new Date("2026-10-12T14:45:00.000Z");
   const providers = ["eliza", "microsoft", "apple_calendar"] as const;
