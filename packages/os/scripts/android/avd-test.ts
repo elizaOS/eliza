@@ -317,7 +317,10 @@ export async function findEmulatorSerial(adb, avdName, timeoutMs) {
 }
 
 export async function avdTest(options, brand) {
-  const adb = resolveAdb(null);
+  // Honor the same ADB override as capture-screens, boot-validate and
+  // e2e-validate; without it the documented env var is ignored and the run
+  // fails on "Could not find adb" for a host that only exports ADB.
+  const adb = resolveAdb(process.env.ADB || null);
   let serial = options.serial;
 
   if (!serial) {
