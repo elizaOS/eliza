@@ -302,18 +302,42 @@ async function resolveExternalCallRecipient(args: {
   };
 }
 
+/**
+ * Twilio gave no verdict on the create: no HTTP status (timeout, lost
+ * response), a 5xx or a 408. Twilio may already have placed the call, so the
+ * owner must not be told it failed and asked to try again.
+ */
+function callOutcomeUnknown(delivery: TwilioDeliveryResult): boolean {
+  if (delivery.ok) return false;
+  return (
+    delivery.status === null ||
+    delivery.status === 408 ||
+    delivery.status >= 500
+  );
+}
+
+function callOutcomeUnknownText(to: string): string {
+  return `Twilio gave no answer for the call to ${to}; it may already be ringing. I will not place it again. Check the Twilio call log before asking for another call.`;
+}
+
 function deliveryToResult(
   delivery: TwilioDeliveryResult,
   to: string,
   recipientKind: RecipientKind,
 ): ActionResult {
+  const unknown = callOutcomeUnknown(delivery);
   return {
-    text: delivery.ok ? `Placed call to ${to}.` : `Call to ${to} failed.`,
+    text: delivery.ok
+      ? `Placed call to ${to}.`
+      : unknown
+        ? callOutcomeUnknownText(to)
+        : `Call to ${to} failed.`,
     success: delivery.ok,
     values: {
       success: delivery.ok,
       to,
       sid: delivery.sid ?? null,
+      ...(unknown ? { error: "CALL_OUTCOME_UNKNOWN" } : {}),
     },
     data: {
       actionName: ACTION_NAME,
@@ -325,6 +349,7 @@ function deliveryToResult(
       status: delivery.status,
       error: delivery.error,
       retryCount: delivery.retryCount ?? 0,
+      ...(unknown ? { deliveryUnknown: true } : {}),
     },
   };
 }
@@ -463,12 +488,17 @@ async function dialE164(
   });
 
   if (!result.ok) {
+    const unknown = callOutcomeUnknown(result);
     return {
-      text: `Voice call to ${to} failed: ${result.error ?? "unknown error"}.`,
+      text: unknown
+        ? callOutcomeUnknownText(to)
+        : `Voice call to ${to} failed: ${result.error ?? "unknown error"}.`,
       success: false,
       values: {
         success: false,
-        error: result.error ?? "CALL_FAILED",
+        error: unknown
+          ? "CALL_OUTCOME_UNKNOWN"
+          : (result.error ?? "CALL_FAILED"),
         status: result.status,
       },
       data: {
@@ -480,6 +510,7 @@ async function dialE164(
         message: messageBody,
         status: result.status,
         retryCount: result.retryCount,
+        ...(unknown ? { deliveryUnknown: true } : {}),
       },
     };
   }

@@ -215,6 +215,70 @@ describe("VOICE_CALL confirmation and recipient binding", () => {
     }
   });
 
+  it("reports a Twilio create with no verdict as unknown, not failed", async () => {
+    const runtime = makeRuntime();
+    const e164 = { recipientKind: "e164", phoneNumber: "+14155550123" };
+    twilio.sendTwilioVoiceCall.mockResolvedValue({
+      ok: false,
+      status: null,
+      error: "The operation was aborted due to timeout",
+      retryCount: 0,
+    });
+
+    await dial(runtime, "call them", {
+      ...e164,
+      bodyText: "The build is done.",
+    });
+    const confirmed = await dial(runtime, "yes", {
+      ...e164,
+      bodyText: "The build is done.",
+    });
+
+    expect({
+      success: confirmed?.success,
+      error: confirmed?.values?.error,
+      deliveryUnknown: confirmed?.data?.deliveryUnknown,
+      saysFailed: /failed/i.test(confirmed?.text ?? ""),
+      saysMayBeRinging: /may already be ringing/i.test(confirmed?.text ?? ""),
+    }).toEqual({
+      success: false,
+      error: "CALL_OUTCOME_UNKNOWN",
+      deliveryUnknown: true,
+      saysFailed: false,
+      saysMayBeRinging: true,
+    });
+  });
+
+  it("still reports a refused Twilio create as failed", async () => {
+    const runtime = makeRuntime();
+    const e164 = { recipientKind: "e164", phoneNumber: "+14155550123" };
+    twilio.sendTwilioVoiceCall.mockResolvedValue({
+      ok: false,
+      status: 400,
+      error: "Invalid 'To' phone number",
+      retryCount: 0,
+    });
+
+    await dial(runtime, "call them", {
+      ...e164,
+      bodyText: "The build is done.",
+    });
+    const confirmed = await dial(runtime, "yes", {
+      ...e164,
+      bodyText: "The build is done.",
+    });
+
+    expect({
+      success: confirmed?.success,
+      deliveryUnknown: confirmed?.data?.deliveryUnknown,
+      saysFailed: /failed/i.test(confirmed?.text ?? ""),
+    }).toEqual({
+      success: false,
+      deliveryUnknown: undefined,
+      saysFailed: true,
+    });
+  });
+
   it("previews a changed message instead of speaking it on yes", async () => {
     const runtime = makeRuntime();
     const e164 = { recipientKind: "e164", phoneNumber: "+14155550123" };
