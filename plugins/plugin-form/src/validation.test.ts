@@ -618,3 +618,132 @@ describe("sensitive field display", () => {
     }
   });
 });
+
+describe("multiple control validation and formatting", () => {
+  const multiSelect: FormControl = {
+    key: "countries",
+    label: "Countries",
+    type: "select",
+    multiple: true,
+    required: true,
+    options: [
+      { value: "US", label: "United States" },
+      { value: "CA", label: "Canada" },
+      { value: "MX", label: "Mexico" },
+    ],
+  };
+
+  const optionalMultiSelect: FormControl = {
+    ...multiSelect,
+    required: false,
+  };
+
+  const enumMultiSelect: FormControl = {
+    key: "tags",
+    label: "Tags",
+    type: "select",
+    multiple: true,
+    required: true,
+    enum: ["tech", "science", "art"],
+  };
+
+  const multiText: FormControl = {
+    key: "keywords",
+    label: "Keywords",
+    type: "text",
+    multiple: true,
+    required: true,
+    pattern: "^[a-z0-9_-]+$",
+    minLength: 2,
+    maxLength: 10,
+  };
+
+  it("validates array answers for multiple select controls", () => {
+    // Valid multiple options
+    expect(validateField(["US", "CA"], multiSelect).valid).toBe(true);
+    // Valid single option in array
+    expect(validateField(["MX"], multiSelect).valid).toBe(true);
+    // Valid scalar string
+    expect(validateField("US", multiSelect).valid).toBe(true);
+
+    // Invalid option within array
+    expect(validateField(["US", "FR"], multiSelect)).toEqual({
+      valid: false,
+      error: "Countries must be one of the available options",
+    });
+
+    // Null or undefined item in array
+    expect(validateField(["US", null], multiSelect)).toEqual({
+      valid: false,
+      error: "Countries must be one of the available options",
+    });
+
+    // Invalid scalar
+    expect(validateField("FR", multiSelect)).toEqual({
+      valid: false,
+      error: "Countries must be one of the available options",
+    });
+  });
+
+  it("enforces required constraint on empty array values", () => {
+    // Required multi-select rejects empty array
+    expect(validateField([], multiSelect)).toEqual({
+      valid: false,
+      error: "Countries is required",
+    });
+
+    // Optional multi-select accepts empty array
+    expect(validateField([], optionalMultiSelect)).toEqual({
+      valid: true,
+    });
+  });
+
+  it("validates multiple select with enum fallback", () => {
+    expect(validateField(["tech", "art"], enumMultiSelect).valid).toBe(true);
+    expect(validateField(["tech", "sports"], enumMultiSelect)).toEqual({
+      valid: false,
+      error: "Must be one of: tech, science, art",
+    });
+  });
+
+  it("validates multiple text controls element-by-element", () => {
+    expect(validateField(["ai", "robotics"], multiText).valid).toBe(true);
+
+    // One element violates pattern
+    expect(validateField(["ai", "BAD VALUE!"], multiText)).toEqual({
+      valid: false,
+      error: "Keywords has invalid format",
+    });
+
+    // One element violates minLength
+    expect(validateField(["ai", "x"], multiText)).toEqual({
+      valid: false,
+      error: "Keywords must be at least 2 characters",
+    });
+
+    // One element violates maxLength
+    expect(validateField(["ai", "superlongkeyword"], multiText)).toEqual({
+      valid: false,
+      error: "Keywords must be at most 10 characters",
+    });
+
+    // Required check on empty array
+    expect(validateField([], multiText)).toEqual({
+      valid: false,
+      error: "Keywords is required",
+    });
+  });
+
+  it("formats multiple select values using option labels", () => {
+    expect(formatValue(["US", "CA"], multiSelect)).toBe(
+      "United States, Canada",
+    );
+    expect(formatValue(["MX"], multiSelect)).toBe("Mexico");
+    expect(formatValue("US", multiSelect)).toBe("United States");
+    expect(formatValue(["UNKNOWN"], multiSelect)).toBe("UNKNOWN");
+  });
+
+  it("formats multiple text values by comma-joining", () => {
+    expect(formatValue(["ai", "robotics"], multiText)).toBe("ai, robotics");
+  });
+});
