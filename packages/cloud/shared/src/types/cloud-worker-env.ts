@@ -41,8 +41,6 @@ export interface Bindings {
   /** Renewable 60 s speech windows per session for extending clients, 1..120; default 10. */
   VOICE_SPEECH_RELAY_MAX_WINDOWS?: string;
   SPEECH_RELAY_SESSIONS?: RuntimeUniqueDurableObjectNamespace;
-  /** Staging trial: mint unnamed session objects for callers that ask for them. */
-  VOICE_SPEECH_UNIQUE_SESSION_IDS?: string;
   CLOUD_HF_EGRESS_BACKEND?: string;
   HF_EGRESS_STATE?: RuntimeDurableObjectNamespace;
   CLOUD_VOICE_USAGE_BACKEND?: string;
