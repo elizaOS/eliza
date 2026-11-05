@@ -1402,7 +1402,7 @@ function buildNativeRequestBody(
   // a model name or caller providerOptions alone cannot select this behavior.
   // Normalize before final serialization/quote/hash; never rewrite after quote.
   if (runtime && normalizeCerebrasModelId(modelName) === "qwen-3.8-27b" &&
-      usesCanonicalCerebrasNativeSerialization(runtime)) {
+      usesCanonicalCerebrasNativeSerialization(runtime, { stagingMobileTools: true })) {
     // Cerebras accepts one strictness mode for the entire tool batch. If any
     // tool needs non-strict provider decoding, retain every schema and use
     // non-strict decoding consistently; execution still validates arguments.
@@ -2814,10 +2814,20 @@ function onlyNativeCacheBookkeeping(options:Record<string,unknown>,raw:unknown,k
 
 /** Formatting only. Reuse Core's actual selected handlers and the normal Cloud
  * transport tuple; no mirrored registry, lease, financial or permission state. */
-function usesCanonicalCerebrasNativeSerialization(runtime: IAgentRuntime): boolean {
+function usesCanonicalCerebrasNativeSerialization(
+  runtime: IAgentRuntime,
+  options?: { stagingMobileTools: true },
+): boolean {
   try {
     const tuple = resolveCloudSdkAuthorityTuple(runtime);
-    if (!tuple.outboundAllowed || !tuple.apiKey || tuple.apiBaseUrl.replace(/\/+$/, "") !== "https://api.eliza.app/api/v1") return false;
+    if (!tuple.outboundAllowed || !tuple.apiKey) return false;
+    const base = tuple.apiBaseUrl.replace(/\/+$/, "");
+    const stagingMobileTools =
+      options?.stagingMobileTools &&
+      tuple.authority === "staging-explicit" &&
+      base === "https://api-staging.eliza.app/api/v1" &&
+      tuple.apiKey.startsWith("eliza_mobile_");
+    if (base !== "https://api.eliza.app/api/v1" && !stagingMobileTools) return false;
     const ownHandlers: ReadonlyArray<readonly [ModelTypeName, unknown]> = [
       [TEXT_NANO_MODEL_TYPE, handleTextNano], [TEXT_SMALL_MODEL_TYPE, handleTextSmall],
       [TEXT_MEDIUM_MODEL_TYPE, handleTextMedium], [TEXT_LARGE_MODEL_TYPE, handleTextLarge],
