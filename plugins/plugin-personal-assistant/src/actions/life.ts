@@ -962,6 +962,7 @@ async function resolveGoal(
   service: LifeOpsService,
   target: string | undefined,
   domain?: LifeOpsDomain,
+  options: { mutation?: boolean } = {},
 ): Promise<{ match: LifeOpsGoalRecord | null; ambiguousCandidates: string[] }> {
   if (!target) return { match: null, ambiguousCandidates: [] };
   const goals = (await service.listGoals()).filter((e) =>
@@ -970,12 +971,26 @@ async function resolveGoal(
   const byId = goals.find((e) => e.goal.id === target);
   if (byId) return { match: byId, ambiguousCandidates: [] };
   const matches = matchByTitle(goals, target, (e) => e.goal.title);
+  if (matches.length === 1 && options.mutation) {
+    // A delete or edit needs the goal named, not merely contained: "read"
+    // must not delete "Ready for the marathon". The substring tier stays for
+    // reads and links; here it only nominates a candidate to confirm (the
+    // same rule resolveDefinitionForMutation applies to reminders).
+    const normalized = normalizeTitle(target);
+    const title = normalizeTitle(matches[0].goal.title);
+    if (title !== normalized && !containsInvariantPhrase(title, normalized)) {
+      return { match: null, ambiguousCandidates: [matches[0].goal.title] };
+    }
+  }
   return matches.length === 1
     ? { match: matches[0], ambiguousCandidates: [] }
     : { match: null, ambiguousCandidates: matches.map((e) => e.goal.title) };
 }
 
 function goalAmbiguityReply(candidates: string[]): string {
+  if (candidates.length === 1) {
+    return `Did you mean "${candidates[0]}"? Name it in full to confirm.`;
+  }
   return `Multiple items match — which one?\n${candidates.map((title) => `  - ${title}`).join("\n")}`;
 }
 
@@ -6871,6 +6886,7 @@ async function runLifeOperationHandlerInner(
         service,
         targetName,
         domain,
+        { mutation: true },
       );
       if (!target)
         return {
@@ -7152,6 +7168,7 @@ async function runLifeOperationHandlerInner(
         service,
         targetName,
         domain,
+        { mutation: true },
       );
       if (!target)
         return {
