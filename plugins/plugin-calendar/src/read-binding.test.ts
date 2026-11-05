@@ -572,7 +572,7 @@ it("binds a literal quoted event title inside the verified current quotation", (
   const quote = 'the Calendar event "Alpha demo verified" on November 2, 2026';
   const bind = (query:string) => bindFilterEvidence([{query,quote,origin:"current"}],current,"agent",[]);
   expect(bind("Alpha demo verified")).toEqual([expect.objectContaining({
-    query:"Alpha demo verified",quote,sourceMessageId:"request",sourceActorId:"owner",sourceRoomId:"room",sourceCreatedAt:1000,
+    query:"Alpha demo verified",quote:"Alpha demo verified",sourceMessageId:"request",sourceActorId:"owner",sourceRoomId:"room",sourceCreatedAt:1000,
   })]);
   expect(bind("Alpha demo")).toBeNull();
   expect(bind("dentist")).toBeNull();

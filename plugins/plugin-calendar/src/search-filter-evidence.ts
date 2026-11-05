@@ -44,7 +44,10 @@ export function bindFilterEvidence(
     const source = candidates.find(m => m.id && typeof m.content?.text === "string" &&
       m.content.text.includes(raw.quote as string));
     if (!source?.id || !Number.isFinite(source.createdAt)) return null;
-    result.push({ query: raw.query.trim(), quote: raw.quote, origin: raw.origin,
+    // Publish the exact verified span to the existing read-coverage contract,
+    // which requires query === quote.trim(). Source custody still comes from
+    // the complete verbatim quotation checked above.
+    result.push({ query, quote: query === raw.quote.trim() ? raw.quote : query, origin: raw.origin,
       sourceMessageId: source.id, sourceActorId: source.entityId,
       sourceRoomId: source.roomId, sourceCreatedAt: source.createdAt! });
   }
