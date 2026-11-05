@@ -10,6 +10,7 @@ import {
   type IAgentRuntime,
   logger,
   ModelType,
+  parseJsonObject,
   runWithTrajectoryPurpose,
 } from "@elizaos/core";
 import type {
@@ -152,28 +153,11 @@ function mergeDeterministicRisk(
   };
 }
 
-function jsonObject(raw: unknown): Record<string, unknown> | null {
-  if (typeof raw !== "string" || !raw.trim()) return null;
-  const trimmed = raw
-    .trim()
-    .replace(/^```(?:json)?\s*/iu, "")
-    .replace(/\s*```$/u, "")
-    .trim();
-  const candidate = trimmed.match(/\{[\s\S]*\}/u)?.[0] ?? trimmed;
-  try {
-    const parsed: unknown = JSON.parse(candidate);
-    return parsed && typeof parsed === "object" && !Array.isArray(parsed)
-      ? (parsed as Record<string, unknown>)
-      : null;
-  } catch {
-    // error-policy:J3 model output is untrusted input. Invalid JSON becomes an
-    // explicit unknown-risk classification and never a fabricated "absent".
-    return null;
-  }
-}
-
 function parseSignals(raw: unknown): ModelSignals | null {
-  const record = jsonObject(raw);
+  const record =
+    typeof raw === "string"
+      ? parseJsonObject<Record<string, unknown>>(raw)
+      : null;
   if (!record) return null;
   const signals = {} as Record<ParentingRiskField, ParentingRiskSignal>;
   for (const field of RISK_FIELDS) {
