@@ -1894,6 +1894,59 @@ describe("long progressive planner trajectories", () => {
     expect(result.terminalFailure?.transient).toBe(false);
     expect(result.trajectory.plannedQueue[0]?.params?.query).toBe("subject 6");
   });
+  it("skips a reworded MEMORY search that has no action parameter", async () => {
+    const queries = ["alexis gym signup", "gym signup alexis"];
+    const executed: unknown[] = [];
+    let rounds = 0;
+    const result = await runPlannerLoop({
+      context: { id: "bare-memory-search", events: [] },
+      codingMode: true,
+      runtime: {
+        useModel: async (_type, input) => {
+          const query = input.tools ? queries[rounds++] : undefined;
+          if (!query)
+            return { text: "Alexis signed up on Monday.", toolCalls: [] };
+          return {
+            text: "",
+            toolCalls: [
+              {
+                id: `memory-${rounds}`,
+                name: "MEMORY",
+                arguments: { query, eliza_turn_scope: "more_work_pending" },
+              },
+            ],
+          };
+        },
+      },
+      tools: [
+        {
+          name: "MEMORY",
+          description: "Search, create, update or delete stored memories",
+          parameters: {
+            type: "object",
+            properties: {
+              action: { type: "string" },
+              query: { type: "string" },
+            },
+          },
+        },
+      ],
+      executeToolCall: async (call) => {
+        executed.push(call.params?.query);
+        return {
+          success: true,
+          transcriptVisibility: "internal" as const,
+          data: { readOnlyOperation: true, count: 1, result: "gym signup" },
+        };
+      },
+    });
+    expect(executed).toEqual(["alexis gym signup"]);
+    expect(
+      result.trajectory.context.events?.some((event) =>
+        event.id.startsWith("memory-search-budget:"),
+      ),
+    ).toBe(true);
+  });
   it("allows repeated observations whose complete results change", async () => {
     let count = 0;
     const result = await runPlannerLoop({

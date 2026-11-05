@@ -160,6 +160,7 @@ import {
   withGuidedDecodeProviderOptions,
   withModelInputBudgetProviderOptions,
 } from "@elizaos/core";
+import { inferMemorySubaction } from "../actions/memories.ts";
 import {
   buildPlannerTemplate,
   plannerBatchScopeDescription,
@@ -9199,8 +9200,9 @@ export function partitionRedundantSucceededCalls(
 /**
  * Whether a planned tool call is a memory/knowledge-recall search: the
  * MEMORY_SEARCH promoted virtual (or the MEMORY umbrella invoked with a
- * search op) and SEARCH_KNOWLEDGE. Deliberately narrow — web search, message
- * search, and file search are not recall-over-stored-memory and stay
+ * search op, or with a bare query that the executor dispatches as
+ * MEMORY_SEARCH) and SEARCH_KNOWLEDGE. Deliberately narrow — web search,
+ * message search, and file search are not recall-over-stored-memory and stay
  * unbudgeted.
  */
 export function isMemoryRecallSearchCall(toolCall: PlannerToolCall): boolean {
@@ -9209,7 +9211,8 @@ export function isMemoryRecallSearchCall(toolCall: PlannerToolCall): boolean {
   if (name === "MEMORY") {
     return (
       readSubaction(toolCall.params, { allowed: ["search"] as const }) ===
-      "search"
+        "search" ||
+      inferMemorySubaction(toolCall.params ?? {}) === "MEMORY_SEARCH"
     );
   }
   return false;
