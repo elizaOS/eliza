@@ -161,8 +161,19 @@ export async function withOptimisticRetry<T>(
   throw lastError;
 }
 
+const NUL = String.fromCharCode(0);
+
+/**
+ * Quote a string as a SQL literal. PostgreSQL cannot store U+0000 in text
+ * (22021), and a raw NUL inside the statement text cuts the query off at the
+ * wire protocol ("insufficient data left in message"), so a literal carrying
+ * one failed the whole statement. Raw-SQL stores quote owner- and
+ * model-supplied text (goal titles, LifeOps notes, …) through here, so drop
+ * U+0000 the way sanitize-json drops it from jsonb strings.
+ */
 export function sqlQuote(value: string): string {
-  return `'${value.replace(/'/g, "''")}'`;
+  const text = value.includes(NUL) ? value.replaceAll(NUL, "") : value;
+  return `'${text.replace(/'/g, "''")}'`;
 }
 
 export function sqlText(value: string | null | undefined): string {
