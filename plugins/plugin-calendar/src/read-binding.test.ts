@@ -566,6 +566,19 @@ describe("Calendar operation bindings", () => {
 });
 
 
+it("binds a literal quoted event title inside the verified current quotation", () => {
+  const current = {id:"request",agentId:"agent",roomId:"room",entityId:"owner",createdAt:1000,
+    content:{text:'Read the Calendar event "Alpha demo verified" on November 2, 2026.'}};
+  const quote = 'the Calendar event "Alpha demo verified" on November 2, 2026';
+  const bind = (query:string) => bindFilterEvidence([{query,quote,origin:"current"}],current,"agent",[]);
+  expect(bind("Alpha demo verified")).toEqual([expect.objectContaining({
+    query:"Alpha demo verified",quote,sourceMessageId:"request",sourceActorId:"owner",sourceRoomId:"room",sourceCreatedAt:1000,
+  })]);
+  expect(bind("Alpha demo")).toBeNull();
+  expect(bind("dentist")).toBeNull();
+  expect(bindFilterEvidence([{query:"Alpha demo verified",quote,origin:"referent"}],current,"agent",[])).toBeNull();
+});
+
 /** Existing field + real evaluator/streaming carriers; no model, Calendar I/O or mutation. */
 describe("Calendar mutation lookup prerequisites", () => {
   const oldTitle = "Alpha QA 2026-11-02 1139Z";

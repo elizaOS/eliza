@@ -31,7 +31,12 @@ export function bindFilterEvidence(
       !hasCalendarSearchFilterShape(value)) return null;
   const result: FilterEvidence[] = [];
   for (const raw of value) {
-    if (raw.query.trim() !== raw.quote.trim()) return null;
+    const query = raw.query.trim();
+    // Accept a literal quoted title within a longer verbatim quotation, not
+    // arbitrary shortened descriptions, paraphrases or invented terms.
+    const quotedTitle = [`"${query}"`, `“${query}”`, `'${query}'`]
+      .some(title => raw.quote.includes(title));
+    if (query !== raw.quote.trim() && !quotedTitle) return null;
     const candidates = raw.origin === "current" ? [current] : recent.filter(m =>
       m.id !== current.id && (m.agentId === undefined || m.agentId === agentId) && m.roomId === current.roomId &&
       (m.entityId === current.entityId || m.entityId === agentId) &&
