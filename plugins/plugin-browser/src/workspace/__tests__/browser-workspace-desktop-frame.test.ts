@@ -8,6 +8,7 @@ import type { AddressInfo } from "node:net";
 import { JSDOM } from "jsdom";
 import { describe, expect, it } from "vitest";
 import {
+  createDesktopBrowserWorkspaceCommandScript,
   createDesktopBrowserWorkspaceUtilityScript,
   executeDesktopBrowserWorkspaceDomCommand,
 } from "../browser-workspace-desktop.js";
@@ -65,6 +66,52 @@ describe("desktop browser workspace frame select", () => {
     run(dom, { subaction: "highlight", selector: "#target" });
 
     expect(highlightedFrames(dom)).toEqual([false, true]);
+  });
+});
+
+describe("desktop browser workspace DOM commands after frame select", () => {
+  function runCommand(dom: JSDOM, command: BrowserWorkspaceCommand): unknown {
+    return dom.window.eval(createDesktopBrowserWorkspaceCommandScript(command));
+  }
+
+  it("clicks the selected frame's element, not the top document's", () => {
+    const dom = openPage(
+      '<button id="target">Main</button><iframe id="second-frame"></iframe>',
+    );
+    const clicked: string[] = [];
+    dom.window.document
+      .querySelector("#target")
+      ?.addEventListener("click", () => clicked.push("main"));
+    dom.window.document
+      .querySelector<HTMLIFrameElement>("#second-frame")
+      ?.contentDocument?.querySelector("#target")
+      ?.addEventListener("click", () => clicked.push("frame"));
+
+    run(dom, { subaction: "frame", selector: "#second-frame" });
+    const result = runCommand(dom, { subaction: "click", selector: "#target" });
+
+    expect(result).toMatchObject({ element: { selector: "#target" } });
+    expect(clicked).toEqual(["frame"]);
+  });
+
+  it("snapshots the selected frame's elements and text", () => {
+    const dom = openPage(
+      '<button id="main-only">Main</button><iframe id="second-frame"></iframe>',
+    );
+    run(dom, { subaction: "frame", selector: "#second-frame" });
+
+    const snapshot = runCommand(dom, { subaction: "snapshot" }) as {
+      bodyText?: string;
+      elements?: Array<{ selector: string }>;
+    };
+
+    expect(snapshot.bodyText).toBe("Go");
+    expect(snapshot.elements?.map((element) => element.selector)).toContain(
+      "#target",
+    );
+    expect(snapshot.elements?.map((element) => element.selector)).not.toContain(
+      "#main-only",
+    );
   });
 });
 

@@ -205,6 +205,20 @@ export function createDesktopBrowserWorkspaceCommandScript(
 (() => {
   const command = ${JSON.stringify(command)};
   const normalize = (value) => String(value ?? "").replace(/\\s+/g, " ").trim();
+  // A frame selected by the utility script's \`frame\` command scopes every
+  // DOM command here, as it does on the web backend; without this the click,
+  // fill, snapshot and keyboard commands kept acting on the top document while
+  // the model believed it was inside the frame.
+  const activeDocument = (() => {
+    const frameSelector = window.__elizaBrowserWorkspaceState?.currentFrame;
+    if (!frameSelector) return document;
+    try {
+      const frame = document.querySelector(frameSelector);
+      return frame && frame.contentDocument ? frame.contentDocument : document;
+    } catch {
+      return document;
+    }
+  })();
   const textMatches = (candidate, wanted, exact = false) => {
     const left = normalize(candidate).toLowerCase();
     const right = normalize(wanted).toLowerCase();
@@ -253,7 +267,7 @@ export function createDesktopBrowserWorkspaceCommandScript(
   };
   const searchTexts = (element) => {
     const labelText = element.id
-      ? Array.from(document.querySelectorAll('label[for="' + element.id + '"]'))
+      ? Array.from(activeDocument.querySelectorAll('label[for="' + element.id + '"]'))
           .map((label) => label.textContent)
           .join(" ")
       : "";
@@ -302,7 +316,7 @@ export function createDesktopBrowserWorkspaceCommandScript(
   const findByText = (wanted) => {
     const needle = normalize(wanted).toLowerCase();
     if (!needle) return null;
-    const elements = Array.from(document.querySelectorAll(
+    const elements = Array.from(activeDocument.querySelectorAll(
       "a, button, input, textarea, select, option, label, h1, h2, h3, [role='button'], [data-testid]"
     ));
     const matches = elements.filter((element) => {
@@ -324,7 +338,7 @@ export function createDesktopBrowserWorkspaceCommandScript(
   const findAllByText = (wanted, exact = false) => {
     const needle = normalize(wanted).toLowerCase();
     if (!needle) return [];
-    const elements = Array.from(document.querySelectorAll(
+    const elements = Array.from(activeDocument.querySelectorAll(
       "a, button, input, textarea, select, option, label, h1, h2, h3, [role='button'], [data-testid]"
     ));
     return innerTextMatches(elements.filter((element) => {
@@ -343,12 +357,12 @@ export function createDesktopBrowserWorkspaceCommandScript(
     }));
   };
   const findByLabel = (wanted, exact = false) => {
-    const labels = Array.from(document.querySelectorAll("label"));
+    const labels = Array.from(activeDocument.querySelectorAll("label"));
     for (const label of labels) {
       if (!textMatches(label.textContent, wanted, exact)) continue;
       const forId = label.getAttribute("for");
       if (forId) {
-        const explicit = document.getElementById(forId);
+        const explicit = activeDocument.getElementById(forId);
         if (explicit) return explicit;
       }
       const nested = label.querySelector("input, textarea, select, button");
@@ -358,12 +372,12 @@ export function createDesktopBrowserWorkspaceCommandScript(
   };
   const findAllByLabel = (wanted, exact = false) => {
     const found = [];
-    const labels = Array.from(document.querySelectorAll("label"));
+    const labels = Array.from(activeDocument.querySelectorAll("label"));
     for (const label of labels) {
       if (!textMatches(label.textContent, wanted, exact)) continue;
       const forId = label.getAttribute("for");
       if (forId) {
-        const explicit = document.getElementById(forId);
+        const explicit = activeDocument.getElementById(forId);
         if (explicit) {
           found.push(explicit);
           continue;
@@ -376,7 +390,7 @@ export function createDesktopBrowserWorkspaceCommandScript(
   };
   const findByRole = (role, name, exact = false) => {
     const candidates = Array.from(
-      document.querySelectorAll(
+      activeDocument.querySelectorAll(
         "a, button, input, textarea, select, option, form, h1, h2, h3, h4, h5, h6, [role], [data-testid]"
       )
     );
@@ -392,7 +406,7 @@ export function createDesktopBrowserWorkspaceCommandScript(
   const findAllByRole = (role, name, exact = false) => {
     const found = [];
     const candidates = Array.from(
-      document.querySelectorAll(
+      activeDocument.querySelectorAll(
         "a, button, input, textarea, select, option, form, h1, h2, h3, h4, h5, h6, [role], [data-testid]"
       )
     );
@@ -479,14 +493,14 @@ export function createDesktopBrowserWorkspaceCommandScript(
   };
   const queryOne = (selector) => {
     try {
-      return document.querySelector(selector);
+      return activeDocument.querySelector(selector);
     } catch {
       throw new Error("Invalid selector " + selector);
     }
   };
   const queryAll = (selector) => {
     try {
-      return Array.from(document.querySelectorAll(selector));
+      return Array.from(activeDocument.querySelectorAll(selector));
     } catch {
       throw new Error("Invalid selector " + selector);
     }
@@ -494,7 +508,7 @@ export function createDesktopBrowserWorkspaceCommandScript(
   const findSemantic = (targetCommand = command) => {
     switch (targetCommand.findBy) {
       case "alt":
-        return Array.from(document.querySelectorAll("[alt]")).find((element) =>
+        return Array.from(activeDocument.querySelectorAll("[alt]")).find((element) =>
           textMatches(
             element.getAttribute("alt"),
             targetCommand.text,
@@ -516,7 +530,7 @@ export function createDesktopBrowserWorkspaceCommandScript(
           ? queryAll(targetCommand.selector).at(targetCommand.index) || null
           : null;
       case "placeholder":
-        return Array.from(document.querySelectorAll("[placeholder]")).find((element) =>
+        return Array.from(activeDocument.querySelectorAll("[placeholder]")).find((element) =>
           textMatches(
             element.getAttribute("placeholder"),
             targetCommand.text,
@@ -533,12 +547,12 @@ export function createDesktopBrowserWorkspaceCommandScript(
           : null;
       case "testid":
         return targetCommand.text
-          ? document.querySelector('[data-testid="' + targetCommand.text + '"]')
+          ? activeDocument.querySelector('[data-testid="' + targetCommand.text + '"]')
           : null;
       case "text":
         return targetCommand.text ? findByText(targetCommand.text) : null;
       case "title":
-        return Array.from(document.querySelectorAll("[title]")).find((element) =>
+        return Array.from(activeDocument.querySelectorAll("[title]")).find((element) =>
           textMatches(
             element.getAttribute("title"),
             targetCommand.text,
@@ -553,7 +567,7 @@ export function createDesktopBrowserWorkspaceCommandScript(
     switch (targetCommand.findBy) {
       case "alt":
         return targetCommand.text
-          ? Array.from(document.querySelectorAll("[alt]")).filter((element) =>
+          ? Array.from(activeDocument.querySelectorAll("[alt]")).filter((element) =>
               textMatches(
                 element.getAttribute("alt"),
                 targetCommand.text,
@@ -579,7 +593,7 @@ export function createDesktopBrowserWorkspaceCommandScript(
           : [];
       case "placeholder":
         return targetCommand.text
-          ? Array.from(document.querySelectorAll("[placeholder]")).filter((element) =>
+          ? Array.from(activeDocument.querySelectorAll("[placeholder]")).filter((element) =>
               textMatches(
                 element.getAttribute("placeholder"),
                 targetCommand.text,
@@ -597,14 +611,14 @@ export function createDesktopBrowserWorkspaceCommandScript(
           : [];
       case "testid":
         return targetCommand.text
-          ? Array.from(document.querySelectorAll("[data-testid]")).filter(
+          ? Array.from(activeDocument.querySelectorAll("[data-testid]")).filter(
               (element) => element.getAttribute("data-testid") === targetCommand.text
             )
           : [];
       case "text":
         return targetCommand.text ? findAllByText(targetCommand.text, targetCommand.exact) : [];
       case "title":
-        return Array.from(document.querySelectorAll("[title]")).filter((element) =>
+        return Array.from(activeDocument.querySelectorAll("[title]")).filter((element) =>
           textMatches(
             element.getAttribute("title"),
             targetCommand.text,
@@ -665,14 +679,14 @@ export function createDesktopBrowserWorkspaceCommandScript(
   };
   const inspect = () =>
     Array.from(
-      document.querySelectorAll(
+      activeDocument.querySelectorAll(
         "a, button, input, textarea, select, form, [role='button'], [data-testid]"
       )
 		).map((element) => serialize(element));
   const snapshot = () => ({
     title: document.title,
     url: location.href,
-		bodyText: normalize(document.body?.textContent),
+		bodyText: normalize(activeDocument.body?.textContent),
     elements: inspect(),
   });
   const setInputValue = (appendMode, target) => {
@@ -744,7 +758,7 @@ export function createDesktopBrowserWorkspaceCommandScript(
       }
     }
     return {
-      focused: document.activeElement === element,
+      focused: activeDocument.activeElement === element,
       selector: selectorFor(element),
     };
   };
@@ -795,7 +809,7 @@ export function createDesktopBrowserWorkspaceCommandScript(
       ).then(() => ({ x: x, y: y }));
     }
     if (subaction === "realistic-press") {
-      const target = findTarget() || document.activeElement || document.body;
+      const target = findTarget() || activeDocument.activeElement || activeDocument.body;
       const key = command.key || "Enter";
       target.dispatchEvent(
         new KeyboardEvent("keydown", {
@@ -866,7 +880,7 @@ export function createDesktopBrowserWorkspaceCommandScript(
     }
     throw new Error("Unsupported realistic subaction: " + subaction);
   };
-  const keyboardTarget = () => findTarget() || document.activeElement || document.body;
+  const keyboardTarget = () => findTarget() || activeDocument.activeElement || activeDocument.body;
   const keyboardWrite = (appendMode) => {
     const target = keyboardTarget();
     if (
@@ -1004,7 +1018,7 @@ export function createDesktopBrowserWorkspaceCommandScript(
               return;
             }
           }
-          if (command.text && normalize(document.body?.textContent).includes(command.text)) {
+          if (command.text && normalize(activeDocument.body?.textContent).includes(command.text)) {
             resolve({ ok: true, text: command.text });
             return;
           }
@@ -1088,7 +1102,7 @@ export function createDesktopBrowserWorkspaceCommandScript(
     case "type":
       return setInputValue(true);
     case "press": {
-      const target = findTarget() ?? document.activeElement ?? document.body;
+      const target = findTarget() ?? activeDocument.activeElement ?? activeDocument.body;
       const key = command.key || "Enter";
       target.dispatchEvent(new KeyboardEvent("keydown", { key, bubbles: true }));
       target.dispatchEvent(new KeyboardEvent("keyup", { key, bubbles: true }));
