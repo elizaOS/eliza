@@ -88,6 +88,9 @@ const startOfDay = (now: Date) =>
   day(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate());
 const addDays = (d: Date, n: number) => new Date(d.getTime() + n * 86_400_000);
 const monthIndex = (s: string) => MONTHS.indexOf(s.slice(0, 3).toLowerCase());
+/** Last calendar day of month `m` in `year`; `Date.UTC(year, m + 1, 0)` is day 0 of the next month. */
+const lastDayOfMonth = (year: number, m: number) =>
+  new Date(Date.UTC(year, m + 1, 0));
 
 /** Next calendar day (today excluded) with this day-of-month. */
 function nextDayOfMonth(n: number, today: Date): Date | null {
@@ -179,6 +182,25 @@ function nextWeekday(w: number, today: Date, nextWeek: boolean): Date {
 /** Parses one date expression (already isolated) relative to today. */
 export function parseDateExpr(expr: string, now: Date): Date | null {
   const today = startOfDay(now);
+  // "until the end of November" is the last day of that month, not its first.
+  // The bare-month branch below read it as Nov 1 and, because a stated date
+  // overrides the model's, ended a stay up to 30 days early.
+  const endOf = new RegExp(
+    String.raw`^\s*(?:the\s+)?end\s+of\s+(?:(?:the|this)\s+)?(month\b|${MONTH})`,
+    "i",
+  ).exec(expr);
+  if (endOf) {
+    const m =
+      endOf[1].toLowerCase() === "month"
+        ? today.getUTCMonth()
+        : monthIndex(endOf[2]);
+    if (m >= 0) {
+      const stated = lastDayOfMonth(today.getUTCFullYear(), m);
+      return stated >= today
+        ? stated
+        : lastDayOfMonth(today.getUTCFullYear() + 1, m);
+    }
+  }
   // "may" alone is a month only where a date must start ("until may"); "I may be away" is not May
   // (audit plugin-prototypes-7).
   if (/^\s*may\b(?!\s*\d)/i.test(expr)) return nextMonthDay(4, 1, today);
