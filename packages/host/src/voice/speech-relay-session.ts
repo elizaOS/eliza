@@ -456,8 +456,9 @@ export async function createSpeechRelaySession(
         // Existing generic consumers accept one complete receipt, not a hidden
         // per-kind protocol. Keep one immutable attempt and no invented proof.
         try {
+          const reservation = credits;
           legacySettlement ??= Promise.resolve().then(() =>
-            credits!.settle(details),
+            reservation.settle(details),
           );
           const result = await legacySettlement;
           if (result) Object.assign(completedAccounting, result);
