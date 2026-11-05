@@ -1454,8 +1454,10 @@ export function isMatchingNotesMutationCompletion(
 		b.issuer !== consumer ||
 		a.revision !== b.revision ||
 		a.registration.family !== b.registration.family ||
-		a.canonicalChild !== b.canonicalChild ||
-		a.operation !== b.operation ||
+		// Patch and update are two registered entry points for one stored-note
+		// edit: a rejected patch is completed by an applied update and vice versa.
+		canonicalNotesRequestOperation(a.operation) !==
+			canonicalNotesRequestOperation(b.operation) ||
 		readNotesMutationCompletion(rejected, consumer)?.status !== "current" ||
 		readNotesMutationCompletion(success, consumer)?.status !== "current"
 	)

@@ -7838,20 +7838,30 @@ function resolveRejectedCallsSupersededBy(
         rejected.result,
         trajectoryRequestIssuer(trajectory),
       );
-    if (
-      (proof?.rejected || proof?.ambiguousRejection) &&
-      (!rejected.result ||
-        !matchingNotesMutationCompleted(rejected.result, result, trajectory))
-    )
-      continue;
+    const boundNotesRejection =
+      proof?.rejected === true || proof?.ambiguousRejection === true;
+    const notesCompletion =
+      boundNotesRejection &&
+      rejected.result !== undefined &&
+      matchingNotesMutationCompleted(rejected.result, result, trajectory);
+    if (boundNotesRejection && !notesCompletion) continue;
     const failedCall = canonicalNotesRetryCall(rejected, trajectory);
+    // A matched Notes completion proof already fixes the operation identity
+    // (issuer, revision, family and canonical operation), so a rejected patch
+    // is completed through the update entry point and vice versa. Every other
+    // pairing still needs the same registered child and discriminator.
     if (
       !failedCall ||
-      failedCall.name.toUpperCase() !== call.name.toUpperCase() ||
-      plannerToolDiscriminatorValue(failedCall) !==
-        plannerToolDiscriminatorValue(call)
+      (!notesCompletion &&
+        (failedCall.name.toUpperCase() !== call.name.toUpperCase() ||
+          plannerToolDiscriminatorValue(failedCall) !==
+            plannerToolDiscriminatorValue(call)))
     )
       continue;
+    const completedNoteId =
+      notesCompletion && typeof result.data?.noteId === "string"
+        ? result.data.noteId
+        : undefined;
     const params = { ...failedCall.params };
     const invalidNames = rejected.result?.data?.invalidParameterNames;
     if (Array.isArray(invalidNames))
@@ -7911,6 +7921,14 @@ function resolveRejectedCallsSupersededBy(
     );
     if (
       targets.some((target) => {
+        // The two Notes edit entry points name one exact note differently
+        // (patch target {kind:"id"} / update noteId). The completed receipt's
+        // note id, not either spelling, proves the same note was edited.
+        if (
+          completedNoteId !== undefined &&
+          notesExactNoteId(target.path, target.value) === completedNoteId
+        )
+          return false;
         let current: unknown = call.params;
         for (const field of target.path)
           current =
@@ -7946,6 +7964,13 @@ function resolveRejectedCallsSupersededBy(
     // A malformed envelope with no machine-stable target cannot discharge
     // several declared outcomes merely because another call used the same tool.
     if (!hasTarget && declaredIntentCount > 1) continue;
+    // The completed receipt already proved which exact note was edited, so
+    // the rejected spelling of that selector need not reappear under the
+    // other entry point. Every other rejected value must still be carried.
+    if (completedNoteId !== undefined)
+      for (const [name, value] of Object.entries(params))
+        if (notesExactNoteId([name], value) === completedNoteId)
+          delete params[name];
     if (
       malformedCallSupersededBy(
         { ...failedCall, params },
@@ -8545,6 +8570,24 @@ function withoutRepeatedRejectedRecordTargets(
   if (!correlationValuesEqual(withoutScope(projected), withoutScope(corrected)))
     return params;
   return projected;
+}
+
+/** The exact note id a Notes edit call names, under either entry point's spelling. */
+function notesExactNoteId(
+  path: readonly string[],
+  value: unknown,
+): string | undefined {
+  if (path.length !== 1) return undefined;
+  if (path[0] === "noteId")
+    return typeof value === "string" ? value : undefined;
+  if (
+    path[0] === "target" &&
+    isObjectRecord(value) &&
+    value.kind === "id" &&
+    typeof value.value === "string"
+  )
+    return value.value;
+  return undefined;
 }
 
 export function malformedCallSupersededBy(

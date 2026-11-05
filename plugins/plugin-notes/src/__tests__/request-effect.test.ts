@@ -726,9 +726,14 @@ describe("request-bound Notes negative constraints", () => {
         },
       });
       expect(differentSchema.success).toBe(true);
+      // Update is the other registered entry point for the same stored-note
+      // edit, so the host-level proof pairs it with the rejected patch. The
+      // planner's content check decides whether that edit carried the
+      // rejected change (see "keeps a rejected patch pending when an update
+      // edits something else").
       expect(
         isMatchingNotesMutationCompletion(rejected, differentSchema, f.issuer),
-      ).toBe(false);
+      ).toBe(true);
     } finally {
       await f.service.stop();
     }
@@ -1235,6 +1240,225 @@ describe("request-bound Notes negative constraints", () => {
         "March 3",
       );
       expect(f.writes).toHaveBeenCalledTimes(1);
+      expect(result.finalMessage).toBe(
+        "The ideas note now has the launch date.",
+      );
+    } finally {
+      await f.service.stop();
+    }
+  });
+
+  it("completes a rejected patch with the same edit applied through update", async () => {
+    const f = await fixture(
+      { classification: "mutation_requested", operations: ["update"] },
+      "update my ideas note: add the launch date",
+    );
+    const target = { kind: "id", value: f.historical.value.id };
+    let requests = 0;
+    const executed: string[] = [];
+    try {
+      const result = await diagnosedPlanner(f, {
+        context: f.context,
+        tools: [
+          {
+            name: "NOTES_PATCH",
+            parameters: { type: "object", properties: {} },
+          },
+          {
+            name: "NOTES_UPDATE",
+            parameters: { type: "object", properties: {} },
+          },
+        ],
+        runtime: {
+          useModel: async () => {
+            requests++;
+            if (requests === 1)
+              return {
+                text: "",
+                toolCalls: [
+                  {
+                    name: "NOTES_PATCH",
+                    id: "patch-invalid",
+                    arguments: {
+                      target,
+                      changes: [],
+                      eliza_turn_scope: "final",
+                    },
+                  },
+                ],
+              };
+            if (requests === 2)
+              return {
+                text: "",
+                toolCalls: [
+                  {
+                    name: "NOTES_UPDATE",
+                    id: "update-recovered",
+                    arguments: {
+                      noteId: f.historical.value.id,
+                      textEdit: {
+                        field: "body",
+                        oldText: "launch on a Tuesday",
+                        newText: "launch on a Tuesday, March 3",
+                      },
+                      eliza_turn_scope: "final",
+                    },
+                  },
+                ],
+              };
+            throw new Error("Unexpected edit retry");
+          },
+        },
+        executeToolCall: async (call) => {
+          executed.push(call.name);
+          return actionResultToPlannerToolResult(
+            await f.execute(call.name, call.params ?? {}),
+            { requestOperationIssuer: f.issuer },
+          );
+        },
+        evaluate: async () => ({
+          success: true,
+          decision: "FINISH",
+          thought:
+            "The host must establish completion before this verdict is accepted.",
+          messageToUser: "The ideas note now has the launch date.",
+        }),
+      });
+      // Patch and update are two entry points for one stored-note edit. The
+      // rejected patch is completed by the applied update, so the turn ends
+      // with the edit instead of a third attempt or an open rejection.
+      expect(executed).toEqual(["NOTES_PATCH", "NOTES_UPDATE"]);
+      const rejected = result.trajectory.steps[0].result;
+      if (!rejected) throw new Error("Expected the rejected patch step");
+      expect(readNotesMutationCompletion(rejected, f.issuer)).toMatchObject({
+        requested: true,
+        rejected: true,
+        outsideRequestRejection: false,
+      });
+      expect(result.terminalFailure).toBeUndefined();
+      expect(f.service.getNote(f.historical.value.id).body).toContain(
+        "March 3",
+      );
+      expect(f.writes).toHaveBeenCalledTimes(1);
+      expect(result.finalMessage).toBe(
+        "The ideas note now has the launch date.",
+      );
+    } finally {
+      await f.service.stop();
+    }
+  });
+
+  it("keeps a rejected patch pending when an update edits something else", async () => {
+    const f = await fixture(
+      { classification: "mutation_requested", operations: ["update"] },
+      "update my ideas note: add the launch date",
+    );
+    const target = { kind: "id", value: f.historical.value.id };
+    let requests = 0;
+    const executed: string[] = [];
+    try {
+      const result = await diagnosedPlanner(f, {
+        context: f.context,
+        tools: [
+          {
+            name: "NOTES_PATCH",
+            parameters: { type: "object", properties: {} },
+          },
+          {
+            name: "NOTES_UPDATE",
+            parameters: { type: "object", properties: {} },
+          },
+        ],
+        runtime: {
+          useModel: async () => {
+            requests++;
+            if (requests === 1)
+              return {
+                text: "",
+                toolCalls: [
+                  {
+                    name: "NOTES_PATCH",
+                    id: "append-invalid",
+                    arguments: {
+                      target,
+                      changes: [],
+                      textEdit: {
+                        action: "append",
+                        field: "body",
+                        text: "\nlaunch date: March 3",
+                      },
+                      eliza_turn_scope: "final",
+                    },
+                  },
+                ],
+              };
+            if (requests === 2)
+              return {
+                text: "",
+                toolCalls: [
+                  {
+                    name: "NOTES_UPDATE",
+                    id: "title-unrelated",
+                    arguments: {
+                      noteId: f.historical.value.id,
+                      textEdit: {
+                        field: "title",
+                        oldText: "ideas",
+                        newText: "ideas revised",
+                      },
+                      eliza_turn_scope: "final",
+                    },
+                  },
+                ],
+              };
+            if (requests === 3)
+              return {
+                text: "",
+                toolCalls: [
+                  {
+                    name: "NOTES_PATCH",
+                    id: "append-corrected",
+                    arguments: {
+                      target,
+                      changes: [],
+                      textEdit: {
+                        action: "append",
+                        field: "body",
+                        text: "\nlaunch date: March 3",
+                      },
+                      expectedRevision: f.service.snapshot().revision,
+                      eliza_turn_scope: "final",
+                    },
+                  },
+                ],
+              };
+            throw new Error("Unexpected edit retry");
+          },
+        },
+        executeToolCall: async (call) => {
+          executed.push(call.name);
+          return actionResultToPlannerToolResult(
+            await f.execute(call.name, call.params ?? {}),
+            { requestOperationIssuer: f.issuer },
+          );
+        },
+        evaluate: async () => ({
+          success: true,
+          decision: "FINISH",
+          thought:
+            "The host must establish completion before this verdict is accepted.",
+          messageToUser: "The ideas note now has the launch date.",
+        }),
+      });
+      // The applied update edited the same note through the other entry
+      // point, but it did not carry the rejected change, so the requested
+      // append stays open until it is applied.
+      expect(executed).toEqual(["NOTES_PATCH", "NOTES_UPDATE", "NOTES_PATCH"]);
+      expect(result.terminalFailure).toBeUndefined();
+      const note = f.service.getNote(f.historical.value.id);
+      expect(note.title).toBe("ideas revised");
+      expect(note.body).toContain("launch date: March 3");
+      expect(f.writes).toHaveBeenCalledTimes(2);
       expect(result.finalMessage).toBe(
         "The ideas note now has the launch date.",
       );
