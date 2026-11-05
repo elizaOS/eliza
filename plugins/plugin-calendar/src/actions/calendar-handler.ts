@@ -5349,9 +5349,15 @@ export function createCalendarActionRunner(
         normalizedDetails,
         sourceSelection,
       );
-      // Connected provider source IDs retain the canonical strict merge below.
+      const nativeGrantId = nativeCalendarFailure
+        ? connectorGrantIdDetail(details)
+        : undefined;
+      // The native preparation ports own local Calendar writes. An explicit
+      // connected grant must reach its own source checks and never fall into
+      // the phone-only interpretation path.
       if (
         nativeCalendarFailure &&
+        !nativeGrantId &&
         normalizeCalendarSubaction(params.subaction) === "create_event" &&
         hostDeps.requestLocalCreate
       ) {
@@ -5360,6 +5366,7 @@ export function createCalendarActionRunner(
       }
       if (
         nativeCalendarFailure &&
+        !nativeGrantId &&
         normalizeCalendarSubaction(params.subaction) === "update_event" &&
         hostDeps.requestLocalUpdate
       ) {
@@ -5377,9 +5384,6 @@ export function createCalendarActionRunner(
           if (named) return named;
         }
       }
-      const nativeGrantId = nativeCalendarFailure
-        ? connectorGrantIdDetail(details)
-        : undefined;
       const localAgendaCandidate =
         Boolean(hostDeps.requestLocalAgenda) &&
         (normalizeCalendarSubaction(params.subaction) === "feed" ||
