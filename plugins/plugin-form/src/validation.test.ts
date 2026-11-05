@@ -502,6 +502,37 @@ describe("validateField text constraints on number and date", () => {
     expect(validateField("4", seats, numberType)).toEqual({ valid: true });
   });
 
+  it("reads a very small or very large number as plain digits", () => {
+    // String() writes 0.0000005 as "5e-7" and 1e21 as "1e+21".
+    const rate: FormControl = {
+      key: "rate",
+      label: "Rate",
+      type: "number",
+      pattern: "^[0-9.]+$",
+      minLength: 6,
+      maxLength: 10,
+    };
+    expect(validateField("0.0000005", rate, numberType)).toEqual({
+      valid: true,
+    });
+    expect(validateField(0.00000015, rate, numberType)).toEqual({
+      valid: true,
+    });
+    expect(validateField("0.0000000001", rate, numberType)).toEqual({
+      valid: false,
+      error: "Rate must be at most 10 characters",
+    });
+    const supply: FormControl = {
+      key: "supply",
+      label: "Supply",
+      type: "number",
+      pattern: "^[0-9]+$",
+    };
+    expect(validateField("1000000000000000000000", supply, numberType)).toEqual(
+      { valid: true },
+    );
+  });
+
   it("applies a pattern to the calendar day of a date answer", () => {
     const billingStart: FormControl = {
       key: "billingStart",

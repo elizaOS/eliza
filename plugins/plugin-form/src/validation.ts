@@ -406,7 +406,25 @@ function validateNumber(
   if (!bounds.valid) return bounds;
   // Also apply text validation (pattern, length, enum), to the number that
   // parseValue stores rather than the typed text ("$1,200" is 1200).
-  return validateText(numValue, control);
+  return validateText(plainNumberText(numValue), control);
+}
+/**
+ * A finite number as plain decimal digits.
+ *
+ * WHY not String(): it switches to exponent notation below 1e-6 and from
+ * 1e21 ("5e-7", "1e+21"), which a digits pattern or a length limit misreads.
+ */
+function plainNumberText(value: number): string {
+  const text = String(value);
+  const exponent = /^(-?)(\d)(?:\.(\d+))?e([+-]\d+)$/.exec(text);
+  if (!exponent) return text;
+  const [, sign, lead, fraction = "", power] = exponent;
+  const digits = lead + fraction;
+  // Position of the decimal point within `digits`.
+  const point = 1 + Number(power);
+  return point <= 0
+    ? `${sign}0.${"0".repeat(-point)}${digits}`
+    : `${sign}${digits.padEnd(point, "0")}`;
 }
 /** Min/max for a numeric value (as numbers, not lengths). */
 function checkNumberBounds(
