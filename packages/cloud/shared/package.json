@@ -429,6 +429,7 @@
     "./lib/services/identity-verification-gatekeeper": "./src/lib/services/identity-verification-gatekeeper.ts",
     "./lib/services/image-generation": "./src/lib/services/image-generation.ts",
     "./lib/services/inference-admission-gate": "./src/lib/services/inference-admission-gate.ts",
+    "./lib/services/inference-settlement-receipt": "./src/lib/services/inference-settlement-receipt.ts",
     "./lib/services/inference-admission-recovery": "./src/lib/services/inference-admission-recovery.ts",
     "./lib/services/inference-admission-snapshot": "./src/lib/services/inference-admission-snapshot.ts",
     "./lib/services/inference-policy-contract": "./src/lib/services/inference-policy-contract.ts",
