@@ -2,6 +2,7 @@
  * Desktop browser workspace client for forwarding commands to the embedded BrowserView.
  */
 
+import { buildBrowserWorkspaceElementSelector } from "./browser-workspace-elements.js";
 import { createBrowserWorkspaceError } from "./browser-workspace-errors.js";
 import {
   assertBrowserWorkspaceConnectorSecretsNotExported,
@@ -203,6 +204,7 @@ export function createDesktopBrowserWorkspaceCommandScript(
   const waitScriptBranch = desktopBrowserWorkspaceWaitScriptBranch(env);
   return `
 (() => {
+  ${buildBrowserWorkspaceElementSelector.toString()}
   const command = ${JSON.stringify(command)};
   const normalize = (value) => String(value ?? "").replace(/\\s+/g, " ").trim();
   const textMatches = (candidate, wanted, exact = false) => {
@@ -217,23 +219,8 @@ export function createDesktopBrowserWorkspaceCommandScript(
         element.matches("a, button, input, textarea, select, option, [role='button']") ||
         !matches.some((other) => other !== element && element.contains(other))
     );
-  const selectorFor = (element) => {
-    if (!element) return "";
-    if (element.id) return "#" + element.id.replace(/[^a-zA-Z0-9_-]/g, "\\\\$&");
-    const testId = element.getAttribute?.("data-testid");
-    if (testId) return \`[data-testid="\${testId}"]\`;
-    const name = element.getAttribute?.("name");
-    if (name) return \`\${element.tagName.toLowerCase()}[name="\${name}"]\`;
-    const type = element.getAttribute?.("type");
-    if (type) return \`\${element.tagName.toLowerCase()}[type="\${type}"]\`;
-    let index = 1;
-    let previous = element.previousElementSibling;
-    while (previous) {
-      if (previous.tagName === element.tagName) index += 1;
-      previous = previous.previousElementSibling;
-    }
-    return \`\${element.tagName.toLowerCase()}:nth-of-type(\${index})\`;
-  };
+  const selectorFor = (element) =>
+    element ? buildBrowserWorkspaceElementSelector(element) : "";
   const serialize = (element) => {
     const value =
       element instanceof HTMLInputElement ||
@@ -1174,6 +1161,7 @@ export function createDesktopBrowserWorkspaceUtilityScript(
   const mouseDeltaY = parsedDeltaY ?? parsedPixels ?? 240;
   return `
 (() => {
+  ${buildBrowserWorkspaceElementSelector.toString()}
   const command = ${JSON.stringify(command)};
   const normalize = (value) => String(value ?? "").replace(/\\s+/g, " ").trim();
   const state =
@@ -1220,16 +1208,10 @@ export function createDesktopBrowserWorkspaceUtilityScript(
     }
     return new RegExp("^" + wildcard + "$", "i").test(String(value ?? ""));
   };
-  const buildSelector = (element) => {
-    if (!element || !element.tagName) return null;
-    const testId = element.getAttribute && element.getAttribute("data-testid");
-    if (testId) return '[data-testid="' + testId + '"]';
-    const name = element.getAttribute && element.getAttribute("name");
-    if (name) return element.tagName.toLowerCase() + '[name="' + name + '"]';
-    const title = element.getAttribute && element.getAttribute("title");
-    if (title) return element.tagName.toLowerCase() + '[title="' + title + '"]';
-    return element.tagName.toLowerCase();
-  };
+  const buildSelector = (element) =>
+    element && element.tagName
+      ? buildBrowserWorkspaceElementSelector(element)
+      : null;
   const activeDocument = (() => {
     if (!state.currentFrame) return document;
     try {
