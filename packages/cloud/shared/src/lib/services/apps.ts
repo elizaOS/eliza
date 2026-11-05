@@ -33,7 +33,11 @@ import { CacheKeys, CacheTTL } from "../cache/keys";
 import { isAllowedOrigin } from "../security/origin-validation";
 import { logger } from "../utils/logger";
 import { apiKeysService } from "./api-keys";
-import { revokeInferenceApiKey } from "./inference-credential-revocation";
+import {
+  InferenceCredentialRevocationUnavailableError,
+  revokeInferenceApiKey,
+  settlePostCommitRevocations,
+} from "./inference-credential-revocation";
 import { lockInferencePolicyUsers } from "./inference-policy-fence";
 import { managedDomainsService } from "./managed-domains";
 
@@ -93,9 +97,27 @@ export class AppCreationLimitError extends Error {
 /**
  * Service for app CRUD operations and app management.
  */
-/** The rows are already inactive; live speech and the gate learn it here. */
+/**
+ * The rows are already inactive; live speech and the gate learn it here. A
+ * repeated deactivation or deletion selects the same keys, so a failure is
+ * raised to the caller for that retry after every key has been attempted.
+ */
 async function revokeAppKeys(keys: { id: string; organizationId: string }[]): Promise<void> {
-  await Promise.all(keys.map((key) => revokeInferenceApiKey(key.organizationId, key.id)));
+  const failures = await settlePostCommitRevocations(keys, (key) => [
+    revokeInferenceApiKey(key.organizationId, key.id),
+  ]);
+  for (const { item, reasons } of failures) {
+    logger.error("[Apps] App key revocation was not confirmed", {
+      apiKeyId: item.id,
+      error: reasons.map(String).join("; "),
+    });
+  }
+  if (failures.length > 0) {
+    throw new InferenceCredentialRevocationUnavailableError(
+      `App key revocation was not confirmed for ${failures.length}/${keys.length} key(s)`,
+      { cause: failures[0]?.reasons[0] },
+    );
+  }
 }
 
 export class AppsService {

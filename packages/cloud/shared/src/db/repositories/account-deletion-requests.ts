@@ -479,10 +479,6 @@ export class AccountDeletionRequestsRepository {
         return { outcome: "transfer_required", activeOwnerCount: activeOwners.length };
       }
 
-      // Fence the gate first: a failed write here leaves the account denied, and
-      // cancellation restores it inside its own retried transaction.
-      await setInferenceOrganizationActive(organization.id, false);
-      await setInferenceSubjectActive(organization.id, current.id, false, "account");
       await tx
         .update(users)
         .set({
@@ -541,6 +537,11 @@ export class AccountDeletionRequestsRepository {
           severity: "fatal",
         });
       }
+      // Fence the gate last, still before commit. A rollback leaves the request
+      // "requested", which cancellation refuses, so only a replay of this
+      // activation can repair the gate: no failed write above may reach it.
+      await setInferenceOrganizationActive(organization.id, false);
+      await setInferenceSubjectActive(organization.id, current.id, false, "account");
       return { outcome: "activated", request: activated };
     });
   }
