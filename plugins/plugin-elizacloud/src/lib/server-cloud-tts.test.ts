@@ -285,8 +285,8 @@ describe("handleCloudTtsPreviewRoute (/api/tts/cloud proxy)", () => {
             expect(calls).toBe(2);
             const attempts=logs.mock.calls.filter(([value,message])=>message==="[Cloud Speech] proxy timing" && typeof value==="object" && value!==null && "phase" in value && value.phase==="upstream_headers").map(([value])=>value);
             expect(attempts).toHaveLength(2);
-            expect(attempts[0]).toMatchObject({status:503,attempt:1,upstreamTraceId:"a".repeat(32),upstreamCfRay:"0123456789abcdef-LAX",upstreamServerTimingMs:{entry_dispatch:9850,cloud_worker:1800,auth:1750}});
-            expect(attempts[1]).toMatchObject({status:200,attempt:2,upstreamTraceId:"b".repeat(32),upstreamCfRay:"fedcba9876543210-SJC",upstreamServerTimingMs:{entry_dispatch:800,auth:12}});
+            expect(attempts[0]).toMatchObject({status:503,attempt:1,upstreamTraceId:"a".repeat(32),upstreamCfRay:"0123456789abcdef-LAX",upstreamServerTimingMs:{entry_dispatch:9850,cloud_worker:1800,auth_duration:1750}});
+            expect(attempts[1]).toMatchObject({status:200,attempt:2,upstreamTraceId:"b".repeat(32),upstreamCfRay:"fedcba9876543210-SJC",upstreamServerTimingMs:{entry_dispatch:800,auth_duration:12}});
             expect(JSON.stringify(attempts)).not.toContain("private synthetic speech");
         } finally { logs.mockRestore(); }
     });
