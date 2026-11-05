@@ -2,12 +2,17 @@ import assert from "node:assert/strict";
 import { createHash } from "node:crypto";
 import test from "node:test";
 import { createMailboxReadPort } from "./mailbox-read-port.mjs";
+import { createManagedGoogleReadPort } from "./managed-google-read-port.mjs";
 
 const accountId = "grant_a";
 const message = {
   externalId: "mail1",
   threadId: "thread1",
   fromEmail: "reader@example.test",
+  to: ["owner@example.test", "Undisclosed recipients"],
+  cc: ["family@example.test"],
+  replyTo: "billing@example.test",
+  isUnread: true,
   subject: '<img src="https://tracker.test">',
   snippet: "<script>unsafe()</script>",
   receivedAt: "2026-10-12",
@@ -76,6 +81,10 @@ test("bounded list forwards explicit grant and pagination, projects only display
     }),
   );
   assert.equal(result.messages[0].subject, message.subject);
+  assert.deepEqual(result.messages[0].to, message.to);
+  assert.deepEqual(result.messages[0].cc, message.cc);
+  assert.equal(result.messages[0].replyTo, message.replyTo);
+  assert.equal(result.messages[0].unread, true);
   assert.ok(!JSON.stringify(result).includes("SECRET"));
   await assert.rejects(
     port.list({ accountId: "other", query: "in:inbox", pageSize: 10 }),
@@ -134,6 +143,82 @@ test("message body is an explicit text projection, with no HTML, image URLs or s
     }),
   });
   await assert.rejects(bad.read(input), { status: 502 });
+});
+test("read keeps links and authentication results, topmost first and unparsed", async () => {
+  const link = { href: "https://biller.example.test/pay", text: "Pay now" };
+  const authenticationResults = [
+    "z.example; dkim=pass header.d=forged.test",
+    "mx.google.com; dkim=fail",
+  ];
+  const port = createMailboxReadPort({
+    accountId,
+    request: async () => ({
+      ...detail,
+      links: [{ ...link, tracking: "private" }],
+      authenticationResults,
+    }),
+  });
+  const result = await port.read(input);
+  assert.deepEqual(result.links, [link]);
+  assert.deepEqual(result.authenticationResults, authenticationResults);
+  // A Cloud deployment without the connector change reads as not checked.
+  const old = createMailboxReadPort({ accountId, request: async () => detail });
+  const before = await old.read(input);
+  assert.deepEqual(before.links, []);
+  assert.deepEqual(before.authenticationResults, []);
+  for (const changed of [
+    { authenticationResults: "mx.google.com; dkim=pass" },
+    { authenticationResults: [null] },
+    { links: [{ href: "https://biller.example.test/pay" }] },
+    { message: { ...message, cc: undefined } },
+    { message: { ...message, replyTo: undefined } },
+    { message: { ...message, isUnread: "true" } },
+  ]) {
+    const bad = createMailboxReadPort({
+      accountId,
+      request: async () => ({ ...detail, ...changed }),
+    });
+    await assert.rejects(bad.read(input), { status: 502 });
+  }
+});
+test("managed task read returns the fields a bill check needs", async () => {
+  const port = createManagedGoogleReadPort({
+    accountId,
+    request: async () => ({
+      ...detail,
+      links: [{ href: "https://biller.example.test/pay", text: "Pay now" }],
+      authenticationResults: ["b.example; none", "a.example; none"],
+    }),
+  });
+  const result = await port.getGmailMessageDetail(input);
+  assert.equal(result.message.subject, message.subject);
+  assert.deepEqual(result.message.to, message.to);
+  assert.deepEqual(result.message.cc, message.cc);
+  assert.equal(result.message.replyTo, message.replyTo);
+  assert.equal(result.message.unread, true);
+  assert.deepEqual(result.links, [
+    { href: "https://biller.example.test/pay", text: "Pay now" },
+  ]);
+  assert.deepEqual(result.authenticationResults, [
+    "b.example; none",
+    "a.example; none",
+  ]);
+  const old = createManagedGoogleReadPort({
+    accountId,
+    request: async () => detail,
+  });
+  assert.deepEqual(
+    (await old.getGmailMessageDetail(input)).authenticationResults,
+    [],
+  );
+  const bad = createManagedGoogleReadPort({
+    accountId,
+    request: async () => ({
+      ...detail,
+      message: { ...message, subject: undefined },
+    }),
+  });
+  await assert.rejects(bad.getGmailMessageDetail(input));
 });
 test("attachment requires current allowlisted metadata, byte limit, canonical bytes and digest", async () => {
   const request = async (path) =>
