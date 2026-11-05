@@ -358,6 +358,8 @@ export interface BrowserWorkspaceCommand {
   connectorProvider?: string;
   connectorAccountId?: string;
   selector?: string;
+  /** Page URL the resolved `@eN` ref was snapshotted on; set by the ref resolver. */
+  refUrl?: string;
   text?: string;
   value?: string;
   attribute?: string;

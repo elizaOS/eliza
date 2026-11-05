@@ -617,6 +617,18 @@ export function createDesktopBrowserWorkspaceCommandScript(
   };
   const findTarget = () => {
     if (command.selector) {
+      // A snapshot ref names an element of the page it was taken on. After a
+      // click or submit navigated, the same selector picks a control of the
+      // new page, so the ref is refused until the model snapshots again.
+      if (command.refUrl && location.href !== command.refUrl) {
+        throw new Error(
+          "Unknown browser snapshot element ref: the page moved from " +
+            command.refUrl +
+            " to " +
+            location.href +
+            " since the snapshot. Run snapshot or inspect again before reusing element refs.",
+        );
+      }
       const selectorChain = normalizeSelectorSyntax(command.selector)
         // NOTE: this script is built inside a template literal. The whitespace
         // class in the split pattern needs a double backslash in this source
@@ -1836,6 +1848,7 @@ export async function executeDesktopBrowserWorkspaceDomCommand(
       result && typeof result === "object" && !Array.isArray(result)
         ? (result as {
             bodyText?: string;
+            url?: string;
             elements?: BrowserWorkspaceDomElementSummary[];
           })
         : null;
@@ -1843,6 +1856,7 @@ export async function executeDesktopBrowserWorkspaceDomCommand(
       "desktop",
       id,
       Array.isArray(value?.elements) ? value.elements : [],
+      typeof value?.url === "string" ? value.url : undefined,
     );
     return {
       mode: "desktop",

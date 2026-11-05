@@ -22,6 +22,8 @@ export const browserWorkspaceElementRefs = new Map<
   string,
   Map<string, string>
 >();
+/** The page URL each tab's refs were taken from; a later command on another page must not reuse them. */
+const browserWorkspaceElementRefUrls = new Map<string, string>();
 export const browserWorkspaceRuntimeState = new Map<
   string,
   BrowserWorkspaceRuntimeState
@@ -131,12 +133,16 @@ export function clearBrowserWorkspaceElementRefs(
   browserWorkspaceElementRefs.delete(
     getBrowserWorkspaceElementRefStateKey(mode, tabId),
   );
+  browserWorkspaceElementRefUrls.delete(
+    getBrowserWorkspaceElementRefStateKey(mode, tabId),
+  );
 }
 
 export function registerBrowserWorkspaceElementRefs(
   mode: BrowserWorkspaceMode,
   tabId: string,
   elements: BrowserWorkspaceDomElementSummary[],
+  pageUrl?: string,
 ): BrowserWorkspaceDomElementSummary[] {
   if (elements.length === 0) {
     clearBrowserWorkspaceElementRefs(mode, tabId);
@@ -153,7 +159,28 @@ export function registerBrowserWorkspaceElementRefs(
     getBrowserWorkspaceElementRefStateKey(mode, tabId),
     refs,
   );
+  if (pageUrl) {
+    browserWorkspaceElementRefUrls.set(
+      getBrowserWorkspaceElementRefStateKey(mode, tabId),
+      pageUrl,
+    );
+  } else {
+    browserWorkspaceElementRefUrls.delete(
+      getBrowserWorkspaceElementRefStateKey(mode, tabId),
+    );
+  }
   return augmented;
+}
+
+export function resolveBrowserWorkspaceElementRefUrl(
+  mode: BrowserWorkspaceMode,
+  tabId: string,
+): string | null {
+  return (
+    browserWorkspaceElementRefUrls.get(
+      getBrowserWorkspaceElementRefStateKey(mode, tabId),
+    ) ?? null
+  );
 }
 
 export function resolveBrowserWorkspaceElementRef(

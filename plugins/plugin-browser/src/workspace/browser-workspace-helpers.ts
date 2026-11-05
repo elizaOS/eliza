@@ -11,7 +11,10 @@ import * as fs from "node:fs";
 import * as fsp from "node:fs/promises";
 import * as path from "node:path";
 import { createBrowserWorkspaceError } from "./browser-workspace-errors.js";
-import { resolveBrowserWorkspaceElementRef } from "./browser-workspace-state.js";
+import {
+  resolveBrowserWorkspaceElementRef,
+  resolveBrowserWorkspaceElementRefUrl,
+} from "./browser-workspace-state.js";
 import type {
   BrowserWorkspaceCommand,
   BrowserWorkspaceMode,
@@ -456,9 +459,13 @@ export function resolveBrowserWorkspaceCommandElementRefs(
     );
   }
 
+  // The desktop page script refuses the selector when the page has moved
+  // since the snapshot the ref came from; a ref is only valid on that page.
+  const refUrl = resolveBrowserWorkspaceElementRefUrl(mode, tabId);
   return {
     ...command,
     selector: `${resolvedSelector}${match[2] ?? ""}`,
+    ...(refUrl ? { refUrl } : {}),
   };
 }
 
