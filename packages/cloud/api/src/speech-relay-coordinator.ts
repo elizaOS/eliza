@@ -860,11 +860,16 @@ export class SpeechRelayCoordinator {
                   // request ended. Rebind the Worker and start a fresh DB cache.
                   return {
                     ...reservation,
-                    settle: (details: Parameters<typeof reservation.settle>[0],
-                      kinds?: Parameters<typeof reservation.settle>[1]) =>
+                    settle: (
+                      details: Parameters<typeof reservation.settle>[0],
+                      kinds?: Parameters<typeof reservation.settle>[1],
+                    ) =>
                       runWithCloudBindingsAsync(
                         this.env as Record<string, unknown>,
-                        () => runWithDbCacheAsync(() => reservation.settle(details, kinds)),
+                        () =>
+                          runWithDbCacheAsync(() =>
+                            reservation.settle(details, kinds),
+                          ),
                       ),
                   };
                 };
