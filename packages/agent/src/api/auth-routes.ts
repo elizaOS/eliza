@@ -37,6 +37,7 @@ function getConfiguredApiToken(): string | undefined {
 export interface AuthRouteContext extends RouteRequestContext {
   pairingEnabled: () => boolean;
   ensurePairingCode: () => string | null;
+  getPairingCode: () => string | null;
   normalizePairingCode: (code: string) => string;
   rateLimitPairing: (ip: string | null) => boolean;
   getPairingExpiresAt: () => number;
@@ -57,6 +58,7 @@ export async function handleAuthRoutes(
     error,
     pairingEnabled,
     ensurePairingCode,
+    getPairingCode,
     normalizePairingCode,
     rateLimitPairing,
     getPairingExpiresAt,
@@ -258,8 +260,15 @@ export async function handleAuthRoutes(
     }
 
     const normalizedProvided = normalizePairingCode(provided);
-    const current = ensurePairingCode();
-    if (!current || Date.now() > getPairingExpiresAt()) {
+    // Read the stored code before ensurePairingCode(): ensure() replaces an
+    // expired code and resets its expiry, so an expiry check made after
+    // calling it can never fire for the code the user actually holds, and
+    // that code fell through to the 403 below. The app pairing handler
+    // reads the stored code first for the same reason.
+    const stored = getPairingCode();
+    const storedExpired = stored !== null && Date.now() > getPairingExpiresAt();
+    const current = storedExpired ? stored : ensurePairingCode();
+    if (!current) {
       ensurePairingCode();
       error(
         res,
@@ -274,6 +283,19 @@ export async function handleAuthRoutes(
     const b = Buffer.from(normalizedProvided, "utf8");
     if (a.length !== b.length || !crypto.timingSafeEqual(a, b)) {
       error(res, "Invalid pairing code", 403);
+      return true;
+    }
+
+    if (storedExpired) {
+      // The submitted code is the stored code, but its 10-minute window has
+      // closed: mint a fresh code and report expiry instead of pairing.
+      clearPairing();
+      ensurePairingCode();
+      error(
+        res,
+        "Pairing code expired. Check server logs for a new code.",
+        410,
+      );
       return true;
     }
 
