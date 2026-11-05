@@ -10,10 +10,10 @@ import {
   ElizaError,
   type IAgentRuntime,
   ModelType,
+  parseJsonObject,
   toWellFormedUnicode,
 } from "@elizaos/core";
 import { staticAcceptanceCriteria } from "./acceptance-criteria.js";
-import { parseJsonObjectResponse } from "./json-model-output.js";
 import { assertSafeGitRef } from "./repo-input.js";
 
 export const LANE_PLANNER_SETTING = "ELIZA_ORCHESTRATOR_LANE_PLANNER";
@@ -505,7 +505,7 @@ function refinePrompt(plan: LanePlan): string {
 }
 
 function applyRefinement(plan: LanePlan, raw: string): LanePlan {
-  const parsed = parseJsonObjectResponse<{ lanes?: unknown }>(raw);
+  const parsed = parseJsonObject<{ lanes?: unknown }>(raw);
   if (!parsed || !Array.isArray(parsed.lanes)) return plan;
   const byId = new Map<string, Record<string, unknown>>();
   for (const lane of parsed.lanes) {

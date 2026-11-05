@@ -5,8 +5,7 @@
  * contracts are enabled unless `ELIZA_REQUIRE_GOAL_CONTRACT=0`.
  */
 
-import { type IAgentRuntime, ModelType } from "@elizaos/core";
-import { parseJsonObjectResponse } from "./json-model-output.js";
+import { type IAgentRuntime, ModelType, parseJsonObject } from "@elizaos/core";
 import { stripInventedArtifactCriteria } from "./producible-evidence.js";
 
 /** Coarse task classification driving which template set is applied. */
@@ -223,7 +222,7 @@ export async function generateDefaultAcceptanceCriteria(
       stopSequences: [],
     });
     const raw = typeof result === "string" ? result : String(result ?? "");
-    const parsed = parseJsonObjectResponse(raw);
+    const parsed = parseJsonObject<Record<string, unknown>>(raw);
     if (!parsed) return fallback;
     const candidates = extractCriteriaArray(parsed);
     if (candidates.length === 0) return fallback;
