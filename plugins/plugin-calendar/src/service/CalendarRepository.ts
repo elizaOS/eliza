@@ -272,9 +272,19 @@ function calendarEventValues(event: LifeOpsCalendarEvent): string {
   )`;
 }
 
-/** Only locally recorded note provenance survives provider metadata replacement. */
+/**
+ * Locally recorded state survives provider metadata replacement: note
+ * provenance, and the reminder state LifeOps keeps on the event (`reminder*`
+ * keys: acknowledgement, escalation, review). A sync must not forget that the
+ * owner already acknowledged a reminder, or the reminder fires again. Incoming
+ * values still win for any reminder key the writer sets.
+ */
 function retainNoteSourceMetadata(incoming: string): string {
-  return `(${incoming}::jsonb || CASE
+  return `(COALESCE((
+    SELECT jsonb_object_agg(kept.key, kept.value)
+    FROM jsonb_each(app_calendar.life_calendar_events.metadata_json::jsonb) AS kept
+    WHERE kept.key ~ '^reminder[A-Z]'
+  ), '{}'::jsonb) || ${incoming}::jsonb || CASE
     WHEN jsonb_typeof(app_calendar.life_calendar_events.metadata_json::jsonb -> 'sourceNote') = 'object'
     THEN jsonb_build_object('sourceNote', app_calendar.life_calendar_events.metadata_json::jsonb -> 'sourceNote')
     ELSE '{}'::jsonb END)::text`;
