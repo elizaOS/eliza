@@ -133,10 +133,13 @@ describe("form submission without an agent world", () => {
 
   it("leaves an existing agent world as it is", async () => {
     const runtime = harness.runtime;
-    // The first submit above created it.
-    const world = await runtime.getWorld(runtime.agentId);
-    assert(world);
-    await runtime.updateWorld({ ...world, name: "Agent home" });
+    // Create or rename the world here, so this case does not need the first.
+    await runtime.ensureWorldExists({
+      id: runtime.agentId,
+      agentId: runtime.agentId,
+      name: "Agent home",
+    });
+    const before = await service.getSubmissions(userId, "contact");
 
     const roomId = await openRoom("second");
     await turn(roomId, "Bo", {
@@ -148,7 +151,9 @@ describe("form submission without an agent world", () => {
       formExtractions: [],
     });
 
-    expect(await service.getSubmissions(userId, "contact")).toHaveLength(2);
+    expect(await service.getSubmissions(userId, "contact")).toHaveLength(
+      before.length + 1,
+    );
     expect((await runtime.getWorld(runtime.agentId))?.name).toBe("Agent home");
   }, 60_000);
 });
