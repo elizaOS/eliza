@@ -143,11 +143,14 @@ test("long non-speech settlement IDs do not duplicate into fence metadata", asyn
   const template = structuredClone(
     f.rows().get(`lease:${encodeURIComponent(f.id)}`),
   );
+  if (!isLeaseFixture(template)) throw Error("Missing lease fixture");
   f.rows().delete(`lease:${encodeURIComponent(f.id)}`);
   f.rows().delete(`lease-active:${encodeURIComponent(f.id)}`);
   for (let i = 0; i < 2056; i++) {
     const id = String(i).padStart(8, "0") + "x".repeat(120);
     const ledger = f.rows().get("ledger");
+    if (!ledger || typeof ledger !== "object")
+      throw Error("Missing ledger fixture");
     Object.assign(ledger, {
       activeLeaseCount: 1,
       activeEstimateUsd: 1,
@@ -173,12 +176,38 @@ test("long non-speech settlement IDs do not duplicate into fence metadata", asyn
     expect(result.status).toBe(200);
   }
   const ledger = f.rows().get("ledger");
+  if (!ledger || typeof ledger !== "object" || !("settledRequestIds" in ledger))
+    throw Error("Missing settlement ledger");
   expect(ledger.settledRequestIds).toHaveLength(2048);
-  expect(Object.keys(ledger.settledFenceEstimates ?? {})).toHaveLength(0);
+  expect(
+    Object.keys(
+      ("settledFenceEstimates" in ledger
+        ? ledger.settledFenceEstimates
+        : null) ?? {},
+    ),
+  ).toHaveLength(0);
   expect(new TextEncoder().encode(JSON.stringify(ledger)).length).toBeLessThan(
     512 * 1024,
   );
 });
+
+function isLeaseFixture(value: unknown): value is {
+  createdAt: number;
+  expiresAt: number;
+  recovery: Record<string, unknown>;
+} {
+  return (
+    value !== null &&
+    typeof value === "object" &&
+    "createdAt" in value &&
+    typeof value.createdAt === "number" &&
+    "expiresAt" in value &&
+    typeof value.expiresAt === "number" &&
+    "recovery" in value &&
+    value.recovery !== null &&
+    typeof value.recovery === "object"
+  );
+}
 
 type SettlementFenceReply = {
   settlementFenced: boolean;
