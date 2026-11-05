@@ -1,5 +1,7 @@
 import { randomUUID } from "node:crypto";
+import { once } from "node:events";
 import { createServer, type Server } from "node:http";
+import { connect } from "node:net";
 import type { AccessContext, UUID } from "@elizaos/core";
 import {
   getHttpRuntime,
@@ -435,6 +437,83 @@ it("serves the consolidated assistant routes through authenticated HTTP", async 
     await pending;
   }
 });
+
+it.each(["content-length", "chunked"] as const)(
+  "sends the 413 only after the client finishes an oversized %s body",
+  async (framing) => {
+    const path = "/api/body-cap-fixture";
+    const maxBodyBytes = 1024;
+    let dispatched = false;
+    registerHttpPluginRoutes(fixture.runtime, {
+      name: "body-cap-fixture",
+      description: "Oversized body rejection",
+      routes: [
+        {
+          type: "POST",
+          path,
+          rawPath: true,
+          maxBodyBytes,
+          routeHandler: async () => {
+            dispatched = true;
+            return { status: 200, body: { ok: true } };
+          },
+        },
+      ],
+    });
+    const { port } = new URL(base);
+    const socket = connect(Number(port), "127.0.0.1");
+    try {
+      await once(socket, "connect");
+      let received = "";
+      let ended = false;
+      socket.setEncoding("utf8");
+      socket.on("data", (chunk: string) => {
+        received += chunk;
+      });
+      socket.once("end", () => {
+        ended = true;
+      });
+      const part = "x".repeat(2 * maxBodyBytes);
+      const frame = (data: string) =>
+        framing === "chunked"
+          ? `${data.length.toString(16)}\r\n${data}\r\n`
+          : data;
+      socket.write(
+        [
+          `POST ${path} HTTP/1.1`,
+          "Host: 127.0.0.1",
+          `Authorization: Bearer ${tokens[0]}`,
+          "Content-Type: text/plain",
+          framing === "chunked"
+            ? "Transfer-Encoding: chunked"
+            : `Content-Length: ${part.length * 2}`,
+          "",
+          "",
+        ].join("\r\n") + frame(part),
+      );
+      // The client is still sending. A server that answers and closes now
+      // makes the client's next write fail with a reset instead of the 413.
+      await new Promise((resolve) => setTimeout(resolve, 250));
+      expect({ received, ended }).toEqual({ received: "", ended: false });
+      socket.end(frame(part) + (framing === "chunked" ? "0\r\n\r\n" : ""));
+      await once(socket, "close");
+      const [head = "", body = ""] = received.split("\r\n\r\n");
+      expect(head).toMatch(/^HTTP\/1\.1 413 /);
+      expect(JSON.parse(body)).toEqual({
+        error: "Request body too large",
+        maxBytes: maxBodyBytes,
+      });
+      expect(dispatched).toBe(false);
+    } finally {
+      socket.destroy();
+      registerHttpPluginRoutes(fixture.runtime, {
+        name: "body-cap-fixture",
+        description: "Oversized body rejection",
+        routes: [],
+      });
+    }
+  },
+);
 
 it("updates HTTP paths, methods and authorization when route contributions change", async () => {
   const path = "/api/reload-fixture";
