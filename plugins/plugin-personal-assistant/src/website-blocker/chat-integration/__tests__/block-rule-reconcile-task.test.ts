@@ -76,7 +76,8 @@ describe("BLOCK_RULE_RECONCILE task through the real core task tick", () => {
         paused: true,
         failureCount: 5,
         lastError: "database keeps timing out",
-        baseInterval: BLOCK_RULE_RECONCILE_INTERVAL_MS,
+        updateInterval: BLOCK_RULE_RECONCILE_INTERVAL_MS * 32,
+        baseInterval: BLOCK_RULE_RECONCILE_INTERVAL_MS * 32,
       },
     });
     expect(harness.tasks.get(taskId)?.metadata?.paused).toBe(true);
@@ -88,6 +89,7 @@ describe("BLOCK_RULE_RECONCILE task through the real core task tick", () => {
       failureCount: 0,
       maxFailures: 0,
       updateInterval: BLOCK_RULE_RECONCILE_INTERVAL_MS,
+      baseInterval: BLOCK_RULE_RECONCILE_INTERVAL_MS,
     });
     expect(harness.tasks.get(taskId)?.metadata?.lastError).toBeUndefined();
   });
