@@ -1153,12 +1153,35 @@ function resolveDuplicateByTimeHint(
 const ENUMERATED_DELETE_KEEP_CUE_RE =
   /(?:\bkeep|\bexcept(?:\s+for)?|\bleave|\bbut\s+not|\bdon'?t\s+(?:delete|remove)|\bnot|\bspare)\s*(?:the\s+)?$/i;
 
+/** Where a later clause stops naming deletions ("..., then remind me to pay rent"). */
+const ENUMERATED_DELETE_CLAUSE_END_RE = /[.;!?]|\bthen\b|\bafter that\b/;
+
+/** Index of `key` in `text` as a whole phrase, never inside another word. */
+function wholePhraseIndex(text: string, key: string): number {
+  let from = 0;
+  while (from <= text.length - key.length) {
+    const index = text.indexOf(key, from);
+    if (index < 0) return -1;
+    const before = index === 0 ? "" : text[index - 1];
+    const after = text[index + key.length] ?? "";
+    if (!/[\p{L}\p{N}]/u.test(before) && !/[\p{L}\p{N}]/u.test(after))
+      return index;
+    from = index + 1;
+  }
+  return -1;
+}
+
 async function resolveEnumeratedDeleteTargets(
   service: LifeOpsService,
   ownerText: string,
   domain?: LifeOpsDomain,
 ): Promise<LifeOpsDefinitionRecord[]> {
-  const normalizedOwner = normalizeTitle(ownerText);
+  // Only the delete clause nominates records: a title that is a whole phrase
+  // of a later "then remind me ..." clause is not something the owner asked
+  // to delete.
+  const normalizedOwner = normalizeTitle(ownerText).split(
+    ENUMERATED_DELETE_CLAUSE_END_RE,
+  )[0];
   if (!normalizedOwner) return [];
   const defs = (await service.listDefinitions()).filter((entry) =>
     domain ? entry.definition.domain === domain : true,
@@ -1174,14 +1197,26 @@ async function resolveEnumeratedDeleteTargets(
     // A very short title ("go", "gym") is contained in too much ordinary
     // prose to serve as a deletion warrant on its own.
     if (key.length < 4) continue;
-    const index = normalizedOwner.indexOf(key);
+    // Whole phrase only: "rent" inside "parent teacher meeting" named nothing.
+    const index = wholePhraseIndex(normalizedOwner, key);
     if (index < 0) continue;
     if (records.length !== 1) return [];
     const prefix = normalizedOwner.slice(Math.max(0, index - 32), index);
     if (ENUMERATED_DELETE_KEEP_CUE_RE.test(prefix)) continue;
     targets.push(records[0]);
   }
-  return targets.length > 1 ? targets : [];
+  // A title that is a phrase of another named title ("call mom" within
+  // "call mom about dinner") was matched through that longer title, not
+  // named on its own; its record stays.
+  const named = targets.filter((entry) => {
+    const key = normalizeTitle(entry.definition.title);
+    return !targets.some(
+      (other) =>
+        other !== entry &&
+        wholePhraseIndex(normalizeTitle(other.definition.title), key) >= 0,
+    );
+  });
+  return named.length > 1 ? named : [];
 }
 
 /** The new value an edit's params carry: a one-off's new time, or a relative
