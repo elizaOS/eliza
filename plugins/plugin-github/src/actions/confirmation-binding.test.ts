@@ -197,4 +197,40 @@ describe("GitHub write confirmation", () => {
     expect(result).toMatchObject({ success: false });
     expect(result && "error" in result ? result.error : "").toContain("[bob]");
   });
+
+  it("reports labels GitHub silently ignored instead of claiming them", async () => {
+    // GitHub answers 200 with the labels now on the issue and silently ignores
+    // a label the caller may not set.
+    const addLabels = vi.fn().mockResolvedValue({
+      data: [{ name: "bug" }],
+    });
+    const runtime = createRuntime({
+      issues: { addLabels },
+    } as unknown as GitHubOctokitClient);
+    const request = {
+      op: "label",
+      repo: "a/b",
+      number: 5,
+      labels: ["bug", "needs-triage"],
+    };
+
+    await issueOpAction.handler(
+      runtime,
+      userTurn("label it needs-triage"),
+      undefined,
+      request,
+    );
+    const result = await issueOpAction.handler(
+      runtime,
+      userTurn("yes"),
+      undefined,
+      request,
+    );
+
+    expect(addLabels).toHaveBeenCalledTimes(1);
+    expect(result).toMatchObject({ success: false });
+    expect(result && "error" in result ? result.error : "").toContain(
+      "[needs-triage]",
+    );
+  });
 });
