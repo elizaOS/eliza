@@ -130,7 +130,7 @@ test("authoritatively authorized Worker caller without a snapshot is admitted du
   caller = authoritative;
   const response = await call();
   expect(response.status).toBe(200);
-  expect(await response.json()).toEqual({ balances: [] });
+  expect<unknown>(await response.json()).toEqual({ balances: [] });
   expect(provided).toBe(1);
   expect(admissions).toHaveLength(1);
   expect(admissions[0]?.executionCtx).toBe(worker);
