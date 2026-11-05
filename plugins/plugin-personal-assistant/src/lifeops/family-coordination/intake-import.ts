@@ -13,6 +13,7 @@ import {
 import { DocumentService } from "@elizaos/plugin-assistant";
 import { z } from "zod";
 import {
+  assertFamilyWorkspaceReadable,
   beginFamilyWorkspaceOperation,
   settleFamilyWorkspaceOperation,
 } from "../family-workflows/workspace-operation-store.js";
@@ -41,6 +42,9 @@ export async function importFamilyCorrespondence(
   const existing = await new FamilyIntakeReviewStore(runtime).read(input.id);
   const digest = createHash("sha256").update(input.text).digest("hex");
   if (existing) {
+    // A replay answers with the stored review, so it checks the fence after the
+    // read; a new import is refused by its workspace claim below.
+    await assertFamilyWorkspaceReadable(runtime);
     if (
       existing.selectedByEntityId !== owner ||
       existing.periodKey !== input.periodKey ||

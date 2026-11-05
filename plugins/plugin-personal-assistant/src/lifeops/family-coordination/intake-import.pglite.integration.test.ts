@@ -1,7 +1,8 @@
 /**
  * Real-runtime proof that correspondence import honors the family workspace
  * deletion fence: an import settles its admission claim, so the workspace stays
- * deletable, and an import after a reviewed deletion writes no document.
+ * deletable, an import after a reviewed deletion writes no document, and a
+ * replayed import no longer returns the stored review.
  */
 import { randomUUID } from "node:crypto";
 import fs from "node:fs";
@@ -75,12 +76,13 @@ describe("family correspondence import and workspace deletion", () => {
     ).length;
 
   it("keeps the workspace deletable after an import and refuses imports once deletion starts", async () => {
-    await importFamilyCorrespondence(runtime, {
+    const imported = {
       id: randomUUID(),
       periodKey: "2026-12",
       title: "Co-parent message",
       text: "Private message from the co-parent: the therapy appointment moved to Thursday.",
-    });
+    };
+    await importFamilyCorrespondence(runtime, imported);
     const preview = await previewFamilyDeletionDatabase(
       runtime,
       SELF_ENTITY_ID,
@@ -105,5 +107,10 @@ describe("family correspondence import and workspace deletion", () => {
     ).rejects.toMatchObject({ code: "FAMILY_WORKSPACE_FENCED" });
     expect(await correspondenceRows()).toBe(before);
     expect(await new FamilyIntakeReviewStore(runtime).read(late)).toBeNull();
+    // A retry of the earlier import is refused like a new one instead of
+    // answering with the stored review.
+    await expect(
+      importFamilyCorrespondence(runtime, imported),
+    ).rejects.toMatchObject({ code: "FAMILY_WORKSPACE_FENCED" });
   }, 180_000);
 });
