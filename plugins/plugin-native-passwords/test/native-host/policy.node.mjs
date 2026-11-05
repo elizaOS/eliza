@@ -29,6 +29,7 @@ test("autofill admission, matching, generation and request capabilities", (t) =>
       classes,
       path.join(custody, "PasswordFacets.java"),
       ...[
+        "PasswordEditorPolicy",
         "PasswordFormPolicy",
         "PasswordMatching",
         "PasswordGenerator",
@@ -47,4 +48,35 @@ test("autofill admission, matching, generation and request capabilities", (t) =>
     },
   );
   assert.match(output, /^\d+ assertions passed/);
+});
+
+test("page script has no path to the host-native vault destroy", () => {
+  const bridge = (name) =>
+    [
+      ...fs
+        .readFileSync(path.join(passwords, `${name}.java`), "utf8")
+        .matchAll(/@PluginMethod public void (\w+)/g),
+    ].map((match) => match[1]);
+  assert.deepEqual(bridge("PasswordsPlugin").sort(), [
+    "copy",
+    "list",
+    "lock",
+    "openAutofillSettings",
+    "openEditor",
+    "remove",
+    "reset",
+    "reveal",
+    "save",
+    "status",
+    "unlock",
+  ]);
+  for (const name of ["PasswordsPlugin", "PasswordTransferPlugin"])
+    assert.doesNotMatch(
+      fs.readFileSync(path.join(passwords, `${name}.java`), "utf8"),
+      /destroy(Vault)?\(/,
+    );
+  assert.doesNotMatch(
+    fs.readFileSync(path.join(plugin, "src/definitions.ts"), "utf8"),
+    /destroy/i,
+  );
 });

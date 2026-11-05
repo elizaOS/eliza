@@ -40,7 +40,8 @@ public class PasswordsPlugin extends Plugin {
   }
 
   private void fail(PluginCall call, Exception failure) {
-    if (failure instanceof PasswordVaultAccess.Locked) call.reject("Unlock saved passwords first", "locked");
+    if (failure instanceof PasswordVaultStore.RevisionConflict) call.reject("This password changed. Reload it first", "conflict");
+    else if (failure instanceof PasswordVaultAccess.Locked) call.reject("Unlock saved passwords first", "locked");
     else if (failure instanceof PasswordVaultAccess.KeyInvalidated) call.reject("Saved passwords can no longer be decrypted on this device", "key-invalidated");
     else if (failure instanceof java.io.IOException && failure.getMessage() != null && SAFE_MESSAGES.contains(failure.getMessage())) call.reject(failure.getMessage(), "invalid");
     else call.reject("Saved passwords are unavailable", "unavailable");
@@ -112,6 +113,7 @@ public class PasswordsPlugin extends Plugin {
     item.put("label", entry.getString("label"));
     item.put("username", entry.getString("username"));
     item.put("updatedAt", entry.optLong("updatedAt", 0));
+    item.put("revision", entry.optLong("revision", 0));
     JSArray bindings = new JSArray();
     for (String facet : PasswordVaultStore.bindings(entry)) {
       JSObject binding = new JSObject();
@@ -160,17 +162,22 @@ public class PasswordsPlugin extends Plugin {
     } catch (Exception failure) { fail(call, failure); }
   }
 
-  /** Native-only creation: neither draft fields nor generated values cross the bridge. */
+  /**
+   * Native-only create or edit: neither draft fields nor generated values cross the bridge. An
+   * edit names one entry at one revision and resolves with only the id and new revision.
+   */
   @PluginMethod public void openEditor(PluginCall call) {
-    if (call.getData().length() != 0) { call.reject("Editor does not accept draft fields", "invalid"); return; }
+    PasswordEditorPolicy.Request request;
+    try { request = PasswordEditorPolicy.admit(call.getData().keys(), call.getData().opt("entryId"), call.getData().opt("expectedRevision")); }
+    catch (IllegalArgumentException invalid) { call.reject("Editor does not accept draft fields", "invalid"); return; }
     PasswordVaultAccess access = access(call); if (access == null) return;
     Activity activity = getActivity();
     if (activity == null) { call.reject("Saved passwords are unavailable", "unavailable"); return; }
     long ticket = access.ticket();
     activity.runOnUiThread(() -> {
       try {
-        PasswordEditor.open(activity, access, ticket, new PasswordEditor.Result() {
-          public void saved(String id) { JSObject result = new JSObject(); result.put("status", "saved"); result.put("id", id); call.resolve(result); }
+        PasswordEditor.open(activity, access, ticket, request, new PasswordEditor.Result() {
+          public void saved(String id, long revision) { JSObject result = new JSObject(); result.put("status", "saved"); result.put("id", id); result.put("revision", revision); call.resolve(result); }
           public void cancelled() { JSObject result = new JSObject(); result.put("status", "cancelled"); call.resolve(result); }
         });
       } catch (PasswordEditor.Busy busy) { call.reject("Finish the current editor first", "busy"); }

@@ -10,6 +10,8 @@ On-device password manager for Eliza Android hosts:
   key is bound to the lock-screen secure ID: enrolling a new biometric does not invalidate it
   (whoever can enroll already knows the credential), while removing the screen lock does. A
   vault whose key is lost or invalidated can only be deleted (`reset`) after a fresh unlock.
+  `PasswordVaultAccess#destroyVault` is the host's native way to destroy a readable vault
+  ([Host-native destroy](#host-native-destroy)).
 - **Autofill provider** – `ElizaPasswordAutofillService` supports native app fields through Android Autofill, with save capture. Browser
   fields require explicit native per-field origins; ordinary WebView metadata is refused.
 - **Vault client** – a Capacitor plugin (`ElizaPasswords`) and a validating TypeScript client for
@@ -82,16 +84,28 @@ the selected service; the plugin never sets secure settings or infers selection.
 
 ## Secrets boundary
 
-`openEditor()` creates an entry through a native FLAG_SECURE form. It accepts no
-arguments: typing and generation stay in native memory, and the only result is
-`{status: "saved", id}` or `{status: "cancelled"}`. The existing vault unlock must
-still be active. The editor refuses overlapping editors, rejects obscured input,
-disables view-state persistence, autofill and password copy/cut actions, and clears drafts on Cancel,
-background, lock or grant expiry. It accepts one exact HTTPS origin and never
-silently replaces an existing entry. Oversize edits are rejected as a whole with a visible error, never truncated. Editing/revision control, device-unlocked
-custody migration and host microphone/capture coordination are separate work;
-this method does not change the vault authentication policy. Hosts must stop
-capture and speech before opening any secret surface.
+`openEditor()` creates an entry through a native FLAG_SECURE form, and
+`openEditor({entryId, expectedRevision})` edits one. It accepts no draft fields: typing and
+generation stay in native memory, and the only result is `{status: "saved", id, revision}` or
+`{status: "cancelled"}`. The existing vault unlock must still be active. The editor refuses
+overlapping editors, rejects obscured input, disables view-state persistence, autofill and
+password copy/cut actions, and clears drafts on Cancel, background, lock or grant expiry. Oversize
+edits are rejected as a whole with a visible error, never truncated.
+
+- **Edit.** The form shows the name, username and first web binding, never the stored password.
+  An empty password field keeps it, so a metadata edit cannot replace the secret. Other bindings,
+  including app bindings, stay and are listed.
+- **Revisions.** `list()` reports each entry's `revision`, and every vault write changes it. A
+  record that changed since `expectedRevision` rejects with `conflict` before the form opens. If it
+  changes while the form is open, Save writes nothing and offers Reload, which shows the latest
+  record and discards the draft. Plaintext `save` and `remove` still do not compare revisions.
+- **Same sign-in.** The form accepts one exact HTTPS origin. If another entry has the same
+  username on that binding, it asks **Update existing** (creating: replaces only that entry's
+  password, at the revision it read) or **Keep separate**. It never merges or overwrites silently.
+
+Device-unlocked custody migration and host microphone/capture coordination are separate work; this
+method does not change the vault authentication policy. Hosts must stop capture and speech before
+opening any secret surface.
 
 No `ElizaPasswords` method resolves with a secret. `save` accepts a password typed by the user
 (write-only) or generates one natively (`generate`). `reveal` shows a FLAG_SECURE native dialog
@@ -116,13 +130,25 @@ One transfer owns its picker, grant and I/O; overlapping calls return `busy`. Ba
 review/I/O or destroying its Activity cancels that owner. An interrupted export may leave
 a partial plaintext file and says so. These APIs do not upload or sync the vault.
 
+## Host-native destroy
+
+`PasswordVaultAccess.get(context).destroyVault()` destroys the vault, readable or not, for host
+lifecycle events such as an account-owner revoke. It shows no prompt and needs no grant, because
+its caller may have no user present. It deletes the Keystore key first, then the records, revokes
+the grant and pending requests, and closes open native surfaces. It throws if deletion failed;
+calling it again finishes the job. It is a Java API only and has no `ElizaPasswords` method, so page
+script cannot reach it: the host must verify its own authority first and must never bridge it. The
+JavaScript `reset` still refuses a readable vault. A copied clip keeps its normal expiry, and a save
+that a person confirms and unlocks afterward creates a new vault. A host that migrated custody
+destroys each store it opened.
+
 Passkeys are not implemented.
 
 ## Verification
 
 - `test/client.node.mjs`: TS normalization, search, the no-secret response rule and error mapping.
 - `test/native-host/policy.node.mjs`: JVM tests of `PasswordFormPolicy`, `PasswordMatching`,
-  `PasswordGenerator` and `PasswordRequests` with synthetic structures.
+  `PasswordGenerator`, `PasswordRequests` and `PasswordEditorPolicy` with synthetic structures.
 - `test/android-consumer`: a separate offline sign-in app and provider host exercise native
   save, device-credential unlock, account choice and framework fill. A real Capacitor host
   also tests document-picker export/import, fresh unlock, exact restored values, overlapping

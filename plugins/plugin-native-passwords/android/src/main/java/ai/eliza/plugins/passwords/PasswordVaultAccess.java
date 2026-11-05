@@ -6,6 +6,8 @@ import android.content.Context;
 import android.content.pm.PackageInfo;
 import android.content.pm.PackageManager;
 import android.content.pm.Signature;
+import android.os.Handler;
+import android.os.Looper;
 import android.os.SystemClock;
 import android.security.keystore.KeyPermanentlyInvalidatedException;
 import android.security.keystore.UserNotAuthenticatedException;
@@ -77,6 +79,21 @@ public final class PasswordVaultAccess {
     if (!unlocked()) throw new Locked();
     store.resetUnrecoverable();
     requests.clear();
+  }
+
+  /**
+   * Destroys the vault, readable or not, with no prompt and no grant: revokes the grant and
+   * pending requests, deletes the key and the records, then closes open native surfaces. For the
+   * host's native lifecycle after it has verified its own authority (for example an owner revoke).
+   * This is deliberately not a {@code PluginMethod}: page script must not reach it. A clip already
+   * copied keeps its normal expiry. Throws if deletion failed; call it again to finish.
+   */
+  public void destroyVault() throws Exception {
+    try {
+      synchronized (this) { grant.lock(); requests.clear(); store.destroy(); }
+    } finally {
+      new Handler(Looper.getMainLooper()).post(() -> { PasswordEditor.dismiss(); SecretSurfaces.dismiss(); });
+    }
   }
 
   /** Current signer digest for a newly captured app binding; null when ambiguous or unavailable. */
