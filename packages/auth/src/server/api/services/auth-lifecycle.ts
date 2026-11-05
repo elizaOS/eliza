@@ -1079,6 +1079,23 @@ function parseOAuthRedirectUri(redirectUri: string): URL {
   return redirectUrl;
 }
 
+/**
+ * An allowlist entry that cannot be parsed as an absolute URL is a broken
+ * configuration entry, not a redirect_uri that failed the policy check. Raising
+ * it lets the operator see the real fault instead of a policy denial.
+ */
+export class OAuthRedirectAllowlistEntryError extends Error {
+  readonly entry: string;
+
+  constructor(entry: string) {
+    super(
+      "OAuth redirect_uri allowlist contains an entry that is not a valid absolute URL",
+    );
+    this.name = "OAuthRedirectAllowlistEntryError";
+    this.entry = entry;
+  }
+}
+
 function isOAuthRedirectEntryMatch(
   redirectUrl: URL,
   allowedEntry: string,
@@ -1087,7 +1104,7 @@ function isOAuthRedirectEntryMatch(
   try {
     allowedUrl = new URL(allowedEntry);
   } catch {
-    return false;
+    throw new OAuthRedirectAllowlistEntryError(allowedEntry);
   }
 
   if (allowedUrl.protocol !== "https:" && allowedUrl.protocol !== "http:") {
@@ -1184,9 +1201,27 @@ export async function assertAllowedOAuthRedirectUri(
     );
   }
 
-  if (
-    !allowlist.some((entry) => isOAuthRedirectEntryMatch(redirectUrl, entry))
-  ) {
+  let invalidEntry: OAuthRedirectAllowlistEntryError | undefined;
+  const matched = allowlist.some((entry) => {
+    try {
+      return isOAuthRedirectEntryMatch(redirectUrl, entry);
+    } catch (error) {
+      if (!(error instanceof OAuthRedirectAllowlistEntryError)) throw error;
+      // Keep looking: a parseable entry may still allow this redirect, and an
+      // unparseable entry could never have matched it anyway.
+      invalidEntry ??= error;
+      return false;
+    }
+  });
+
+  if (!matched) {
+    if (invalidEntry) {
+      logger.warn(
+        { allowedEntry: invalidEntry.entry },
+        "OAuth redirect_uri allowlist contains an unparseable entry",
+      );
+      throw invalidEntry;
+    }
     throw new Error("redirect_uri is not allowed for this tenant");
   }
 
