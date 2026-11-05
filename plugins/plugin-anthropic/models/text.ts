@@ -42,6 +42,7 @@ import {
   type JSONSchema7,
   jsonSchema,
   type ModelMessage,
+  NoObjectGeneratedError,
   streamText,
   type ToolChoice,
   type ToolSet,
@@ -1223,8 +1224,29 @@ function buildStructuredOutput(responseSchema: unknown): NativeOutput {
       ...(schemaOptions.name ? { name: schemaOptions.name } : {}),
       ...(schemaOptions.description ? { description: schemaOptions.description } : {}),
     }),
-    async parseCompleteOutput({ text }: { text: string }) {
-      return JSON.parse(text);
+    async parseCompleteOutput(
+      { text }: { text: string },
+      context?: {
+        response?: unknown;
+        usage?: AnthropicUsageWithCache;
+        finishReason?: unknown;
+      }
+    ) {
+      try {
+        return JSON.parse(text);
+      } catch (cause) {
+        // The provider billed this answer. Carry the usage and finish reason
+        // the SDK hands the parser, so the caller can report the tokens and
+        // reject a cut-off answer as incomplete (see the generateText catch).
+        throw new NoObjectGeneratedError({
+          message: "No object generated: could not parse the response.",
+          cause: cause instanceof Error ? cause : undefined,
+          text,
+          response: context?.response as never,
+          usage: context?.usage as never,
+          finishReason: context?.finishReason as never,
+        });
+      }
     },
     async parsePartialOutput(): Promise<undefined> {
       return undefined;
@@ -1879,6 +1901,27 @@ async function generateTextWithModel(
 
     return response.text;
   } catch (error) {
+    // A structured answer the provider cut off at its output budget does not
+    // parse. `generateText` parses the native output object itself, so it
+    // throws before the usage event and the completeness check above run.
+    // Report the billed tokens from the parse failure, then reject a cut-off
+    // answer as MODEL_OUTPUT_INCOMPLETE like the plain-text lane. A complete
+    // answer that does not parse keeps its original error.
+    if (NoObjectGeneratedError.isInstance(error)) {
+      const parseError = error as NoObjectGeneratedError;
+      const parseUsage = normalizeAnthropicUsage(
+        parseError.usage as AnthropicUsageWithCache | undefined
+      );
+      if (parseUsage)
+        emitModelUsageEvent(runtime, modelType, resolved.prompt, parseUsage, modelName);
+      assertModelOutputComplete({
+        finishReason: parseError.finishReason,
+        provider: "anthropic",
+        model: modelName,
+        maxTokens: resolved.maxTokens,
+        usage: parseUsage,
+      });
+    }
     // error-policy:J2 context-adding rethrow — formatModelError wraps the
     // provider error with `cause` and a caller-facing reason.
     throw formatModelError(operationName, error);
