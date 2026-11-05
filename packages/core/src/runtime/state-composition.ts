@@ -91,6 +91,7 @@ export class ProviderStateComposer {
 		onlyInclude = false,
 		skipCache = false,
 		refreshProviders: string[] | null = null,
+		options: { deferredReferenceProviders?: readonly string[] } = {},
 	): Promise<State> {
 		const trajectoryStepIdFromMessage =
 			typeof message.metadata === "object" &&
@@ -248,13 +249,19 @@ export class ProviderStateComposer {
 		const providerData: ProviderExecutionRecord[] = await Promise.all(
 			providersToRun.map(async (provider) => {
 				const providerRuntime: IAgentRuntime = this.runtime;
+				// Owner-exclusive results are never reused (see providersToRun and
+				// currentProviderResults), so a deferred body cannot reach a later
+				// composition that renders the complete text.
+				const referenceBodyDeferred =
+					provider.disclosureGate?.require === "owner_exclusive" &&
+					options.deferredReferenceProviders?.includes(provider.name) === true;
 				const inFlightKey =
 					message.id && !refreshSet?.has(provider.name)
 						? `${message.id}\u0000${message.roomId}\u0000${providerSelectionKey}\u0000${provider.name}\u0000${
 								provider.disclosureGate?.require === "owner_exclusive"
 									? trustedDeliveryAudienceCacheKey(message)
 									: "public"
-							}`
+							}\u0000${referenceBodyDeferred ? "deferred" : "complete"}`
 						: null;
 				let execution =
 					inFlightKey !== null
@@ -290,6 +297,9 @@ export class ProviderStateComposer {
 											provider.get(providerRuntime, message, cachedState, {
 												signal: workController.signal,
 												selectedProviderNames,
+												...(referenceBodyDeferred
+													? { referenceBodyDeferred: true }
+													: {}),
 											}),
 										),
 									),

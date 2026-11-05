@@ -15,7 +15,8 @@ import org.json.JSONObject;
  * transport (no AudioRecord, VAD model or agent): the agent session is warm before the microphone
  * opens, cancellation during startup and stale host gates refuse, replacement and cancelAll close
  * the earlier pipe, Stop reports the acknowledged server close, interruption reports its reason,
- * and a pipe failure is reported once and stops the capture's events.
+ * a pipe failure is reported once and stops the capture's events, and an automatic reopen after a
+ * call or pause is refused until a user-initiated start.
  */
 public final class LiveCaptureControllerTest {
  static final String A="12345678-1234-1234-1234-123456789abc",B="87654321-4321-4321-4321-cba987654321";
@@ -37,10 +38,11 @@ public final class LiveCaptureControllerTest {
  static final class Host implements LiveCaptureController.Host {
   final AtomicBoolean open=new AtomicBoolean(true);final AtomicBoolean failReads=new AtomicBoolean();
   final List<String> events=new CopyOnWriteArrayList<>();final List<Source> sources=new CopyOnWriteArrayList<>();
-  final AtomicReference<Runnable> beforeOpen=new AtomicReference<>();
+  final AtomicReference<Runnable> beforeOpen=new AtomicReference<>();final AtomicInteger captures=new AtomicInteger();
   volatile CountDownLatch ended=new CountDownLatch(1);
   public boolean open(long epoch){return open.get();}
   public LiveVoiceCapture capture(String id,LiveVoiceCapture.Sink sink,boolean echoCancel){
+   captures.incrementAndGet();
    return new LiveVoiceCapture(null,id,sink,LiveVoiceCapture.DICTATION,()->{Runnable hook=beforeOpen.getAndSet(null);if(hook!=null)hook.run();events.add("mic:"+id);Source source=new Source(failReads.get());sources.add(source);return source;},()->DETECTOR);
   }
   public void frames(String id,JSONArray frames,JSONArray vad,float peak){events.add("frames:"+id);}
@@ -59,9 +61,9 @@ public final class LiveCaptureControllerTest {
   }
  }
  static final class Result implements LiveCaptureController.Started {
-  final CountDownLatch done=new CountDownLatch(1);volatile String refused;volatile boolean piped;
+  final CountDownLatch done=new CountDownLatch(1);volatile String refused,code;volatile boolean piped;
   public void started(String id,int rate,boolean echo,boolean piped){check(rate==16000,"16 kHz");this.piped=piped;done.countDown();}
-  public void refused(String message,String code){refused=message;done.countDown();}
+  public void refused(String message,String code){refused=message;this.code=code;done.countDown();}
  }
  static final class Stop implements LiveCaptureController.Stopped {
   final CountDownLatch done=new CountDownLatch(1);volatile boolean serverClosed;
@@ -73,7 +75,7 @@ public final class LiveCaptureControllerTest {
   try{
    // Warm before microphone; explicit Stop acknowledges the server close.
    Transport transport=new Transport(host.events);Result started=new Result();
-   controller.start(controller.reserve(A,1),false,()->transport,"room",started);await(started.done);
+   controller.start(controller.reserve(A,1),false,()->transport,"room",false,started);await(started.done);
    check(started.refused==null&&started.piped,"piped capture started");
    check(host.events.indexOf("warm:"+A)>=0&&host.events.indexOf("warm:"+A)<host.events.indexOf("mic:"+A),"agent session warm before microphone");
    Stop stop=new Stop();controller.stop(A,false,System.currentTimeMillis(),stop);await(stop.done);
@@ -84,19 +86,19 @@ public final class LiveCaptureControllerTest {
    host.events.clear();Transport second=new Transport(host.events);Result cancelled=new Result();
    LiveCaptureAdmission.Ticket ticket=controller.reserve(B,1);
    host.beforeOpen.set(()->controller.stop(B,true,System.currentTimeMillis(),new Stop()));
-   controller.start(ticket,true,()->second,null,cancelled);await(cancelled.done);
+   controller.start(ticket,true,()->second,null,false,cancelled);await(cancelled.done);
    check(cancelled.refused!=null&&cancelled.done.getCount()==0,"stop during startup refuses");
    check(host.events.contains("close:"+B),"cancelled startup closes the warmed pipe");
 
    // A stale reservation or a closed host gate never opens the microphone.
    host.events.clear();LiveCaptureAdmission.Ticket stale=controller.reserve(A,2);controller.reserve(B,2);check(!controller.current(stale),"replaced reservation stale");
-   Result staleResult=new Result();controller.start(stale,false,null,null,staleResult);await(staleResult.done);
+   Result staleResult=new Result();controller.start(stale,false,null,null,false,staleResult);await(staleResult.done);
    check(LiveCaptureController.CANCELLED.equals(staleResult.refused)&&!host.events.contains("mic:"+A),"stale reservation refused");
-   host.open.set(false);Result gated=new Result();controller.start(controller.reserve(A,3),false,null,null,gated);await(gated.done);
+   host.open.set(false);Result gated=new Result();controller.start(controller.reserve(A,3),false,null,null,false,gated);await(gated.done);
    check(LiveCaptureController.CANCELLED.equals(gated.refused)&&host.events.isEmpty(),"closed host gate refused");host.open.set(true);
 
    // An unavailable owner route refuses before the microphone opens.
-   Result unrouted=new Result();controller.start(controller.reserve(A,4),false,()->{throw new SecurityException("no owner");},null,unrouted);await(unrouted.done);
+   Result unrouted=new Result();controller.start(controller.reserve(A,4),false,()->{throw new SecurityException("no owner");},null,false,unrouted);await(unrouted.done);
    check(unrouted.refused!=null&&!host.events.contains("mic:"+A),"no owner route, no microphone");
 
    // A Stop while the agent session warms is a cancellation, never an enrollment failure.
@@ -106,13 +108,13 @@ public final class LiveCaptureControllerTest {
     public JSONObject post(JSONObject body)throws Exception{if(body.optBoolean("close"))return new JSONObject().put("status",200).put("body","{\"closed\":true}");warming.countDown();LiveCaptureControllerTest.check(cancelledInFlight.await(5,TimeUnit.SECONDS),"warm cancelled");throw new java.io.IOException("cancelled");}
     public void cancelInFlight(){cancelledInFlight.countDown();}
    };
-   Result warmStopped=new Result();controller.start(controller.reserve(B,4),false,()->slow,null,warmStopped);
+   Result warmStopped=new Result();controller.start(controller.reserve(B,4),false,()->slow,null,false,warmStopped);
    await(warming);controller.stop(B,false,System.currentTimeMillis(),new Stop());await(warmStopped.done);
    check(LiveCaptureController.CANCELLED.equals(warmStopped.refused)&&!host.events.contains("mic:"+B),"stop during warm-up is a cancellation");
 
    // Interruption ends the running capture with its reason; cancelAll closes its pipe.
    host.events.clear();host.ended=new CountDownLatch(1);Transport third=new Transport(host.events);Result running=new Result();
-   controller.start(controller.reserve(A,5),true,()->third,null,running);await(running.done);check(running.refused==null,"second capture");
+   controller.start(controller.reserve(A,5),true,()->third,null,false,running);await(running.done);check(running.refused==null,"second capture");
    controller.interrupt(SpeechAudioFocusPolicy.CALL_ACTIVE);await(host.ended);
    check(host.events.contains("ended:"+A+":"+SpeechAudioFocusPolicy.CALL_ACTIVE),"interruption reason reported");
    controller.cancelAll();
@@ -121,7 +123,7 @@ public final class LiveCaptureControllerTest {
 
    // A microphone failure is reported once and discards the pipe.
    host.events.clear();host.ended=new CountDownLatch(1);host.failReads.set(true);Transport fourth=new Transport(host.events);Result failing=new Result();
-   controller.start(controller.reserve(B,6),false,()->fourth,null,failing);await(failing.done);await(host.ended);
+   controller.start(controller.reserve(B,6),false,()->fourth,null,false,failing);await(failing.done);await(host.ended);
    check(host.events.contains("ended:"+B+":capture"),"microphone failure reported");
    for(int i=0;i<100&&!host.events.contains("close:"+B);i++)Thread.sleep(20);
    check(host.events.contains("close:"+B),"failed capture closes the pipe");
@@ -131,15 +133,39 @@ public final class LiveCaptureControllerTest {
    host.failReads.set(false);
    for(int i=0;i<300;i++){
     String id=i%2==0?A:B;Transport each=new Transport(new CopyOnWriteArrayList<>());Result next=new Result();
-    controller.start(controller.reserve(id,100+i),false,()->each,null,next);await(next.done);
+    controller.start(controller.reserve(id,100+i),false,()->each,null,false,next);await(next.done);
     check(next.refused==null&&next.piped,"back-to-back capture "+i+" refused: "+next.refused);
     Stop done=new Stop();controller.stop(id,false,System.currentTimeMillis(),done);await(done.done);
     check(done.serverClosed,"back-to-back capture "+i+" closed");
    }
+
+   // An automatic reopen after a call or pause since the last capture is refused without opening a
+   // capture, also when the call or pause began and ended while no capture was running.
+   int opened=host.captures.get();
+   controller.interrupt(SpeechAudioFocusPolicy.CALL_ACTIVE);
+   Result afterCall=new Result();controller.start(controller.reserve(A,200),false,null,null,true,afterCall);await(afterCall.done);
+   check(SpeechAudioFocusPolicy.CALL_ACTIVE.equals(afterCall.code)&&host.captures.get()==opened,"reopen after a call refused: "+afterCall.refused);
+   controller.cancelAll();
+   Result afterPause=new Result();controller.start(controller.reserve(A,201),false,null,null,true,afterPause);await(afterPause.done);
+   check(LiveCaptureController.CANCELLED.equals(afterPause.refused)&&afterPause.code==null&&host.captures.get()==opened,"reopen after a pause refused: "+afterPause.refused);
+   // A user-initiated start runs and clears it, so the next reopen starts.
+   Result user=new Result();controller.start(controller.reserve(A,202),false,null,null,false,user);await(user.done);
+   check(user.refused==null&&host.captures.get()==opened+1,"user start after a pause");
+   Stop userStop=new Stop();controller.stop(A,false,System.currentTimeMillis(),userStop);await(userStop.done);
+   Result reopened=new Result();controller.start(controller.reserve(B,203),false,null,null,true,reopened);await(reopened.done);
+   check(reopened.refused==null&&host.captures.get()==opened+2,"reopen with no call or pause since the last capture starts");
+   Stop reopenedStop=new Stop();controller.stop(B,false,System.currentTimeMillis(),reopenedStop);await(reopenedStop.done);
+   controller.interrupt(SpeechAudioFocusPolicy.CALL_ACTIVE);
+   Result called=new Result();controller.start(controller.reserve(A,204),false,null,null,false,called);await(called.done);
+   check(called.refused==null,"user start after a call");
+   Stop calledStop=new Stop();controller.stop(A,false,System.currentTimeMillis(),calledStop);await(calledStop.done);
+   Result again=new Result();controller.start(controller.reserve(B,205),false,null,null,true,again);await(again.done);
+   check(again.refused==null&&host.captures.get()==opened+4,"reopen after the user start");
+   Stop againStop=new Stop();controller.stop(B,false,System.currentTimeMillis(),againStop);await(againStop.done);
   }finally{controller.shutdown();}
   AtomicInteger refusedAfterShutdown=new AtomicInteger();
-  controller.start(controller.reserve(A,7),false,null,null,new LiveCaptureController.Started(){public void started(String id,int r,boolean e,boolean p){}public void refused(String m,String c){refusedAfterShutdown.incrementAndGet();}});
+  controller.start(controller.reserve(A,7),false,null,null,false,new LiveCaptureController.Started(){public void started(String id,int r,boolean e,boolean p){}public void refused(String m,String c){refusedAfterShutdown.incrementAndGet();}});
   check(refusedAfterShutdown.get()==1,"shut-down controller refuses on the caller");
-  System.out.println("PASS live capture controller: warm-before-mic, startup cancellation, stale gates, owner route, interruption, failure");
+  System.out.println("PASS live capture controller: warm-before-mic, startup cancellation, stale gates, owner route, interruption, failure, reopen fence");
  }
 }
