@@ -38,6 +38,12 @@ export interface TwilioDeliveryResult {
   error?: string;
   retryCount?: number;
   billing?: TwilioSmsBillingBreakdown;
+  /**
+   * The request left this host but no answer came back (timeout, dropped
+   * connection, 2xx without a receipt). Twilio may have sent the message or
+   * placed the call, so a caller must not send it again.
+   */
+  deliveryUnknown?: boolean;
 }
 
 type TwilioTelemetrySpan = {
@@ -322,6 +328,7 @@ async function sendTwilioRequest(args: {
         status: null,
         error: errorMsg,
         retryCount: attempt,
+        deliveryUnknown: true,
       };
       // A transport failure can happen after Twilio accepted the create. The
       // provider exposes no documented client idempotency key for these
