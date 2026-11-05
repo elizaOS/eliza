@@ -306,13 +306,22 @@ export function unwrapWholeCodeFence(
 		return null;
 	}
 	const lowerValue = value.toLowerCase();
+	// CommonMark trims spaces and tabs before the info string, so "``` json"
+	// has the label json. After such a space the label must be a whole word,
+	// so compact content such as ``` textual ``` stays content.
+	let labelStart = fenceLength;
+	while (value[labelStart] === " " || value[labelStart] === "\t")
+		labelStart += 1;
 	const acceptedLanguage = [...languages]
 		.sort((left, right) => right.length - left.length)
-		.find((language) =>
-			lowerValue.startsWith(language.toLowerCase(), fenceLength),
+		.find(
+			(language) =>
+				lowerValue.startsWith(language.toLowerCase(), labelStart) &&
+				(labelStart === fenceLength ||
+					/\s/u.test(value[labelStart + language.length] ?? "")),
 		);
 	let cursor = acceptedLanguage
-		? fenceLength + acceptedLanguage.length
+		? labelStart + acceptedLanguage.length
 		: fenceLength;
 	if (!acceptedLanguage) {
 		while (
