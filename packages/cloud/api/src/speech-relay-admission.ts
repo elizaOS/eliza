@@ -61,12 +61,13 @@ export async function reserveSpeechRelayAdmission(input: {
     const receipt = result?.terminalReceipt;
     return (
       receipt?.version === 1 &&
-      receipt.status === "canonical_completed" &&
+      receipt.status === (admission.mode === "durable_object_funded_budget"
+        ? "funded_persisted"
+        : "canonical_completed") &&
       receipt.organizationId === caller.user.organization_id &&
       receipt.requestId === requestId &&
       receipt.amountUsd === amount.toFixed(6) &&
-      receipt.mode === admission.mode &&
-      receipt.mode !== "durable_object_funded_budget"
+      receipt.mode === admission.mode
     );
   };
   const reservingKinds = new Set<"stt" | "tts">();
@@ -103,6 +104,7 @@ export async function reserveSpeechRelayAdmission(input: {
           credential: caller.credential,
           executionCtx,
           atomicProviderBoundary: true,
+          requireTerminalSettlementReceipt: input.onProgress !== undefined,
         });
       } catch (error) {
         if (

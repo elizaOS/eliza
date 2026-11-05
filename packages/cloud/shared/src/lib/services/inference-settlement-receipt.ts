@@ -23,7 +23,13 @@ export function withCanonicalSettlementReceipt(
       result.settlementTransactionIds.every(id => typeof id === "string" && id.length > 0);
     const prior = result.terminalReceipt;
     if (prior) {
-      if (!authoritative || prior.version !== 1 || prior.status !== "canonical_completed" ||
+      const verified =
+        mode === "durable_object_funded_budget"
+          ? prior.status === "funded_persisted" &&
+            Number.isFinite(amount) && amount >= 0 &&
+            result.actualCost === amount && result.collectedAmount === amount
+          : authoritative && prior.status === "canonical_completed";
+      if (!verified || prior.version !== 1 ||
           prior.organizationId !== organizationId || prior.requestId !== requestId ||
           prior.amountUsd !== amount.toFixed(6) || prior.mode !== mode)
         throw Error("Canonical settlement receipt identity mismatch");

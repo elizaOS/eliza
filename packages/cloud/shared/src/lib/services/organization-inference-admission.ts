@@ -166,6 +166,8 @@ export interface OrganizationInferenceAdmissionParams {
    * provider boundary. Limited to callers whose dispatch callback is required.
    */
   atomicProviderBoundary?: boolean;
+  /** Await primary persistence and gate acknowledgment for funded settlement. */
+  requireTerminalSettlementReceipt?: boolean;
 }
 
 /** Retryable signal preserving route compatibility while identifying pricing hydration. */
