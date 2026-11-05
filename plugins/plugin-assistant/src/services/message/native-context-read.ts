@@ -40,8 +40,11 @@ export function nativeSourceOrdinalSchema(sources: ReadonlyMap<number, string>):
   }
   // Equal numeric bounds also express singletons to the existing host schema
   // validator, which does not implement const. Never bridge an offered hole.
-  return {type: "integer", anyOf: ranges.map(({first, last}) =>
-    ({type: "integer", minimum: first, maximum: last}))};
+  const branches: JSONSchema[] = ranges.map(({first, last}) =>
+    ({type: "integer", minimum: first, maximum: last}));
+  // Cerebras rejects anyOf on a typed integer node. Each branch already
+  // enforces integer values and its exact interval, including offered holes.
+  return branches.length === 1 ? branches[0]! : {anyOf: branches};
 }
 
 export function nativeContextReadsSchema(contract: NativeContextReadContract): JSONSchema | undefined {

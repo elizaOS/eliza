@@ -1180,7 +1180,8 @@ it("offers every one of551 completion ordinals within the complete pair budget w
   const selection=handler.parameters!.properties!.completionContext!;
   for(const name of ["relevantSourceIds","constraintSourceIds","referentSourceIds","pendingIntentSourceIds"]){
     const items=selection.properties![name]!.items;
-    expect(items).toMatchObject({type:"integer",anyOf:[{type:"integer",minimum:1,maximum:551}]});
+    expect(items).toMatchObject({type:"integer",minimum:1,maximum:551});
+    expect(items).not.toHaveProperty("anyOf");
   }
   expect(requests).toHaveLength(0);
 });
