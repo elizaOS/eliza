@@ -815,20 +815,30 @@ describe("BionicHostLoader.synthesize without an active bundle", () => {
 });
 
 describe("BionicHostLoader voice bundle", () => {
-	const key = "ELIZA_ANDROID_APP_DATA_DIR";
-	const saved = process.env[key];
+	const keys = ["ELIZA_ANDROID_APP_DATA_DIR", "ELIZA_ANDROID_VOICE_BUNDLE_DIR"];
+	const saved = keys.map((key) => process.env[key]);
 	afterEach(() => {
-		if (saved === undefined) delete process.env[key];
-		else process.env[key] = saved;
+		keys.forEach((key, index) => {
+			if (saved[index] === undefined) delete process.env[key];
+			else process.env[key] = saved[index];
+		});
 	});
+	const bundleDir = () =>
+		(new BionicHostLoader("sock") as unknown as { bundleDir: string })
+			.bundleDir;
 	it("uses the installed voice bundle before any text model loads", () => {
-		process.env[key] = "/data/data/example.app";
-		const loader = new BionicHostLoader("sock") as unknown as { bundleDir: string };
-		expect(loader.bundleDir).toBe("/data/data/example.app/files/paradee-voice-v1");
+		delete process.env.ELIZA_ANDROID_VOICE_BUNDLE_DIR;
+		process.env.ELIZA_ANDROID_APP_DATA_DIR = "/data/data/example.app";
+		expect(bundleDir()).toBe("/data/data/example.app/files/paradee-voice-v1");
+	});
+	it("uses the directory the host chose for its voice bundle", () => {
+		process.env.ELIZA_ANDROID_APP_DATA_DIR = "/data/data/example.app";
+		process.env.ELIZA_ANDROID_VOICE_BUNDLE_DIR =
+			"/data/data/example.app/files/eliza-1/bundle";
+		expect(bundleDir()).toBe("/data/data/example.app/files/eliza-1/bundle");
 	});
 	it("has no bundle outside an Android app", () => {
-		delete process.env[key];
-		const loader = new BionicHostLoader("sock") as unknown as { bundleDir: string };
-		expect(loader.bundleDir).toBe("");
+		for (const key of keys) delete process.env[key];
+		expect(bundleDir()).toBe("");
 	});
 });

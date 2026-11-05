@@ -170,9 +170,13 @@ export function deriveBundleDir(modelPath: string): string {
 }
 /**
  * The app's installed voice bundle. Speech must not wait for a text model: a
- * phone with hosted text inference never calls loadModel.
+ * phone with hosted text inference never calls loadModel. The host passes the
+ * directory `VoiceBundleAssets.bundleRoot` chose; without it, that method's
+ * default directory under the app's files.
  */
 function installedVoiceBundleDir(): string {
+	const hostDir = process.env.ELIZA_ANDROID_VOICE_BUNDLE_DIR?.trim();
+	if (hostDir) return hostDir;
 	const dataDir = process.env.ELIZA_ANDROID_APP_DATA_DIR?.trim();
 	return dataDir ? path.join(dataDir, "files", "paradee-voice-v1") : "";
 }
