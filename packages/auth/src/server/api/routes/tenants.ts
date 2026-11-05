@@ -20,7 +20,6 @@ import {
   type AppVariables,
   db,
   findTenant,
-  getConditionSetReferenceValidationError,
   getTenantPayload,
   isNonEmptyString,
   isValidTenantId,
@@ -34,7 +33,6 @@ import {
   tenantConfigs,
   tenants,
 } from "../services/context";
-import { getPolicyRulesValidationError } from "../services/policy-validation";
 import { isRecentMfaTimestamp } from "../services/recent-mfa";
 
 export const tenantRoutes = new Hono<{ Variables: AppVariables }>();
@@ -202,22 +200,17 @@ tenantRoutes.post("/", platformAuthMiddleware(), async (c) => {
       410,
     );
   }
+  // Tenant config lives only in process memory, so default policies would be
+  // lost on restart and on other replicas. Refuse them, as /platform/tenants does.
   if (body.defaultPolicies !== undefined) {
-    if (!Array.isArray(body.defaultPolicies)) {
-      return c.json<ApiResponse>(
-        { ok: false, error: "defaultPolicies must be an array" },
-        400,
-      );
-    }
-    const policiesError = getPolicyRulesValidationError(body.defaultPolicies);
-    if (policiesError)
-      return c.json<ApiResponse>({ ok: false, error: policiesError }, 400);
-    const conditionSetError = await getConditionSetReferenceValidationError(
-      body.id,
-      body.defaultPolicies,
+    return c.json<ApiResponse>(
+      {
+        ok: false,
+        error:
+          "defaultPolicies are not persisted by this endpoint; configure per-agent policies instead",
+      },
+      501,
     );
-    if (conditionSetError)
-      return c.json<ApiResponse>({ ok: false, error: conditionSetError }, 400);
   }
 
   const existingTenant = await findTenant(body.id);
@@ -251,7 +244,6 @@ tenantRoutes.post("/", platformAuthMiddleware(), async (c) => {
     metadata: {
       name: body.name,
       hasWebhook: !!body.webhookUrl,
-      defaultPolicyCount: body.defaultPolicies?.length ?? 0,
     },
     ipAddress: c.req.header("x-forwarded-for") ?? null,
     userAgent: c.req.header("user-agent") ?? null,
@@ -271,7 +263,6 @@ tenantRoutes.post("/", platformAuthMiddleware(), async (c) => {
     id: body.id,
     name: body.name,
     webhookUrl: body.webhookUrl,
-    defaultPolicies: body.defaultPolicies,
   });
 
   try {
@@ -284,7 +275,6 @@ tenantRoutes.post("/", platformAuthMiddleware(), async (c) => {
       metadata: {
         name: body.name,
         hasWebhook: !!body.webhookUrl,
-        defaultPolicyCount: body.defaultPolicies?.length ?? 0,
       },
       ipAddress: c.req.header("x-forwarded-for") ?? null,
       userAgent: c.req.header("user-agent") ?? null,
@@ -339,25 +329,15 @@ tenantRoutes.put("/:id/webhook", requireTenantId, async (c) => {
     );
   }
 
-  if (
-    body.defaultPolicies !== undefined &&
-    !Array.isArray(body.defaultPolicies)
-  ) {
-    return c.json<ApiResponse>(
-      { ok: false, error: "defaultPolicies must be an array" },
-      400,
-    );
-  }
   if (body.defaultPolicies !== undefined) {
-    const policiesError = getPolicyRulesValidationError(body.defaultPolicies);
-    if (policiesError)
-      return c.json<ApiResponse>({ ok: false, error: policiesError }, 400);
-    const conditionSetError = await getConditionSetReferenceValidationError(
-      tenant.id,
-      body.defaultPolicies,
+    return c.json<ApiResponse>(
+      {
+        ok: false,
+        error:
+          "defaultPolicies are not persisted by this endpoint; configure per-agent policies instead",
+      },
+      501,
     );
-    if (conditionSetError)
-      return c.json<ApiResponse>({ ok: false, error: conditionSetError }, 400);
   }
 
   const updatedConfig: TenantConfig = {
@@ -366,7 +346,6 @@ tenantRoutes.put("/:id/webhook", requireTenantId, async (c) => {
     name: tenant.name,
     // Clear any historical inert value when the tenant is next updated.
     webhookUrl: undefined,
-    defaultPolicies: body.defaultPolicies ?? tenantConfig.defaultPolicies,
   };
   const previousConfig: TenantConfig = { ...tenantConfig };
   await writeAuditEvent({
@@ -378,7 +357,6 @@ tenantRoutes.put("/:id/webhook", requireTenantId, async (c) => {
     resourceId: tenant.id,
     metadata: {
       webhookUrlChanged: body.webhookUrl !== undefined,
-      defaultPoliciesChanged: body.defaultPolicies !== undefined,
     },
     ipAddress: c.req.header("x-forwarded-for") ?? null,
     userAgent: c.req.header("user-agent") ?? null,
@@ -397,7 +375,6 @@ tenantRoutes.put("/:id/webhook", requireTenantId, async (c) => {
       resourceId: tenant.id,
       metadata: {
         webhookUrlChanged: body.webhookUrl !== undefined,
-        defaultPoliciesChanged: body.defaultPolicies !== undefined,
       },
       ipAddress: c.req.header("x-forwarded-for") ?? null,
       userAgent: c.req.header("user-agent") ?? null,
