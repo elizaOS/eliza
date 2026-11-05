@@ -34,10 +34,12 @@ import {
 } from "../../shared-runtime/run-shared-agent-turn";
 import {
   BRIDGE_INSUFFICIENT_CREDITS_CODE,
+  BRIDGE_TURN_IN_PROGRESS_CODE,
   BridgeExecutionContext,
   BridgeRequest,
   BridgeResponse,
   BridgeRouteUnavailableError,
+  BridgeTurnInProgressError,
   DEFAULT_CENTRAL_SERVER_ID,
   RuntimeAgentListResult,
   RuntimeAgentSummary,
@@ -89,6 +91,9 @@ export interface SandboxBridgeHost {
     >,
   ): Promise<RuntimeAgentSummary | null>;
 }
+
+/** How long one native `/bridge` turn may take before its outcome is treated as unknown. */
+const BRIDGE_TURN_DEADLINE_MS = 60_000;
 
 export class ActiveSandboxBridge {
   constructor(private readonly host: SandboxBridgeHost) {}
@@ -777,7 +782,19 @@ export class ActiveSandboxBridge {
         id: rpc.id,
         error: { code: -32601, message: `Method not found: ${rpc.method}` },
       };
-    } catch {
+    } catch (error) {
+      if (error instanceof BridgeTurnInProgressError) {
+        logger.warn("[agent-sandbox] Bridge turn still running after the deadline", {
+          agentId,
+          method: rpc.method,
+          failureClass: "sandbox_turn_in_progress",
+        });
+        return {
+          jsonrpc: "2.0",
+          id: rpc.id,
+          error: { code: BRIDGE_TURN_IN_PROGRESS_CODE, message: error.message },
+        };
+      }
       logger.warn("[agent-sandbox] Bridge request failed", {
         agentId,
         method: rpc.method,
@@ -956,16 +973,29 @@ export class ActiveSandboxBridge {
     if (!rec.bridge_url) {
       throw new BridgeRouteUnavailableError("Sandbox has no bridge_url", 0);
     }
-    const res = await this.host.fetchAgentApi(rec, "/bridge", {
-      method: "POST",
-      body: JSON.stringify({
-        jsonrpc: "2.0",
-        id: rpc.id ?? null,
-        method: "message.send",
-        params: rpc.params ?? {},
-      }),
-      signal: AbortSignal.timeout(60_000),
-    });
+    let res: Response;
+    try {
+      res = await this.host.fetchAgentApi(rec, "/bridge", {
+        method: "POST",
+        body: JSON.stringify({
+          jsonrpc: "2.0",
+          id: rpc.id ?? null,
+          method: "message.send",
+          params: rpc.params ?? {},
+        }),
+        signal: AbortSignal.timeout(BRIDGE_TURN_DEADLINE_MS),
+      });
+    } catch (error) {
+      // The deadline ended the request, not the sandbox: the runtime keeps
+      // running the turn, then persists and bills it. Reporting that as
+      // "unreachable" let callers start a second turn for the same message.
+      if (error instanceof Error && error.name === "TimeoutError") {
+        throw new BridgeTurnInProgressError(
+          `Sandbox turn still running after ${BRIDGE_TURN_DEADLINE_MS} ms; outcome unknown`,
+        );
+      }
+      throw error;
+    }
     if (res.status === 404) {
       throw new BridgeRouteUnavailableError(
         "Cloud-agent /bridge route not present (legacy image?)",
