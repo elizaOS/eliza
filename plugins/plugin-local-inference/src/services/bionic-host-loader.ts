@@ -168,9 +168,18 @@ export function deriveBundleDir(modelPath: string): string {
 	}
 	return "";
 }
+/**
+ * The app's installed voice bundle. Speech must not wait for a text model: a
+ * phone with hosted text inference never calls loadModel.
+ */
+function installedVoiceBundleDir(): string {
+	const dataDir = process.env.ELIZA_ANDROID_APP_DATA_DIR?.trim();
+	return dataDir ? path.join(dataDir, "files", "paradee-voice-v1") : "";
+}
+
 export class BionicHostLoader implements LocalInferenceLoader {
 	private modelPath: string | null = null;
-	private bundleDir = "";
+	private bundleDir = installedVoiceBundleDir();
 	private embeddingModelPath: string | null = null;
 	private embeddingBundleDir = "";
 	/** @param socketName abstract-namespace socket name (no leading NUL). */

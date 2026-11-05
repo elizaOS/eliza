@@ -813,3 +813,22 @@ describe("BionicHostLoader.synthesize without an active bundle", () => {
 		);
 	});
 });
+
+describe("BionicHostLoader voice bundle", () => {
+	const key = "ELIZA_ANDROID_APP_DATA_DIR";
+	const saved = process.env[key];
+	afterEach(() => {
+		if (saved === undefined) delete process.env[key];
+		else process.env[key] = saved;
+	});
+	it("uses the installed voice bundle before any text model loads", () => {
+		process.env[key] = "/data/data/example.app";
+		const loader = new BionicHostLoader("sock") as unknown as { bundleDir: string };
+		expect(loader.bundleDir).toBe("/data/data/example.app/files/paradee-voice-v1");
+	});
+	it("has no bundle outside an Android app", () => {
+		delete process.env[key];
+		const loader = new BionicHostLoader("sock") as unknown as { bundleDir: string };
+		expect(loader.bundleDir).toBe("");
+	});
+});
