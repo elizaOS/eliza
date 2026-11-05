@@ -2,20 +2,24 @@
  * A submitted sensitive answer must not become a prefill value. The autofill
  * record is replayed into the next session of the same form, so storing a
  * password there keeps the secret in a second record and answers the field
- * again without the user typing it. Runs the real FormService on a real
- * AgentRuntime with the PGlite store.
+ * again without the user typing it. When the replayed answers complete the
+ * form, the next session is ready, as when the user gives the last answer.
+ * Runs the real FormService on a real AgentRuntime with the PGlite store.
  */
 import { ChannelType, stringToUuid } from "@elizaos/core";
 import { createTestRuntime } from "@elizaos/testing/runtime";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import formPlugin from "./index";
 import { FormService } from "./service";
+import type { FormSession } from "./types";
 
 const SECRET = "hunter123";
 
-describe("sensitive answer in form autofill", () => {
+describe("form autofill", () => {
   let harness: Awaited<ReturnType<typeof createTestRuntime>>;
   let service: FormService;
+  /** Session ids the contact form's onReady hook ran for, in order. */
+  const readySessions: string[] = [];
 
   beforeAll(async () => {
     harness = await createTestRuntime({
@@ -50,6 +54,23 @@ describe("sensitive answer in form autofill", () => {
           sensitive: true,
         },
       ],
+    });
+    runtime.registerTaskWorker({
+      name: "contact_autofill_ready",
+      execute: async (_runtime, options) => {
+        readySessions.push((options.session as FormSession).id);
+        return undefined;
+      },
+    });
+    service.registerForm({
+      id: "contact-autofill",
+      name: "Contact autofill",
+      ux: { allowAutofill: true },
+      controls: [
+        { key: "name", label: "Name", type: "text", required: true },
+        { key: "email", label: "Email", type: "email", required: true },
+      ],
+      hooks: { onReady: "contact_autofill_ready" },
     });
   }, 180_000);
 
@@ -106,5 +127,47 @@ describe("sensitive answer in form autofill", () => {
     expect(reloaded?.fields?.user?.value).toBe("ann");
     expect(reloaded?.fields?.password?.status).toBe("empty");
     expect(reloaded?.fields?.password?.value).toBeUndefined();
+  }, 60_000);
+
+  it("makes the next session ready when it answers every required field", async () => {
+    const runtime = harness.runtime;
+    const entityId = runtime.agentId;
+    const rooms = ["first", "next"].map((name) =>
+      stringToUuid(`form-autofill-ready-${name}`),
+    );
+    for (const id of rooms) {
+      await runtime.ensureRoomExists({
+        id,
+        worldId: runtime.agentId,
+        name: "Form autofill ready",
+        source: "test",
+        type: ChannelType.DM,
+      });
+    }
+    const first = await service.startSession(
+      "contact-autofill",
+      entityId,
+      rooms[0],
+    );
+    await service.updateField(first.id, entityId, "name", "Ann", 1, "manual");
+    await service.updateField(
+      first.id,
+      entityId,
+      "email",
+      "ann@example.com",
+      1,
+      "manual",
+    );
+    await service.submit(first.id, entityId);
+
+    const next = await service.startSession(
+      "contact-autofill",
+      entityId,
+      rooms[1],
+    );
+    expect(await service.applyAutofill(next)).toEqual(["name", "email"]);
+    const reloaded = await service.getActiveSession(entityId, rooms[1]);
+    expect(reloaded?.status).toBe("ready");
+    expect(readySessions).toEqual([first.id, next.id]);
   }, 60_000);
 });

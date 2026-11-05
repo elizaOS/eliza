@@ -1574,6 +1574,17 @@ export class FormService extends Service {
     }
 
     if (appliedFields.length > 0) {
+      // Autofill can give the last required answer; the form is then ready,
+      // as when updateField completes it.
+      if (
+        session.status === "active" &&
+        this.checkAllRequiredFilled(session, form)
+      ) {
+        session.status = "ready";
+        if (form.hooks?.onReady) {
+          await this.executeHook(session, "onReady");
+        }
+      }
       session.updatedAt = now;
       await storageSaveSession(this.runtime, session);
     }
