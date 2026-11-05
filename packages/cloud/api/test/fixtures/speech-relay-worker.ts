@@ -28,6 +28,19 @@ export class TestSpeechRelayCoordinator extends SpeechRelayCoordinator {
       stats.decline = true;
       return Response.json(stats);
     }
+    if (path === "/test-unknown-tts") {
+      stats.ttsUnknown = true;
+      return Response.json(stats);
+    }
+    if (path === "/test-force-alarm") {
+      await this.alarm().catch(() => {});
+      return Response.json(stats);
+    }
+    if (path === "/test-stt-drain-mode") {
+      const body = (await request.json()) as { unknown: boolean };
+      stats.sttDrainUnknown = body.unknown === true;
+      return Response.json({ configured: true });
+    }
     if (path === "/test-stats") return Response.json(stats);
     // Exercise the staging-only timings gate without a second worker.
     const environment = request.headers.get("x-test-environment");
