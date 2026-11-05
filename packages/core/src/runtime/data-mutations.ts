@@ -33,11 +33,29 @@ import type { Memory, MemoryMetadata } from "../types/memory.js";
 import { afterMemoryPersistedPipelineHookContext } from "../types/pipeline-hooks";
 import type { Metadata, UUID } from "../types/primitives.js";
 import type { IAgentRuntime } from "../types/runtime.js";
+import { stableJsonStringify } from "./context-hash";
 import {
 	findEquivalentFact,
 	mergeStrongerFactMetadata,
 } from "./fact-write-dedupe";
 import type { SingleFlightMemo } from "./single-flight-memo";
+
+/**
+ * Compare evidence in the form storage keeps it. JSON storage drops
+ * undefined-valued properties, so an exact replay whose routed content
+ * carries one (for example `inReplyTo: undefined`) must compare equal to
+ * the stored row. Keys are sorted before comparison because PostgreSQL
+ * jsonb reorders object keys by length on write, so the stored form never
+ * keeps the in-memory key order. Falls back to deep equality when a value
+ * cannot stringify (a cycle or a BigInt).
+ */
+function isStorageContentEqual(a: unknown, b: unknown): boolean {
+	try {
+		return stableJsonStringify(a) === stableJsonStringify(b);
+	} catch {
+		return isDeepStrictEqual(a, b);
+	}
+}
 
 export interface RuntimeDataMutationsHost {
 	invalidateTurnEntityDetails(): void;
@@ -378,8 +396,8 @@ export class RuntimeDataMutations {
 				// Adapters assign timestamps when callers omit them.
 				(expected.createdAt === undefined ||
 					stored.createdAt === expected.createdAt) &&
-				isDeepStrictEqual(stored.metadata ?? {}, expected.metadata ?? {}) &&
-				isDeepStrictEqual(stored.content, expected.content);
+				isStorageContentEqual(stored.metadata ?? {}, expected.metadata ?? {}) &&
+				isStorageContentEqual(stored.content, expected.content);
 			if (sameEvidence(existing[0], projectedParent)) {
 				const segments = projection.segments.length
 					? await this.runtime.adapter.getMemoriesByIds(
