@@ -46,6 +46,7 @@ export interface SpeechRelayBootstrap {
   expiresAt: number;
   caller: GenerativeRouteCaller;
   proofVersion?: 1;
+  consentDigest?: string;
 }
 /** Server-side bootstrap spans. Workers clocks advance on I/O, so these are I/O waits. */
 type SpeechRelayBootstrapPhase =
@@ -56,7 +57,7 @@ type SpeechRelayBootstrapPhase =
   | "activateMs"
   | "openMs";
 type Ledger = SpeechRelayBootstrap & {
-  phase: "minted" | "starting" | "active" | "retiring" | "closed";
+  phase: "prepared" | "minted" | "starting" | "active" | "retiring" | "closed";
   retirement?: RetirementState;
 };
 const UUID = /^[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}$/i;
@@ -329,24 +330,51 @@ export class SpeechRelayCoordinator {
           !(url.pathname === "/revoke" && request.method === "POST")
         )
           return response(404, "speech_unavailable");
-        if (url.pathname === "/initialize" && request.method === "POST") {
+        if (
+          (url.pathname === "/prepare" || url.pathname === "/initialize") &&
+          request.method === "POST"
+        ) {
+          const preparing = url.pathname === "/prepare";
           const input = (await request.json()) as SpeechRelayBootstrap;
           if (
             !UUID.test(input.sessionId) ||
             !/^[0-9a-f]{64}$/.test(input.tokenDigest) ||
             !Number.isFinite(input.expiresAt) ||
             input.expiresAt <= Date.now() ||
-            input.expiresAt > Date.now() + 65000 ||
+            input.expiresAt > Date.now() + (preparing ? 305000 : 65000) ||
             !UUID.test(input.caller?.user?.id) ||
             !UUID.test(input.caller?.user?.organization_id)
           )
             return response(400, "invalid_session");
           if (input.proofVersion !== undefined && input.proofVersion !== 1)
             return response(400, "invalid_proof_version");
-          let created = false;
+          if (preparing && (input.proofVersion !== 1 || input.consentDigest !== undefined))
+            return response(400, "invalid_preparation");
+          if (input.consentDigest !== undefined &&
+            (input.proofVersion !== 1 || !/^[0-9a-f]{64}$/.test(input.consentDigest)))
+            return response(400, "invalid_preparation");
+          let alarmAt: number | undefined;
           try {
             await this.update((record) => {
-              created = record === undefined;
+              if (input.consentDigest !== undefined) {
+                if (!record || record.phase !== "prepared" ||
+                  record.expiresAt <= Date.now() || record.sessionId !== input.sessionId ||
+                  record.tokenDigest !== input.consentDigest ||
+                  record.caller.user.id !== input.caller.user.id ||
+                  record.caller.user.organization_id !== input.caller.user.organization_id)
+                  throw Error("Speech preparation is absent or retired");
+                alarmAt = input.expiresAt;
+                return {
+                  ...record,
+                  phase: "minted",
+                  tokenDigest: input.tokenDigest,
+                  expiresAt: input.expiresAt,
+                  caller: input.caller,
+                };
+              }
+              if (record?.phase === "prepared" && !preparing)
+                throw Error("Prepared speech requires its original consent");
+              if (!record) alarmAt = input.expiresAt;
               return initializeSpeechRecord(
                 record,
                 {
@@ -357,7 +385,7 @@ export class SpeechRelayCoordinator {
                   ...(input.proofVersion
                     ? { proofVersion: input.proofVersion }
                     : {}),
-                  phase: "minted",
+                  phase: preparing ? "prepared" : "minted",
                 },
                 Date.now(),
               );
@@ -365,7 +393,7 @@ export class SpeechRelayCoordinator {
           } catch {
             return response(409, "session_exists");
           }
-          if (created) await this.state.storage.setAlarm(input.expiresAt);
+          if (alarmAt !== undefined) await this.state.storage.setAlarm(alarmAt);
           return Response.json({ initialized: true });
         }
         const ledger = await this.load();

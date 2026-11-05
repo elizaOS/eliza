@@ -142,6 +142,7 @@ export function decodeSpeechRelayAudio(frame: Uint8Array): {
 /** Opt-in retirement contract. Legacy revocation booleans are not drain proof. */
 export const SPEECH_RETIREMENT_HEADER = "X-Eliza-Speech-Retirement-Version";
 export const SPEECH_RETIREMENT_VERSION = 1 as const;
+export const SPEECH_RECOVERY_HEADER = "X-Eliza-Speech-Recovery-Version";
 export const SPEECH_MINT_INTENT_HEADER = "X-Eliza-Speech-Mint-Intent";
 export const SPEECH_ADMISSION_OUTCOME_HEADER = "X-Eliza-Speech-Admission-Outcome";
 export type ConfirmedSpeechRetirement = Readonly<{
