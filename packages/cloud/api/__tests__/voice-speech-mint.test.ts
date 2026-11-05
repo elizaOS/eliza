@@ -49,20 +49,28 @@ const { Hono } = await import("hono");
 const { default: speechRoute } = await import("../v1/voice/speech/route");
 const app = new Hono().route("/api/v1/voice/speech", speechRoute);
 
+const stub = {
+  fetch: async (url: string, init: RequestInit) => {
+    expect(url).toBe("https://speech-relay.internal/initialize");
+    const body = JSON.parse(String(init.body));
+    expect(body.caller.user).toEqual({ id: USER, organization_id: ORG });
+    order.push("initialize-start");
+    await new Promise<void>((resolve) => {
+      releaseInitialize = resolve;
+    });
+    order.push("initialize-end");
+    return Response.json({ initialized: true });
+  },
+};
+const UNIQUE = "a".repeat(64);
 const sessions = {
-  getByName: () => ({
-    fetch: async (url: string, init: RequestInit) => {
-      expect(url).toBe("https://speech-relay.internal/initialize");
-      const body = JSON.parse(String(init.body));
-      expect(body.caller.user).toEqual({ id: USER, organization_id: ORG });
-      order.push("initialize-start");
-      await new Promise<void>((resolve) => {
-        releaseInitialize = resolve;
-      });
-      order.push("initialize-end");
-      return Response.json({ initialized: true });
-    },
-  }),
+  getByName: () => stub,
+  newUniqueId: () => UNIQUE,
+  idFromString: (id: string) => {
+    if (id !== UNIQUE) throw new TypeError("Invalid Durable Object ID");
+    return id;
+  },
+  get: () => stub,
 };
 const env = (overrides: Record<string, unknown> = {}) => ({
   VOICE_SPEECH_RELAY_ENABLED: "true",
@@ -70,12 +78,15 @@ const env = (overrides: Record<string, unknown> = {}) => ({
   ENVIRONMENT: "staging",
   ...overrides,
 });
-const mint = async (overrides: Record<string, unknown> = {}) =>
+const mint = async (
+  overrides: Record<string, unknown> = {},
+  headers: Record<string, string> = {},
+) =>
   app.request(
     "/api/v1/voice/speech/session",
     {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
+      headers: { "Content-Type": "application/json", ...headers },
       body: JSON.stringify({ consentNonce: NONCE }),
     },
     env(overrides),
@@ -139,6 +150,30 @@ test("an invalid window bound disables renewal instead of refusing speech", asyn
     expect(response.status).toBe(200);
     expect(response.headers.has("X-Eliza-Speech-Extend")).toBe(false);
   }
+});
+
+test("an unnamed session needs both the flag and the caller's request", async () => {
+  const optIn = { "x-eliza-speech-session-id": "unique-v1" };
+  const sessionId = async (response: Response) =>
+    ((await response.json()) as { sessionId: string }).sessionId;
+  const flag = { VOICE_SPEECH_UNIQUE_SESSION_IDS: "true" };
+  order = [];
+  expect(await sessionId(await settle(mint(flag, optIn)))).toBe(UNIQUE);
+  for (const [overrides, headers] of [
+    [flag, {}],
+    [{}, optIn],
+  ] as const) {
+    order = [];
+    expect(await sessionId(await settle(mint(overrides, headers)))).toMatch(
+      /^[0-9a-f]{8}-/,
+    );
+  }
+  const forged = await app.request(
+    `/api/v1/voice/speech/ws?sessionId=${"b".repeat(64)}`,
+    { headers: { Upgrade: "websocket" } },
+    env(),
+  );
+  expect(forged.status).toBe(400);
 });
 
 test("a refused consent never returns the capability for the ledger already written", async () => {

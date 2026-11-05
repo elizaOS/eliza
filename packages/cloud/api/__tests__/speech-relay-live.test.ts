@@ -1,6 +1,10 @@
 /** Protected provider proof. No user text, token, or credential is logged. */
 import { test } from "bun:test";
 import {
+  SPEECH_SESSION_ID_HEADER,
+  SPEECH_SESSION_ID_UNIQUE,
+} from "@elizaos/host/voice/speech-relay-wire";
+import {
   reportedSpeechRelayTest,
   speechRelayPhases,
   speechRelayRefusal,
@@ -52,6 +56,60 @@ async function bounded<T>(
   }
 }
 
+/** A request helper that retries the structured cold-cache refusal, like the client. */
+function speechJson(
+  base: string,
+  headers: Record<string, string>,
+  serverTimings: Record<string, number>,
+) {
+  return async function json(
+    path: string,
+    body?: unknown,
+    timingRoute?: "consent" | "session",
+    extraHeaders: Record<string, string> = {},
+  ) {
+    let response: Response | undefined;
+    // Like the shipped client, retry the structured warming refusal a cold
+    // auth or billing cache answers with while it hydrates; nothing else.
+    for (let attempt = 0; attempt < 3; attempt++) {
+      try {
+        response = await fetch(`${base}${path}`, {
+          method: body === undefined ? "GET" : "POST",
+          headers: { ...headers, ...extraHeaders },
+          ...(body === undefined ? {} : { body: JSON.stringify(body) }),
+          signal: AbortSignal.timeout(20_000),
+        });
+      } catch {
+        throw new Error("SPEECH_HTTP_UNAVAILABLE");
+      }
+      if (response.status !== 503) break;
+      const refusal = (await response
+        .clone()
+        .json()
+        .catch(() => null)) as Record<string, unknown> | null;
+      const nested = refusal?.error as Record<string, unknown> | undefined;
+      const warming =
+        (typeof nested?.code === "string" &&
+          nested.code.endsWith("_cache_warming")) ||
+        refusal?.code === "auth_cache_warming";
+      if (!warming) break;
+      await new Promise((resolve) => setTimeout(resolve, 1_000));
+    }
+    if (!response) throw new Error("SPEECH_HTTP_UNAVAILABLE");
+    check(response.ok, `SPEECH_HTTP_STATUS_${response.status}`);
+    if (timingRoute)
+      Object.assign(
+        serverTimings,
+        speechServerTimings(timingRoute, response.headers.get("Server-Timing")),
+      );
+    try {
+      return (await response.json()) as Record<string, unknown>;
+    } catch {
+      throw new Error("SPEECH_HTTP_JSON_INVALID");
+    }
+  };
+}
+
 maybe(
   "deployed speech relays provider PCM, final Ink text, and owner revocation",
   reportedSpeechRelayTest(async (stage) => {
@@ -68,54 +126,7 @@ maybe(
       "Content-Type": "application/json",
     };
     const serverTimings: Record<string, number> = {};
-    async function json(
-      path: string,
-      body?: unknown,
-      timingRoute?: "consent" | "session",
-    ) {
-      let response: Response | undefined;
-      // Like the shipped client, retry the structured warming refusal a cold
-      // auth or billing cache answers with while it hydrates; nothing else.
-      for (let attempt = 0; attempt < 3; attempt++) {
-        try {
-          response = await fetch(`${base}${path}`, {
-            method: body === undefined ? "GET" : "POST",
-            headers,
-            ...(body === undefined ? {} : { body: JSON.stringify(body) }),
-            signal: AbortSignal.timeout(20_000),
-          });
-        } catch {
-          throw new Error("SPEECH_HTTP_UNAVAILABLE");
-        }
-        if (response.status !== 503) break;
-        const refusal = (await response
-          .clone()
-          .json()
-          .catch(() => null)) as Record<string, unknown> | null;
-        const nested = refusal?.error as Record<string, unknown> | undefined;
-        const warming =
-          (typeof nested?.code === "string" &&
-            nested.code.endsWith("_cache_warming")) ||
-          refusal?.code === "auth_cache_warming";
-        if (!warming) break;
-        await new Promise((resolve) => setTimeout(resolve, 1_000));
-      }
-      if (!response) throw new Error("SPEECH_HTTP_UNAVAILABLE");
-      check(response.ok, `SPEECH_HTTP_STATUS_${response.status}`);
-      if (timingRoute)
-        Object.assign(
-          serverTimings,
-          speechServerTimings(
-            timingRoute,
-            response.headers.get("Server-Timing"),
-          ),
-        );
-      try {
-        return (await response.json()) as Record<string, unknown>;
-      } catch {
-        throw new Error("SPEECH_HTTP_JSON_INVALID");
-      }
-    }
+    const json = speechJson(base, headers, serverTimings);
     stage("health");
     const health = await json("/api/health");
     check(
@@ -320,4 +331,106 @@ maybe(
     }
   }),
   60_000,
+);
+
+// Staging only: compares session open for named and unnamed session objects in
+// one deployment. Pairs alternate order, so neither kind always runs first.
+const AB_PAIRS = 3;
+(environment === "staging" ? maybe : test.skip)(
+  "named and unnamed speech session objects open in one deployment",
+  reportedSpeechRelayTest(async (stage) => {
+    check(target, "SPEECH_CONFIGURATION_INVALID");
+    const base = process.env.ELIZA_VOICE_CLOUD_API_URL;
+    const key = process.env.ELIZAOS_CLOUD_API_KEY;
+    check(base === target.api && key, "SPEECH_CONFIGURATION_INVALID");
+    const headers = {
+      Authorization: `Bearer ${key}`,
+      "Content-Type": "application/json",
+    };
+    const openSession = async (unique: boolean) => {
+      const serverTimings: Record<string, number> = {};
+      const json = speechJson(base, headers, serverTimings);
+      const started = performance.now();
+      stage("consent");
+      const consent = await json("/api/v1/voice/speech/consent", {}, "consent");
+      const consentAt = performance.now();
+      stage("session");
+      const minted = await json(
+        "/api/v1/voice/speech/session",
+        { consentNonce: consent.consentNonce },
+        "session",
+        unique ? { [SPEECH_SESSION_ID_HEADER]: SPEECH_SESSION_ID_UNIQUE } : {},
+      );
+      const sessionAt = performance.now();
+      check(
+        typeof minted.sessionId === "string" &&
+          typeof minted.token === "string" &&
+          typeof minted.wsUrl === "string" &&
+          /^[0-9a-f]{64}$/.test(minted.sessionId) === unique,
+        "SPEECH_MINT_INVALID",
+      );
+      stage("websocket");
+      const socket = new WebSocket(minted.wsUrl);
+      const ready = deferred<void>();
+      let socketOpenAt = 0;
+      socket.addEventListener("open", () => {
+        socketOpenAt = performance.now();
+        stage("ready");
+        socket.send(JSON.stringify({ t: "hello", token: minted.token }));
+      });
+      socket.addEventListener("error", () =>
+        ready.reject(new Error("SPEECH_SOCKET_FAILED")),
+      );
+      socket.addEventListener("close", () =>
+        ready.reject(new Error("SPEECH_SOCKET_CLOSED")),
+      );
+      socket.addEventListener("message", (event) => {
+        if (typeof event.data !== "string") return;
+        const frame = JSON.parse(event.data) as { t?: unknown };
+        if (frame.t === "ready") ready.resolve();
+        else if (frame.t === "error")
+          ready.reject(new Error("SPEECH_PROVIDER_REFUSED"));
+      });
+      try {
+        await bounded(ready.promise, "SPEECH_READY_TIMEOUT");
+        const readyAt = performance.now();
+        console.info(
+          JSON.stringify({
+            phase: "speech-relay-live",
+            status: "passed",
+            idUnique: unique ? 1 : 0,
+            consentMs: Math.round(consentAt - started),
+            sessionMs: Math.round(sessionAt - consentAt),
+            wsOpenMs: Math.round(socketOpenAt - sessionAt),
+            wsReadyMs: Math.round(readyAt - sessionAt),
+            bootstrapMs: Math.round(readyAt - started),
+            ...serverTimings,
+          }),
+        );
+      } finally {
+        stage("revocation");
+        await json(
+          `/api/v1/voice/speech/session/${minted.sessionId}/revoke`,
+          {},
+        ).catch(() => {});
+        socket.close();
+      }
+    };
+    for (let pair = 0; pair < AB_PAIRS; pair++) {
+      for (const unique of pair % 2 ? [true, false] : [false, true]) {
+        try {
+          await openSession(unique);
+        } catch (error) {
+          // The strict limit may be 5 a minute: keep the pairs already measured.
+          if (
+            error instanceof Error &&
+            error.message === "SPEECH_HTTP_STATUS_429"
+          )
+            return;
+          throw error;
+        }
+      }
+    }
+  }),
+  120_000,
 );
