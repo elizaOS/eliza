@@ -937,7 +937,14 @@ export async function resolveInferenceAuthContext(
       return { kind: "suspended", userId: coherent.user.id, reason: "moderation_blocked" };
     }
     if (coherent) ({ user, apiKey } = coherent);
-    const [admission, appScopeId] = authCacheEnabled
+    // The admission projection and the app-key scope are authorization facts a
+    // Worker request must carry, not cache entries: paid-proxy and speech
+    // dispatch refuse to serve without the snapshot, and the scope bounds an
+    // app-scoped key. `INFERENCE_AUTH_CACHE_ENABLED` only governs cache reads
+    // and writes, so a cache-disabled Worker origin resolution still reads both
+    // from the primary it already opened for identity and moderation.
+    const authoritativeWorkerRequest = authCacheEnabled || options.cacheOnly === true;
+    const [admission, appScopeId] = authoritativeWorkerRequest
       ? await Promise.all([
           coherent ? coherent.admission : loadInferenceAdmissionSnapshot(user.organization_id),
           loadInferenceAppKeyScope(apiKey.id),
