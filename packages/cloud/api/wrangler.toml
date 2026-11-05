@@ -882,7 +882,11 @@ INFERENCE_PASSTHROUGH_EMBEDDINGS = "true"
 VOICE_REALTIME_WS_ENABLED = "true"
 # Speech-only streaming is qualified in staging before production promotion.
 VOICE_SPEECH_RELAY_ENABLED = "true"
+# Enable only with the matching backend/client retirement protocol release.
+VOICE_SPEECH_RETIREMENT_PROOF_ENABLED = "true"
 VOICE_SPEECH_END_TIMEOUT_MS = "1280"
+# Staging A/B: unnamed session objects skip the first-use uniqueness check.
+VOICE_SPEECH_UNIQUE_SESSION_IDS = "true"
 VOICE_REALTIME_CARTESIA_VOICE_ID = "db6b0ed5-d5d3-463d-ae85-518a07d3c2b4"
 VOICE_REALTIME_ELIZA_ENDPOINT = "https://api-staging.eliza.app"
 VOICE_REALTIME_ELIZA_MODEL = "qwen-3.8-27b"
@@ -1227,7 +1231,10 @@ INFERENCE_PASSTHROUGH_EMBEDDINGS = "true"
 VOICE_REALTIME_WS_ENABLED = "true"
 # Promote this setting only with the matching staged speech contract proof.
 VOICE_SPEECH_RELAY_ENABLED = "true"
+# Enable only with the matching backend/client retirement protocol release.
+VOICE_SPEECH_RETIREMENT_PROOF_ENABLED = "false"
 VOICE_SPEECH_END_TIMEOUT_MS = "1280"
+VOICE_SPEECH_UNIQUE_SESSION_IDS = "false"
 ELIZA_TTS_FISH_ENABLED = "false"
 FISH_AUDIO_DATA_GOVERNANCE_APPROVED = "false"
 FORCE_REDIS_EVENTS = "false"

@@ -25,14 +25,24 @@ export interface RuntimeDurableObjectNamespace {
   getByName(name: string): RuntimeDurableObjectStub;
 }
 
+/** Name-free objects skip the worldwide uniqueness check named objects pay on first use. */
+export interface RuntimeUniqueDurableObjectNamespace extends RuntimeDurableObjectNamespace {
+  newUniqueId(): { toString(): string };
+  idFromString(id: string): unknown;
+  get(id: unknown): RuntimeDurableObjectStub;
+}
+
 export interface Bindings {
   /** Bounded speech-only sockets; agents and conversation storage remain on the client. */
   VOICE_SPEECH_RELAY_ENABLED?: string;
+  VOICE_SPEECH_RETIREMENT_PROOF_ENABLED?: string;
   /** Speech-only Ink final timeout, clamped to 640..5000 ms; default 1280 ms. */
   VOICE_SPEECH_END_TIMEOUT_MS?: string;
   /** Renewable 60 s speech windows per session for extending clients, 1..120; default 10. */
   VOICE_SPEECH_RELAY_MAX_WINDOWS?: string;
-  SPEECH_RELAY_SESSIONS?: RuntimeDurableObjectNamespace;
+  SPEECH_RELAY_SESSIONS?: RuntimeUniqueDurableObjectNamespace;
+  /** Staging trial: mint unnamed session objects for callers that ask for them. */
+  VOICE_SPEECH_UNIQUE_SESSION_IDS?: string;
   CLOUD_HF_EGRESS_BACKEND?: string;
   HF_EGRESS_STATE?: RuntimeDurableObjectNamespace;
   CLOUD_VOICE_USAGE_BACKEND?: string;
