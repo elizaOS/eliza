@@ -833,8 +833,8 @@ export class SpeechRelayCoordinator {
               },
               reserveCredits: async () => {
                 const budgetWindow = this.reservations++;
-                const reserve = () =>
-                  reserveSpeechRelayAdmission({
+                const reserve = async () => {
+                  const reservation = await reserveSpeechRelayAdmission({
                     caller: ledger.caller,
                     sessionId: ledger.sessionId,
                     window: budgetWindow,
@@ -856,9 +856,24 @@ export class SpeechRelayCoordinator {
                             }).then(() => {})
                         : undefined,
                   });
-                let reservation: Awaited<
-                  ReturnType<typeof reserveSpeechRelayAdmission>
-                >;
+                  // Cleanup can run from a socket callback after the opening
+                  // request ended. Rebind the Worker and start a fresh DB cache.
+                  return {
+                    ...reservation,
+                    settle: (
+                      details: Parameters<typeof reservation.settle>[0],
+                      kinds?: Parameters<typeof reservation.settle>[1],
+                    ) =>
+                      runWithCloudBindingsAsync(
+                        this.env as Record<string, unknown>,
+                        () =>
+                          runWithDbCacheAsync(() =>
+                            reservation.settle(details, kinds),
+                          ),
+                      ),
+                  };
+                };
+                let reservation: Awaited<ReturnType<typeof reserve>>;
                 if (budgetWindow > 0) reservation = await reserve();
                 else {
                   const admissionStartedAt = performance.now();
@@ -881,17 +896,7 @@ export class SpeechRelayCoordinator {
                   if (reserved.status === "rejected") throw reserved.reason;
                   reservation = reserved.value;
                 }
-                return {
-                  ...reservation,
-                  settle: (details, kinds) =>
-                    runWithCloudBindingsAsync(
-                      this.env as Record<string, unknown>,
-                      () =>
-                        runWithDbCacheAsync(() =>
-                          reservation.settle(details, kinds),
-                        ),
-                    ),
-                };
+                return reservation;
               },
               // The internal organization-DO socket closes on revocation or loss.
               // Its callback stops this session; no per-frame identity read occurs.
