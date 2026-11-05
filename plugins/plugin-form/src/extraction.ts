@@ -236,12 +236,16 @@ export function parseFormExtractorOutput(raw: unknown): IntentResult | null {
     const fieldKey = typeof entry.field === "string" ? entry.field : "";
     if (!fieldKey) continue;
     if (!isSafeExtractionField(fieldKey)) continue;
+    // The schema requires only field and confidence. An entry with no value
+    // (omitted or null, the "not found" value of extractSingleField) is not
+    // an answer, so it must not replace what the field holds.
+    if (entry.value === undefined || entry.value === null) continue;
 
     const dedupeKey = extractionDedupeKey(fieldKey, entry.value);
     if (seen.has(dedupeKey)) continue;
     seen.add(dedupeKey);
 
-    const value: JsonValue = (entry.value as JsonValue | undefined) ?? null;
+    const value = entry.value as JsonValue;
 
     let confidence =
       typeof entry.confidence === "number"
