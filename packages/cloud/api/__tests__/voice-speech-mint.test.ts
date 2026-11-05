@@ -152,16 +152,15 @@ test("an invalid window bound disables renewal instead of refusing speech", asyn
   }
 });
 
-test("an unnamed session needs both the flag and the caller's request", async () => {
+test("an unnamed session needs staging and the caller's request", async () => {
   const optIn = { "x-eliza-speech-session-id": "unique-v1" };
   const sessionId = async (response: Response) =>
     ((await response.json()) as { sessionId: string }).sessionId;
-  const flag = { VOICE_SPEECH_UNIQUE_SESSION_IDS: "true" };
   order = [];
-  expect(await sessionId(await settle(mint(flag, optIn)))).toBe(UNIQUE);
+  expect(await sessionId(await settle(mint({}, optIn)))).toBe(UNIQUE);
   for (const [overrides, headers] of [
-    [flag, {}],
-    [{}, optIn],
+    [{}, {}],
+    [{ ENVIRONMENT: "production" }, optIn],
   ] as const) {
     order = [];
     expect(await sessionId(await settle(mint(overrides, headers)))).toMatch(

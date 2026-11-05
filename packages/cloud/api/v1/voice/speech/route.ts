@@ -176,9 +176,9 @@ app.post("/session", async (c) => {
     "recoverySessionId" in body ? body.recoverySessionId : undefined;
   if (recovering && (typeof recoveryId !== "string" || !UUID.test(recoveryId)))
     return c.json({ error: "invalid_speech_session" }, 400);
-  // Recovery and retirement sessions keep their UUID contract.
+  // Staging trial. Recovery and retirement sessions keep their UUID contract.
   const unique =
-    c.env.VOICE_SPEECH_UNIQUE_SESSION_IDS === "true" &&
+    c.env.ENVIRONMENT === "staging" &&
     c.req.header(SPEECH_SESSION_ID_HEADER) === SPEECH_SESSION_ID_UNIQUE &&
     !recovering &&
     !proofVersion;
