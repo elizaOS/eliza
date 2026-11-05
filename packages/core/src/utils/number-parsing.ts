@@ -36,6 +36,30 @@ function normalizeFallback(fallback: number | undefined): number | undefined {
 	return Number.isFinite(fallback) ? fallback : undefined;
 }
 
+function normalizePositiveIntegerFallback(
+	fallback: number | undefined,
+): number | undefined {
+	return Number.isSafeInteger(fallback) && (fallback as number) > 0
+		? fallback
+		: undefined;
+}
+
+function normalizeNonNegativeIntegerFallback(
+	fallback: number | undefined,
+): number | undefined {
+	return Number.isSafeInteger(fallback) && (fallback as number) >= 0
+		? fallback
+		: undefined;
+}
+
+function normalizePositiveFloatFallback(
+	fallback: number | undefined,
+): number | undefined {
+	return Number.isFinite(fallback) && (fallback as number) > 0
+		? fallback
+		: undefined;
+}
+
 export function parsePositiveInteger(
 	value: string | null | undefined,
 	fallback: number,
@@ -49,16 +73,16 @@ export function parsePositiveInteger(
 	fallback?: number,
 ): number | undefined {
 	const raw = sanitizeNumericText(value);
-	if (!raw) return normalizeFallback(fallback);
+	if (!raw) return normalizePositiveIntegerFallback(fallback);
 
 	if (!/^\d+$/.test(raw)) {
-		return normalizeFallback(fallback);
+		return normalizePositiveIntegerFallback(fallback);
 	}
 
 	const parsed = Number.parseInt(raw, 10);
 	return Number.isSafeInteger(parsed) && parsed > 0
 		? parsed
-		: normalizeFallback(fallback);
+		: normalizePositiveIntegerFallback(fallback);
 }
 
 export function parseNonNegativeInteger(
@@ -74,12 +98,13 @@ export function parseNonNegativeInteger(
 	fallback?: number,
 ): number | undefined {
 	const raw = sanitizeNumericText(value);
-	if (!raw || !/^\d+$/.test(raw)) return normalizeFallback(fallback);
+	if (!raw || !/^\d+$/.test(raw))
+		return normalizeNonNegativeIntegerFallback(fallback);
 
 	const parsed = Number(raw);
 	return Number.isSafeInteger(parsed) && parsed >= 0
 		? parsed
-		: normalizeFallback(fallback);
+		: normalizeNonNegativeIntegerFallback(fallback);
 }
 
 /**
@@ -124,15 +149,17 @@ export function parsePositiveFloat(
 	options?: ParsePositiveNumberOptions,
 ): number | undefined {
 	const raw = sanitizeNumericText(value);
-	if (!raw) return normalizeFallback(options?.fallback);
+	if (!raw) return normalizePositiveFloatFallback(options?.fallback);
 
 	const parsed = Number(raw);
 	if (!Number.isFinite(parsed) || parsed <= 0) {
-		return normalizeFallback(options?.fallback);
+		return normalizePositiveFloatFallback(options?.fallback);
 	}
 
 	const result = options?.floor ? Math.floor(parsed) : parsed;
-	return result > 0 ? result : normalizeFallback(options?.fallback);
+	return result > 0
+		? result
+		: normalizePositiveFloatFallback(options?.fallback);
 }
 
 export function parseClampedFloat(
@@ -147,14 +174,22 @@ export function parseClampedFloat(
 	value: string | null | undefined,
 	options: ParseClampedNumberOptions = {},
 ): number | undefined {
-	const raw = sanitizeNumericText(value);
-	if (!raw) return normalizeFallback(options.fallback);
-
-	const parsed = Number(raw);
-	if (!Number.isFinite(parsed)) return normalizeFallback(options.fallback);
-
 	const min = options.min ?? -Infinity;
 	const max = options.max ?? Infinity;
+	if (options.min !== undefined && options.max !== undefined && min > max) {
+		throw new RangeError("clamped float bounds must be ordered numbers");
+	}
+
+	const fallback = normalizeFallback(options.fallback);
+	const clampedFallback =
+		fallback !== undefined ? Math.max(min, Math.min(max, fallback)) : undefined;
+
+	const raw = sanitizeNumericText(value);
+	if (!raw) return clampedFallback;
+
+	const parsed = Number(raw);
+	if (!Number.isFinite(parsed)) return clampedFallback;
+
 	return Math.max(min, Math.min(max, parsed));
 }
 
@@ -170,17 +205,27 @@ export function parseClampedInteger(
 	value: string | null | undefined,
 	options: ParseClampedIntegerOptions = {},
 ): number | undefined {
+	const min = options.min ?? -Infinity;
+	const max = options.max ?? Infinity;
+	if (options.min !== undefined && options.max !== undefined && min > max) {
+		throw new RangeError("clamped integer bounds must be ordered numbers");
+	}
+
+	const fallback = Number.isSafeInteger(options.fallback)
+		? options.fallback
+		: undefined;
+	const clampedFallback =
+		fallback !== undefined ? Math.max(min, Math.min(max, fallback)) : undefined;
+
 	const raw = sanitizeNumericText(value);
-	if (!raw) return normalizeFallback(options.fallback);
+	if (!raw) return clampedFallback;
 
 	if (!/^[+-]?\d+$/.test(raw)) {
-		return normalizeFallback(options.fallback);
+		return clampedFallback;
 	}
 
 	const parsed = Number(raw);
-	if (!Number.isSafeInteger(parsed)) return normalizeFallback(options.fallback);
+	if (!Number.isSafeInteger(parsed)) return clampedFallback;
 
-	const min = options.min ?? -Infinity;
-	const max = options.max ?? Infinity;
-	return Math.max(min, Math.min(max, parsed));
+	return Math.max(min, Math.min(max, parsed === 0 ? 0 : parsed));
 }
