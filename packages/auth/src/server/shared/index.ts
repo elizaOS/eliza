@@ -529,6 +529,11 @@ export interface SignRequest {
   value: string; // wei
   data?: string; // calldata
   chainId: number;
+  /**
+   * SPL mint that `value` is counted in. Omit it for native value. USD
+   * policies price `value` with this token, not with the native coin.
+   */
+  tokenAddress?: string;
   nonce?: number;
   gasLimit?: string;
   broadcast?: boolean; // default true — set false to return signed tx without broadcasting
