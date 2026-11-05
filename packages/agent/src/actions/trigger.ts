@@ -1360,6 +1360,26 @@ async function opRun(
       { triggerId: loaded.trigger.triggerId },
     );
   }
+  if (result.status === "skipped") {
+    // Nothing ran, so a skip must not be reported as "Ran": the run-cap
+    // branch also deletes the task, so a success here would tell the user
+    // the reminder ran while it was actually removed.
+    const name = displayLabel(loaded.trigger.displayName);
+    return failed(
+      "run",
+      `Trigger run skipped for "${name}".`,
+      "RUN_SKIPPED",
+      {
+        taskId: String(loaded.task.id),
+        triggerId: loaded.trigger.triggerId,
+        status: result.status,
+        taskDeleted: result.taskDeleted,
+      },
+      result.taskDeleted
+        ? `Didn't run "${name}" — it was skipped, and the trigger has been removed.`
+        : `Didn't run "${name}" — the run was skipped.`,
+    );
+  }
   return ok("run", `Ran "${displayLabel(loaded.trigger.displayName)}".`, {
     taskId: String(loaded.task.id),
     triggerId: loaded.trigger.triggerId,
