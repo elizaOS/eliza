@@ -267,7 +267,9 @@ export function isTextEmbeddingSetupFailure(error: unknown): boolean {
   );
 }
 
-async function assertTextEmbeddingUsable(rt: IAgentRuntime): Promise<void> {
+export async function assertTextEmbeddingUsable(
+  rt: IAgentRuntime,
+): Promise<void> {
   if (!rt.getModel(ModelType.TEXT_EMBEDDING)) {
     throw setupIncompatible(
       "Eliza setup incompatible: no TEXT_EMBEDDING model is registered",
@@ -287,6 +289,10 @@ async function assertTextEmbeddingUsable(rt: IAgentRuntime): Promise<void> {
     }
   } catch (err) {
     if (isSetupIncompatibleError(err)) throw err;
+    // Only an embedding-specific failure means this environment cannot host
+    // ConfigBench; an adapter/provider fault is a broken run, and reporting it
+    // as "setup incompatible" exits 4 ("not applicable") instead of 3 (failure).
+    if (!isTextEmbeddingSetupFailure(err)) throw err;
     throw setupIncompatible(
       `Eliza setup incompatible: TEXT_EMBEDDING probe failed: ${errorMessage(err)}`,
       { cause: err },
