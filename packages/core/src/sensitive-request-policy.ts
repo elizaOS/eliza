@@ -12,6 +12,7 @@
  * any secret-looking key before metadata is logged or persisted. Everything here
  * is pure and environment-driven — no runtime, IO, or side effects.
  */
+import { isSensitiveLogKey } from "./security/log-redaction";
 import { ChannelType } from "./types/primitives";
 
 export type SensitiveRequestKind =
@@ -220,6 +221,30 @@ export interface SensitiveRequestDeliveryPlan {
 const SENSITIVE_REQUEST_METADATA_KEY_RE =
 	/(^|[_-])(authorization|bearer|credential|jwt|password|private|secret|signature|token)([_-]|$)|api[_-]?key/i;
 
+/**
+ * Documented non-secret fields whose keys the credential-name policy flags but
+ * whose values are never the secret itself: `authorizationUrl` is the consent
+ * screen the owner opens (`SensitiveRequestOAuthTarget`), and
+ * `credentialScopeId` is the secret's storage-scope name
+ * (`SensitiveRequestTunnelRouting` never includes values or scoped tokens).
+ * Owners read both from the redacted copy, so they must survive masking.
+ */
+const NON_SECRET_METADATA_KEY_SET: ReadonlySet<string> = new Set([
+	"authorizationUrl",
+	"credentialScopeId",
+]);
+
+function isSensitiveRequestMetadataKey(key: string): boolean {
+	if (NON_SECRET_METADATA_KEY_SET.has(key)) {
+		return false;
+	}
+	// The shared credential-name policy also matches camelCase compounds
+	// (accessToken, clientSecret, …) that the separator-anchored words miss.
+	// The anchored words stay because the shared policy does not classify
+	// `private` or `signature` keys on their own.
+	return SENSITIVE_REQUEST_METADATA_KEY_RE.test(key) || isSensitiveLogKey(key);
+}
+
 export function redactSensitiveRequestMetadata(value: unknown): unknown {
 	if (Array.isArray(value)) {
 		return value.map((item) => redactSensitiveRequestMetadata(item));
@@ -231,7 +256,7 @@ export function redactSensitiveRequestMetadata(value: unknown): unknown {
 
 	const redacted: Record<string, unknown> = {};
 	for (const [key, item] of Object.entries(value as Record<string, unknown>)) {
-		redacted[key] = SENSITIVE_REQUEST_METADATA_KEY_RE.test(key)
+		redacted[key] = isSensitiveRequestMetadataKey(key)
 			? "[redacted]"
 			: redactSensitiveRequestMetadata(item);
 	}
