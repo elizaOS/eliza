@@ -210,11 +210,10 @@ function buildAccountRecord(args: {
         );
         if (args.providerAccountId) {
           if (account.userId) return account.userId === args.providerAccountId;
-          return (
-            sameEmail &&
-            Boolean(args.organizationId) &&
-            account.organizationId === args.organizationId
-          );
+          // A record stored before user ids were kept: the same email in the
+          // same organization, or a personal account with no organization on
+          // either side, is upgraded in place instead of duplicated.
+          return sameEmail && account.organizationId === args.organizationId;
         }
         return sameEmail && account.organizationId === args.organizationId;
       });

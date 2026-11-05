@@ -14,6 +14,7 @@ import {
   type AccountStoragePolicy,
   createIsolatedAccountStoragePolicy,
   listAccounts,
+  saveAccount,
 } from "./account-storage.ts";
 import {
   type FlowState,
@@ -193,6 +194,48 @@ describe("OAuth account linking keeps distinct identities apart", () => {
 
     expect(storedRefreshTokens("anthropic-subscription")).toEqual([
       { email: "a@x.test", organizationId: "org-o", refresh: "refresh-2" },
+    ]);
+  });
+
+  it("Anthropic: a personal account stored without a user id is upgraded in place", async () => {
+    // Stored before user ids were kept, by an individual subscription that
+    // reports no organization.
+    saveAccount(
+      {
+        id: "legacy-personal",
+        providerId: "anthropic-subscription",
+        label: "Claude",
+        source: "oauth",
+        credentials: {
+          access: "access-old",
+          refresh: "refresh-old",
+          expires: FAR_FUTURE,
+        },
+        createdAt: 1,
+        updatedAt: 1,
+        email: "a@x.test",
+      },
+      policy,
+    );
+    await linkAnthropic(
+      { accountUuid: "acct-a", orgUuid: "", email: "a@x.test" },
+      { access: "access-new", refresh: "refresh-new" },
+    );
+
+    expect(
+      listAccounts("anthropic-subscription", policy).map((account) => ({
+        id: account.id,
+        userId: account.userId,
+        organizationId: account.organizationId,
+        refresh: account.credentials.refresh,
+      })),
+    ).toEqual([
+      {
+        id: "legacy-personal",
+        userId: "acct-a",
+        organizationId: undefined,
+        refresh: "refresh-new",
+      },
     ]);
   });
 
