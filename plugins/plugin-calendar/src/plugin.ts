@@ -1,5 +1,5 @@
-import { calendarReviewAction } from "./actions/calendar-review.js";
 import { calendarReadSelectedAction } from "./actions/calendar-read-selected.js";
+import { calendarReviewAction } from "./actions/calendar-review.js";
 import { CalendarMutationPortService } from "./mutations/service.js";
 /**
  * Plugin definition for `@elizaos/plugin-calendar`: registers `CalendarService`,

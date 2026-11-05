@@ -1,6 +1,5 @@
-import { getStreamingContext } from "@elizaos/core";
-import { calendarSearchFiltersAreBound } from "../search-filter-evidence.js";
 import { parseClientTurnObservation } from "@elizaos/contracts/client-turn-observation";
+import { getStreamingContext } from "@elizaos/core";
 import {
   type CalendarFields,
   type CalendarWindow,
@@ -20,6 +19,7 @@ import {
   STATED_CLOCK_MENTION_SOURCE,
   WEEKDAY_NAME_PATTERN,
 } from "../internal/request-time.js";
+import { calendarSearchFiltersAreBound } from "../search-filter-evidence.js";
 import {
   calendarCreateAuthorityProperties,
   calendarCreateUserSources,
@@ -7253,13 +7253,21 @@ export function createCalendarActionRunner(
         const request = baseResolved.request;
         const label = baseResolved.label;
         const hasExplicitWindow = baseResolved.explicitWindow;
-        if (subaction === "search_events" && !calendarSearchFiltersAreBound(
-          getStreamingContext()?.actionConstraints, message, String(runtime.agentId),
-          searchQueries, normalizeCalendarSearchQueryValue,
-        )) {
-          throw new CalendarServiceError(400,
+        if (
+          subaction === "search_events" &&
+          !calendarSearchFiltersAreBound(
+            getStreamingContext()?.actionConstraints,
+            message,
+            String(runtime.agentId),
+            searchQueries,
+            normalizeCalendarSearchQueryValue,
+          )
+        ) {
+          throw new CalendarServiceError(
+            400,
             "Calendar search filters are not bound to this request's verified current or same-room referent evidence. No Calendar event read occurred. Use the requested unfiltered feed or a source-bound content lookup; do not invent a query.",
-            "CALENDAR_SEARCH_FILTER_UNBOUND");
+            "CALENDAR_SEARCH_FILTER_UNBOUND",
+          );
         }
         const feed = await service.getCalendarFeed(INTERNAL_URL, {
           includeHiddenCalendars:

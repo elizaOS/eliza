@@ -4,14 +4,14 @@ import {
   CALENDAR_READ_ACTIONS,
   type CalendarReadBinding,
 } from "@elizaos/contracts";
-import { selectedCalendarTarget } from "./actions/calendar-read-selected.js";
 import {
-  isObjectRecord,
   getRecentMessagesData,
   getStreamingContext,
+  isObjectRecord,
   type ResponseHandlerEvaluator,
   type ResponseHandlerFieldEvaluator,
 } from "@elizaos/core";
+import { selectedCalendarTarget } from "./actions/calendar-read-selected.js";
 
 import {
   bindFilterEvidence,
@@ -22,7 +22,12 @@ import {
 
 type RequestedRead = Pick<
   CalendarReadBinding,
-  "intentId" | "operation" | "execution" | "filterEvidence" | "purpose" | "selectedTarget"
+  | "intentId"
+  | "operation"
+  | "execution"
+  | "filterEvidence"
+  | "purpose"
+  | "selectedTarget"
 > & { invalidFilterEvidence?: true };
 
 export const calendarReadBindingField: ResponseHandlerFieldEvaluator<
@@ -38,18 +43,29 @@ export const calendarReadBindingField: ResponseHandlerFieldEvaluator<
     items: {
       type: "object",
       additionalProperties: false,
-      required: ["intentId", "operation", "execution", "purpose", "filterEvidence"],
+      required: [
+        "intentId",
+        "operation",
+        "execution",
+        "purpose",
+        "filterEvidence",
+      ],
       properties: {
         // Intents are generated in this same response, so no finite ID enum exists.
         // The host parser below validates the canonical ID and handle binds its index.
         intentId: { type: "string" },
         operation: { type: "string", enum: Object.keys(CALENDAR_READ_ACTIONS) },
         execution: { type: "string", enum: ["required", "conditional"] },
-        purpose: { type: "string", enum: ["requested_read", "mutation_prerequisite"] },
+        purpose: {
+          type: "string",
+          enum: ["requested_read", "mutation_prerequisite"],
+        },
         filterEvidence: {
-          type: "array", maxItems: 8,
+          type: "array",
+          maxItems: 8,
           items: {
-            type: "object", additionalProperties: false,
+            type: "object",
+            additionalProperties: false,
             required: ["query", "quote", "origin"],
             properties: {
               query: { type: "string", minLength: 1, maxLength: 160 },
@@ -85,7 +101,11 @@ export const calendarReadBindingField: ResponseHandlerFieldEvaluator<
         !isObjectRecord(item) ||
         Object.keys(item).some(
           (key) =>
-            key !== "intentId" && key !== "operation" && key !== "execution" && key !== "filterEvidence" && key !== "purpose",
+            key !== "intentId" &&
+            key !== "operation" &&
+            key !== "execution" &&
+            key !== "filterEvidence" &&
+            key !== "purpose",
         ) ||
         !index ||
         typeof item.operation !== "string" ||
@@ -94,15 +114,37 @@ export const calendarReadBindingField: ResponseHandlerFieldEvaluator<
       )
         return null;
       const intentId = `intent:${index}`;
-      const selectedTarget = item.operation === "read_selected" ? selectedCalendarTarget(ctx.message) : undefined;
+      const selectedTarget =
+        item.operation === "read_selected"
+          ? selectedCalendarTarget(ctx.message)
+          : undefined;
       if (item.operation === "read_selected" && !selectedTarget) return null;
-      if (item.purpose !== undefined && item.purpose !== "requested_read" && item.purpose !== "mutation_prerequisite") return null;
-      if (item.purpose === "mutation_prerequisite" && item.operation !== "search_events" && item.operation !== "feed") return null;
-      const filterEvidence = item.operation === "search_events"
-        ? bindFilterEvidence(item.filterEvidence, ctx.message, String(ctx.runtime.agentId), getRecentMessagesData(ctx.state))
-        : undefined;
-      const fallbackFeed = item.purpose === "mutation_prerequisite" && item.operation === "search_events" &&
-        !filterEvidence && hasCalendarSearchFilterShape(item.filterEvidence);
+      if (
+        item.purpose !== undefined &&
+        item.purpose !== "requested_read" &&
+        item.purpose !== "mutation_prerequisite"
+      )
+        return null;
+      if (
+        item.purpose === "mutation_prerequisite" &&
+        item.operation !== "search_events" &&
+        item.operation !== "feed"
+      )
+        return null;
+      const filterEvidence =
+        item.operation === "search_events"
+          ? bindFilterEvidence(
+              item.filterEvidence,
+              ctx.message,
+              String(ctx.runtime.agentId),
+              getRecentMessagesData(ctx.state),
+            )
+          : undefined;
+      const fallbackFeed =
+        item.purpose === "mutation_prerequisite" &&
+        item.operation === "search_events" &&
+        !filterEvidence &&
+        hasCalendarSearchFilterShape(item.filterEvidence);
       const key = `${intentId}:${fallbackFeed ? "feed" : item.operation}:${item.purpose ?? "requested_read"}`;
       if (seen.has(key)) return null;
       seen.add(key);
@@ -110,17 +152,31 @@ export const calendarReadBindingField: ResponseHandlerFieldEvaluator<
       // mutation intent, normal planning may instead obtain a bounded agenda
       // and match fresh canonical records; it is never a completed read intent.
       if (fallbackFeed) {
-        reads.push({ intentId, operation: "feed", execution: item.execution,
-          purpose: "mutation_prerequisite", filterEvidence: [] });
+        reads.push({
+          intentId,
+          operation: "feed",
+          execution: item.execution,
+          purpose: "mutation_prerequisite",
+          filterEvidence: [],
+        });
         continue;
       }
-      if (item.operation !== "search_events" && item.filterEvidence !== undefined &&
-          (!Array.isArray(item.filterEvidence) || item.filterEvidence.length > 0)) return null;
-      reads.push({ ...(item as RequestedRead), intentId,
+      if (
+        item.operation !== "search_events" &&
+        item.filterEvidence !== undefined &&
+        (!Array.isArray(item.filterEvidence) || item.filterEvidence.length > 0)
+      )
+        return null;
+      reads.push({
+        ...(item as RequestedRead),
+        intentId,
         ...(selectedTarget ? { selectedTarget } : {}),
         ...(item.operation === "search_events"
-          ? filterEvidence ? { filterEvidence } : { filterEvidence: [], invalidFilterEvidence: true as const }
-          : {}) });
+          ? filterEvidence
+            ? { filterEvidence }
+            : { filterEvidence: [], invalidFilterEvidence: true as const }
+          : {}),
+      });
     }
     return reads;
   },
@@ -141,37 +197,57 @@ export const calendarReadBindingField: ResponseHandlerFieldEvaluator<
     // read that names no current intent leaves the reply unverified. An empty
     // reply sends RESPOND to normal planning and keeps the draft out of the
     // planner's answer rescue.
-    const rejectedFilter = value.some(binding => binding.invalidFilterEvidence);
-    const accepted = valid && senderRole === "OWNER" ? value.filter(binding => !binding.invalidFilterEvidence) : [];
-    const withheld = rejectedFilter ||
-      (!valid && value.some((binding) => binding.execution === "required")) ||
-      accepted.some(binding => binding.purpose === "mutation_prerequisite");
-    const owned = getStreamingContext();
-    if (owned) rememberCalendarReadBindings(
-      (owned.actionConstraints ??= new Map()), message, String(runtime.agentId), accepted, owned.abortSignal ?? turnSignal,
+    const rejectedFilter = value.some(
+      (binding) => binding.invalidFilterEvidence,
     );
+    const accepted =
+      valid && senderRole === "OWNER"
+        ? value.filter((binding) => !binding.invalidFilterEvidence)
+        : [];
+    const withheld =
+      rejectedFilter ||
+      (!valid && value.some((binding) => binding.execution === "required")) ||
+      accepted.some((binding) => binding.purpose === "mutation_prerequisite");
+    const owned = getStreamingContext();
+    if (owned)
+      rememberCalendarReadBindings(
+        (owned.actionConstraints ??= new Map()),
+        message,
+        String(runtime.agentId),
+        accepted,
+        owned.abortSignal ?? turnSignal,
+      );
     return {
       mutateResult(result) {
         if (valid && intents !== declared) result.intents = intents;
         result.calendarReadBindings = valid
-          ? accepted.filter(binding => binding.purpose !== "mutation_prerequisite").map((binding) => {
-              const { purpose: _purpose, invalidFilterEvidence: _invalid, filterEvidence, ...read } = binding;
-              return {
-                ...read,
-                ...(filterEvidence?.length ? { filterEvidence } : {}),
-                sourceMessageId: String(message.id),
-                roomId: message.roomId,
-                actorId: message.entityId,
-                requestedAt: Number(message.createdAt),
-              };
-            })
+          ? accepted
+              .filter((binding) => binding.purpose !== "mutation_prerequisite")
+              .map((binding) => {
+                const {
+                  purpose: _purpose,
+                  invalidFilterEvidence: _invalid,
+                  filterEvidence,
+                  ...read
+                } = binding;
+                return {
+                  ...read,
+                  ...(filterEvidence?.length ? { filterEvidence } : {}),
+                  sourceMessageId: String(message.id),
+                  roomId: message.roomId,
+                  actorId: message.entityId,
+                  requestedAt: Number(message.createdAt),
+                };
+              })
           : [];
         if (withheld) result.replyText = "";
       },
       ...(!valid || rejectedFilter
         ? {
             debug: [
-              rejectedFilter ? "Rejected unverified Calendar search filter; preserve the literal request for normal planning" : "Calendar read binding did not name a current intent",
+              rejectedFilter
+                ? "Rejected unverified Calendar search filter; preserve the literal request for normal planning"
+                : "Calendar read binding did not name a current intent",
               ...(withheld
                 ? ["Withheld the reply of an unbound required Calendar read"]
                 : []),
@@ -190,9 +266,14 @@ export const calendarReadBindingEvaluator: ResponseHandlerEvaluator = {
     ((Array.isArray(messageHandler.plan.calendarReadBindings) &&
       messageHandler.plan.calendarReadBindings.length > 0) ||
       (userRoles?.includes("OWNER") === true &&
-        calendarMutationPrerequisites(getStreamingContext()?.actionConstraints, message, String(runtime.agentId)).length > 0)),
+        calendarMutationPrerequisites(
+          getStreamingContext()?.actionConstraints,
+          message,
+          String(runtime.agentId),
+        ).length > 0)),
   evaluate({ runtime, message, messageHandler, userRoles }) {
-    const bindings = (messageHandler.plan.calendarReadBindings ?? []) as CalendarReadBinding[];
+    const bindings = (messageHandler.plan.calendarReadBindings ??
+      []) as CalendarReadBinding[];
     if (
       !userRoles?.includes("OWNER") ||
       bindings.some(
@@ -205,7 +286,9 @@ export const calendarReadBindingEvaluator: ResponseHandlerEvaluator = {
     )
       return;
     const prerequisites = calendarMutationPrerequisites(
-      getStreamingContext()?.actionConstraints, message, String(runtime.agentId),
+      getStreamingContext()?.actionConstraints,
+      message,
+      String(runtime.agentId),
     );
     if (!bindings.length && !prerequisites.length) return;
     const otherCandidates = (messageHandler.plan.candidateActions ?? []).filter(
@@ -228,21 +311,36 @@ export const calendarReadBindingEvaluator: ResponseHandlerEvaluator = {
               ...bindings.map(
                 (binding) => CALENDAR_READ_ACTIONS[binding.operation],
               ),
-              ...prerequisites.map(binding => CALENDAR_READ_ACTIONS[binding.operation]),
+              ...prerequisites.map(
+                (binding) => CALENDAR_READ_ACTIONS[binding.operation],
+              ),
             ],
           }
         : prerequisites.length
-          ? { clearCandidateActions: true, addCandidateActions: [
-              ...otherCandidates,
-              ...bindings.map(binding => CALENDAR_READ_ACTIONS[binding.operation]),
-              ...prerequisites.map(binding => CALENDAR_READ_ACTIONS[binding.operation]),
-            ] }
+          ? {
+              clearCandidateActions: true,
+              addCandidateActions: [
+                ...otherCandidates,
+                ...bindings.map(
+                  (binding) => CALENDAR_READ_ACTIONS[binding.operation],
+                ),
+                ...prerequisites.map(
+                  (binding) => CALENDAR_READ_ACTIONS[binding.operation],
+                ),
+              ],
+            }
           : {}),
       addContextSlices: [
-        ...(prerequisites.length ? [
-          `Current-request Calendar mutation lookup prerequisites: ${JSON.stringify(prerequisites)}. These are preparation for the existing mutation intent, not requested read outcomes or current event truth. Use the bound bounded feed when no verified content-search filter exists; do not convert a remembered event title into an authorized search. Read fresh canonical records, match all owner/source/date/time/duration constraints, and use the exact read event ID before changing anything. A read alone does not complete the mutation. Keep every pending intent and every unrequested event field; ambiguous matches require clarification and no mutation.`,
-        ] : []),
-        ...(bindings.length ? [`Current-request Calendar read bindings: ${JSON.stringify(bindings)}. These select read operations, not permissions or receipts. A bounded agenda cannot satisfy next_event, an interval availability check, or a concrete slot proposal. For propose_times, preserve the requested duration and window and return actual exact-duration options; broad free windows are not concrete proposed slots. Preserve every requested constraint and other intent; if the matching operation is unavailable, report the bounded/partial result honestly.`] : []),
+        ...(prerequisites.length
+          ? [
+              `Current-request Calendar mutation lookup prerequisites: ${JSON.stringify(prerequisites)}. These are preparation for the existing mutation intent, not requested read outcomes or current event truth. Use the bound bounded feed when no verified content-search filter exists; do not convert a remembered event title into an authorized search. Read fresh canonical records, match all owner/source/date/time/duration constraints, and use the exact read event ID before changing anything. A read alone does not complete the mutation. Keep every pending intent and every unrequested event field; ambiguous matches require clarification and no mutation.`,
+            ]
+          : []),
+        ...(bindings.length
+          ? [
+              `Current-request Calendar read bindings: ${JSON.stringify(bindings)}. These select read operations, not permissions or receipts. A bounded agenda cannot satisfy next_event, an interval availability check, or a concrete slot proposal. For propose_times, preserve the requested duration and window and return actual exact-duration options; broad free windows are not concrete proposed slots. Preserve every requested constraint and other intent; if the matching operation is unavailable, report the bounded/partial result honestly.`,
+            ]
+          : []),
       ],
     };
   },

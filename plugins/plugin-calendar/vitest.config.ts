@@ -68,7 +68,12 @@ export default defineConfig({
   // Bare/external module resolution has its own condition list; preserve both defaults.
   ssr: {
     resolve: {
-      conditions: ["eliza-source", ...defaultServerConditions.filter((condition) => condition !== "module")],
+      conditions: [
+        "eliza-source",
+        ...defaultServerConditions.filter(
+          (condition) => condition !== "module",
+        ),
+      ],
       externalConditions: ["eliza-source", ...defaultExternalConditions],
     },
   },

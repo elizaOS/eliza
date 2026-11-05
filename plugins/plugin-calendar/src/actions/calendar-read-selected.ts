@@ -1,19 +1,19 @@
 import { createHash } from "node:crypto";
 import {
-  readClientTurnObservation,
   type CalendarReadBinding,
+  readClientTurnObservation,
 } from "@elizaos/contracts";
 import {
   type Action,
-  type Memory,
   ElizaError,
   getStreamingContext,
   hasOwnerAccess,
+  type Memory,
   normalizeEffectReceipt,
   OWNER_EXCLUSIVE_DISCLOSURE_GATE,
 } from "@elizaos/core";
-import { CalendarService } from "../service/CalendarService.js";
 import { INTERNAL_URL } from "../internal/detail.js";
+import { CalendarService } from "../service/CalendarService.js";
 
 const hash = (value: string) =>
   createHash("sha256").update(value).digest("hex");
@@ -138,8 +138,8 @@ export const calendarReadSelectedAction: Action = {
         ) === target.sourceRevision,
     );
     const events = feed.events.filter((event) => event.id === target.id);
-    if (sources.length !== 1 || events.length !== 1) unavailable();
-    const event = events[0]!;
+    const [event] = events;
+    if (sources.length !== 1 || events.length !== 1 || !event) unavailable();
     if (
       event.agentId !== agentId ||
       event.grantId !== target.accountId ||

@@ -4,14 +4,16 @@ import type { CalendarReadBinding } from "@elizaos/contracts";
 import {
   AgentRuntime,
   getStreamingContext,
-  runWithStreamingContext,
   type Memory,
   type MessageHandlerResult,
   promoteSubactionsToActions,
   runResponseHandlerEvaluators,
+  runWithStreamingContext,
   stringToUuid,
 } from "@elizaos/core";
 import { describe, expect, it } from "vitest";
+import { BUILTIN_RESPONSE_HANDLER_FIELD_EVALUATORS } from "../../plugin-assistant/src/runtime/builtin-field-evaluators.js";
+import { messageHandlerFromFieldResult } from "../../plugin-assistant/src/services/message/stage1-output.js";
 import {
   calendarActionPromotionOptions,
   calendarAction as ownerCalendarAction,
@@ -21,15 +23,11 @@ import {
   calendarReadBindingEvaluator,
   calendarReadBindingField,
 } from "./read-binding.js";
-
 import {
   bindFilterEvidence,
   calendarMutationPrerequisites,
   calendarSearchFiltersAreBound,
 } from "./search-filter-evidence.js";
-
-import { BUILTIN_RESPONSE_HANDLER_FIELD_EVALUATORS } from "../../plugin-assistant/src/runtime/builtin-field-evaluators.js";
-import { messageHandlerFromFieldResult } from "../../plugin-assistant/src/services/message/stage1-output.js";
 
 describe("Calendar operation bindings", () => {
   it("offers provider-compatible intent strings without weakening host parsing", () => {
@@ -38,7 +36,13 @@ describe("Calendar operation bindings", () => {
       throw new Error("Expected binding object schema");
     expect(item.properties?.intentId).toEqual({ type: "string" });
     expect(item.additionalProperties).toBe(false);
-    expect(item.required).toEqual(["intentId", "operation", "execution", "purpose", "filterEvidence"]);
+    expect(item.required).toEqual([
+      "intentId",
+      "operation",
+      "execution",
+      "purpose",
+      "filterEvidence",
+    ]);
     const context = {} as Parameters<
       NonNullable<typeof calendarReadBindingField.parse>
     >[1];
@@ -435,7 +439,24 @@ describe("Calendar operation bindings", () => {
         turnSignal: new AbortController().signal,
       };
       const value = calendarReadBindingField.parse?.(
-        [{ intentId: "intent:1", operation, execution: "required", ...(operation === "search_events" ? {filterEvidence:[{query:"Meet with Shaw",quote:"Meet with Shaw",origin:"current"}]} : {}) }],
+        [
+          {
+            intentId: "intent:1",
+            operation,
+            execution: "required",
+            ...(operation === "search_events"
+              ? {
+                  filterEvidence: [
+                    {
+                      query: "Meet with Shaw",
+                      quote: "Meet with Shaw",
+                      origin: "current",
+                    },
+                  ],
+                }
+              : {}),
+          },
+        ],
         context,
       );
       if (!value) throw new Error("Binding rejected");
@@ -452,7 +473,21 @@ describe("Calendar operation bindings", () => {
           intentId: "intent:1",
           operation,
           execution: "required",
-          ...(operation === "search_events" ? {filterEvidence:[{query:"Meet with Shaw",quote:"Meet with Shaw",origin:"current",sourceMessageId:message.id,sourceActorId:message.entityId,sourceRoomId:message.roomId,sourceCreatedAt:1000}]} : {}),
+          ...(operation === "search_events"
+            ? {
+                filterEvidence: [
+                  {
+                    query: "Meet with Shaw",
+                    quote: "Meet with Shaw",
+                    origin: "current",
+                    sourceMessageId: message.id,
+                    sourceActorId: message.entityId,
+                    sourceRoomId: message.roomId,
+                    sourceCreatedAt: 1000,
+                  },
+                ],
+              }
+            : {}),
           sourceMessageId: message.id,
           roomId: message.roomId,
           actorId: message.entityId,
@@ -565,85 +600,212 @@ describe("Calendar operation bindings", () => {
   });
 });
 
-
 it("binds a literal quoted event title inside the verified current quotation", () => {
-  const current = {id:"request",agentId:"agent",roomId:"room",entityId:"owner",createdAt:1000,
-    content:{text:'Read the Calendar event "Alpha demo verified" on November 2, 2026.'}};
+  const current = {
+    id: "request",
+    agentId: "agent",
+    roomId: "room",
+    entityId: "owner",
+    createdAt: 1000,
+    content: {
+      text: 'Read the Calendar event "Alpha demo verified" on November 2, 2026.',
+    },
+  };
   const quote = 'the Calendar event "Alpha demo verified" on November 2, 2026';
-  const bind = (query:string) => bindFilterEvidence([{query,quote,origin:"current"}],current,"agent",[]);
-  expect(bind("Alpha demo verified")).toEqual([expect.objectContaining({
-    query:"Alpha demo verified",quote:"Alpha demo verified",sourceMessageId:"request",sourceActorId:"owner",sourceRoomId:"room",sourceCreatedAt:1000,
-  })]);
+  const bind = (query: string) =>
+    bindFilterEvidence(
+      [{ query, quote, origin: "current" }],
+      current,
+      "agent",
+      [],
+    );
+  expect(bind("Alpha demo verified")).toEqual([
+    expect.objectContaining({
+      query: "Alpha demo verified",
+      quote: "Alpha demo verified",
+      sourceMessageId: "request",
+      sourceActorId: "owner",
+      sourceRoomId: "room",
+      sourceCreatedAt: 1000,
+    }),
+  ]);
   expect(bind("Alpha demo")).toBeNull();
   expect(bind("dentist")).toBeNull();
-  expect(bindFilterEvidence([{query:"Alpha demo verified",quote,origin:"referent"}],current,"agent",[])).toBeNull();
+  expect(
+    bindFilterEvidence(
+      [{ query: "Alpha demo verified", quote, origin: "referent" }],
+      current,
+      "agent",
+      [],
+    ),
+  ).toBeNull();
 });
 
 /** Existing field + real evaluator/streaming carriers; no model, Calendar I/O or mutation. */
 describe("Calendar mutation lookup prerequisites", () => {
   const oldTitle = "Alpha QA 2026-11-02 1139Z";
-  const originalText = "Open calendar and rename my 5 minute test event at 3 PM today to Alpha demo verified, leaving everything else unchanged.";
+  const originalText =
+    "Open calendar and rename my 5 minute test event at 3 PM today to Alpha demo verified, leaving everything else unchanged.";
   function fixture(text = originalText) {
-    const runtime = new AgentRuntime({ character: { name: "Calendar prerequisite", bio: [] }, logLevel: "fatal" });
-    for (const action of calendarPlugin.actions ?? []) runtime.registerAction(action);
-    for (const field of BUILTIN_RESPONSE_HANDLER_FIELD_EVALUATORS) runtime.responseHandlerFieldRegistry.register(field);
+    const runtime = new AgentRuntime({
+      character: { name: "Calendar prerequisite", bio: [] },
+      logLevel: "fatal",
+    });
+    for (const action of calendarPlugin.actions ?? [])
+      runtime.registerAction(action);
+    for (const field of BUILTIN_RESPONSE_HANDLER_FIELD_EVALUATORS)
+      runtime.responseHandlerFieldRegistry.register(field);
     runtime.responseHandlerFieldRegistry.register(calendarReadBindingField);
     const message: Memory = {
-      id: stringToUuid("mutation-current"), agentId: runtime.agentId,
-      entityId: stringToUuid("mutation-owner"), roomId: stringToUuid("mutation-room"),
-      createdAt: 1000, content: { text },
+      id: stringToUuid("mutation-current"),
+      agentId: runtime.agentId,
+      entityId: stringToUuid("mutation-owner"),
+      roomId: stringToUuid("mutation-room"),
+      createdAt: 1000,
+      content: { text },
     };
     const state = { values: {}, data: {}, text: "" };
     const abort = new AbortController();
     const streaming = { messageId: message.id, abortSignal: abort.signal };
-    const context = { runtime, message, state, senderRole: "OWNER" as const, turnSignal: abort.signal };
-    const intents = ["Open the Calendar view", "Rename the current five-minute 3 PM event without other changes"];
+    const context = {
+      runtime,
+      message,
+      state,
+      senderRole: "OWNER" as const,
+      turnSignal: abort.signal,
+    };
+    const intents = [
+      "Open the Calendar view",
+      "Rename the current five-minute 3 PM event without other changes",
+    ];
     async function bind(raw: unknown, role: "OWNER" | "USER" = "OWNER") {
       return runWithStreamingContext(streaming, async () => {
         // Replay through the real registered field dispatch and normal plan conversion.
         // These are adverse old retrieval hints, not a fixture-injected FEED tool.
         const fieldRun = await runtime.responseHandlerFieldRegistry.dispatch({
-          ...context, senderRole: role, rawParsed: {
-            shouldRespond: "RESPOND", contexts: ["simple", "general", "calendar"],
-            intents: [...intents], replyText: "On it, opening Calendar and renaming it now.",
-            replyEffectStatus: "pending", candidateActionNames: ["VIEWS_SHOW", "CALENDAR_SEARCH_EVENTS", "CALENDAR_UPDATE_EVENT"],
+          ...context,
+          senderRole: role,
+          rawParsed: {
+            shouldRespond: "RESPOND",
+            contexts: ["simple", "general", "calendar"],
+            intents: [...intents],
+            replyText: "On it, opening Calendar and renaming it now.",
+            replyEffectStatus: "pending",
+            candidateActionNames: [
+              "VIEWS_SHOW",
+              "CALENDAR_SEARCH_EVENTS",
+              "CALENDAR_UPDATE_EVENT",
+            ],
             calendarReadBindings: raw,
           },
         });
         const parsed = fieldRun.parsed;
         const handler = messageHandlerFromFieldResult(parsed, fieldRun, {
-          actions: runtime.actions, messageText: message.content.text,
+          actions: runtime.actions,
+          messageText: message.content.text,
         });
         const beforeRequiresTool = handler.plan.requiresTool;
-        await runResponseHandlerEvaluators({ runtime, message, state, messageHandler: handler,
-          availableContexts: [], userRoles: [role], evaluators: [calendarReadBindingEvaluator] });
-        return { parsed, handler, beforeRequiresTool, fieldRun, carrier: getStreamingContext()?.actionConstraints };
+        await runResponseHandlerEvaluators({
+          runtime,
+          message,
+          state,
+          messageHandler: handler,
+          availableContexts: [],
+          userRoles: [role],
+          evaluators: [calendarReadBindingEvaluator],
+        });
+        return {
+          parsed,
+          handler,
+          beforeRequiresTool,
+          fieldRun,
+          carrier: getStreamingContext()?.actionConstraints,
+        };
       });
     }
-    return { runtime, message, state, abort, streaming, context, intents, bind };
+    return {
+      runtime,
+      message,
+      state,
+      abort,
+      streaming,
+      context,
+      intents,
+      bind,
+    };
   }
-  const feed = { intentId: "intent:2", operation: "feed", execution: "required", purpose: "mutation_prerequisite", filterEvidence: [] };
-  const malformedLiveSearch = { intentId: "intent:2", operation: "search_events", execution: "required", purpose: "mutation_prerequisite", filterEvidence: [
-    { query: "5 minute test event at 3 PM", quote: "5 minute test event at 3 PM today", origin: "current" },
-  ] };
+  const feed = {
+    intentId: "intent:2",
+    operation: "feed",
+    execution: "required",
+    purpose: "mutation_prerequisite",
+    filterEvidence: [],
+  };
+  const malformedLiveSearch = {
+    intentId: "intent:2",
+    operation: "search_events",
+    execution: "required",
+    purpose: "mutation_prerequisite",
+    filterEvidence: [
+      {
+        query: "5 minute test event at 3 PM",
+        quote: "5 minute test event at 3 PM today",
+        origin: "current",
+      },
+    ],
+  };
   const normalize = (text: string) => text.trim().toLowerCase() || undefined;
 
   it("routes the actual unequal query/quote mutation proposal to bounded feed without search authority", async () => {
     const f = fixture();
-    const { parsed, handler, carrier, beforeRequiresTool, fieldRun } = await f.bind([malformedLiveSearch]);
+    const { parsed, handler, carrier, beforeRequiresTool, fieldRun } =
+      await f.bind([malformedLiveSearch]);
     expect(parsed.replyText).toBe("");
     expect(parsed.calendarReadBindings).toEqual([]);
     expect(handler.plan.intents).toEqual(f.intents);
     expect(handler.plan.requiresTool).toBe(beforeRequiresTool);
     expect(fieldRun.parsed.calendarReadBindings).toEqual([]);
-    expect(f.runtime.actions.some(action => action.name === "CALENDAR_FEED")).toBe(true);
-    expect(handler.plan.candidateActions).toEqual(["VIEWS_SHOW", "CALENDAR_UPDATE_EVENT", "CALENDAR_FEED"]);
-    expect(calendarMutationPrerequisites(carrier, f.message, String(f.runtime.agentId)))
-      .toEqual([{ intentId: "intent:2", operation: "feed", execution: "required" }]);
-    expect(calendarSearchFiltersAreBound(carrier, f.message, String(f.runtime.agentId), [oldTitle], normalize)).toBe(false);
-    expect(calendarSearchFiltersAreBound(carrier, f.message, String(f.runtime.agentId), ["5 minute test event at 3 PM"], normalize)).toBe(false);
-    expect(JSON.stringify(handler.plan)).toContain("A read alone does not complete the mutation");
-    expect(JSON.stringify(handler.plan)).toContain("ambiguous matches require clarification");
+    expect(
+      f.runtime.actions.some((action) => action.name === "CALENDAR_FEED"),
+    ).toBe(true);
+    expect(handler.plan.candidateActions).toEqual([
+      "VIEWS_SHOW",
+      "CALENDAR_UPDATE_EVENT",
+      "CALENDAR_FEED",
+    ]);
+    expect(
+      calendarMutationPrerequisites(
+        carrier,
+        f.message,
+        String(f.runtime.agentId),
+      ),
+    ).toEqual([
+      { intentId: "intent:2", operation: "feed", execution: "required" },
+    ]);
+    expect(
+      calendarSearchFiltersAreBound(
+        carrier,
+        f.message,
+        String(f.runtime.agentId),
+        [oldTitle],
+        normalize,
+      ),
+    ).toBe(false);
+    expect(
+      calendarSearchFiltersAreBound(
+        carrier,
+        f.message,
+        String(f.runtime.agentId),
+        ["5 minute test event at 3 PM"],
+        normalize,
+      ),
+    ).toBe(false);
+    expect(JSON.stringify(handler.plan)).toContain(
+      "A read alone does not complete the mutation",
+    );
+    expect(JSON.stringify(handler.plan)).toContain(
+      "ambiguous matches require clarification",
+    );
   });
 
   it("accepts an explicit unfiltered mutation prerequisite without inventing a requested read", async () => {
@@ -651,57 +813,134 @@ describe("Calendar mutation lookup prerequisites", () => {
     const { parsed, handler, beforeRequiresTool } = await f.bind([feed]);
     expect(parsed.calendarReadBindings).toEqual([]);
     expect(handler.plan.intents).toEqual(f.intents);
-    expect(handler.plan.candidateActions).toEqual(["VIEWS_SHOW", "CALENDAR_UPDATE_EVENT", "CALENDAR_FEED"]);
+    expect(handler.plan.candidateActions).toEqual([
+      "VIEWS_SHOW",
+      "CALENDAR_UPDATE_EVENT",
+      "CALENDAR_FEED",
+    ]);
     expect(handler.plan.requiresTool).toBe(beforeRequiresTool);
   });
 
   it("preserves an actually verified literal search prerequisite and rejects a different query", async () => {
     const f = fixture(`Rename the event ${oldTitle} to Alpha demo verified.`);
-    const { carrier, handler } = await f.bind([{ ...malformedLiveSearch, filterEvidence: [
-      { query: oldTitle, quote: oldTitle, origin: "current" },
-    ] }]);
+    const { carrier, handler } = await f.bind([
+      {
+        ...malformedLiveSearch,
+        filterEvidence: [
+          { query: oldTitle, quote: oldTitle, origin: "current" },
+        ],
+      },
+    ]);
     expect(handler.plan.candidateActions).toContain("CALENDAR_SEARCH_EVENTS");
-    expect(calendarSearchFiltersAreBound(carrier, f.message, String(f.runtime.agentId), [oldTitle], normalize)).toBe(true);
-    expect(calendarSearchFiltersAreBound(carrier, f.message, String(f.runtime.agentId), ["different event"], normalize)).toBe(false);
+    expect(
+      calendarSearchFiltersAreBound(
+        carrier,
+        f.message,
+        String(f.runtime.agentId),
+        [oldTitle],
+        normalize,
+      ),
+    ).toBe(true);
+    expect(
+      calendarSearchFiltersAreBound(
+        carrier,
+        f.message,
+        String(f.runtime.agentId),
+        ["different event"],
+        normalize,
+      ),
+    ).toBe(false);
   });
 
   it("does not turn an invalid requested content search into a feed or prerequisite", async () => {
     const f = fixture();
-    const { parsed, carrier, handler } = await f.bind([{ ...malformedLiveSearch, purpose: "requested_read" }]);
+    const { parsed, carrier, handler } = await f.bind([
+      { ...malformedLiveSearch, purpose: "requested_read" },
+    ]);
     expect(parsed.replyText).toBe("");
     expect(parsed.calendarReadBindings).toEqual([]);
-    expect(calendarMutationPrerequisites(carrier, f.message, String(f.runtime.agentId))).toEqual([]);
+    expect(
+      calendarMutationPrerequisites(
+        carrier,
+        f.message,
+        String(f.runtime.agentId),
+      ),
+    ).toEqual([]);
     expect(handler.plan.candidateActions).not.toContain("CALENDAR_FEED");
-    expect(calendarSearchFiltersAreBound(carrier, f.message, String(f.runtime.agentId), [oldTitle], normalize)).toBe(false);
+    expect(
+      calendarSearchFiltersAreBound(
+        carrier,
+        f.message,
+        String(f.runtime.agentId),
+        [oldTitle],
+        normalize,
+      ),
+    ).toBe(false);
   });
 
-  it.each([
-    undefined, null, "not an array", [],
-    [{ query: "x", quote: "x", origin: "current", actorId: "forged" }],
-    [{ query: "x", quote: "x", origin: "other" }],
-    [{ query: "x", quote: "", origin: "current" }],
-    [{ query: "x".repeat(161), quote: "x", origin: "current" }],
-    Array.from({ length: 9 }, () => ({ query: "x", quote: "x", origin: "current" })),
-  ].map((filterEvidence) => ({ filterEvidence })))("does not downgrade malformed prerequisite filter shape %#", async ({ filterEvidence }) => {
-    const f = fixture();
-    const { parsed, carrier, handler } = await f.bind([{ ...malformedLiveSearch, filterEvidence }]);
-    expect(parsed.calendarReadBindings).toEqual([]);
-    expect(calendarMutationPrerequisites(carrier, f.message, String(f.runtime.agentId))).toEqual([]);
-    expect(handler.plan.candidateActions).not.toContain("CALENDAR_FEED");
-    expect(calendarSearchFiltersAreBound(carrier, f.message, String(f.runtime.agentId), [oldTitle], normalize)).toBe(false);
-  });
+  it.each(
+    [
+      undefined,
+      null,
+      "not an array",
+      [],
+      [{ query: "x", quote: "x", origin: "current", actorId: "forged" }],
+      [{ query: "x", quote: "x", origin: "other" }],
+      [{ query: "x", quote: "", origin: "current" }],
+      [{ query: "x".repeat(161), quote: "x", origin: "current" }],
+      Array.from({ length: 9 }, () => ({
+        query: "x",
+        quote: "x",
+        origin: "current",
+      })),
+    ].map((filterEvidence) => ({ filterEvidence })),
+  )(
+    "does not downgrade malformed prerequisite filter shape %#",
+    async ({ filterEvidence }) => {
+      const f = fixture();
+      const { parsed, carrier, handler } = await f.bind([
+        { ...malformedLiveSearch, filterEvidence },
+      ]);
+      expect(parsed.calendarReadBindings).toEqual([]);
+      expect(
+        calendarMutationPrerequisites(
+          carrier,
+          f.message,
+          String(f.runtime.agentId),
+        ),
+      ).toEqual([]);
+      expect(handler.plan.candidateActions).not.toContain("CALENDAR_FEED");
+      expect(
+        calendarSearchFiltersAreBound(
+          carrier,
+          f.message,
+          String(f.runtime.agentId),
+          [oldTitle],
+          normalize,
+        ),
+      ).toBe(false);
+    },
+  );
 
-  it.each([false, true])("rejects a duplicate prerequisite after search-to-feed normalization (reverse=%s)", (reverse) => {
-    const f = fixture();
-    const rows = [feed, malformedLiveSearch];
-    if (reverse) rows.reverse();
-    expect(calendarReadBindingField.parse?.(rows, f.context)).toBeNull();
-  });
+  it.each([false, true])(
+    "rejects a duplicate prerequisite after search-to-feed normalization (reverse=%s)",
+    (reverse) => {
+      const f = fixture();
+      const rows = [feed, malformedLiveSearch];
+      if (reverse) rows.reverse();
+      expect(calendarReadBindingField.parse?.(rows, f.context)).toBeNull();
+    },
+  );
 
-  it.each(["next_event", "propose_times", "check_availability"])("does not expand prerequisite operations to %s", (operation) => {
-    const f = fixture();
-    expect(calendarReadBindingField.parse?.([{ ...feed, operation }], f.context)).toBeNull();
-  });
+  it.each(["next_event", "propose_times", "check_availability"])(
+    "does not expand prerequisite operations to %s",
+    (operation) => {
+      const f = fixture();
+      expect(
+        calendarReadBindingField.parse?.([{ ...feed, operation }], f.context),
+      ).toBeNull();
+    },
+  );
 
   it("keeps exact carrier identity through a normal same-turn nested context", async () => {
     const f = fixture();
@@ -709,15 +948,27 @@ describe("Calendar mutation lookup prerequisites", () => {
       const { carrier } = await f.bind([feed]);
       await runWithStreamingContext({ messageId: f.message.id }, async () => {
         expect(getStreamingContext()?.actionConstraints).toBe(carrier);
-        expect(calendarMutationPrerequisites(getStreamingContext()?.actionConstraints, f.message, String(f.runtime.agentId)))
-          .toHaveLength(1);
+        expect(
+          calendarMutationPrerequisites(
+            getStreamingContext()?.actionConstraints,
+            f.message,
+            String(f.runtime.agentId),
+          ),
+        ).toHaveLength(1);
       });
-      expect(calendarMutationPrerequisites(new Map(), f.message, String(f.runtime.agentId))).toEqual([]);
+      expect(
+        calendarMutationPrerequisites(
+          new Map(),
+          f.message,
+          String(f.runtime.agentId),
+        ),
+      ).toEqual([]);
     });
   });
 
   it.each(["id", "room", "actor", "time", "body", "agent", "abort"])(
-    "does not expose prerequisite guidance after current-request %s changes", async (fault) => {
+    "does not expose prerequisite guidance after current-request %s changes",
+    async (fault) => {
       const f = fixture();
       const { carrier } = await f.bind([feed]);
       const current = { ...f.message, content: { ...f.message.content } };
@@ -728,41 +979,95 @@ describe("Calendar mutation lookup prerequisites", () => {
       if (fault === "body") current.content.text = "different request";
       if (fault === "agent") current.agentId = stringToUuid("different-agent");
       if (fault === "abort") f.abort.abort();
-      expect(calendarMutationPrerequisites(carrier, current, String(f.runtime.agentId))).toEqual([]);
-      expect(calendarSearchFiltersAreBound(carrier, current, String(f.runtime.agentId), [oldTitle], normalize)).toBe(false);
+      expect(
+        calendarMutationPrerequisites(
+          carrier,
+          current,
+          String(f.runtime.agentId),
+        ),
+      ).toEqual([]);
+      expect(
+        calendarSearchFiltersAreBound(
+          carrier,
+          current,
+          String(f.runtime.agentId),
+          [oldTitle],
+          normalize,
+        ),
+      ).toBe(false);
     },
   );
 
   it("does not create prerequisite custody for a non-owner", async () => {
     const f = fixture();
     const { carrier, handler } = await f.bind([feed], "USER");
-    expect(calendarMutationPrerequisites(carrier, f.message, String(f.runtime.agentId))).toEqual([]);
+    expect(
+      calendarMutationPrerequisites(
+        carrier,
+        f.message,
+        String(f.runtime.agentId),
+      ),
+    ).toEqual([]);
     expect(handler.plan.candidateActions).not.toContain("CALENDAR_FEED");
   });
 
-  it.each(["future", "room", "actor", "agent"])("rejects %s history as literal search evidence", (fault) => {
-    const f = fixture();
-    const source: Memory = { ...f.message, id: stringToUuid("prior-source"), createdAt: 900,
-      entityId: f.runtime.agentId, content: { text: `Today: ${oldTitle}, 3:00 to 3:05 pm.` } };
-    if (fault === "future") source.createdAt = 1001;
-    if (fault === "room") source.roomId = stringToUuid("foreign-room");
-    if (fault === "actor") source.entityId = stringToUuid("foreign-speaker");
-    if (fault === "agent") source.agentId = stringToUuid("foreign-agent");
-    expect(bindFilterEvidence([{ query: oldTitle, quote: oldTitle, origin: "referent" }],
-      f.message, String(f.runtime.agentId), [source])).toBeNull();
-  });
+  it.each(["future", "room", "actor", "agent"])(
+    "rejects %s history as literal search evidence",
+    (fault) => {
+      const f = fixture();
+      const source: Memory = {
+        ...f.message,
+        id: stringToUuid("prior-source"),
+        createdAt: 900,
+        entityId: f.runtime.agentId,
+        content: { text: `Today: ${oldTitle}, 3:00 to 3:05 pm.` },
+      };
+      if (fault === "future") source.createdAt = 1001;
+      if (fault === "room") source.roomId = stringToUuid("foreign-room");
+      if (fault === "actor") source.entityId = stringToUuid("foreign-speaker");
+      if (fault === "agent") source.agentId = stringToUuid("foreign-agent");
+      expect(
+        bindFilterEvidence(
+          [{ query: oldTitle, quote: oldTitle, origin: "referent" }],
+          f.message,
+          String(f.runtime.agentId),
+          [source],
+        ),
+      ).toBeNull();
+    },
+  );
 
   it("ignores model-plan prerequisite metadata without opaque host custody", async () => {
     const f = fixture();
     await runWithStreamingContext(f.streaming, async () => {
-      const handler: MessageHandlerResult = { processMessage: "RESPOND", thought: "", plan: {
-        contexts: ["general"], intents: f.intents, candidateActions: ["VIEWS_SHOW"], calendarReadBindings: [],
-      } };
+      const handler: MessageHandlerResult = {
+        processMessage: "RESPOND",
+        thought: "",
+        plan: {
+          contexts: ["general"],
+          intents: f.intents,
+          candidateActions: ["VIEWS_SHOW"],
+          calendarReadBindings: [],
+        },
+      };
       Object.assign(handler.plan, { calendarMutationPrerequisites: [feed] });
-      await runResponseHandlerEvaluators({ runtime: f.runtime, message: f.message, state: f.state,
-        messageHandler: handler, availableContexts: [], userRoles: ["OWNER"], evaluators: [calendarReadBindingEvaluator] });
+      await runResponseHandlerEvaluators({
+        runtime: f.runtime,
+        message: f.message,
+        state: f.state,
+        messageHandler: handler,
+        availableContexts: [],
+        userRoles: ["OWNER"],
+        evaluators: [calendarReadBindingEvaluator],
+      });
       expect(handler.plan.candidateActions).toEqual(["VIEWS_SHOW"]);
-      expect(calendarMutationPrerequisites(getStreamingContext()?.actionConstraints, f.message, String(f.runtime.agentId))).toEqual([]);
+      expect(
+        calendarMutationPrerequisites(
+          getStreamingContext()?.actionConstraints,
+          f.message,
+          String(f.runtime.agentId),
+        ),
+      ).toEqual([]);
     });
   });
 });

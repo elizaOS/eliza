@@ -1,6 +1,6 @@
 import { createHash } from "node:crypto";
-import { describe, expect, it, vi } from "vitest";
 import type { IAgentRuntime, Memory } from "@elizaos/core";
+import { describe, expect, it, vi } from "vitest";
 import { calendarReadBindingField } from "../read-binding.js";
 import {
   calendarReadSelectedAction,
@@ -88,8 +88,11 @@ function fixture() {
   };
 }
 
-const run = (f: ReturnType<typeof fixture>) =>
-  calendarReadSelectedAction.handler!(f.runtime, f.message);
+const run = (f: ReturnType<typeof fixture>) => {
+  const handler = calendarReadSelectedAction.handler;
+  if (!handler) throw Error("Missing selected Calendar handler");
+  return handler(f.runtime, f.message);
+};
 
 describe("current selected canonical Calendar read", () => {
   it("reads a fresh exact selected record through the authorized source and emits its versioned receipt", async () => {
