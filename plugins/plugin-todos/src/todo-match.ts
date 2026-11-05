@@ -95,6 +95,15 @@ function stem(token: string): string {
   if (reduced.length > 2 && /[^aeiou]y$/u.test(reduced)) {
     return `${reduced.slice(0, -1)}i`;
   }
+  // The consonant + "e" family splits the same way the y family did: the
+  // stripped forms above land on the base without its final "e" ("moved" and
+  // "moving" become "mov"), while the base keeps the "e" as "move", so
+  // "move"/"moved"/"moving" never counted as one todo and a create added a
+  // silent duplicate instead of asking. Drop that final "e" on both sides:
+  // "move" becomes "mov" and meets its own past and progressive forms.
+  if (reduced.length > 3 && /[^aeiou]e$/u.test(reduced)) {
+    return reduced.slice(0, -1);
+  }
   return reduced;
 }
 

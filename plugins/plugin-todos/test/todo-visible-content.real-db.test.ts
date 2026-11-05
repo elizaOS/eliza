@@ -147,6 +147,29 @@ describe("TODO visible-content addressing — real PGLite (#29690)", () => {
     ).toBe("pending");
   });
 
+  it("treats another form of the same verb as one todo", async () => {
+    const entityId = newEntity();
+    const car = await seed(entityId, "Move the car");
+
+    const asked = await run(say(entityId, "add moved the car"), {
+      action: "create",
+      content: "moved the car",
+    });
+    expect(asked.text).toContain('"Move the car" is already on your list');
+    expect(asked.data).toMatchObject({
+      duplicate: true,
+      existing: { id: car.id },
+    });
+    expect(await rows(entityId)).toHaveLength(1);
+
+    const done = await run(say(entityId, "I moved the car"), {
+      action: "complete",
+      target: "moved the car",
+    });
+    expect(done.success).toBe(true);
+    expect(done.text).toBe('Marked "Move the car" done.');
+  });
+
   it("returns a grounded not-found outcome and mutates nothing", async () => {
     const entityId = newEntity();
     const kept = await seed(entityId, "Water the plants");
