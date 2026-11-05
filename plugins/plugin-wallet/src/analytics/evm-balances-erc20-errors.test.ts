@@ -101,3 +101,31 @@ it("keeps a genuine zero ERC-20 balance a healthy empty token list", async () =>
     },
   );
 });
+
+it("keeps a zero balance healthy when only the token metadata reverts", async () => {
+  // `symbol()` / `decimals()` are cosmetic: a token whose metadata call
+  // reverts is still a token this wallet holds none of. Reading the balance
+  // first means that answer survives, instead of the revert turning the whole
+  // chain into a provider fault.
+  const seen: string[] = [];
+  await withRpcServer(
+    (request) => {
+      if (request.method === "eth_getBalance")
+        return { result: "0xde0b6b3a7640000" };
+      const data = request.params[0].data;
+      seen.push(data.slice(0, 10));
+      return data.startsWith("0x70a08231")
+        ? { result: "0x0" }
+        : { error: { code: 3, message: "execution reverted" } };
+    },
+    async (rpc) => {
+      const [chain] = await fetchResolvedEvmBalances(ADDRESS, keyset(rpc), [
+        TOKEN,
+      ]);
+      expect(chain.tokens).toEqual([]);
+      expect(chain.error).toBeNull();
+      // The metadata calls are skipped once the balance says zero.
+      expect(seen).toEqual(["0x70a08231"]);
+    },
+  );
+});

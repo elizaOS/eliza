@@ -593,11 +593,11 @@ async function fetchErc20BalanceViaRpc(
       ),
     );
 
-  const [balRes, symRes, decRes] = await Promise.all([
-    makeCall(contractAddress, balanceOfData),
-    makeCall(contractAddress, symbolData),
-    makeCall(contractAddress, decimalsData),
-  ]);
+  // The balance is the only evidence that matters here: `symbol()` and
+  // `decimals()` are display metadata. Reading the balance first means a token
+  // this wallet holds none of cannot turn a reverting metadata call into a
+  // chain-level provider fault, and it skips two `eth_call`s per empty token.
+  const balRes = await makeCall(contractAddress, balanceOfData);
 
   const rawBal = balRes.result;
   if (rawBal === undefined) {
@@ -616,6 +616,11 @@ async function fetchErc20BalanceViaRpc(
     });
   }
   if (BigInt(rawBal) === 0n) return null;
+
+  const [symRes, decRes] = await Promise.all([
+    makeCall(contractAddress, symbolData),
+    makeCall(contractAddress, decimalsData),
+  ]);
 
   let decimals = 18;
   if (decRes.result && decRes.result !== "0x") {
