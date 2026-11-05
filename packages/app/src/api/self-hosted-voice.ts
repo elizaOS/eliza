@@ -6,7 +6,7 @@ import type http from "node:http";
 import { isIP } from "node:net";
 import type { Duplex } from "node:stream";
 import { isAllowedHost, isCredentialedCorsOrigin } from "@elizaos/agent";
-import { type AgentRuntime, logger } from "@elizaos/core";
+import { type AgentRuntime, logger, resolveStateDir } from "@elizaos/core";
 import type { CartesiaWebSocketFactory } from "@elizaos/host/voice/cartesia-sonic-tts";
 import { createCloudSpeechRelayPorts, CloudSpeechRelayClientError, type CloudSpeechRelayRetirement } from "@elizaos/host/voice/cloud-speech-relay-client";
 import { createLocalRuntimeConversationFetch } from "@elizaos/host/voice/local-runtime-conversation-fetch";
@@ -36,6 +36,7 @@ import {
   tokenMatches,
 } from "./auth";
 import { bindSessionSocket } from "./auth/session-sockets";
+import { cloudSpeechRecoveryJournal } from "./cloud-speech-recovery-journal";
 import {
   CSRF_HEADER_NAME,
   deriveCsrfToken,
@@ -769,6 +770,12 @@ export function createSelfHostedVoice(
                 origin: config.origin,
                 credential: async () => config.apiKey,
                 signal: providerLifetime.signal,
+                recoveryJournal: cloudSpeechRecoveryJournal(
+                  resolveStateDir(),
+                  ticket.identityId,
+                  config.origin,
+                  ticket.claims.conversationId,
+                ),
                 registerRetirement: (handle) => {
                   cleanup = handle;
                   activeCloudTickets.add(ticket);

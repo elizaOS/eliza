@@ -1,7 +1,11 @@
+import { mkdtemp, rm } from "node:fs/promises";
 import { createServer } from "node:http";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { expect, test } from "vitest";
+import { cloudSpeechRecoveryJournal } from "../../../app/src/api/cloud-speech-recovery-journal";
 import { createCloudSpeechRelayPorts, type CloudSpeechRelayRetirement } from "./cloud-speech-relay-client";
-import { SPEECH_ADMISSION_OUTCOME_HEADER, SPEECH_MINT_INTENT_HEADER } from "./speech-relay-wire";
+import { SPEECH_ADMISSION_OUTCOME_HEADER, SPEECH_MINT_INTENT_HEADER, SPEECH_RECOVERY_HEADER } from "./speech-relay-wire";
 
 const nonce = "11111111-1111-4111-8111-111111111111";
 function fixture(mint: (init: RequestInit) => Response | Promise<Response>, capable = true) {
@@ -103,5 +107,64 @@ test.each([403, 429, 503])("real loopback fetch preserves attested %i rejection"
   } finally {
     server.closeAllConnections();
     await new Promise<void>((resolve, reject) => server.close(error => error ? reject(error) : resolve()));
+  }
+});
+
+
+test("restart uses its journal to retire the exact prior session before a new mint", async () => {
+  const root = await mkdtemp(join(tmpdir(), "speech-recovery-"));
+  const owner = "local-owner";
+  const origin = "https://api.eliza.app";
+  const conversation = "conversation";
+  const previous = crypto.randomUUID();
+  const prepared = crypto.randomUUID();
+  const events: string[] = [];
+  const journal = cloudSpeechRecoveryJournal(root, owner, origin, conversation);
+  try {
+    await journal.record(previous);
+    const reopened = cloudSpeechRecoveryJournal(root, owner, origin, conversation);
+    expect(await reopened.pending()).toEqual([previous]);
+    expect(await cloudSpeechRecoveryJournal(root, "other-owner", origin, conversation).pending()).toEqual([]);
+    expect(await cloudSpeechRecoveryJournal(root, owner, "https://different.invalid", conversation).pending()).toEqual([]);
+    const start = createCloudSpeechRelayPorts({
+      enabled: true,
+      origin,
+      credential: async () => "current-owner-key",
+      assertCurrent() {},
+      recoveryJournal: reopened,
+      fetch: (async (url, init) => {
+        const path = new URL(String(url)).pathname;
+        if (path.endsWith("/revoke")) {
+          const id = path.split("/").at(-2)!;
+          expect(new Headers(init?.headers).get("authorization")).toBe("Bearer current-owner-key");
+          events.push(`revoke:${id}`);
+          return Response.json({ revoked: true, retirement: {
+            version: 1, sessionId: id, state: "confirmed", mode: "never_started",
+            stt: "not_dispatched", tts: "not_dispatched", accounting: "not_started",
+            completedAt: new Date().toISOString(),
+          } });
+        }
+        expect(new Headers(init?.headers).get(SPEECH_RECOVERY_HEADER)).toBe("1");
+        if (path.endsWith("/consent")) {
+          events.push("consent");
+          expect(await reopened.pending()).toEqual([]);
+          return Response.json({
+            consentNonce: nonce, expiresAt: new Date(Date.now() + 60_000).toISOString(),
+            retirementProofVersion: 1, recoverySessionId: prepared,
+          });
+        }
+        expect(path.endsWith("/session")).toBe(true);
+        expect(JSON.parse(String(init?.body))).toEqual({ consentNonce: nonce, recoverySessionId: prepared });
+        expect(await reopened.pending()).toEqual([prepared]);
+        events.push("lost-mint");
+        throw Error("mint response lost");
+      }) as typeof fetch,
+      websocket() { throw Error("No socket should open after a lost mint"); },
+    });
+    await expect(start).rejects.toThrow("mint response lost");
+    expect(events).toEqual([`revoke:${previous}`, "consent", "lost-mint", `revoke:${prepared}`]);
+    expect(await reopened.pending()).toEqual([]);
+  } finally {
+    await rm(root, { recursive: true, force: true });
   }
 });

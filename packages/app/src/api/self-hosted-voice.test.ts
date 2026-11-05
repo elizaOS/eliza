@@ -983,7 +983,7 @@ it("actual relay startup cleanup failure blocks shutdown and unlinked replacemen
   return Response.json({sessionId:id,token:"remote-one-use",expiresAt,version:1,retirementProofVersion:1,wsUrl:remote.url.origin.replace("http:","ws:")+"/api/v1/voice/speech/ws?sessionId="+id});
  },request=>new URL(request.url).pathname==="/api/v1/voice/speech/ws");
  remote.sockets.on("connection",(ws,request)=>{const expiresAt=expiries.get(new URL(request.url!,remote.url).searchParams.get("sessionId")!);providerStarts++;ws.on("message",data=>{const frame=JSON.parse(String(data));if(frame.t!=="hello")return;if(failStartup){ws.send(JSON.stringify({t:"error",code:"unavailable"}));return;}ws.send(JSON.stringify({t:"ready",version:1,sampleRate:16000,channels:1,expiresAt}));ws.send(JSON.stringify({t:"stt",event:{type:"connected"}}));});});
- const options:SelfHostedVoiceOptions={...hostOptions,createCloudSpeechPorts:opts=>createCloudSpeechRelayPorts({...opts,origin:remote.url.origin,allowInsecureLoopback:true,logger:{warn(){}}})};
+ const options:SelfHostedVoiceOptions={...hostOptions,createCloudSpeechPorts:opts=>createCloudSpeechRelayPorts({...opts,recoveryJournal:undefined,origin:remote.url.origin,allowInsecureLoopback:true,logger:{warn(){}}})};
  await host.close();host=createSelfHostedVoice(state,options);
  try {
   const first=await mint();const failed=await connect(first,first.token,false);expect(failed.frame.t).not.toBe("ready");failed.ws.close();expect(providerStarts).toBe(1);
