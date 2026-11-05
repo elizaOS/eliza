@@ -1,20 +1,19 @@
 /** Authenticated bootstrap for a speech-only capability; no hosted agent is created. */
-import {
-  SPEECH_RETIREMENT_HEADER,
-  SPEECH_MINT_INTENT_HEADER,
-  SPEECH_RECOVERY_HEADER,
-  SPEECH_ADMISSION_OUTCOME_HEADER,
-} from "@elizaos/host/voice/speech-relay-wire";
-import { requireUserOrApiKeyWithOrg } from "@elizaos/cloud-shared/auth";
+
 import { randomBytes } from "node:crypto";
+import { requireUserOrApiKeyWithOrg } from "@elizaos/cloud-shared/auth";
 import {
   consumeConsentNonce,
   issueConsentNonce,
 } from "@elizaos/cloud-shared/lib/voice-session/consent-nonce";
 import type { AppEnv } from "@elizaos/cloud-shared/types/cloud-worker-env";
 import {
+  SPEECH_ADMISSION_OUTCOME_HEADER,
+  SPEECH_MINT_INTENT_HEADER,
+  SPEECH_RECOVERY_HEADER,
   SPEECH_RELAY_EXTEND_HEADER,
   SPEECH_RELAY_EXTEND_OFFER,
+  SPEECH_RETIREMENT_HEADER,
 } from "@elizaos/host/voice/speech-relay-wire";
 import { Hono } from "hono";
 import { requireGenerativeRouteCaller } from "../../../src/lib/generative-route-auth";
@@ -98,7 +97,8 @@ app.post("/consent", async (c) => {
     recoverySessionId = crypto.randomUUID();
     const sessionId = recoverySessionId;
     const prepared = await timer.time("speech_recovery_prepare", () =>
-      c.env.SPEECH_RELAY_SESSIONS!.getByName(sessionId)
+      c.env
+        .SPEECH_RELAY_SESSIONS!.getByName(sessionId)
         .fetch("https://speech-relay.internal/prepare", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
@@ -149,17 +149,20 @@ app.post("/session", async (c) => {
     !body ||
     typeof body !== "object" ||
     Array.isArray(body) ||
-    Object.keys(body).sort().join() !== (recovering ? "consentNonce,recoverySessionId" : "consentNonce") ||
+    Object.keys(body).sort().join() !==
+      (recovering ? "consentNonce,recoverySessionId" : "consentNonce") ||
     !("consentNonce" in body) ||
     typeof body.consentNonce !== "string" ||
     !UUID.test(body.consentNonce)
   )
     return c.json({ error: "invalid_speech_session" }, 400);
   const consentNonce = body.consentNonce;
-  const recoveryId = "recoverySessionId" in body ? body.recoverySessionId : undefined;
+  const recoveryId =
+    "recoverySessionId" in body ? body.recoverySessionId : undefined;
   if (recovering && (typeof recoveryId !== "string" || !UUID.test(recoveryId)))
     return c.json({ error: "invalid_speech_session" }, 400);
-  const sessionId = typeof recoveryId === "string" ? recoveryId : crypto.randomUUID(),
+  const sessionId =
+      typeof recoveryId === "string" ? recoveryId : crypto.randomUUID(),
     token = randomBytes(32).toString("base64url"),
     expiresAt = Math.min(
       Date.now() + 60000,
@@ -181,7 +184,9 @@ app.post("/session", async (c) => {
           body: JSON.stringify({
             sessionId,
             tokenDigest: speechTokenDigest(token),
-            ...(recovering ? { consentDigest: speechTokenDigest(consentNonce) } : {}),
+            ...(recovering
+              ? { consentDigest: speechTokenDigest(consentNonce) }
+              : {}),
             expiresAt,
             caller,
             ...(proofVersion ? { proofVersion } : {}),

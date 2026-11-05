@@ -27,17 +27,17 @@ import { parseCartesiaUsdPerCredit } from "../v1/voice/stt/cartesia-pricing";
 import { resolveCartesiaVoiceId } from "../v1/voice/tts/provider-selection";
 import type { GenerativeRouteCaller } from "./lib/generative-route-auth";
 import { reserveSpeechRelayAdmission } from "./speech-relay-admission";
+import { speechRelayInkFactory } from "./speech-relay-ink";
 import {
-  initializeSpeechRecord,
-  claimSpeechOpening,
-  markSpeechOwned,
   beginSpeechRetirement,
-  recordSpeechSettlement,
+  claimSpeechOpening,
   completeSpeechRetirement,
+  initializeSpeechRecord,
+  markSpeechOwned,
   type RetirementState,
+  recordSpeechSettlement,
   type SettlementProgress,
 } from "./speech-retirement-state";
-import { speechRelayInkFactory } from "./speech-relay-ink";
 import { subscribeSpeechRevocation } from "./speech-revocation-subscription";
 
 export interface SpeechRelayBootstrap {
@@ -348,20 +348,31 @@ export class SpeechRelayCoordinator {
             return response(400, "invalid_session");
           if (input.proofVersion !== undefined && input.proofVersion !== 1)
             return response(400, "invalid_proof_version");
-          if (preparing && (input.proofVersion !== 1 || input.consentDigest !== undefined))
+          if (
+            preparing &&
+            (input.proofVersion !== 1 || input.consentDigest !== undefined)
+          )
             return response(400, "invalid_preparation");
-          if (input.consentDigest !== undefined &&
-            (input.proofVersion !== 1 || !/^[0-9a-f]{64}$/.test(input.consentDigest)))
+          if (
+            input.consentDigest !== undefined &&
+            (input.proofVersion !== 1 ||
+              !/^[0-9a-f]{64}$/.test(input.consentDigest))
+          )
             return response(400, "invalid_preparation");
           let alarmAt: number | undefined;
           try {
             await this.update((record) => {
               if (input.consentDigest !== undefined) {
-                if (!record || record.phase !== "prepared" ||
-                  record.expiresAt <= Date.now() || record.sessionId !== input.sessionId ||
+                if (
+                  !record ||
+                  record.phase !== "prepared" ||
+                  record.expiresAt <= Date.now() ||
+                  record.sessionId !== input.sessionId ||
                   record.tokenDigest !== input.consentDigest ||
                   record.caller.user.id !== input.caller.user.id ||
-                  record.caller.user.organization_id !== input.caller.user.organization_id)
+                  record.caller.user.organization_id !==
+                    input.caller.user.organization_id
+                )
                   throw Error("Speech preparation is absent or retired");
                 alarmAt = input.expiresAt;
                 return {

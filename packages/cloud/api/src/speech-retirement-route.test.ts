@@ -1,15 +1,16 @@
-import { beforeEach, expect, test, mock } from "bun:test";
-import { HTTPException } from "hono/http-exception";
+import { beforeEach, expect, mock, test } from "bun:test";
 import {
+  SPEECH_ADMISSION_OUTCOME_HEADER,
   SPEECH_MINT_INTENT_HEADER,
   SPEECH_RECOVERY_HEADER,
-  SPEECH_ADMISSION_OUTCOME_HEADER,
   SPEECH_RELAY_EXTEND_HEADER,
 } from "@elizaos/host/voice/speech-relay-wire";
+import { HTTPException } from "hono/http-exception";
+
 const data = {
   generated: 0,
   owner: 0,
-  calls: [] as any[],
+  calls: [] as { url: unknown; body: unknown }[],
   authStatus: undefined as 429 | undefined,
   initializeStatus: 200,
   initializeThrows: false,
@@ -48,7 +49,8 @@ const env = (enabled = true, proof = true) => ({
   VOICE_SPEECH_RETIREMENT_PROOF_ENABLED: String(proof),
   SPEECH_RELAY_SESSIONS: {
     getByName: () => ({
-      fetch: async (url: unknown, init: any) => {
+      fetch: async (url: unknown, init: RequestInit) => {
+        if (typeof init.body !== "string") throw Error("Expected JSON request");
         data.calls.push({ url, body: JSON.parse(init.body) });
         if (data.initializeThrows)
           throw Error("lost initialize acknowledgement");
@@ -93,8 +95,15 @@ test("new mint persists and acknowledges requested proof version", async () => {
   expect(data.calls[0].body.proofVersion).toBe(1);
 });
 test("recovery consent returns the exact prepared ID that a later mint uses", async () => {
-  const headers = { "X-Eliza-Speech-Retirement-Version": "1", [SPEECH_RECOVERY_HEADER]: "1" };
-  const consent = await app.request("/consent", { method: "POST", headers }, env() as never);
+  const headers = {
+    "X-Eliza-Speech-Retirement-Version": "1",
+    [SPEECH_RECOVERY_HEADER]: "1",
+  };
+  const consent = await app.request(
+    "/consent",
+    { method: "POST", headers },
+    env() as never,
+  );
   expect(consent.status).toBe(200);
   const body = await responseObject(consent);
   const recoverySessionId = body.recoverySessionId;
@@ -103,16 +112,25 @@ test("recovery consent returns the exact prepared ID that a later mint uses", as
     url: "https://speech-relay.internal/prepare",
     body: { sessionId: recoverySessionId, proofVersion: 1 },
   });
-  const mint = await app.request("/session", {
-    method: "POST", headers,
-    body: JSON.stringify({ consentNonce: nonce, recoverySessionId }),
-  }, env() as never);
+  const mint = await app.request(
+    "/session",
+    {
+      method: "POST",
+      headers,
+      body: JSON.stringify({ consentNonce: nonce, recoverySessionId }),
+    },
+    env() as never,
+  );
   expect(mint.status).toBe(200);
   expect(mint.headers.get(SPEECH_ADMISSION_OUTCOME_HEADER)).toBeNull();
   expect((await responseObject(mint)).sessionId).toBe(recoverySessionId);
   expect(data.calls[1]).toMatchObject({
     url: "https://speech-relay.internal/initialize",
-    body: { sessionId: recoverySessionId, consentDigest: "a".repeat(64), proofVersion: 1 },
+    body: {
+      sessionId: recoverySessionId,
+      consentDigest: "a".repeat(64),
+      proofVersion: 1,
+    },
   });
 });
 test("unsupported proof is refused before admission", async () => {
