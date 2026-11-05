@@ -26,19 +26,53 @@ const STATE_PREFIX = `twitter/default/${OWN_USER_ID}`;
 const CURSOR_KEY = `${STATE_PREFIX}/dm_cursor`;
 const SETTLED_KEY = `${STATE_PREFIX}/dm_settled/${EVENT_ID}`;
 
+const STORED_REPLY_ID = "55555555-5555-4555-8555-555555555555" as UUID;
+
 function createHarness(
   reply: string,
   sendDmToParticipant: ReturnType<typeof vi.fn>,
   groupConversationId?: string,
+  options?: { prestoreReply?: boolean },
 ) {
   const cache = new Map<string, unknown>([[CURSOR_KEY, "100"]]);
-  const createMemory = vi.fn(async (_memory: Memory) => undefined);
+  const memories = new Map<string, Memory>();
+  const createMemory = vi.fn(async (memory: Memory) => {
+    memories.set(String(memory.id), memory);
+  });
+  const getMemoryById = vi.fn(async (id: string) => memories.get(id) ?? null);
+  const updateMemory = vi.fn(
+    async (next: {
+      id: UUID;
+      content: Content;
+      metadata?: Memory["metadata"];
+    }) => {
+      const existing = memories.get(String(next.id));
+      if (!existing) return false;
+      memories.set(String(next.id), {
+        ...existing,
+        content: next.content,
+        metadata: next.metadata,
+      });
+      return true;
+    },
+  );
   const handleMessage = vi.fn(
     async (
       _runtime: IAgentRuntime,
-      _message: Memory,
+      message: Memory,
       callback: HandlerCallback,
     ) => {
+      if (options?.prestoreReply) {
+        memories.set(STORED_REPLY_ID, {
+          id: STORED_REPLY_ID,
+          entityId: _runtime.agentId,
+          agentId: _runtime.agentId,
+          roomId: message.roomId,
+          content: { text: reply, responseId: STORED_REPLY_ID },
+        });
+        await callback({ text: reply, responseId: STORED_REPLY_ID });
+        return { responseMessages: [] };
+      }
       await callback({ text: reply } as Content);
       return { responseMessages: [] };
     },
@@ -57,6 +91,8 @@ function createHarness(
     }),
     deleteCache: vi.fn(async (key: string) => cache.delete(key)),
     getSetting: vi.fn(() => undefined),
+    getMemoryById,
+    updateMemory,
     reportError: vi.fn(),
     messageService: { handleMessage },
   };
@@ -109,6 +145,7 @@ function createHarness(
     cache,
     createMemory,
     handleMessage,
+    memories,
     pollOnce,
     runtime,
     sendDmInConversation: apiClient.v2.sendDmInConversation,
@@ -164,6 +201,33 @@ describe("X DM auto-reply over the per-message length limit", () => {
       .find((memory) => memory.metadata?.fromBot === true);
     expect(responseMemory?.content.text).toBe(reply);
     expect(responseMemory?.metadata?.messageIdFull).toBe("301");
+  });
+
+  it("stores a delivered reply once when the message service already saved it", async () => {
+    const reply = "hello once";
+    const send = vi.fn(async () => ({ dm_event_id: "301" }));
+    const { memories, pollOnce, runtime } = createHarness(
+      reply,
+      send,
+      undefined,
+      {
+        prestoreReply: true,
+      },
+    );
+
+    await pollOnce();
+
+    expect(runtime.reportError).not.toHaveBeenCalled();
+    const replyRows = [...memories.values()].filter(
+      (memory) => memory.content.text === reply,
+    );
+    expect(replyRows).toHaveLength(1);
+    const botRows = replyRows.filter(
+      (memory) => memory.metadata?.fromBot === true,
+    );
+    expect(botRows.map((memory) => memory.content.text)).toEqual([reply]);
+    expect(botRows.map((memory) => memory.id)).toEqual([STORED_REPLY_ID]);
+    expect(botRows[0]?.metadata?.messageIdFull).toBe("301");
   });
 
   it("keeps a reply within the limit as one request", async () => {

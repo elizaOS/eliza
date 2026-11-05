@@ -23,6 +23,7 @@ import {
   type IAgentRuntime,
   logger,
   type Memory,
+  type UUID,
 } from "@elizaos/core";
 import type { ClientBase } from "./base";
 import type { AuthenticatedTwitterSession } from "./client/auth";
@@ -38,6 +39,15 @@ import {
 import { createMemorySafe, reconcileTwitterWorld } from "./utils/memory";
 import { normalizeXReceiptId } from "./utils/provider-receipt";
 import { getSetting } from "./utils/settings";
+
+const RESPONSE_MEMORY_ID =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+
+function canonicalResponseMemoryId(value: unknown): UUID | undefined {
+  return typeof value === "string" && RESPONSE_MEMORY_ID.test(value)
+    ? (value as UUID)
+    : undefined;
+}
 
 interface DirectMessageEvent {
   id?: string;
@@ -611,8 +621,15 @@ export class TwitterDirectMessageClient {
         return [];
       }
 
+      // The message service stores this reply under content.responseId before
+      // the callback returns. A second row keyed by the X event id renders
+      // the same text again on every later turn. Merge the delivery facts
+      // into that row. A callback with no response id, such as the personal
+      // router, still gets its own row.
       const responseMemory: Memory = {
-        id: createUniqueUuid(this.runtime, `x-dm:${sentId}`),
+        id:
+          canonicalResponseMemoryId(response.responseId) ??
+          createUniqueUuid(this.runtime, `x-dm:${sentId}`),
         agentId: this.runtime.agentId,
         entityId: this.runtime.agentId,
         roomId,
@@ -642,7 +659,7 @@ export class TwitterDirectMessageClient {
         createdAt: Date.now(),
       };
       try {
-        await createMemorySafe(this.runtime, responseMemory, "messages");
+        await this.storeDirectMessageReply(responseMemory);
       } catch (error) {
         // error-policy:J7 X has already accepted the reply and the durable
         // delivery marker prevents replay. Report the local receipt loss while
@@ -691,6 +708,46 @@ export class TwitterDirectMessageClient {
     this.assertSessionCurrent(session, "before the direct message was settled");
     if (!(await this.runtime.getCache<string>(settledKey))) {
       await this.runtime.setCache(settledKey, "settled_without_reply");
+    }
+  }
+
+  private async storeDirectMessageReply(memory: Memory): Promise<void> {
+    const existing = await this.runtime.getMemoryById(memory.id as UUID);
+    if (!existing) {
+      await createMemorySafe(this.runtime, memory, "messages");
+      return;
+    }
+    if (
+      existing.agentId !== this.runtime.agentId ||
+      existing.entityId !== this.runtime.agentId ||
+      existing.roomId !== memory.roomId
+    ) {
+      throw new ElizaError("X DM reply memory does not match delivery", {
+        code: "X_DM_REPLY_MEMORY_MISMATCH",
+        context: { memoryId: String(memory.id) },
+      });
+    }
+    const updated = await this.runtime.updateMemory({
+      id: memory.id as UUID,
+      content: {
+        ...existing.content,
+        text: memory.content.text,
+        source: "x",
+        channelType: memory.content.channelType,
+        inReplyTo: memory.content.inReplyTo,
+      },
+      // Spreading the metadata union widens `type` so it is not assignable
+      // back to MemoryMetadata. Same merge the Discord connector uses.
+      metadata: {
+        ...(existing.metadata ?? {}),
+        ...(memory.metadata ?? {}),
+      } as Memory["metadata"],
+    });
+    if (!updated) {
+      throw new ElizaError("X DM reply delivery metadata was not persisted", {
+        code: "X_DM_REPLY_METADATA_NOT_PERSISTED",
+        context: { memoryId: String(memory.id) },
+      });
     }
   }
 
