@@ -145,7 +145,7 @@ test("a host words the outcome of a planned browser action", async () => {
     owner: { actorId: "owner" },
     get: () => task,
     observe: async () => task,
-    control: () => {},
+    rebind: () => task,
     execute: async (_id, _revision, proposal) => ({
       operations: [{ proposal, ...results.shift() }],
     }),

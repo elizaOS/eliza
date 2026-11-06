@@ -42,6 +42,7 @@ export const TASK_EVENT_KINDS = {
 	checkpoint: { operation: null, origin: "none" },
 	observe: { operation: null, origin: "optional" },
 	resume: { operation: null, origin: "optional" },
+	rebind: { operation: null, origin: "none" },
 	pause: { operation: null, origin: "none" },
 	cancel: { operation: null, origin: "none" },
 	recover: { operation: null, origin: "none" },
