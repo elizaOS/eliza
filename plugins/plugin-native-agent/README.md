@@ -150,18 +150,26 @@ explicit callback action, target package, journal and executor. Rejected worker
 submission finishes the broadcast and leaves durable reconciliation to the host.
 Transaction, immutable/framework session and optional package identity must match;
 success/failure hints never substitute for installed-identity and live-session
-readback, and user-action intents are never launched. Only a reported candidate
-fault (an invalid, conflicting or incompatible APK) quarantines a candidate, and a
-fault reported while the session is still listed is kept until it is gone. A gone
-session with no report waits `UpdateJournal.OUTCOME_UNKNOWN_WAIT_MS` of observed
-uptime for a late callback, then releases the plan for a later attempt; after
-`MAX_INSTALL_ATTEMPTS_PER_CANDIDATE` releases in a row the candidate is
-quarantined. `InstallReadback` abandons our own session only when the platform
+readback, and user-action intents are never launched. A reported candidate
+fault (an invalid, conflicting or incompatible APK) quarantines a candidate at
+once, and a fault reported while the session is still listed is kept until it is
+gone. A gone session with no report waits `UpdateJournal.OUTCOME_UNKNOWN_WAIT_MS`
+of observed uptime for a late callback, then releases the plan for a later
+attempt. Every release counts, whatever its cause (a retryable report, no report,
+or our own session abandoned uncommitted, such as a commit that keeps throwing):
+after `MAX_INSTALL_ATTEMPTS_PER_CANDIDATE` releases of the same candidate in a row
+it is quarantined. A candidate that installs clears the count, and the journal is
+written as version 4 again. `InstallReadback` abandons our own session only when the platform
 reports it uncommitted (API 29 and later) and the journal has waited long enough:
 on API 31 and later a sealed session reads uncommitted until the platform has
 verified the APK, so a candidate session must stay uncommitted for
-`InstallReadback.UNCOMMITTED_ABANDON_WAIT_MS` of observed uptime, and a recovery
-session, attempted only once, is kept until the host's install timeout. A
+`InstallReadback.UNCOMMITTED_ABANDON_WAIT_MS` of observed uptime, even when the
+host's install timeout is shorter, and a recovery session, attempted only once, is
+kept until the host's install timeout. Hosts must run
+`PackageInstallCoordinator.reconcilePending` periodically (for example from a job)
+while `UpdateJournal.awaitingInstaller` holds: only it counts the observed time
+that times out a stalled session and releases a gone one with no report, and until
+then the journal admits no other plan. A
 committed or unknown session is never abandoned and is left to install or to
 expire on the platform. The Android
 contract uses real PackageInstaller sessions; hosts must also qualify actual installation,

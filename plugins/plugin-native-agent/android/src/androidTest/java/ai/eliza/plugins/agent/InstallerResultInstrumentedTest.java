@@ -5,6 +5,7 @@ import androidx.test.platform.app.InstrumentationRegistry;
 import ai.eliza.plugins.agent.contract.InstallerResultContract;
 import ai.eliza.plugins.agent.runtime.AndroidRuntimeDirectories;
 import ai.eliza.plugins.agent.updater.*;
+import org.junit.Assume;
 import org.junit.Test;
 import org.junit.runner.RunWith;
 import java.nio.file.*;
@@ -15,6 +16,8 @@ public final class InstallerResultInstrumentedTest {
   withJournal((app,journal,plan,target)->InstallerResultContract.run(app,journal,plan,target,target+".INSTALL_RESULT"));
  }
  @Test public void uncommittedSessionIsAbandonedAndReleased()throws Exception {
+  // Before API 29 the platform cannot report a session uncommitted.
+  Assume.assumeTrue(android.os.Build.VERSION.SDK_INT>=29);
   withJournal(InstallerResultContract::runUncommittedSession);
  }
  private static void withJournal(Contract contract)throws Exception {

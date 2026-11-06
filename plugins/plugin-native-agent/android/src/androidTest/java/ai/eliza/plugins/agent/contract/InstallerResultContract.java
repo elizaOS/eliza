@@ -57,7 +57,8 @@ public final class InstallerResultContract {
  /** A durable COMMITTING record whose session was never committed (process
   * death before Session.commit, or a refused commit) is kept at first, since a
   * sealed session also reads uncommitted while the platform verifies it, then
-  * abandoned and released once the install timeout has passed, so a later
+  * abandoned and released once UNCOMMITTED_ABANDON_WAIT_MS and the install
+  * timeout have passed, so a later
   * release can install. Needs API 29 or later. */
  public static void runUncommittedSession(Context app,UpdateJournal journal,UpdateJournal.Plan plan,String target)throws Exception {
   journal.begin(plan,plan.baseline,0);
@@ -71,7 +72,11 @@ public final class InstallerResultContract {
    UpdateJournal.Snapshot kept=PackageInstallCoordinator.reconcilePending(app,target,journal,60000);
    check(kept.phase==UpdateJournal.Phase.COMMITTING&&PackageInstallCoordinator.hasPendingSession(app,target,session),"Uncommitted session was abandoned at once");
    Thread.sleep(20);
-   check(PackageInstallCoordinator.reconcilePending(app,target,journal,1).reason.equals("install_timeout"),"Uncommitted session did not time out");
+   kept=PackageInstallCoordinator.reconcilePending(app,target,journal,1);
+   check(kept.phase==UpdateJournal.Phase.COMMITTING&&PackageInstallCoordinator.hasPendingSession(app,target,session),"Uncommitted session timed out before the abandon wait");
+   // Stand in for UNCOMMITTED_ABANDON_WAIT_MS of uptime: a later boot whose
+   // reading counts that much, so the test need not wait 15 minutes.
+   check(journal.observePending(plan.id,session,Integer.MAX_VALUE,InstallReadback.UNCOMMITTED_ABANDON_WAIT_MS,1).reason.equals("install_timeout"),"Uncommitted session did not time out");
    UpdateJournal.Snapshot after=PackageInstallCoordinator.reconcilePending(app,target,journal,1);
    check(!PackageInstallCoordinator.hasPendingSession(app,target,session),"Uncommitted session was kept");
    check(after.phase==UpdateJournal.Phase.IDLE&&UpdateJournal.INSTALL_RELEASED.equals(after.reason)&&after.quarantine.isEmpty(),"Uncommitted session was not released");

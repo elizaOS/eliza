@@ -28,17 +28,26 @@ public final class InstallReadback {
   /** Safe after process death, a throw from Session.commit or a missing
    * callback. Only a session the platform has reported uncommitted for long
    * enough is abandoned; a committed or unknown one is left to install or
-   * expire. */
+   * expire. Hosts run this periodically while
+   * UpdateJournal.awaitingInstaller holds (PackageInstallCoordinator.reconcilePending):
+   * it alone counts the observed time that times out a stalled session and
+   * releases a gone session with no report, and until then the journal admits
+   * no other plan. An uncommitted candidate session is timed out no sooner than
+   * UNCOMMITTED_ABANDON_WAIT_MS, even under a shorter host budget. */
   public static UpdateJournal.Snapshot reconcile(UpdateJournal journal,Platform platform,long observationBudgetMs)throws Exception {
     UpdateJournal.Snapshot state=journal.read();
     if(!UpdateJournal.awaitingInstaller(state))return state;
     String plan=state.plan.id;int session=state.sessionId;
     if(abandonUncommitted(journal,platform,plan,session))
       return journal.reconcileInstallerResult(plan,session,platform.installed(),false,null,UpdateJournal.InstallerFailure.RETRYABLE);
-    boolean pending=platform.session(session)!=Session.GONE;
+    Session listed=platform.session(session);boolean pending=listed!=Session.GONE;
     UpdateJournal.Snapshot reconciled=journal.reconcile(plan,session,platform.installed(),pending);
-    if(pending&&(reconciled.phase==UpdateJournal.Phase.COMMITTING||reconciled.phase==UpdateJournal.Phase.RECOVERING))
-      return journal.observePending(plan,session,platform.bootCount(),platform.elapsedRealtime(),observationBudgetMs);
+    if(pending&&(reconciled.phase==UpdateJournal.Phase.COMMITTING||reconciled.phase==UpdateJournal.Phase.RECOVERING)) {
+      // A timed-out uncommitted candidate is abandoned next, so a sealed one
+      // still being verified gets the full wait whatever the host budget is.
+      long budget=reconciled.phase==UpdateJournal.Phase.COMMITTING&&listed==Session.UNCOMMITTED?Math.max(observationBudgetMs,UNCOMMITTED_ABANDON_WAIT_MS):observationBudgetMs;
+      return journal.observePending(plan,session,platform.bootCount(),platform.elapsedRealtime(),budget);
+    }
     if(!pending&&reconciled.phase==UpdateJournal.Phase.SUPPORT&&UpdateJournal.OUTCOME_UNKNOWN.equals(reconciled.reason))
       return journal.observeOutcomeUnknown(plan,session,platform.bootCount(),platform.elapsedRealtime());
     return reconciled;
@@ -49,8 +58,9 @@ public final class InstallReadback {
    * read uncommitted right after Session.commit returns, so a candidate waits
    * UNCOMMITTED_ABANDON_WAIT_MS of observed uptime, and a recovery, attempted
    * only once, is never abandoned before the host's install timeout. A session
-   * in support has hit that timeout or had a platform callback; a clock fault
-   * proves no elapsed time, so it is kept. */
+   * in support has hit that timeout (reconcile holds an uncommitted candidate
+   * to at least UNCOMMITTED_ABANDON_WAIT_MS of it) or had a platform callback;
+   * a clock fault proves no elapsed time, so it is kept. */
   static boolean mayAbandon(UpdateJournal.Snapshot state) {
     switch(state.phase) {
       case COMMITTING: return state.pendingMillis>=UNCOMMITTED_ABANDON_WAIT_MS;

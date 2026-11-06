@@ -59,6 +59,17 @@ public final class InstallReadbackTest {
     check(validating.abandoned.isEmpty()&&sealed.read().phase==UpdateJournal.Phase.COMMITTING,"committed session abandoned");
     validating.session=InstallReadback.Session.GONE;validating.installed=NEW;
     check(InstallReadback.reconcile(sealed,validating,budget).phase==UpdateJournal.Phase.PROBATION,"sealed install missed");
+    // A host budget shorter than the wait does not time out an uncommitted
+    // candidate early: a sealed one being verified still gets the full wait.
+    UpdateJournal shortBudget=committing(root,"short-budget");Platform verifying=new Platform(InstallReadback.Session.UNCOMMITTED);long hostBudget=wait/15;
+    for(long at:new long[]{0,2*hostBudget,wait-1}){verifying.elapsed=at;InstallReadback.reconcile(shortBudget,verifying,hostBudget);
+      check(shortBudget.read().phase==UpdateJournal.Phase.COMMITTING&&verifying.abandoned.isEmpty(),"uncommitted candidate timed out at the host budget");}
+    verifying.elapsed=wait;InstallReadback.reconcile(shortBudget,verifying,hostBudget);
+    check(InstallReadback.reconcile(shortBudget,verifying,hostBudget).reason.equals(UpdateJournal.INSTALL_RELEASED)&&verifying.abandoned.equals(List.of(3)),"uncommitted candidate not released after the wait");
+    // A committed candidate still times out at the host budget.
+    UpdateJournal committedShort=committing(root,"committed-short-budget");Platform committedPlatform=new Platform(InstallReadback.Session.COMMITTED);
+    InstallReadback.reconcile(committedShort,committedPlatform,hostBudget);committedPlatform.elapsed=hostBudget;
+    check(InstallReadback.reconcile(committedShort,committedPlatform,hostBudget).reason.equals("install_timeout"),"committed candidate ignored the host budget");
     // A session stuck in support after a timeout is abandoned the same way.
     UpdateJournal timeout=committing(root,"timeout");timeout.observePending("release-11",3,10,0,1000);timeout.observePending("release-11",3,10,1000,1000);
     check(timeout.read().reason.equals("install_timeout"),"timeout not reached");
