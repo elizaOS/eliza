@@ -554,7 +554,9 @@ export async function fetchEvmNativeBalanceViaRpc(
 
 /**
  * Query ERC-20 balanceOf, symbol, and decimals for a single token via RPC.
- * Returns null if the token has zero balance or the call fails.
+ * Returns null only when the token genuinely holds a zero balance; provider
+ * failures (throttling, bad keys, timeouts, unparseable answers) throw so the
+ * caller can never read them as "this wallet holds no tokens".
  */
 async function fetchErc20BalanceViaRpc(
   rpcUrl: string,
@@ -572,65 +574,95 @@ async function fetchErc20BalanceViaRpc(
   // decimals()
   const decimalsData = "0x313ce567";
 
-  const makeCall = (to: string, data: string) =>
-    fetch(rpcUrl, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        jsonrpc: "2.0",
-        id: 1,
-        method: "eth_call",
-        params: [{ to, data }, "latest"],
-      }),
-      signal: AbortSignal.timeout(8_000),
-    }).then((r) => r.json() as Promise<{ result?: string }>);
+  // Same transport contract as the native read above: HTTP status, non-JSON
+  // bodies, and JSON-RPC error envelopes all throw instead of yielding a
+  // `result` of undefined.
+  const makeCall = async (to: string, data: string) =>
+    jsonOrThrow<{ result?: string }>(
+      await fetch(
+        rpcUrl,
+        rpcJsonRequest(
+          8_000,
+          JSON.stringify({
+            jsonrpc: "2.0",
+            id: 1,
+            method: "eth_call",
+            params: [{ to, data }, "latest"],
+          }),
+        ),
+      ),
+    );
 
-  try {
-    const [balRes, symRes, decRes] = await Promise.all([
-      makeCall(contractAddress, balanceOfData),
-      makeCall(contractAddress, symbolData),
-      makeCall(contractAddress, decimalsData),
-    ]);
+  // The balance is the only evidence that matters here: `symbol()` and
+  // `decimals()` are display metadata. Reading the balance first means a token
+  // this wallet holds none of cannot turn a reverting metadata call into a
+  // chain-level provider fault, and it skips two `eth_call`s per empty token.
+  const balRes = await makeCall(contractAddress, balanceOfData);
 
-    const rawBal = balRes.result;
-    if (!rawBal || rawBal === "0x" || rawBal === "0x0" || BigInt(rawBal) === 0n)
-      return null;
-
-    let decimals = 18;
-    if (decRes.result && decRes.result !== "0x") {
-      const d = Number(BigInt(decRes.result));
-      if (Number.isFinite(d) && d >= 0 && d <= 36) decimals = d;
-    }
-
-    let symbol = "TOKEN";
-    if (symRes.result && symRes.result.length > 2) {
-      try {
-        // ABI-encoded string: offset (32 bytes) + length (32 bytes) + data
-        const hex = symRes.result.slice(2);
-        if (hex.length >= 128) {
-          const len = Number(BigInt(`0x${hex.slice(64, 128)}`));
-          const bytes = Buffer.from(hex.slice(128, 128 + len * 2), "hex");
-          const decoded = bytes.toString("utf-8").replace(/\0/g, "").trim();
-          if (decoded) symbol = decoded;
-        }
-      } catch {
-        // Fall through with default symbol.
-      }
-    }
-
-    const balance = formatWei(BigInt(rawBal), decimals);
-    return {
-      symbol,
-      name: symbol,
-      contractAddress,
-      balance,
-      decimals,
-      valueUsd: "0",
-      logoUrl: "",
-    };
-  } catch {
-    return null;
+  const rawBal = balRes.result;
+  if (rawBal === undefined) {
+    throw new ElizaError("RPC returned no ERC-20 balance", {
+      code: "WALLET_RPC_INVALID_BALANCE",
+      context: { endpoint: describeRpcEndpoint(rpcUrl) },
+    });
   }
+  // `0x` is empty return data (no such contract at this address) and all-zero
+  // words are real zero balances; both are answers, not failures.
+  if (rawBal === "0x" || rawBal === "0x0") return null;
+  if (!/^0x[0-9a-f]+$/i.test(rawBal)) {
+    throw new ElizaError("RPC returned an invalid ERC-20 balance", {
+      code: "WALLET_RPC_INVALID_BALANCE",
+      context: { endpoint: describeRpcEndpoint(rpcUrl) },
+    });
+  }
+  if (BigInt(rawBal) === 0n) return null;
+
+  const [symRes, decRes] = await Promise.all([
+    // A symbol is a display label: a revert or a throttled `symbol()` reply must
+    // not erase a balance that was already read successfully.
+    makeCall(contractAddress, symbolData).catch((err: unknown) => {
+      logger.warn(
+        `[wallet] ERC-20 symbol unavailable for ${contractAddress}: ${String(err)}`,
+      );
+      return undefined;
+    }),
+    // `decimals()` stays strict on purpose: guessing it would change what the
+    // balance means, so an unreadable decimals is a real read failure.
+    makeCall(contractAddress, decimalsData),
+  ]);
+
+  let decimals = 18;
+  if (decRes.result && decRes.result !== "0x") {
+    const d = Number(BigInt(decRes.result));
+    if (Number.isFinite(d) && d >= 0 && d <= 36) decimals = d;
+  }
+
+  let symbol = "TOKEN";
+  if (symRes?.result && symRes.result.length > 2) {
+    try {
+      // ABI-encoded string: offset (32 bytes) + length (32 bytes) + data
+      const hex = symRes.result.slice(2);
+      if (hex.length >= 128) {
+        const len = Number(BigInt(`0x${hex.slice(64, 128)}`));
+        const bytes = Buffer.from(hex.slice(128, 128 + len * 2), "hex");
+        const decoded = bytes.toString("utf-8").replace(/\0/g, "").trim();
+        if (decoded) symbol = decoded;
+      }
+    } catch {
+      // Symbol is cosmetic; fall through with the default label.
+    }
+  }
+
+  const balance = formatWei(BigInt(rawBal), decimals);
+  return {
+    symbol,
+    name: symbol,
+    contractAddress,
+    balance,
+    decimals,
+    valueUsd: "0",
+    logoUrl: "",
+  };
 }
 
 async function fetchEvmChainBalancesViaRpc(
@@ -652,8 +684,21 @@ async function fetchEvmChainBalancesViaRpc(
             fetchErc20BalanceViaRpc(rpcUrl, address, addr),
           ),
         );
+        const failures: unknown[] = [];
         for (const r of results) {
-          if (r.status === "fulfilled" && r.value) tokens.push(r.value);
+          if (r.status === "fulfilled") {
+            if (r.value) tokens.push(r.value);
+          } else {
+            failures.push(r.reason);
+          }
+        }
+        // A wallet holding none of the tracked tokens and an RPC refusing
+        // every `eth_call` both produced `tokens: []`; only an all-failed run
+        // is a provider fault. Partial reads keep the tokens that answered.
+        if (failures.length === results.length) {
+          throw failures[0] instanceof Error
+            ? failures[0]
+            : new Error(String(failures[0]));
         }
       }
 
