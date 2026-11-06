@@ -345,6 +345,27 @@ export function collectDeniedPluginNames(names: Iterable<string>): Set<string> {
   return denied;
 }
 
+/** Plugin names the operator skips through `ELIZA_SKIP_PLUGINS`. */
+export function readEnvSkipPlugins(
+  env: NodeJS.ProcessEnv = process.env,
+): string[] {
+  return (env.ELIZA_SKIP_PLUGINS ?? "")
+    .split(",")
+    .map((value) => value.trim())
+    .filter(Boolean);
+}
+
+/** The deny set a host configured: `plugins.deny` plus `ELIZA_SKIP_PLUGINS`. */
+export function collectConfiguredDeniedPluginNames(
+  config: Pick<ElizaConfig, "plugins">,
+  env: NodeJS.ProcessEnv = process.env,
+): Set<string> {
+  return collectDeniedPluginNames([
+    ...(config.plugins?.deny ?? []),
+    ...readEnvSkipPlugins(env),
+  ]);
+}
+
 // ---------------------------------------------------------------------------
 // Main function
 // ---------------------------------------------------------------------------

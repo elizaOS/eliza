@@ -215,7 +215,10 @@ import {
   OPTIONAL_STATIC_PLUGIN_REGISTRATIONS,
 } from "./optional-plugins.ts";
 import { deduplicatePluginActions } from "./plugin-action-dedupe.ts";
-import { PROVIDER_PLUGIN_MAP } from "./plugin-collector.ts";
+import {
+  collectConfiguredDeniedPluginNames,
+  PROVIDER_PLUGIN_MAP,
+} from "./plugin-collector.ts";
 import { installRuntimePluginLifecycle } from "./plugin-lifecycle.ts";
 import {
   isWorkspacePluginSourceFallbackAllowed,
@@ -4796,7 +4799,10 @@ export async function startEliza(
   // malformed value fails the boot rather than the first turn.
   resolveOwnerChatCallerRole();
   readActionAllowlist();
-  const assistantPlugins = createAssistantPlugins(character);
+  const assistantPlugins = createAssistantPlugins(
+    character,
+    collectConfiguredDeniedPluginNames(config),
+  );
   const assistantPlugin = assistantPlugins[0];
   deduplicatePluginActions([
     ...assistantPlugins,
