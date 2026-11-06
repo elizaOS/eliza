@@ -279,11 +279,13 @@ directory when staging, or supplies a compiler/JVM budget to the runner, which
 owns temporary-directory cleanup and propagates compilation/assertion failures.
 Staging rejects unknown fixtures, invalid packages and existing output files; it never rewrites production source.
 
-`RuntimeRequestDispatcher` shares bounded normal/urgent-control queues, serialized-body admission and destruction cleanup. Pause/cancel/abort work uses a separate single-worker lane. Defaults preserve four normal workers, sixteen queued normal requests and eight queued controls; hosts can configure queue bounds. Body limits count UTF-16 serialized JSON units; transport byte limits and route/authentication policy remain mandatory. Rejected work is never retried. `close()` interrupts active work and discards queued work. Portable contracts cover saturation, urgent progress, size boundaries and teardown.
+`RuntimeRequestDispatcher` shares bounded normal/urgent-control queues, serialized-body admission and destruction cleanup. Pause/cancel/abort work uses a separate single-worker lane. Defaults preserve four normal workers, sixteen queued normal requests and eight queued controls; hosts can configure queue bounds. Body limits count UTF-16 serialized JSON units: `MAX_BODY_TEXT_UNITS` (65536) for every path but `/voice/stt`, which admits `MAX_STT_BODY_TEXT_UNITS` (12 MiB). Transport byte limits and route/authentication policy remain mandatory. Rejected work is never retried. `close()` interrupts active work and discards queued work. Portable contracts cover saturation, urgent progress, size boundaries and teardown.
 
 `runtime.EmbeddedRuntimeService` integrates the existing NativeRuntimeSession and
 EmbeddedRuntimeGroup with Android Service lifecycle, foreground dispatch, status,
-endpoint-bound requests and local health snapshots. Subclasses provide the private
+endpoint-bound requests and local health snapshots. Status reports `requestBodyLimit`
+(`RuntimeRequestDispatcher.MAX_BODY_TEXT_UNITS`), so a renderer can check a body's
+`JSON.stringify` length before the bridge rejects it. Subclasses provide the private
 runtime root, notification UI/identity, launch commands and timing/size policy.
 Product wrappers retain asset admission, route allowlists, credentials and provider
 configuration. Static adapters use the concrete service class so replacement and

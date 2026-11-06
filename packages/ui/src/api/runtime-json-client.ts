@@ -10,6 +10,8 @@ export interface RuntimeStatus {
   available: boolean;
   state: string;
   error?: string;
+  /** Largest request body the native bridge admits, as JSON.stringify length. */
+  requestBodyLimit?: number;
 }
 export interface RuntimeJsonResponse {
   status: number;
