@@ -1194,9 +1194,11 @@ function googleHost(t, google, extraPolicy = {}) {
             grantedScopes: google.connections[named] ?? [],
           });
         return Response.json({
-          connected: google.connectionId !== null,
+          connected: google.connectionId !== null && !google.reason,
           configured: true,
-          reason: google.connectionId ? "connected" : "disconnected",
+          reason:
+            google.reason ??
+            (google.connectionId ? "connected" : "disconnected"),
           identity: { email: "owner@example.test" },
           connectionId: google.connectionId,
           grantedCapabilities: ["google.gmail.triage"],
@@ -1220,6 +1222,20 @@ function googleHost(t, google, extraPolicy = {}) {
         return Response.json({
           authUrl: "https://accounts.google.com/o/oauth2/v2/auth?state=x",
         });
+      if (path === "/api/v1/eliza/google/gmail/inbox-v1/capabilities")
+        return google.capabilitiesStatus
+          ? new Response(null, { status: google.capabilitiesStatus })
+          : Response.json(
+              google.capabilities ?? {
+                version: 1,
+                attachmentPolicy: {
+                  mimeTypes: ["application/pdf", "image/png"],
+                  maximumBytes: 5242880,
+                  maximumOutgoing: 10,
+                  maximumTotalBytes: 5242880,
+                },
+              },
+            );
       if (path.startsWith("/api/v1/eliza/google/gmail/inbox-v1/operations")) {
         if (google.operationResponse) return google.operationResponse(path);
         if (google.operationStatus)
@@ -1236,7 +1252,7 @@ function googleHost(t, google, extraPolicy = {}) {
             reviewDigest: "a".repeat(64),
             state: path.endsWith("/dispatch") ? "succeeded" : "prepared",
             providerResult: path.endsWith("/dispatch")
-              ? { messageId: "m1" }
+              ? { messageId: "m1", labelIds: ["UNREAD"], historyId: "4243" }
               : null,
             rejectionCode: null,
             createdAt: "2026-10-30T00:00:00Z",
@@ -1334,6 +1350,49 @@ test("Gmail status names its connection and whether message bodies can be read",
   assert.equal(disconnected.connectionId, null);
   assert.equal(disconnected.canReadMessages, false);
   assert.equal(calls.length, 9);
+});
+
+test("Gmail status reports the host policy and its verdict on each grant", async (t) => {
+  const MODIFY = "https://www.googleapis.com/auth/gmail.modify";
+  const SEND = "https://www.googleapis.com/auth/gmail.send";
+  // [scopes, verdict on a read-only host, verdict on an owner-writes host]
+  for (const [scopes, readOnlyHost, writesHost] of [
+    [[READ_SCOPE, "openid"], "read-only", "read-only"],
+    [[READ_SCOPE, MODIFY, "email"], "too-broad", "part-write"],
+    [[READ_SCOPE, SEND], "too-broad", "part-write"],
+    [[READ_SCOPE, MODIFY, SEND, "openid"], "too-broad", "write"],
+    [[READ_SCOPE, "https://mail.google.com/"], "too-broad", "too-broad"],
+    [[READ_SCOPE, METADATA_SCOPE], "too-broad", "too-broad"],
+    [[READ_SCOPE, "not a scope"], "too-broad", "too-broad"],
+    [[METADATA_SCOPE, "openid"], "no-read", "no-read"],
+    [["openid", "email"], "no-read", "no-read"],
+    [[MODIFY, SEND], "too-broad", "no-read"],
+  ]) {
+    for (const [ownerWrites, grant] of [
+      [false, readOnlyHost],
+      [true, writesHost],
+    ]) {
+      const google = { connectionId: GRANT_A, scopes };
+      const { get } = googleHost(t, google, { gmailOwnerWrites: ownerWrites });
+      const status = await (await get("/gmail/status")).json();
+      const label = `${scopes.join(" ")} ownerWrites=${ownerWrites}`;
+      assert.equal(status.ownerWrites, ownerWrites, label);
+      assert.equal(status.grant, grant, label);
+      assert.equal(
+        status.canReadMessages,
+        ["read-only", "part-write", "write"].includes(grant),
+        label,
+      );
+      // Not connected: the policy is still reported, and nothing reads.
+      google.connectionId = null;
+      const disconnected = await (await get("/gmail/status")).json();
+      assert.deepEqual(
+        [disconnected.ownerWrites, disconnected.grant],
+        [ownerWrites, "no-read"],
+        label,
+      );
+    }
+  }
 });
 
 test("a Gmail grant wider than read-only is never read, by task reads or by list and read", async (t) => {
@@ -1534,11 +1593,21 @@ test("task reads report typed reasons and retry only transient failures", async 
       code: "cloud_sign_in_required",
     });
   }
-  // Cloud's Google connector answers 409 when the Google token needs a
-  // reconnect. A fresh status check names the case.
+  // Cloud's Google connector answers 409 when the Google token cannot be
+  // refreshed. A fresh status check names the case: a token that needs a
+  // reconnect, or an outage while the same grant is still connected.
   google.searchFailures = [409];
+  google.afterFailure = () => {
+    google.reason = "needs_reauth";
+  };
   await assert.rejects(port.searchGmailMessagesPage(search(GRANT_A)), {
     code: "reauth_required",
+  });
+  google.reason = undefined;
+  google.searchFailures = [409];
+  google.afterFailure = undefined;
+  await assert.rejects(port.searchGmailMessagesPage(search(GRANT_A)), {
+    code: "unavailable",
   });
   google.searchFailures = [409];
   google.afterFailure = () => {
@@ -2193,6 +2262,7 @@ test("the owner mail writer relays Cloud's reviewed two-step operation for the c
     proposal: archive,
   });
   assert.equal(prepared.receipt.state, "prepared");
+  assert.equal(prepared.receipt.mailbox, null);
   assert.deepEqual(prepared.review, { kind: "archive", messageId: "m1" });
   const prepare = calls.find((c) => c.url.endsWith("/inbox-v1/operations"));
   assert.equal(prepare.init.method, "POST");
@@ -2207,6 +2277,13 @@ test("the owner mail writer relays Cloud's reviewed two-step operation for the c
     proposal: archive,
   });
   assert.equal(done.receipt.state, "succeeded");
+  // The labels the change left, reduced as a read reduces them.
+  assert.deepEqual(done.receipt.mailbox, {
+    historyId: "4243",
+    unread: true,
+    inInbox: false,
+    inTrash: false,
+  });
   assert.ok(
     calls.some((c) =>
       c.url.endsWith(`/inbox-v1/operations/${OPERATION}/dispatch`),
@@ -2266,16 +2343,109 @@ test("the owner mail writer relays Cloud's reviewed two-step operation for the c
     { code: "review_changed", status: 409 },
   );
   google.operationStatus = undefined;
+  // Cloud's attachment limits, read for the same current grant.
+  assert.deepEqual(await writer.capabilities(), {
+    version: 1,
+    accountId: GRANT_A,
+    attachmentPolicy: {
+      mimeTypes: ["application/pdf", "image/png"],
+      maximumBytes: 5242880,
+      maximumOutgoing: 10,
+      maximumTotalBytes: 5242880,
+    },
+  });
+  assert.ok(
+    calls.some((c) =>
+      c.url.endsWith(`/inbox-v1/capabilities?grantId=${GRANT_A}`),
+    ),
+  );
+  // A server without the policy is refused, never filled with copied limits.
+  google.capabilities = { version: 1 };
+  await assert.rejects(writer.capabilities(), { status: 502 });
+  google.capabilities = undefined;
+  // A failed Google token read is an outage, not a changed review.
+  google.capabilitiesStatus = 409;
+  await assert.rejects(writer.capabilities(), {
+    code: "unavailable",
+    status: 503,
+  });
+  google.capabilitiesStatus = undefined;
   // Another connected mailbox, or a revoked grant, is refused before Cloud.
   google.connectionId = GRANT_B;
   await assert.rejects(
     writer.prepare({ requestId: OPERATION, proposal: archive }),
     { code: "account_changed" },
   );
+  await assert.rejects(writer.capabilities(), { code: "account_changed" });
   google.connectionId = GRANT_A;
   google.scopes = [READ_SCOPE, "openid"];
   await assert.rejects(
     writer.prepare({ requestId: OPERATION, proposal: archive }),
     { code: "insufficient_scope" },
   );
+});
+
+test("the owner mail writer refuses a send review it cannot show the owner", async (t) => {
+  const google = {
+    connectionId: GRANT_A,
+    scopes: [READ_SCOPE, SEND_SCOPE, "openid"],
+  };
+  const { routes } = googleHost(t, google, { gmailOwnerWrites: true });
+  const writer = routes.mailboxWriterForAccount({
+    actorId: "owner",
+    accountId: GRANT_A,
+  });
+  const review = {
+    kind: "send",
+    from: "owner@example.test",
+    to: ["ann@example.test"],
+    cc: [],
+    subject: "Hello",
+    attachments: [{ name: "bill.pdf" }],
+  };
+  const answer = (value) => () =>
+    Response.json({
+      receipt: {
+        requestId: OPERATION,
+        kind: "send",
+        reviewDigest: "a".repeat(64),
+        state: "prepared",
+      },
+      review: value,
+    });
+  const proposal = {
+    kind: "send",
+    mode: "compose",
+    to: ["ann@example.test"],
+    subject: "Hello",
+    bodyText: "Hi",
+  };
+  // Cloud sends with cc or bcc alone.
+  for (const valid of [
+    review,
+    { ...review, to: [], bcc: ["b@example.test"] },
+  ]) {
+    google.operationResponse = answer(valid);
+    assert.deepEqual(
+      (await writer.prepare({ requestId: OPERATION, proposal })).review,
+      valid,
+    );
+  }
+  for (const malformed of [
+    { ...review, from: "Owner <owner@example.test>" },
+    { ...review, to: [] },
+    { ...review, bcc: ["ann..b@example.test"] },
+    { ...review, cc: Array(50).fill("b@example.test") },
+    { ...review, to: ["ann..b@example.test"] },
+    { ...review, cc: "ann@example.test" },
+    { ...review, subject: undefined },
+    { ...review, attachments: [{ size: 4 }] },
+    { ...review, forwardedAttachments: {} },
+    { ...review, kind: "archive" },
+  ]) {
+    google.operationResponse = answer(malformed);
+    await assert.rejects(writer.prepare({ requestId: OPERATION, proposal }), {
+      status: 502,
+    });
+  }
 });

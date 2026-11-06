@@ -4,6 +4,7 @@ import { mkdir, open, rename, unlink } from "node:fs/promises";
 import { dirname } from "node:path";
 import { createDocumentImageDescriber } from "./document-image-describer.mjs";
 import { NativeCloudServiceError } from "./errors.mjs";
+import { mailAddress, mailAddresses, mailboxState } from "./mail-fields.mjs";
 import { createMailboxReadPort } from "./mailbox-read-port.mjs";
 import { createManagedGoogleReadPort } from "./managed-google-read-port.mjs";
 import { executePlanChange, validatePlanChangeInput } from "./plan-change.mjs";
@@ -235,6 +236,7 @@ const googleScopes = (value) =>
 const GMAIL_READ_ONLY_SCOPE = "https://www.googleapis.com/auth/gmail.readonly";
 const GMAIL_MODIFY_SCOPE = "https://www.googleapis.com/auth/gmail.modify";
 const GMAIL_SEND_SCOPE = "https://www.googleapis.com/auth/gmail.send";
+const GMAIL_METADATA_SCOPE = "https://www.googleapis.com/auth/gmail.metadata";
 const GOOGLE_IDENTITY_SCOPES = new Set([
   "openid",
   "email",
@@ -242,37 +244,57 @@ const GOOGLE_IDENTITY_SCOPES = new Set([
   "https://www.googleapis.com/auth/userinfo.email",
   "https://www.googleapis.com/auth/userinfo.profile",
 ]);
+// What a Google grant means on a host, checked on the raw scope list, so an
+// unrecognized entry also makes the grant wider. `no-read`: nothing reads
+// messages (identity or metadata only, or no gmail.readonly). `too-broad`: a
+// scope this host never asks for. `read-only`, `part-write` and `write`: the
+// grant reads mail and holds none, some or all of the write scopes. Only a
+// host with `writes` asks for any write scope (gmail.modify, gmail.send).
+const gmailGrant = (scopes, writes) => {
+  const list = Array.isArray(scopes) ? scopes : [];
+  const wanted = writes ? [GMAIL_MODIFY_SCOPE, GMAIL_SEND_SCOPE] : [];
+  if (
+    list.every(
+      (scope) =>
+        scope === GMAIL_METADATA_SCOPE || GOOGLE_IDENTITY_SCOPES.has(scope),
+    )
+  )
+    return "no-read";
+  if (
+    !list.every(
+      (scope) =>
+        scope === GMAIL_READ_ONLY_SCOPE ||
+        GOOGLE_IDENTITY_SCOPES.has(scope) ||
+        wanted.includes(scope),
+    )
+  )
+    return "too-broad";
+  if (!list.includes(GMAIL_READ_ONLY_SCOPE)) return "no-read";
+  const held = wanted.filter((scope) => list.includes(scope)).length;
+  return held === 0
+    ? "read-only"
+    : held === wanted.length
+      ? "write"
+      : "part-write";
+};
+const readsMail = (grant) =>
+  grant === "read-only" || grant === "part-write" || grant === "write";
 // By default this host asks Google for read-only Gmail (`google.gmail.triage`,
 // which Cloud maps to gmail.readonly plus sign-in identity). Mail is read only
 // through a grant that is exactly that. A wider grant (gmail.modify,
 // gmail.send, gmail.compose, https://mail.google.com/ or another product's
 // scope) can change, send or delete mail, so it is refused rather than used.
-// Checked on the raw list: an unrecognized entry also makes the grant wider.
 // Agent task reads (`googleForAccount`) use this grant unless the host opts
 // in to the owner write grant below.
 const gmailReadOnlyGrant = (scopes) =>
-  Array.isArray(scopes) &&
-  scopes.includes(GMAIL_READ_ONLY_SCOPE) &&
-  scopes.every(
-    (scope) =>
-      scope === GMAIL_READ_ONLY_SCOPE || GOOGLE_IDENTITY_SCOPES.has(scope),
-  );
+  gmailGrant(scopes, false) === "read-only";
 // A host that opts in (`hostPolicy.gmailOwnerWrites: true`) lets the owner's
 // own mailbox also hold gmail.modify and gmail.send, for the owner's reviewed
 // mail changes (`mailboxWriterForAccount`). Nothing else widens it: compose,
 // full mail access or another product's scope is still refused. Agent task
 // reads may then run under this grant too: their port only sends GET reads, so
 // the wider grant gives a task no write path.
-const gmailOwnerWriteGrant = (scopes) =>
-  Array.isArray(scopes) &&
-  scopes.includes(GMAIL_READ_ONLY_SCOPE) &&
-  scopes.every(
-    (scope) =>
-      scope === GMAIL_READ_ONLY_SCOPE ||
-      scope === GMAIL_MODIFY_SCOPE ||
-      scope === GMAIL_SEND_SCOPE ||
-      GOOGLE_IDENTITY_SCOPES.has(scope),
-  );
+const gmailOwnerWriteGrant = (scopes) => readsMail(gmailGrant(scopes, true));
 // The owner's reviewed mail effects this host relays to Cloud's inbox-v1
 // operations. Drafts are not offered here.
 const OWNER_MAIL_EFFECTS = new Set([
@@ -2110,6 +2132,9 @@ export function createCloudRoutes({
           // only through an exactly read-only grant (gmailReadOnlyGrant), or
           // the owner write grant when the host opts in.
           grantedScopes: connected ? googleScopes(value.grantedScopes) : [],
+          // This host's policy and its verdict on the grant, on every answer.
+          ownerWrites,
+          grant: gmailGrant(connected ? value.grantedScopes : [], ownerWrites),
           canReadMessages: connected && ownerGmailGrant(value.grantedScopes),
           // Reported only by a host that opts in to owner mail writes.
           ...(ownerWrites
@@ -2458,9 +2483,12 @@ export function createCloudRoutes({
           if (!error?.googleConflict) throw error;
           // Name the Google conflict from the connection's current status:
           // gone or replaced, metadata-only, or a token that needs reconnect.
+          // Cloud also answers 409 when Google's token endpoint is down. Only
+          // a refused grant changes the status, so a status that still names
+          // this connected grant means Google is unavailable.
           if ((await currentAccountId(googleEpoch)) !== grantId)
             throw googleReadFailure("account_changed");
-          throw googleReadFailure("reauth_required");
+          throw googleReadFailure("unavailable");
         }
       },
     });
@@ -2601,6 +2629,13 @@ export function createCloudRoutes({
         throw writeFailure("account_changed", 409);
       return value;
     };
+    const recipients = (review) => {
+      const lists = [review.to, review.cc, review.bcc].map((list) =>
+        mailAddresses(list),
+      );
+      const count = lists.reduce((sum, list) => sum + (list?.length ?? 0), 0);
+      return lists.every(Boolean) && count > 0 && count <= 50;
+    };
     const receipt = (value, requestId) => {
       if (
         value?.requestId !== requestId ||
@@ -2622,6 +2657,11 @@ export function createCloudRoutes({
         reviewDigest: value.reviewDigest,
         state: value.state,
         providerResult,
+        // A change's labels after it, reduced as the mailbox read port does.
+        mailbox:
+          value.kind !== "send" && Array.isArray(providerResult?.labelIds)
+            ? mailboxState(providerResult.labelIds, providerResult.historyId)
+            : null,
         rejectionCode:
           typeof value.rejectionCode === "string" ? value.rejectionCode : null,
       };
@@ -2663,18 +2703,33 @@ export function createCloudRoutes({
           false,
         );
         const prepared = receipt(value?.receipt, requestId);
+        const review = value.review;
         if (
           prepared.kind !== effect.kind ||
-          !value.review ||
-          typeof value.review !== "object" ||
-          Array.isArray(value.review)
+          !review ||
+          typeof review !== "object" ||
+          Array.isArray(review) ||
+          // A send review names what the owner confirms: who it is from and
+          // to (1 to 50 recipients in to, cc and bcc, as Cloud allows), the
+          // subject and the names of the files.
+          (effect.kind === "send" &&
+            (review.kind !== "send" ||
+              !mailAddress(review.from) ||
+              !recipients(review) ||
+              typeof review.subject !== "string" ||
+              ![review.attachments, review.forwardedAttachments].every(
+                (files) =>
+                  files === undefined ||
+                  (Array.isArray(files) &&
+                    files.every((file) => typeof file?.name === "string")),
+              )))
         )
           throw fail(message("invalidCloudResponse"), 502);
         return {
           version: 1,
           accountId,
           receipt: prepared,
-          review: value.review,
+          review,
         };
       },
       /** Performs the reviewed effect once; a repeat returns the same receipt. */
@@ -2709,6 +2764,53 @@ export function createCloudRoutes({
           throw writeFailure("outcome_unknown", 503);
         }
         return { version: 1, accountId, receipt: confirmed };
+      },
+      /** Cloud's limits on the files that one sent message can carry. */
+      async capabilities() {
+        let value;
+        try {
+          value = await call(
+            `/api/v1/eliza/google/gmail/inbox-v1/capabilities?grantId=${encodeURIComponent(accountId)}`,
+            undefined,
+            undefined,
+            false,
+          );
+        } catch (error) {
+          // This route reads no review: Cloud answers 409 when it cannot get
+          // a Google token and 403 when the grant is gone. A grant that is
+          // still current makes it an outage.
+          if (!["review_changed", "insufficient_scope"].includes(error?.code))
+            throw error;
+          await authority();
+          throw writeFailure("unavailable", 503);
+        }
+        const policy = value?.attachmentPolicy;
+        const count = (number) => Number.isSafeInteger(number) && number > 0;
+        if (
+          !Array.isArray(policy?.mimeTypes) ||
+          policy.mimeTypes.length > 100 ||
+          !policy.mimeTypes.every(
+            (type) =>
+              typeof type === "string" &&
+              /^[a-z0-9][a-z0-9!#$&^_.+-]{0,63}\/[a-z0-9][a-z0-9!#$&^_.+-]{0,63}$/.test(
+                type,
+              ),
+          ) ||
+          !count(policy.maximumBytes) ||
+          !count(policy.maximumOutgoing) ||
+          !count(policy.maximumTotalBytes)
+        )
+          throw fail(message("invalidCloudResponse"), 502);
+        return {
+          version: 1,
+          accountId,
+          attachmentPolicy: {
+            mimeTypes: [...policy.mimeTypes],
+            maximumBytes: policy.maximumBytes,
+            maximumOutgoing: policy.maximumOutgoing,
+            maximumTotalBytes: policy.maximumTotalBytes,
+          },
+        };
       },
       /** The canonical receipt of an earlier prepare or dispatch. */
       async observe(input) {
@@ -2828,4 +2930,5 @@ export function createFileCredentialStore(path) {
 
 export { createDocumentImageDescriber } from "./document-image-describer.mjs";
 export { loadDocumentRuntime } from "./document-runtime.mjs";
+export { mailAddress, mailAddresses, mailboxState } from "./mail-fields.mjs";
 export { createManagedGoogleReadPort } from "./managed-google-read-port.mjs";

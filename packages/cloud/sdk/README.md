@@ -220,12 +220,21 @@ must separately authorize and implement their native/renderer read bridge; this
 factory does not enable an HTTP route or change task-read authority.
 Each message detail also carries `state`: Gmail's `historyId` for the message
 and whether it is unread, in the inbox or in the trash (no other labels).
+`./native-host` also exports this reduction (`mailboxState(labels, historyId)`)
+and Cloud's recipient rule:
+`mailAddress(value)` (one bare address, no display name) and
+`mailAddresses(value, required)` (at most 50; the list, or null).
 
 By default the owner's Gmail grant must be exactly read-only (`gmail.readonly`
 plus sign-in identity). A host that sets `hostPolicy.gmailOwnerWrites: true`
 asks Google for `gmail.modify` and `gmail.send` as well, and lets the owner's
 mailbox (`/gmail/list`, `/gmail/read`, `mailboxForAccount`) hold that grant;
 `/gmail/status` then also reports `canChangeMessages` and `canSendMessages`.
+Every `/gmail/status` answer reports the host policy as `ownerWrites` and the
+verdict on the grant as `grant`: `read-only`, `part-write` or `write` (it reads
+mail, and holds none, some or all of the write scopes this host asks for),
+`too-broad` (a scope this host never asks for) or `no-read`.
+`canReadMessages` is true exactly for the first three when connected.
 Agent task reads (`googleForAccount`) also accept that owner grant, so the
 agent can still read the owner's mail. The task port only sends GET reads; it
 has no write operation. Compose, full mail access or any other scope is still
@@ -238,7 +247,14 @@ the owner's reviewed changes (`send`, `archive`, `unarchive`, `trash`,
 operations: `prepare({requestId, proposal})` returns Cloud's `review` and a
 `prepared` receipt to show the owner, `dispatch({requestId, reviewDigest,
 proposal})` performs exactly that review once, and `observe({requestId})` reads
-the canonical receipt. Before each call it checks the signed-in owner, the
+the canonical receipt. A change's receipt also carries `mailbox`, the labels
+it left reduced as a read reduces them (null for send and before dispatch).
+`prepare` refuses a send review without a valid `from`, 1 to 50 recipients in
+`to`, `cc` and `bcc`, a `subject` and file names with a 502. `capabilities()`
+returns Cloud's `attachmentPolicy` (`mimeTypes`, `maximumBytes`,
+`maximumOutgoing`, `maximumTotalBytes`) for outgoing files; a server without it
+fails with a 502, and a failed Google token read with `unavailable`.
+Before each call it checks the signed-in owner, the
 Cloud sign-in and that `accountId` is still the connected grant holding the
 scope the effect needs (`gmail.send` for send, `gmail.modify` otherwise).
 Writes are never retried. Dispatch captures the reviewed input before any
