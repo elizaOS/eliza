@@ -162,6 +162,13 @@ export interface NativeTaskBinding extends NativeTaskContext {
 /** Longest life of a consented-commit grant, from the person's yes to its use. */
 export const COMMIT_GRANT_MAX_MS = 60000;
 /**
+ * The longest a fence waits for a cancel-reply peer to confirm that a
+ * cancelled request stopped, before it ends the connection instead. It stays
+ * well under the 10 s a renderer gives a Pause, so a Pause that the host
+ * saved is never shown as failed while the fence still waits.
+ */
+export const CANCEL_CONFIRM_MAX_MS = 5000;
+/**
  * A host-issued, single-use grant for one commit (a submit, or a fill or
  * select that sends its form) the person explicitly said yes to. The host
  * issues it only after recording her yes to this exact step, control and
@@ -445,6 +452,8 @@ export class NativeSocketBrowserTarget implements BrowserTarget {
       heartbeatMs: number;
       /** How long a dispatched request waits for the peer's reply. */
       replyMs?: number;
+      /** How long a fence waits for a cancel to be confirmed; capped at the reply deadline. */
+      cancelConfirmMs?: number;
     } = { registrationMs: 30000, heartbeatMs: 90000 },
   ) {}
 
@@ -475,7 +484,8 @@ export class NativeSocketBrowserTarget implements BrowserTarget {
   /**
    * Resolves once no request this target gave up on can still take effect:
    * the peer answered each one after it stopped, or the connection ended.
-   * Rejects when the peer has not answered by the reply deadline, and then
+   * Rejects when the peer has not answered within the cancel-confirm
+   * deadline (`CANCEL_CONFIRM_MAX_MS`, or the reply deadline when shorter), and then
    * ends the connection, which stops every request it carried, so a later
    * call resolves once the close lands. A peer without "cancel-reply"
    * answers nothing, so this resolves at once.
@@ -986,7 +996,12 @@ export class NativeSocketBrowserTarget implements BrowserTarget {
           this.unsettled.set(id, {
             stopped,
             stop,
-            expiresAt: Date.now() + (this.liveness.replyMs ?? 30000),
+            expiresAt:
+              Date.now() +
+              Math.min(
+                this.liveness.replyMs ?? 30000,
+                this.liveness.cancelConfirmMs ?? CANCEL_CONFIRM_MAX_MS,
+              ),
           });
         }
         void sender.send({ type: "cancel", id }).catch(() => socket.destroy());
