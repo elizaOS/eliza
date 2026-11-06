@@ -243,9 +243,9 @@ it("makes a retry and a validation rewrite visible as replacing revisions", asyn
   // The validated rewrite replaces the buffer even though it is shorter.
   expect(texts.at(-1)).toBe(validated);
   expect(tokens.at(-1)).toEqual({ type: "token", fullText: validated });
-  expect(events.find((event) => event.type === "reply_ready")).toMatchObject(
-    { fullText: validated },
-  );
+  expect(events.find((event) => event.type === "reply_ready")).toMatchObject({
+    fullText: validated,
+  });
 }, 60_000);
 
 it("keeps planned-work acknowledgements off the token stream", async () => {

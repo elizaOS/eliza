@@ -14,7 +14,10 @@
  * text. That change reaches clients as a stream revision / authoritative
  * snapshot, never as silent divergence: the final reply stays authoritative.
  */
-import type { StructuredStreamField, StructuredStreamGate } from "@elizaos/core";
+import type {
+  StructuredStreamField,
+  StructuredStreamGate,
+} from "@elizaos/core";
 import { SIMPLE_CONTEXT_ID } from "../../runtime/message-handler";
 
 /**
@@ -38,8 +41,10 @@ const DIRECT_REPLY_PRECEDING_FIELDS: Readonly<
   Record<string, (value: unknown) => boolean>
 > = {
   shouldRespond: (value) => value === "RESPOND",
+  // An empty list is not a direct answer: it can precede action candidates.
   contexts: (value) =>
     Array.isArray(value) &&
+    value.length > 0 &&
     value.every((context) => context === SIMPLE_CONTEXT_ID),
   intents: isEmptyList,
   contextRequests: isEmptyList,

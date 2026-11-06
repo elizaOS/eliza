@@ -20,8 +20,7 @@
  * Streaming coverage: the message-service chunk seam holds a per-stream latch
  * ({@link createOutboundEnvelopeStreamLatch}) that stops chunk forwarding
  * (user stream callback + `model_stream_chunk` hook re-emission) once the
- * accumulated text reads as envelope material, and the first-sentence TTS
- * path refuses to synthesize or attach an envelope echo. KNOWN-OPEN seams:
+ * accumulated text reads as envelope material. KNOWN-OPEN seams:
  * chunks forwarded before the needle completes are already delivered (a
  * stream cannot be recalled), and `useModel`'s own `model_stream_chunk`
  * emission (`source: "use_model"`, runtime.ts) fires upstream of the latch
