@@ -593,6 +593,7 @@ describe("MCP write that already reached the server", () => {
     await runtime.createMemory(message, "messages");
     const action = runtime.actions.find((entry) => entry.name === "MCP");
     if (!action?.handler) throw new Error("Registered MCP action is missing");
+    const replies: Content[] = [];
     const result = await action.handler(
       runtime,
       message,
@@ -605,18 +606,21 @@ describe("MCP write that already reached the server", () => {
           arguments: { title: "Fix login" },
         },
       },
-      async () => []
+      async (content) => {
+        replies.push(content);
+        return [];
+      }
     );
     const readInvocations = async () => {
       const readback = (await service.readResource("tracker", "fixture:///calls")).contents[0];
       if (typeof readback.text !== "string") throw new Error("Expected invocation receipt");
       return JSON.parse(readback.text) as unknown[];
     };
-    return { runtime, result, readInvocations };
+    return { runtime, result, readInvocations, replies };
   }
 
   it("reports a completed write as done when the follow-up summary fails", async () => {
-    const { runtime, result, readInvocations } = await runCreateIssue({
+    const { runtime, result, readInvocations, replies } = await runCreateIssue({
       delayMs: 0,
       summaryFails: true,
     });
@@ -627,13 +631,15 @@ describe("MCP write that already reached the server", () => {
       expect(result.success).toBe(true);
       expect(result.values?.toolExecuted).toBe(true);
       expect(result.data?.output).toContain("Created issue 1");
+      // The user is told the result.
+      expect(replies).toHaveLength(1);
     } finally {
       await runtime.stop();
     }
   });
 
   it("marks a write that timed out after reaching the server as not retryable", async () => {
-    const { runtime, result, readInvocations } = await runCreateIssue({
+    const { runtime, result, readInvocations, replies } = await runCreateIssue({
       delayMs: 1_500,
       timeoutInMillis: 300,
       summaryFails: false,
@@ -645,6 +651,9 @@ describe("MCP write that already reached the server", () => {
       expect(result.data?.retryable).toBe(false);
       // The server recorded the write although the client gave up waiting.
       expect(await readInvocations()).toHaveLength(1);
+      // The user is told that the outcome is unknown and that it is not repeated.
+      expect(replies).toHaveLength(1);
+      expect(replies[0]?.text).toContain("don't know whether it completed");
     } finally {
       await runtime.stop();
     }
