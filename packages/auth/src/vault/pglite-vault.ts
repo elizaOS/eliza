@@ -20,7 +20,7 @@ import {
 } from "./internal-utils.js";
 import type { MasterKeyResolver } from "./master-key.js";
 import { resolveReference } from "./password-managers.js";
-import { readStore, type StoreData } from "./store.js";
+import { type RecoverableStoreData, readRecoverableStore } from "./store.js";
 import type {
   PasswordManagerReference,
   StoredEntry,
@@ -712,8 +712,10 @@ export class PgliteVaultImpl implements Vault {
   /**
    * One-shot import from `vault.json` to vault_entries. Runs on first
    * PgliteVaultImpl boot when the table is empty AND the legacy file
-   * exists. Copies entries verbatim — ciphertext stays opaque, master
-   * key unchanged. Writes a sentinel row so we never re-run.
+   * exists. Copies valid entries verbatim — ciphertext stays opaque, master
+   * key unchanged. A malformed entry is skipped and named on the sentinel;
+   * it does not discard the rest of the file. Writes a sentinel row so we
+   * never re-run.
    *
    * The legacy file is left in place for one release as a safety net. A
    * follow-up release deletes both the file and this migration code.
@@ -733,16 +735,17 @@ export class PgliteVaultImpl implements Vault {
         : (existing ?? 0) > 0;
     if (hasRows) return;
 
-    let store: StoreData;
+    let store: RecoverableStoreData;
     try {
-      store = await readStore(legacyPath);
+      store = await readRecoverableStore(legacyPath);
     } catch (err) {
       // error-policy:J4 explicit degrade — one-shot legacy-file migration only.
-      // A missing/corrupt legacy vault.json means there is nothing to import;
-      // the live PGlite vault starts empty (it fabricates NO secret values —
-      // real reads still fail closed via loadMasterKey/decrypt). The failure is
-      // warned and a sentinel is written so we do not re-read a broken file and
-      // re-warn on every boot.
+      // An unreadable or structurally corrupt vault.json has nothing that can
+      // be imported. The live PGlite vault starts empty (it fabricates NO
+      // secret values — real reads still fail closed via loadMasterKey/decrypt).
+      // A sentinel stops every later boot from re-reading that file and warning
+      // again. A single malformed entry does not take this path: those are
+      // skipped below and the valid entries are imported.
       this.opts.logger?.warn(
         `[vault] failed to read legacy vault.json for migration; PGlite vault starts empty`,
         err,
@@ -751,7 +754,7 @@ export class PgliteVaultImpl implements Vault {
       return;
     }
     const keys = Object.keys(store.entries);
-    if (keys.length === 0) {
+    if (keys.length === 0 && store.rejected.length === 0) {
       // Same reason as the read-failed path: without the sentinel, every
       // subsequent boot re-reads the empty legacy file.
       await writeMigrationSentinel(db, "empty-source");
@@ -759,22 +762,31 @@ export class PgliteVaultImpl implements Vault {
     }
 
     let migrated = 0;
+    const skipped = store.rejected.map((entry) => entry.key);
     await db.transaction(async (tx) => {
       for (const [key, entry] of Object.entries(store.entries)) {
         await insertLegacyEntry(tx, key, entry);
         migrated += 1;
       }
+      const record: {
+        at: string;
+        migrated: number;
+        skipped?: readonly string[];
+      } = { at: new Date().toISOString(), migrated };
+      if (skipped.length > 0) record.skipped = skipped;
       await tx.query(
         `INSERT INTO vault_entries (key, kind, value, last_modified)
          VALUES ($1, 'value', $2, $3)
          ON CONFLICT (key) DO NOTHING`,
-        [
-          MIGRATION_SENTINEL_KEY,
-          JSON.stringify({ at: new Date().toISOString(), migrated }),
-          Date.now(),
-        ],
+        [MIGRATION_SENTINEL_KEY, JSON.stringify(record), Date.now()],
       );
     });
+    if (skipped.length > 0) {
+      this.opts.logger?.warn(
+        `[vault] migrated ${migrated} entries from ${legacyPath} to PGlite; skipped ${skipped.length} malformed entries (${skipped.join(", ")}). Legacy file retained as safety net.`,
+      );
+      return;
+    }
     this.opts.logger?.warn(
       `[vault] migrated ${migrated} entries from ${legacyPath} to PGlite. Legacy file retained as safety net.`,
     );
