@@ -72,6 +72,7 @@ import {
 } from "../runtime/database-selection.ts";
 import { cancelAndDrainDeferredBoot } from "../runtime/deferred-boot-owner.ts";
 import { resolveDefaultAgentWorkspaceDir } from "../shared/workspace-resolution.ts";
+import { syncDirectoryAsync as syncDirectory } from "../utils/atomic-file.ts";
 import {
   AGENT_BACKUP_AUTHORITY_DIRECTORY,
   INITIAL_AGENT_BACKUP_GENERATION,
@@ -1922,15 +1923,10 @@ export async function purgeAdmittedRetiredLocalAgentBackups(
     for (const archive of review.archives)
       await fs.unlink(resolveLocalBackupPath(archive.fileName));
     if (review.archives.length) {
-      const directory = await fs.open(
+      await syncDirectory(
         localBackupsDir(),
         constants.O_RDONLY | constants.O_NOFOLLOW,
       );
-      try {
-        await directory.sync();
-      } finally {
-        await directory.close();
-      }
     }
     const remaining = await readRetiredLocalAgentBackups(agentId, generation);
     if (remaining.archives.length)
@@ -4188,14 +4184,6 @@ async function sha256OfFileHandle(handle: FileHandle): Promise<string> {
     position += bytesRead;
   }
   return hash.digest("hex");
-}
-async function syncDirectory(directory: string): Promise<void> {
-  const handle = await fs.open(directory, constants.O_RDONLY);
-  try {
-    await handle.sync();
-  } finally {
-    await handle.close();
-  }
 }
 function parseLocalBackupV2Json<T>(
   schema: z.ZodType<T>,
