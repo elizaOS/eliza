@@ -116,13 +116,24 @@ test("a cancelled queued request never starts after an earlier request completes
     () => true,
   );
   await handler({ type: "cancel", id: "second" }, f.sender, () => true);
+  assert.deepEqual(f.replies, []);
   release.resolve();
   await Promise.all([first, second]);
   assert.equal(queries, 1);
+  // The cancelled request is answered once it stopped, after the request
+  // ahead of it: the host then knows nothing of it can still take effect.
   assert.deepEqual(
-    f.replies.map((reply) => reply.id),
-    ["first"],
+    f.replies.map((reply) => [reply.id, reply.ok]),
+    [
+      ["first", true],
+      ["second", false],
+    ],
   );
+  assert.deepEqual(f.replies[1].error, {
+    kind: "STALE_REF",
+    message: "The request was cancelled before it took effect.",
+    reason: "request-cancelled",
+  });
 });
 
 test("invalid or stale-port cancellation cannot write a record", async () => {

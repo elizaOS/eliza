@@ -209,7 +209,10 @@ export class NativeTaskActuator {
        */
       target: Pick<NativeSocketBrowserTarget, "bindTask" | "execute"> &
         Partial<
-          Pick<NativeSocketBrowserTarget, "guideTask" | "hasCapability">
+          Pick<
+            NativeSocketBrowserTarget,
+            "guideTask" | "hasCapability" | "settled"
+          >
         > & {
           advertised?: ReadonlySet<string>;
         };
@@ -675,7 +678,9 @@ export class NativeTaskActuator {
 
   /**
    * May run after task revocation. It only removes this owner's cached
-   * overlay, or with `pausedCursor` pauses it (see that option).
+   * overlay, or with `pausedCursor` pauses it (see that option). It resolves
+   * only once no cancelled browser command can still reach the page, so a
+   * Pause never answers before its fence did.
    */
   async quiesce({
     owner,
@@ -686,6 +691,7 @@ export class NativeTaskActuator {
     taskId: string;
     reason?: TaskCleanupReason;
   }): Promise<void> {
+    await this.options.target.settled?.();
     if (this.options.pausedCursor && this.pausedByPerson(taskId, reason))
       return this.pauseGuidance({ owner, taskId });
     return this.hide(owner, taskId);
