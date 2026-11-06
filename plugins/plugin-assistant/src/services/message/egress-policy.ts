@@ -940,6 +940,11 @@ export async function resolvePlannedReplyEgress(args: {
     // applied).
     providers: {
       ...financialObservationProviders(args.providers),
+      // A current, request-selected note read is evidence for its quoted body.
+      // Keep this narrow provider; the general provider store can contain room history.
+      ...(args.providers?.NAMED_NOTES
+        ? { NAMED_NOTES: args.providers.NAMED_NOTES }
+        : {}),
       ...(reason === "stated_time" && args.providers?.CURRENT_TIME
         ? { CURRENT_TIME: args.providers.CURRENT_TIME }
         : {}),
