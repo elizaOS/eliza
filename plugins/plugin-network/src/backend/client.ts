@@ -92,7 +92,13 @@ function isTurnResponse(value: unknown): value is TurnResponse {
     Array.isArray(value.replies) &&
     value.replies.every((reply) => typeof reply === "string") &&
     Array.isArray(value.replyIds) &&
-    value.replyIds.every((id) => typeof id === "string") &&
+    value.replyIds.every(
+      (id) => typeof id === "string" && id.trim().length > 0,
+    ) &&
+    // One causal output id per collected reply: the gateway reports these ids
+    // back as the turn's acceptance receipt, so a reply without an id would be
+    // delivered without a receipt that can name it.
+    value.replyIds.length === value.replies.length &&
     value.delivery === "collected" &&
     (value.replyKind === "reply" || value.replyKind === "compliance") &&
     typeof value.accountEligible === "boolean" &&
