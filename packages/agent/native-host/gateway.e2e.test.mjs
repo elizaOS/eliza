@@ -1039,3 +1039,465 @@ test("embedded surface HTTP channel fences account replacement, cancellation, la
     await close(server);
   }
 });
+
+// One agent outcome, answered as the buffered JSON reply and as the event
+// stream the agent writes for it (`writeConversationDoneSse`).
+const agentReply = {
+  text: "Hello there!",
+  agentName: "Agent",
+  messageId: "22222222-2222-4222-8222-222222222222",
+  userMessageId: "33333333-3333-4333-8333-333333333333",
+  historyRefreshRequired: true,
+  actionResults: [{ action: "REPLY", success: true }],
+};
+async function streamHarness({ messageStream, ...options } = {}) {
+  const state = {
+    owner: "a",
+    reply: agentReply,
+    tokens: ["Hello", " there", "!"],
+    status: 200,
+    beforeFrame: async () => {},
+    onTurn: async () => {},
+    requests: [],
+    closed: [],
+  };
+  const upstream = http.createServer(async (req, res) => {
+    let raw = "";
+    for await (const chunk of req) raw += chunk;
+    state.requests.push({ url: req.url, body: raw ? JSON.parse(raw) : null });
+    if (req.url === "/api/conversations") {
+      res.setHeader("Content-Type", "application/json");
+      return res.end(
+        JSON.stringify({ conversation: { id, roomId: id, title: "t" } }),
+      );
+    }
+    if (req.url.startsWith("/api/turns/")) {
+      res.setHeader("Content-Type", "application/json");
+      return res.end(JSON.stringify({ aborted: true }));
+    }
+    const closed = new Promise((resolve) => res.on("close", resolve));
+    state.closed.push(closed);
+    await state.onTurn(req.url);
+    if (state.status !== 200 || !req.url.endsWith("/stream")) {
+      res.writeHead(state.status, { "Content-Type": "application/json" });
+      return res.end(
+        JSON.stringify(
+          state.status === 200 ? state.reply : { error: "No such room" },
+        ),
+      );
+    }
+    res.writeHead(200, { "Content-Type": "text/event-stream" });
+    res.write(": heartbeat\n\n");
+    let text = "";
+    for (const [index, token] of state.tokens.entries()) {
+      await state.beforeFrame(index);
+      if (res.destroyed) return;
+      text += token;
+      res.write(`data: ${JSON.stringify({ type: "token", text: token })}\n\n`);
+    }
+    await state.beforeFrame(state.tokens.length);
+    if (res.destroyed) return;
+    res.write(
+      `data: ${JSON.stringify({ type: "token", fullText: text, provisional: true })}\n\n`,
+    );
+    const { text: fullText, ...metadata } = state.reply;
+    // The terminal frame also carries fields the buffered reply leaves out.
+    res.end(
+      `data: ${JSON.stringify({ ...metadata, thought: "private", usage: { totalTokens: 3 }, type: "done", fullText })}\n\n`,
+    );
+  });
+  const target = await listen(upstream);
+  const gateway = createLocalAgentGateway({
+    hostPolicy: policy,
+    upstream: target,
+    token: "upstream-authority",
+    inboundToken: "host-authority",
+    credentialGate: async () => {
+      if (state.owner instanceof Error) throw state.owner;
+      return state.owner;
+    },
+    cloudHandler: async (_req, res, url, { json }) => {
+      if (url.pathname !== "/identity/logout") return false;
+      json(res, 200, { disconnected: true });
+      return true;
+    },
+    messageStream,
+    ...options,
+  });
+  const base = await listen(gateway);
+  const post = async (path, body = {}) => {
+    const response = await fetch(base + path, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: "Bearer host-authority",
+      },
+      body: JSON.stringify(body),
+    });
+    return { status: response.status, body: await response.json() };
+  };
+  const route = `/conversations/${id}/messages`;
+  const buffered = (text = "hello") => post(route, { text });
+  const start = (text = "hello") => post(`${route}/stream/start`, { text });
+  const pull = (streamId, cursor) =>
+    post(`${route}/stream/pull`, { streamId, cursor });
+  const cancel = (streamId) => post(`${route}/stream/cancel`, { streamId });
+  // Pulls to the end; answers like the buffered route plus the text events.
+  const streamed = async (text = "hello") => {
+    const started = await start(text);
+    if (started.status !== 200) return started;
+    const events = [];
+    let cursor = 0;
+    for (;;) {
+      const pulled = await pull(started.body.streamId, cursor);
+      if (pulled.status !== 200) return { ...pulled, events };
+      events.push(...pulled.body.events);
+      cursor = pulled.body.cursor;
+      if (pulled.body.done)
+        return { status: 200, body: pulled.body.message, events };
+    }
+  };
+  return {
+    state,
+    post,
+    buffered,
+    start,
+    pull,
+    cancel,
+    streamed,
+    close: async () => {
+      await close(gateway);
+      await close(upstream);
+    },
+  };
+}
+
+test("a streamed reply gives ordered text after a cursor, then the buffered reply", async () => {
+  const gates = [0, 1, 2, 3].map(() => Promise.withResolvers());
+  const harness = await streamHarness({
+    hostPolicy: {
+      ...policy,
+      prepareMessage: (input) => ({
+        body: { text: input.text },
+        chatTask: { id: "task" },
+      }),
+      formatTaskContext: (presentation) => ` [${presentation.choice.id}]`,
+    },
+    taskGateway: {
+      revoke: async () => {},
+      presentationForConversation: async ({ actorId }) => ({
+        choice: { id: `choice-${actorId}` },
+      }),
+    },
+  });
+  const { state, start, pull, cancel } = harness;
+  try {
+    assert.equal((await harness.post("/conversations")).status, 200);
+    const buffered = await harness.buffered();
+    assert.equal(buffered.status, 200);
+    assert.deepEqual(buffered.body.taskChoices, [{ id: "choice-a" }]);
+    state.beforeFrame = (index) => gates[index].promise;
+    gates[0].resolve();
+    const started = await start();
+    assert.equal(started.status, 200);
+    const { streamId } = started.body;
+    // The agent receives the same message as the buffered route sends.
+    assert.equal(
+      state.requests.at(-1).url,
+      `/api/conversations/${id}/messages/stream`,
+    );
+    assert.deepEqual(state.requests.at(-1).body, state.requests.at(-2).body);
+    assert.equal(state.requests.at(-1).body.text, "hello [choice-a]");
+    const first = await pull(streamId, 0);
+    assert.deepEqual(first, {
+      status: 200,
+      body: { events: [{ seq: 1, text: "Hello" }], cursor: 1, done: false },
+    });
+    // With nothing new, a pull waits for the next text.
+    const held = pull(streamId, 1);
+    const early = await Promise.race([
+      held.then(() => "answered"),
+      new Promise((resolve) => setTimeout(resolve, 100, "waiting")),
+    ]);
+    assert.equal(early, "waiting");
+    gates[1].resolve();
+    assert.deepEqual(await held, {
+      status: 200,
+      body: { events: [{ seq: 2, text: " there" }], cursor: 2, done: false },
+    });
+    // A cursor confirms the text before it; that text is released.
+    assert.equal(
+      (await pull(streamId, 0)).body.code,
+      "MESSAGE_STREAM_CURSOR_EXPIRED",
+    );
+    assert.equal((await pull(streamId, 3)).status, 400);
+    assert.equal((await pull("other", 2)).status, 404);
+    gates[2].resolve();
+    gates[3].resolve();
+    const events = [];
+    let cursor = 2;
+    let final;
+    while (!final) {
+      const { status, body } = await pull(streamId, cursor);
+      assert.equal(status, 200);
+      events.push(...body.events);
+      cursor = body.cursor;
+      if (body.done) final = body.message;
+    }
+    assert.deepEqual(events, [
+      { seq: 3, text: "!" },
+      { seq: 4, fullText: "Hello there!", provisional: true },
+    ]);
+    assert.deepEqual(final, buffered.body);
+    assert.equal(final.thought, undefined);
+    // A lost answer can be pulled again with the same cursor.
+    assert.deepEqual((await pull(streamId, cursor)).body.message, final);
+    assert.deepEqual((await cancel(streamId)).body, { cancelled: true });
+    assert.equal((await pull(streamId, cursor)).status, 404);
+  } finally {
+    for (const gate of gates) gate.resolve();
+    await harness.close();
+  }
+});
+
+test("streamed replies are cancelled, expire and stay inside their limits", async () => {
+  const harness = await streamHarness({
+    messageStream: {
+      idleMs: 300,
+      holdMs: 100,
+      maxStreams: 1,
+      maxBufferedChars: 12,
+    },
+  });
+  const { state, start, pull, cancel } = harness;
+  const never = Promise.withResolvers();
+  try {
+    assert.equal((await harness.post("/conversations")).status, 200);
+    state.beforeFrame = (index) => (index === 1 ? never.promise : undefined);
+    const cancelled = (await start()).body.streamId;
+    assert.equal((await pull(cancelled, 0)).body.cursor, 1);
+    // An empty pull answers after its bounded hold.
+    const before = Date.now();
+    assert.deepEqual((await pull(cancelled, 1)).body, {
+      events: [],
+      cursor: 1,
+      done: false,
+    });
+    assert.ok(Date.now() - before >= 90);
+    assert.equal((await start()).body.code, "MESSAGE_STREAM_LIMIT");
+    assert.equal((await cancel(cancelled)).status, 200);
+    await state.closed.at(-1);
+    assert.equal((await pull(cancelled, 1)).status, 404);
+    // A stream nobody pulls is cancelled at the agent and released.
+    const idle = (await start()).body.streamId;
+    await state.closed.at(-1);
+    assert.equal((await pull(idle, 0)).body.code, "MESSAGE_STREAM_NOT_FOUND");
+    // Unconfirmed text has an explicit limit; it fails, never truncates.
+    state.tokens = ["123456", "7890123"];
+    state.beforeFrame = async () => {};
+    const full = (await start()).body.streamId;
+    await state.closed.at(-1);
+    assert.deepEqual(await pull(full, 0), {
+      status: 503,
+      body: {
+        code: "MESSAGE_STREAM_BUFFER_FULL",
+        error: "Gateway request failed (error26)",
+      },
+    });
+    assert.throws(
+      () =>
+        createLocalAgentGateway({
+          hostPolicy: policy,
+          token: "t",
+          messageStream: { holdMs: 5000, idleMs: 5000 },
+        }),
+      TypeError,
+    );
+  } finally {
+    never.resolve();
+    await harness.close();
+  }
+});
+
+test("a streamed turn refuses every check exactly as the buffered turn", async () => {
+  let presentation = 0;
+  let inference = true;
+  let paidRefusal = false;
+  const paidPaths = [];
+  const presentationGate = { wait: null };
+  const harness = await streamHarness({
+    hostPolicy: {
+      ...policy,
+      isPaidAction: (_method, path) => {
+        paidPaths.push(path);
+        return path.endsWith("/messages");
+      },
+      prepareMessage: (input) => ({
+        body: { text: input.text },
+        chatTask: { id: "task" },
+      }),
+    },
+    inferenceConfigured: async () => inference,
+    cloudHandler: Object.assign(
+      async (_req, res, url, { json }) => {
+        if (url.pathname !== "/identity/logout") return false;
+        json(res, 200, { disconnected: true });
+        return true;
+      },
+      {
+        requirePaidAccess: async () => {
+          if (paidRefusal)
+            throw Object.assign(new Error("Paid access required"), {
+              status: 402,
+            });
+        },
+      },
+    ),
+    taskGateway: {
+      revoke: async () => {},
+      presentationForConversation: async () => {
+        await presentationGate.wait?.();
+        return { choice: { id: "choice", version: presentation++ } };
+      },
+    },
+  });
+  const { state } = harness;
+  // `atReply`: the check runs on the final reply, after text may have been
+  // pulled; the renderer then discards that text, as for any failed pull.
+  const same = async (name, arrange, expected, atReply = false) => {
+    const results = [];
+    for (const run of [harness.buffered, harness.streamed]) {
+      const restore = await arrange();
+      const { status, body, events = [] } = await run();
+      restore?.();
+      results.push({ status, body });
+      if (!atReply) assert.deepEqual(events, [], name);
+    }
+    assert.deepEqual(results[1], results[0], name);
+    assert.equal(results[0].status, expected, name);
+  };
+  try {
+    await same("room not created", () => {}, 409);
+    assert.equal(state.requests.length, 0);
+    assert.equal((await harness.post("/conversations")).status, 200);
+    await same(
+      "inference unavailable",
+      () => {
+        inference = false;
+        return () => (inference = true);
+      },
+      503,
+    );
+    paidPaths.length = 0;
+    await same(
+      "paid access",
+      () => {
+        paidRefusal = true;
+        return () => (paidRefusal = false);
+      },
+      402,
+    );
+    assert.deepEqual(paidPaths, [
+      `/conversations/${id}/messages`,
+      `/conversations/${id}/messages`,
+    ]);
+    await same(
+      "stale account",
+      () => {
+        state.owner = Object.assign(
+          new Error("Runtime account binding changed"),
+          {
+            status: 409,
+          },
+        );
+        return () => (state.owner = "a");
+      },
+      409,
+    );
+    const turns = () =>
+      state.requests.filter(({ url }) => url.includes("/messages")).length;
+    const sent = turns();
+    await same(
+      "reset during admission",
+      async () => {
+        assert.equal((await harness.post("/conversations")).status, 200);
+        presentationGate.wait = async () => {
+          presentationGate.wait = null;
+          assert.equal((await harness.post("/identity/logout")).status, 200);
+        };
+        return async () => {};
+      },
+      409,
+    );
+    assert.equal(turns(), sent);
+    assert.equal((await harness.post("/conversations")).status, 200);
+    await same(
+      "agent refusal",
+      () => {
+        state.status = 404;
+        return () => (state.status = 200);
+      },
+      404,
+    );
+    await same(
+      "ephemeral reply",
+      () => {
+        state.reply = { ...agentReply, assistantEphemeral: true };
+        return () => (state.reply = agentReply);
+      },
+      503,
+      true,
+    );
+    // The task presentation changes between admission and the reply.
+    await same("task presentation changed", () => {}, 409, true);
+    await same(
+      "account rotated during the turn",
+      () => {
+        state.onTurn = async () => {
+          state.owner = "b";
+        };
+        return () => {
+          state.onTurn = async () => {};
+          state.owner = "a";
+        };
+      },
+      409,
+    );
+  } finally {
+    await harness.close();
+  }
+});
+
+test("account rotation and reset end a stream without its remaining text", async () => {
+  const harness = await streamHarness();
+  const { state, start, pull } = harness;
+  let gate = Promise.withResolvers();
+  try {
+    for (const transition of ["rotate", "reset"]) {
+      gate = Promise.withResolvers();
+      state.owner = "a";
+      assert.equal((await harness.post("/conversations")).status, 200);
+      state.beforeFrame = (index) => (index === 1 ? gate.promise : undefined);
+      const { streamId } = (await start()).body;
+      assert.equal((await pull(streamId, 0)).body.cursor, 1);
+      const held = pull(streamId, 1);
+      if (transition === "rotate") state.owner = "b";
+      else assert.equal((await harness.post("/identity/logout")).status, 200);
+      gate.resolve();
+      const refused = await held;
+      assert.deepEqual(refused, {
+        status: 409,
+        body: {
+          error: "Gateway request failed (error5)",
+          code: "CONVERSATION_NOT_OWNED",
+        },
+      });
+      await state.closed.at(-1);
+      state.owner = "a";
+      assert.equal((await pull(streamId, 1)).status, 404);
+    }
+  } finally {
+    gate.resolve();
+    await harness.close();
+  }
+});

@@ -236,6 +236,19 @@ transport, bounded JSON, conversation ownership, request cancellation, account
 fencing and authenticated task presentation. Only trusted host code provides this
 policy; never accept it from renderer input.
 
+A renderer bridge that cannot read a streamed response can pull a reply as it
+is written. `POST /conversations/{id}/messages/stream/start` takes the message
+body and returns `{streamId}`. `POST .../stream/pull` with `{streamId, cursor}`
+waits up to `holdMs` and returns `{events, cursor, done}`; each event appends
+`text` or replaces all text with `fullText`, and `provisional` text must
+not be spoken before `done`. The cursor confirms earlier events, which are then
+released. On `done`, `message` is the exact buffered reply. Every check of the
+buffered route also applies; a failed pull answers as the buffered route would,
+and the renderer then discards the pulled text. `POST .../stream/cancel` with
+`{streamId}` ends the turn. The `messageStream` option sets `maxStreams` per
+account, `maxBufferedChars` of unconfirmed text (more fails, never truncates),
+`idleMs` until an unpulled stream is cancelled, and `holdMs`.
+
 Native hosts can opt into `native-host/surface-channel.mjs` with an authenticated
 `credentialGate` and pass that channel as `surfaceChannel` to the gateway. The
 four POST routes under `/browser/surface/` require the inbound bearer token and
