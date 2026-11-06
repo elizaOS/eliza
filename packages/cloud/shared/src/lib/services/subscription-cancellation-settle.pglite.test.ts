@@ -9,7 +9,7 @@ import {
 process.env.DATABASE_URL = "pglite://memory";
 process.env.TEST_DATABASE_URL = "pglite://memory";
 process.env.ENVIRONMENT = "local";
-process.env.STRIPE_SECRET_KEY = "sk_test_cancel_settle";
+process.env.STRIPE_SECRET_KEY = "sk_test_settle";
 process.env.STRIPE_PLUS_MONTHLY_PRICE_ID = "price_plus";
 process.env.STRIPE_PLUS_PRODUCT_ID = "prod_plus";
 process.env.STRIPE_PRO_MONTHLY_PRICE_ID = "price_pro";
@@ -68,7 +68,11 @@ function scheduled(f: Awaited<ReturnType<typeof seed>>) {
 async function row(id: string) {
   const result = await client
     .getPgliteClientForTests()
-    .query<{ status: string; error_code: string | null; cancellation_dispatch_state: string }>(
+    .query<{
+      status: string;
+      error_code: string | null;
+      cancellation_dispatch_state: string | null;
+    }>(
       "SELECT status,error_code,cancellation_dispatch_state FROM billing_subscription_commands WHERE id=$1",
       [id],
     );
@@ -184,6 +188,39 @@ test("a claim that never crossed the dispatch fence fails once its window passes
     status: "FAILED",
     error_code: "NOT_DISPATCHED_BEFORE_SETTLE",
     cancellation_dispatch_state: "ready",
+  });
+  expect(update).not.toHaveBeenCalled();
+}, 120_000);
+
+test("a command from before dispatch tracking settles without claiming it was never sent", async () => {
+  const f = await seed();
+  const prepared = await repo.prepareCancellation(f.input);
+  await repo.claimCancellation({ ...f.input, commandId: prepared.id });
+  // Rows written before 0383 have no dispatch state; the guard trigger forbids
+  // creating one now, so it is paused only to recreate that legacy shape.
+  const pg = client.getPgliteClientForTests();
+  await pg.exec(
+    "ALTER TABLE billing_subscription_commands DISABLE TRIGGER billing_subscription_cancellation_dispatch_guard",
+  );
+  try {
+    await pg.query(
+      "UPDATE billing_subscription_commands SET cancellation_dispatch_state=NULL WHERE id=$1",
+      [prepared.id],
+    );
+  } finally {
+    await pg.exec(
+      "ALTER TABLE billing_subscription_commands ENABLE TRIGGER billing_subscription_cancellation_dispatch_guard",
+    );
+  }
+  await expireLease(prepared.id);
+  await age(prepared.id, "provider_started_at");
+  expect(await service.recoverOrganizationSubscriptionCancellations(5)).toMatchObject({
+    failed: 1,
+  });
+  expect(await row(prepared.id)).toMatchObject({
+    status: "FAILED",
+    error_code: "DISPATCH_UNKNOWN_EFFECT_ABSENT_AFTER_SETTLE",
+    cancellation_dispatch_state: null,
   });
   expect(update).not.toHaveBeenCalled();
 }, 120_000);
