@@ -514,8 +514,8 @@ export interface ChatGenerateOptions {
   onChunk?: (chunk: string, origin?: ChatStreamTextOrigin) => void;
   /**
    * Replaces the streamed text. `revision` marks a new model attempt (retry,
-   * repair or failover) whose text restarts the reply: consumers must replace
-   * even a strict prefix of what they already hold.
+   * repair or failover) or the validated final reply rewriting what streamed:
+   * consumers must replace even a strict prefix of what they already hold.
    */
   onSnapshot?: (
     text: string,
@@ -3330,8 +3330,11 @@ async function generateChatResponseWithTiming(
       !forcedWalletExecutionText &&
       !blockedUnexecutedActionPayload
     ) {
+      // The validated reply rewrote the streamed text (source substitution,
+      // a validation retry, a planner reroute). It is a revision: clients
+      // replace their buffer even when the final text is a prefix of it.
       if (opts?.onSnapshot) {
-        emitSnapshot(resultText);
+        emitSnapshot(resultText, "model", true);
       } else {
         responseText = resultText;
       }
