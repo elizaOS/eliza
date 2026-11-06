@@ -73,7 +73,14 @@ describe("requireConfirmation", () => {
 		"Sí, por favor",
 		"oui",
 		"はい",
-	])("confirms the plain yes %j", async (text) => {
+		"yes, clear them",
+		"yes delete it",
+		"ok block x.com",
+		"please, yes",
+		"yes please do that",
+		"yes, thanks",
+		"okay, go ahead, thanks",
+	])("confirms the yes %j", async (text) => {
 		expect(await replyTo(text)).toBe("confirmed");
 	});
 
@@ -90,12 +97,19 @@ describe("requireConfirmation", () => {
 		expect(await replyTo(text)).toBe("cancelled");
 	});
 
-	it.each(["okay thanks", "y?", "please delete Ann", "what?", "please", ""])(
-		"asks again on the unclear reply %j",
-		async (text) => {
-			expect(await replyTo(text)).toBe("pending");
-		},
-	);
+	it.each([
+		"okay thanks",
+		"sure, thank you",
+		"y?",
+		"yes, which one?",
+		"please delete Ann",
+		"delete it, yes",
+		"what?",
+		"please",
+		"",
+	])("asks again on the unclear reply %j", async (text) => {
+		expect(await replyTo(text)).toBe("pending");
+	});
 
 	it("asks again on an unclear reply, then confirms the yes that follows", async () => {
 		const runtime = cacheRuntime();
@@ -123,6 +137,25 @@ describe("requireConfirmation", () => {
 		);
 	});
 
+	it("keeps the first ask's metadata when a re-ask passes none", async () => {
+		const runtime = cacheRuntime();
+		const confirm = (text: string, metadata?: Record<string, unknown>) =>
+			requireConfirmation({
+				runtime,
+				message: turn(text),
+				actionName: "TRADE",
+				pendingKey: "order",
+				prompt: "Submit the order?",
+				metadata,
+			});
+		await confirm("buy btc", { idempotencyKey: "k1" });
+		expect((await confirm("okay thanks")).status).toBe("pending");
+		expect(await confirm("yes")).toEqual({
+			status: "confirmed",
+			metadata: { idempotencyKey: "k1" },
+		});
+	});
+
 	it("keeps waiting when the requesting message runs the action again", async () => {
 		const runtime = cacheRuntime();
 		// Its text alone would confirm; only the message id tells it apart.
@@ -134,8 +167,9 @@ describe("requireConfirmation", () => {
 });
 
 describe("isAffirmativeConfirmationReply", () => {
-	it("is true only for a plain yes", () => {
+	it("is true only for a reply that opens with a yes and has no no", () => {
 		expect(isAffirmativeConfirmationReply(turn("yes"))).toBe(true);
+		expect(isAffirmativeConfirmationReply(turn("yes, clear them"))).toBe(true);
 		expect(isAffirmativeConfirmationReply(turn("ok, never mind"))).toBe(false);
 		expect(isAffirmativeConfirmationReply(turn("okay thanks"))).toBe(false);
 	});

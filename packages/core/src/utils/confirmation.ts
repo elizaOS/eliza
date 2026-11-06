@@ -39,7 +39,7 @@ import type { IAgentRuntime } from "../types/runtime";
 
 const DEFAULT_TTL_MS = 5 * 60_000;
 
-/** A reply made only of these words and phrases (and fillers) is a yes. */
+/** A reply that opens with one of these words or phrases is a yes. */
 const AFFIRMATIVE_WORDS = new Set([
 	"yes",
 	"yeah",
@@ -67,6 +67,13 @@ const AFFIRMATIVE_PHRASES = new Set(["do it", "go ahead"]);
 /** Politeness that may accompany a yes but is not one by itself. */
 const FILLER_WORDS = new Set(["please"]);
 const FILLER_PHRASES = new Set(["por favor"]);
+/**
+ * Yes words that are also everyday acknowledgements. Followed by a thank-you
+ * ("okay thanks", "sure, thank you") they acknowledge the prompt rather than
+ * approve it.
+ */
+const ACKNOWLEDGING_WORDS = new Set(["ok", "okay", "sure"]);
+const THANKS_WORDS = new Set(["thanks", "thank", "thx", "ty", "cheers"]);
 /** One of these anywhere in a reply makes it a no. */
 const NEGATIVE_WORDS = new Set([
 	"no",
@@ -93,11 +100,13 @@ const NEGATIVE_WORDS = new Set([
 type ConfirmationReply = "affirmative" | "negative" | "unclear";
 
 /**
- * Read the user's reply to a confirmation prompt. A reply made entirely of
- * yes words ("yes", "ok, go ahead", "sí, por favor") is affirmative. A reply
- * with a no word anywhere ("ok, never mind", "yes, but not Ann") is negative.
- * Everything else, such as a question ("y?") or an acknowledgement ("okay
- * thanks"), is unclear, and the caller asks again.
+ * Read the user's reply to a confirmation prompt. A reply that opens with a
+ * yes ("yes", "ok, go ahead", "sí, por favor", "yes, delete it") is
+ * affirmative. A reply with a no word anywhere ("ok, never mind", "yes, but
+ * not Ann") is negative. Everything else, such as a question ("y?", "yes,
+ * which one?"), a reply that does not open with a yes ("please delete Ann")
+ * or an acknowledgement ("okay thanks"), is unclear, and the caller asks
+ * again.
  */
 function classifyConfirmationReply(message: Memory): ConfirmationReply {
 	const text = readUserText(message)
@@ -109,19 +118,26 @@ function classifyConfirmationReply(message: Memory): ConfirmationReply {
 		.filter(Boolean);
 	if (words.some((word) => NEGATIVE_WORDS.has(word))) return "negative";
 	if (/[?？¿]/u.test(text)) return "unclear";
-	let affirmed = false;
-	for (let i = 0; i < words.length; i++) {
-		const pair = `${words[i]} ${words[i + 1]}`;
-		if (AFFIRMATIVE_PHRASES.has(pair) || FILLER_PHRASES.has(pair)) {
-			affirmed ||= AFFIRMATIVE_PHRASES.has(pair);
-			i++;
-		} else if (AFFIRMATIVE_WORDS.has(words[i])) {
-			affirmed = true;
-		} else if (!FILLER_WORDS.has(words[i])) {
-			return "unclear";
-		}
+	// Skip leading politeness ("please, yes"), then require a yes.
+	let i = 0;
+	while (i < words.length) {
+		if (FILLER_PHRASES.has(`${words[i]} ${words[i + 1]}`)) i += 2;
+		else if (FILLER_WORDS.has(words[i])) i++;
+		else break;
 	}
-	return affirmed ? "affirmative" : "unclear";
+	const opensWithYes =
+		AFFIRMATIVE_PHRASES.has(`${words[i]} ${words[i + 1]}`) ||
+		AFFIRMATIVE_WORDS.has(words[i]);
+	if (!opensWithYes) return "unclear";
+	// "okay thanks" acknowledges the prompt unless a firmer yes is also there.
+	const thanked = words.some((word) => THANKS_WORDS.has(word));
+	const firmYes = words.some(
+		(word, j) =>
+			(AFFIRMATIVE_WORDS.has(word) && !ACKNOWLEDGING_WORDS.has(word)) ||
+			AFFIRMATIVE_PHRASES.has(`${word} ${words[j + 1]}`),
+	);
+	if (thanked && !firmYes) return "unclear";
+	return "affirmative";
 }
 
 export type ConfirmationStatus = "pending" | "confirmed" | "cancelled";
@@ -252,14 +268,20 @@ export async function requireConfirmation(
 		}
 	}
 
-	// No live record, or an unclear reply: (re)ask.
+	// No live record, or an unclear reply: (re)ask. A re-ask keeps the live
+	// record's metadata when the caller passes none, so a caller that stashes
+	// metadata only on the first ask still gets it back on the confirm.
+	const live =
+		existing && Date.now() - existing.createdAt <= existing.ttlMs
+			? existing
+			: undefined;
 	const record: PendingConfirmation = {
 		actionName: args.actionName,
 		pendingKey: args.pendingKey,
 		prompt: args.prompt,
 		createdAt: Date.now(),
 		ttlMs,
-		metadata: args.metadata,
+		metadata: args.metadata ?? live?.metadata,
 		...(args.message.id ? { requestMessageId: String(args.message.id) } : {}),
 	};
 	await args.runtime.setCache(cacheKey, record);
