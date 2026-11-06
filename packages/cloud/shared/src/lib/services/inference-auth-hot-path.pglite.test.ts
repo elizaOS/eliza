@@ -10,7 +10,7 @@
  * Background work (`waitUntil`) runs only after the request returned and the
  * tripwire was disarmed.
  */
-import { BillingHoldActiveError } from "./billing-hold";
+
 import {
   afterAll,
   afterEach,
@@ -22,6 +22,7 @@ import {
 } from "bun:test";
 import { createHash } from "node:crypto";
 import { getTableConfig, type PgTable } from "drizzle-orm/pg-core";
+import { BillingHoldActiveError } from "./billing-hold";
 
 process.env.DATABASE_URL = "pglite://memory";
 process.env.NODE_ENV ||= "test";
@@ -453,10 +454,7 @@ describe("Worker inference auth never queries Postgres", () => {
 });
 
 describe("Worker billing admits from the snapshot and the organization gate only", () => {
-  const admit = async (
-    snapshot: InferenceAdmissionSnapshot,
-    gate: (path: string) => Response,
-  ) => {
+  const admit = async (snapshot: InferenceAdmissionSnapshot, gate: (path: string) => Response) => {
     const { admitOrganizationInference } = await import("./organization-inference-admission");
     return runWithCloudBindingsAsync(
       {
