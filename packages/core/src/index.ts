@@ -460,6 +460,8 @@ export { PiiScrubService } from "./services/pii-scrub.ts";
 export {
 	TaskService,
 	type TaskServiceClock,
+	type TaskServiceIntervalClock,
+	type TaskServiceTimeoutClock,
 	type TaskServiceTimerHandle,
 } from "./services/task";
 export {

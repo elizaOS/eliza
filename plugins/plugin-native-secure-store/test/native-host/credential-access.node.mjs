@@ -21,7 +21,7 @@ test("device credential grants fence stale results and expire by elapsed time", 
       classes,
       path.join(
         plugin,
-        "android/src/main/java/ai/eliza/plugins/securestore/nativeonly/CredentialAccessSession.java",
+        "android-nativeonly/src/main/java/ai/eliza/plugins/securestore/nativeonly/CredentialAccessSession.java",
       ),
       path.join(plugin, "test/native-host/CredentialAccessSessionTest.java"),
     ],

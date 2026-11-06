@@ -403,6 +403,34 @@ for (const boundary of ["extension", "observer"])
     assert.doesNotMatch(await denied.text(), /former-owner-result/);
   });
 
+test("the storage probe asks the host inspector without account calls and stops at close", async (t) => {
+  const directory = await mkdtemp(join(tmpdir(), "eliza-task-storage-"));
+  const bundlePath = join(directory, "task-runtime.mjs");
+  buildTaskRuntime(bundlePath);
+  let accountCalls = 0;
+  const gateway = await createTaskGateway({
+    bundlePath,
+    databasePath: join(directory, "journal.sqlite"),
+    credentialGate: async () => {
+      accountCalls++;
+      return "account-a";
+    },
+    storageInspector: (db) =>
+      db.prepare("PRAGMA quick_check").get().quick_check === "ok"
+        ? "ok"
+        : "unavailable",
+  });
+  t.after(async () => {
+    await gateway.close();
+    await rm(directory, { recursive: true, force: true });
+  });
+  accountCalls = 0;
+  assert.equal(gateway.inspectStorage(), "ok");
+  assert.equal(accountCalls, 0);
+  await gateway.close();
+  assert.equal(gateway.inspectStorage(), "unavailable");
+});
+
 test("concurrent same-account reads and planner access remain authorized", async (t) => {
   const directory = await mkdtemp(join(tmpdir(), "eliza-task-concurrent-"));
   const bundlePath = join(directory, "task-runtime.mjs");

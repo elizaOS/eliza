@@ -4,6 +4,7 @@ import { mkdir, open, rename, unlink } from "node:fs/promises";
 import { dirname } from "node:path";
 import { createDocumentImageDescriber } from "./document-image-describer.mjs";
 import { NativeCloudServiceError } from "./errors.mjs";
+import { mailAddress, mailAddresses, mailboxState } from "./mail-fields.mjs";
 import { createMailboxReadPort } from "./mailbox-read-port.mjs";
 import { createManagedGoogleReadPort } from "./managed-google-read-port.mjs";
 import { executePlanChange, validatePlanChangeInput } from "./plan-change.mjs";
@@ -235,6 +236,7 @@ const googleScopes = (value) =>
 const GMAIL_READ_ONLY_SCOPE = "https://www.googleapis.com/auth/gmail.readonly";
 const GMAIL_MODIFY_SCOPE = "https://www.googleapis.com/auth/gmail.modify";
 const GMAIL_SEND_SCOPE = "https://www.googleapis.com/auth/gmail.send";
+const GMAIL_METADATA_SCOPE = "https://www.googleapis.com/auth/gmail.metadata";
 const GOOGLE_IDENTITY_SCOPES = new Set([
   "openid",
   "email",
@@ -242,37 +244,57 @@ const GOOGLE_IDENTITY_SCOPES = new Set([
   "https://www.googleapis.com/auth/userinfo.email",
   "https://www.googleapis.com/auth/userinfo.profile",
 ]);
+// What a Google grant means on a host, checked on the raw scope list, so an
+// unrecognized entry also makes the grant wider. `no-read`: nothing reads
+// messages (identity or metadata only, or no gmail.readonly). `too-broad`: a
+// scope this host never asks for. `read-only`, `part-write` and `write`: the
+// grant reads mail and holds none, some or all of the write scopes. Only a
+// host with `writes` asks for any write scope (gmail.modify, gmail.send).
+const gmailGrant = (scopes, writes) => {
+  const list = Array.isArray(scopes) ? scopes : [];
+  const wanted = writes ? [GMAIL_MODIFY_SCOPE, GMAIL_SEND_SCOPE] : [];
+  if (
+    list.every(
+      (scope) =>
+        scope === GMAIL_METADATA_SCOPE || GOOGLE_IDENTITY_SCOPES.has(scope),
+    )
+  )
+    return "no-read";
+  if (
+    !list.every(
+      (scope) =>
+        scope === GMAIL_READ_ONLY_SCOPE ||
+        GOOGLE_IDENTITY_SCOPES.has(scope) ||
+        wanted.includes(scope),
+    )
+  )
+    return "too-broad";
+  if (!list.includes(GMAIL_READ_ONLY_SCOPE)) return "no-read";
+  const held = wanted.filter((scope) => list.includes(scope)).length;
+  return held === 0
+    ? "read-only"
+    : held === wanted.length
+      ? "write"
+      : "part-write";
+};
+const readsMail = (grant) =>
+  grant === "read-only" || grant === "part-write" || grant === "write";
 // By default this host asks Google for read-only Gmail (`google.gmail.triage`,
 // which Cloud maps to gmail.readonly plus sign-in identity). Mail is read only
 // through a grant that is exactly that. A wider grant (gmail.modify,
 // gmail.send, gmail.compose, https://mail.google.com/ or another product's
 // scope) can change, send or delete mail, so it is refused rather than used.
-// Checked on the raw list: an unrecognized entry also makes the grant wider.
 // Agent task reads (`googleForAccount`) use this grant unless the host opts
 // in to the owner write grant below.
 const gmailReadOnlyGrant = (scopes) =>
-  Array.isArray(scopes) &&
-  scopes.includes(GMAIL_READ_ONLY_SCOPE) &&
-  scopes.every(
-    (scope) =>
-      scope === GMAIL_READ_ONLY_SCOPE || GOOGLE_IDENTITY_SCOPES.has(scope),
-  );
+  gmailGrant(scopes, false) === "read-only";
 // A host that opts in (`hostPolicy.gmailOwnerWrites: true`) lets the owner's
 // own mailbox also hold gmail.modify and gmail.send, for the owner's reviewed
 // mail changes (`mailboxWriterForAccount`). Nothing else widens it: compose,
 // full mail access or another product's scope is still refused. Agent task
 // reads may then run under this grant too: their port only sends GET reads, so
 // the wider grant gives a task no write path.
-const gmailOwnerWriteGrant = (scopes) =>
-  Array.isArray(scopes) &&
-  scopes.includes(GMAIL_READ_ONLY_SCOPE) &&
-  scopes.every(
-    (scope) =>
-      scope === GMAIL_READ_ONLY_SCOPE ||
-      scope === GMAIL_MODIFY_SCOPE ||
-      scope === GMAIL_SEND_SCOPE ||
-      GOOGLE_IDENTITY_SCOPES.has(scope),
-  );
+const gmailOwnerWriteGrant = (scopes) => readsMail(gmailGrant(scopes, true));
 // The owner's reviewed mail effects this host relays to Cloud's inbox-v1
 // operations. Drafts are not offered here.
 const OWNER_MAIL_EFFECTS = new Set([
@@ -543,9 +565,21 @@ export function createCloudRoutes({
   verifiedAccountStore,
   credentialGate,
   pendingCredentialStore,
+  // A host that records why the account signed out. `onRevoked({ key })` runs
+  // when Cloud refuses the stored key at the identity check: inside the
+  // credential critical section, before the key is cleared. `status()` gives
+  // `{ revoked, localDataPending }` for each signed-out access answer.
+  credentialRevocation,
   // false: the host has its own sign-in. `/cloud/login` and its status route answer
   // 404, and no Cloud web origin (cloudSiteBase) is used.
   browserSignIn = true,
+  // false: the host offers no Google account link. Every
+  // `/cloud/account/methods/google/*` route answers 404.
+  accountGoogleLink = true,
+  // false: only the host starts and finishes Google sign-in, through the
+  // enrollment it built. `/cloud/native/start` with `method: "google"` and
+  // `/cloud/native/google/return` answer 404.
+  googleSignInRoutes = true,
 } = {}) {
   const billingEnabled = hostPolicy?.accountBilling !== false;
   if (
@@ -594,6 +628,13 @@ export function createCloudRoutes({
     : gmailReadOnlyGrant;
   const message = (key) =>
     hostPolicy.messages?.[key] ?? `Cloud service request failed (${key})`;
+  // A sign-in route this host turned off. The answer is the same before and
+  // after any request, so nothing is read, cleared or sent to Cloud.
+  const refuseSignInRoute = (res, key) =>
+    send(res, 404, {
+      error: hostPolicy.messages?.[key] ?? "Cloud route not available",
+      code: "internal_sign_in_only",
+    });
   const site = browserSignIn ? origin(cloudSiteBase) : null,
     api = origin(cloudApiBase);
   const verifiedRequired = () =>
@@ -601,6 +642,12 @@ export function createCloudRoutes({
       status: 409,
       code: "VERIFIED_ACCOUNT_REQUIRED",
     });
+  if (
+    credentialRevocation !== undefined &&
+    (typeof credentialRevocation?.onRevoked !== "function" ||
+      typeof credentialRevocation.status !== "function")
+  )
+    throw new TypeError("Credential revocation port must be host functions");
   if (
     verifiedAccountStore !== undefined &&
     (!verifiedAccountStore ||
@@ -903,6 +950,17 @@ export function createCloudRoutes({
       return null;
     return authority;
   }
+  /** The signed-out answer, with the host's revocation when it has one. */
+  async function signedOut() {
+    const status = await credentialRevocation?.status();
+    return status?.revoked === true
+      ? {
+          state: "signed_out",
+          revoked: true,
+          localDataPending: status.localDataPending === true,
+        }
+      : { state: "signed_out" };
+  }
   async function accountAccess() {
     if (!billingEnabled)
       throw fail("Account billing is unavailable in this host", 404);
@@ -925,11 +983,16 @@ export function createCloudRoutes({
     }
     const key = await usableCredential();
     current(epoch);
-    if (!key) return { state: "signed_out" };
+    if (!key) return signedOut();
+    // Only a refusal at the identity check names the stored key as revoked.
+    let identityRefused = false;
     try {
       const user = await parse(
         await request("/api/v1/user", { key, authorityGeneration: epoch }),
-      );
+      ).catch((error) => {
+        identityRefused = error.status === 401;
+        throw error;
+      });
       const snapshot = await parse(
         await request("/api/v1/billing/limits", {
           key,
@@ -941,12 +1004,28 @@ export function createCloudRoutes({
     } catch (error) {
       current(epoch);
       if (error.status === 401) {
+        let recorded = true;
         await mutateCredential(async () => {
           current(epoch);
+          if (
+            identityRefused &&
+            credentialRevocation &&
+            (await store.read().catch(() => null)) === key
+          ) {
+            try {
+              await credentialRevocation.onRevoked({ key });
+            } catch {
+              recorded = false;
+              return;
+            }
+          }
           await store.clear();
         });
         current(epoch);
-        return { state: "signed_out" };
+        // The host could not record it: the key stays, and the next check
+        // tries again.
+        if (!recorded) return { state: "unavailable" };
+        return signedOut();
       }
       return { state: "unavailable" };
     }
@@ -1052,12 +1131,26 @@ export function createCloudRoutes({
     try {
       await ready;
       let path = url.pathname;
-      if (
-        (!billingEnabled && path.startsWith("/cloud/account/")) ||
-        (!browserSignIn &&
-          (path === "/cloud/login" || path === "/cloud/login/status"))
-      ) {
+      if (!billingEnabled && path.startsWith("/cloud/account/")) {
         send(res, 404, { error: "Cloud route not available" });
+        return true;
+      }
+      if (
+        !browserSignIn &&
+        (path === "/cloud/login" || path === "/cloud/login/status")
+      ) {
+        refuseSignInRoute(res, "browserSignInUnavailable");
+        return true;
+      }
+      if (
+        !accountGoogleLink &&
+        path.startsWith("/cloud/account/methods/google/")
+      ) {
+        refuseSignInRoute(res, "accountGoogleLinkUnavailable");
+        return true;
+      }
+      if (!googleSignInRoutes && path === "/cloud/native/google/return") {
+        refuseSignInRoute(res, "googleSignInRoutesUnavailable");
         return true;
       }
       let method = req.method,
@@ -1670,6 +1763,14 @@ export function createCloudRoutes({
                 : [];
         if (Object.keys(input).some((key) => !fields.includes(key)))
           throw fail(message("unexpectedSignInFields"));
+        if (
+          !googleSignInRoutes &&
+          operation === "start" &&
+          input.method === "google"
+        ) {
+          refuseSignInRoute(res, "googleSignInRoutesUnavailable");
+          return true;
+        }
         if (operation === "cancel") {
           advanceGeneration();
           attempts.clear();
@@ -1839,10 +1940,12 @@ export function createCloudRoutes({
                 "applyTextNormalization",
               ]
             : operation === "pull"
-              ? ["streamId", "cursor"]
+              ? ["streamId", "cursor", "batch"]
               : ["streamId", "requestId"];
         if (Object.keys(input).some((field) => !fields.includes(field)))
           throw fail("Unexpected speech stream fields");
+        if (input.batch !== undefined && input.batch !== true)
+          throw fail("Invalid speech stream batch");
         const result =
           operation === "start"
             ? await speechStreams.start({
@@ -1854,6 +1957,7 @@ export function createCloudRoutes({
               ? await speechStreams.pull({
                   streamId: input.streamId,
                   cursor: input.cursor,
+                  batch: input.batch === true,
                   owner,
                 })
               : await speechStreams.cancel({
@@ -2031,6 +2135,9 @@ export function createCloudRoutes({
           // only through an exactly read-only grant (gmailReadOnlyGrant), or
           // the owner write grant when the host opts in.
           grantedScopes: connected ? googleScopes(value.grantedScopes) : [],
+          // This host's policy and its verdict on the grant, on every answer.
+          ownerWrites,
+          grant: gmailGrant(connected ? value.grantedScopes : [], ownerWrites),
           canReadMessages: connected && ownerGmailGrant(value.grantedScopes),
           // Reported only by a host that opts in to owner mail writes.
           ...(ownerWrites
@@ -2379,9 +2486,12 @@ export function createCloudRoutes({
           if (!error?.googleConflict) throw error;
           // Name the Google conflict from the connection's current status:
           // gone or replaced, metadata-only, or a token that needs reconnect.
+          // Cloud also answers 409 when Google's token endpoint is down. Only
+          // a refused grant changes the status, so a status that still names
+          // this connected grant means Google is unavailable.
           if ((await currentAccountId(googleEpoch)) !== grantId)
             throw googleReadFailure("account_changed");
-          throw googleReadFailure("reauth_required");
+          throw googleReadFailure("unavailable");
         }
       },
     });
@@ -2522,6 +2632,13 @@ export function createCloudRoutes({
         throw writeFailure("account_changed", 409);
       return value;
     };
+    const recipients = (review) => {
+      const lists = [review.to, review.cc, review.bcc].map((list) =>
+        mailAddresses(list),
+      );
+      const count = lists.reduce((sum, list) => sum + (list?.length ?? 0), 0);
+      return lists.every(Boolean) && count > 0 && count <= 50;
+    };
     const receipt = (value, requestId) => {
       if (
         value?.requestId !== requestId ||
@@ -2543,6 +2660,11 @@ export function createCloudRoutes({
         reviewDigest: value.reviewDigest,
         state: value.state,
         providerResult,
+        // A change's labels after it, reduced as the mailbox read port does.
+        mailbox:
+          value.kind !== "send" && Array.isArray(providerResult?.labelIds)
+            ? mailboxState(providerResult.labelIds, providerResult.historyId)
+            : null,
         rejectionCode:
           typeof value.rejectionCode === "string" ? value.rejectionCode : null,
       };
@@ -2584,18 +2706,33 @@ export function createCloudRoutes({
           false,
         );
         const prepared = receipt(value?.receipt, requestId);
+        const review = value.review;
         if (
           prepared.kind !== effect.kind ||
-          !value.review ||
-          typeof value.review !== "object" ||
-          Array.isArray(value.review)
+          !review ||
+          typeof review !== "object" ||
+          Array.isArray(review) ||
+          // A send review names what the owner confirms: who it is from and
+          // to (1 to 50 recipients in to, cc and bcc, as Cloud allows), the
+          // subject and the names of the files.
+          (effect.kind === "send" &&
+            (review.kind !== "send" ||
+              !mailAddress(review.from) ||
+              !recipients(review) ||
+              typeof review.subject !== "string" ||
+              ![review.attachments, review.forwardedAttachments].every(
+                (files) =>
+                  files === undefined ||
+                  (Array.isArray(files) &&
+                    files.every((file) => typeof file?.name === "string")),
+              )))
         )
           throw fail(message("invalidCloudResponse"), 502);
         return {
           version: 1,
           accountId,
           receipt: prepared,
-          review: value.review,
+          review,
         };
       },
       /** Performs the reviewed effect once; a repeat returns the same receipt. */
@@ -2630,6 +2767,53 @@ export function createCloudRoutes({
           throw writeFailure("outcome_unknown", 503);
         }
         return { version: 1, accountId, receipt: confirmed };
+      },
+      /** Cloud's limits on the files that one sent message can carry. */
+      async capabilities() {
+        let value;
+        try {
+          value = await call(
+            `/api/v1/eliza/google/gmail/inbox-v1/capabilities?grantId=${encodeURIComponent(accountId)}`,
+            undefined,
+            undefined,
+            false,
+          );
+        } catch (error) {
+          // This route reads no review: Cloud answers 409 when it cannot get
+          // a Google token and 403 when the grant is gone. A grant that is
+          // still current makes it an outage.
+          if (!["review_changed", "insufficient_scope"].includes(error?.code))
+            throw error;
+          await authority();
+          throw writeFailure("unavailable", 503);
+        }
+        const policy = value?.attachmentPolicy;
+        const count = (number) => Number.isSafeInteger(number) && number > 0;
+        if (
+          !Array.isArray(policy?.mimeTypes) ||
+          policy.mimeTypes.length > 100 ||
+          !policy.mimeTypes.every(
+            (type) =>
+              typeof type === "string" &&
+              /^[a-z0-9][a-z0-9!#$&^_.+-]{0,63}\/[a-z0-9][a-z0-9!#$&^_.+-]{0,63}$/.test(
+                type,
+              ),
+          ) ||
+          !count(policy.maximumBytes) ||
+          !count(policy.maximumOutgoing) ||
+          !count(policy.maximumTotalBytes)
+        )
+          throw fail(message("invalidCloudResponse"), 502);
+        return {
+          version: 1,
+          accountId,
+          attachmentPolicy: {
+            mimeTypes: [...policy.mimeTypes],
+            maximumBytes: policy.maximumBytes,
+            maximumOutgoing: policy.maximumOutgoing,
+            maximumTotalBytes: policy.maximumTotalBytes,
+          },
+        };
       },
       /** The canonical receipt of an earlier prepare or dispatch. */
       async observe(input) {
@@ -2749,4 +2933,5 @@ export function createFileCredentialStore(path) {
 
 export { createDocumentImageDescriber } from "./document-image-describer.mjs";
 export { loadDocumentRuntime } from "./document-runtime.mjs";
+export { mailAddress, mailAddresses, mailboxState } from "./mail-fields.mjs";
 export { createManagedGoogleReadPort } from "./managed-google-read-port.mjs";

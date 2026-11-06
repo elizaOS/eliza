@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { AsyncLocalStorage } from "node:async_hooks";
 import { execFileSync, spawn } from "node:child_process";
 import { randomBytes } from "node:crypto";
 import { EventEmitter, once } from "node:events";
@@ -638,6 +639,60 @@ test("an origin predicate gates the renderer preflight like an origin list", asy
   await preflightBeforeAuthentication(predicatePolicy)();
 });
 
+test("a host request scope wraps each whole request, also its later async work", async () => {
+  const scope = new AsyncLocalStorage();
+  const seen = [];
+  let count = 0;
+  const gateway = createLocalAgentGateway({
+    hostPolicy: policy,
+    upstream: "http://127.0.0.1:9",
+    token: "upstream-authority",
+    inboundToken: "host-authority",
+    requestScope: (req, _res, next) => {
+      if (req.url === "/fail-scope") throw new Error("host scope failed");
+      return scope.run({ request: ++count }, next);
+    },
+    fetchImpl: async () => {
+      seen.push(scope.getStore()?.request);
+      // Let the other request run before this one answers.
+      await new Promise((resolve) => setTimeout(resolve, 50));
+      seen.push(scope.getStore()?.request);
+      return Response.json({});
+    },
+  });
+  const base = await listen(gateway);
+  try {
+    const call = (path) =>
+      fetch(`${base}${path}`, {
+        headers: { Authorization: "Bearer host-authority" },
+      });
+    const answers = await Promise.all([call("/health"), call("/health")]);
+    assert.deepEqual(
+      answers.map(({ status }) => status),
+      [200, 200],
+    );
+    assert.deepEqual(seen.toSorted(), [1, 1, 2, 2]);
+    // Both requests were waiting at once, and each one kept its own scope.
+    assert.deepEqual(seen.slice(0, 2).toSorted(), [1, 2]);
+    assert.deepEqual(seen.slice(2), seen.slice(0, 2));
+    const failed = await call("/fail-scope");
+    assert.equal(failed.status, 500);
+    assert.deepEqual(await failed.json(), { error: "Local agent unavailable" });
+    assert.equal((await call("/health")).status, 200);
+  } finally {
+    await close(gateway);
+  }
+  assert.throws(
+    () =>
+      createLocalAgentGateway({
+        hostPolicy: policy,
+        token: "upstream-authority",
+        requestScope: "scope",
+      }),
+    TypeError,
+  );
+});
+
 test("read-only private JSON enforces real file owner, mode, symlink and byte boundaries", async (t) => {
   const root = await mkdtemp(join(tmpdir(), "private-json-"));
   t.after(() => rm(root, { recursive: true, force: true }));
@@ -744,6 +799,7 @@ test("embedded surface HTTP channel fences account replacement, cancellation, la
   let account = "owner-a";
   const channel = createSurfaceCommandChannel({
     credentialGate: async () => account,
+    pullHoldMs: 100,
   });
   const server = createLocalAgentGateway({
     token: "agent-authority",

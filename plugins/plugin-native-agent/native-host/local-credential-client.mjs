@@ -1,9 +1,15 @@
 /** Private process-to-process client for LocalCredentialBroker; never expose to a renderer. */
+/**
+ * The broker could not be reached or gave an invalid answer. Its message is
+ * the store's safe `unavailableMessage`; `status` 503 lets a host route
+ * answer "unavailable" instead of a generic upstream failure.
+ */
 export class LocalCredentialBrokerError extends Error {
   constructor(message) {
     super(message);
     this.name = "LocalCredentialBrokerError";
     this.code = "CREDENTIAL_BROKER_UNAVAILABLE";
+    this.status = 503;
   }
 }
 

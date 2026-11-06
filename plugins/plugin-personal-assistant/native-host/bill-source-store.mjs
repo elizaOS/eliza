@@ -1,4 +1,5 @@
 import { createHash, randomUUID } from "node:crypto";
+import { billOwnerKey as ownerKey } from "./bill-owner-key.mjs";
 import { gmailSourceLink } from "./bill-source-link.mjs";
 import { BillHostError } from "./errors.mjs";
 
@@ -13,13 +14,6 @@ const fail = () =>
     ),
     { code: "BILL_SELECTION_STALE" },
   );
-const ownerKey = (owner) =>
-  JSON.stringify([
-    owner.agentId,
-    owner.actorId,
-    owner.connector.source,
-    owner.connector.accountId,
-  ]);
 // Equal to BILL_SOURCE_CONFLICT_FIELDS in bill-source-discovery.mjs.
 const CONFLICT_FIELDS = ["company", "accountLabel", "origin"];
 const text = (value) =>
@@ -218,7 +212,31 @@ export function createBillSourceStore(db, tasks, { now = Date.now } = {}) {
   db.exec(
     "CREATE TABLE IF NOT EXISTS bill_source_selections_v1 (task_id TEXT PRIMARY KEY, owner_key TEXT NOT NULL, document TEXT NOT NULL)",
   );
-  return {
+  const store = {
+    /**
+     * The newest of this owner's selections of the bill `sourceRef`, checked
+     * again as `forTask(...).load()` checks it, or null. A selection whose
+     * task is gone or whose candidate no longer validates is passed over.
+     */
+    findSelectionBySourceRef(runtime, sourceRef) {
+      if (typeof sourceRef !== "string" || !sourceRef) return null;
+      const rows = db
+        .prepare(
+          "SELECT task_id FROM bill_source_selections_v1 WHERE owner_key=? AND json_extract(document,'$.candidate.sourceRef')=? ORDER BY rowid DESC LIMIT 8",
+        )
+        .all(ownerKey(runtime.owner), sourceRef);
+      for (const { task_id: taskId } of rows) {
+        let selected;
+        try {
+          selected = store.forTask(runtime, taskId).load();
+        } catch (error) {
+          if (error?.code === "BILL_SELECTION_STALE") continue;
+          throw error;
+        }
+        if (selected?.candidate.sourceRef === sourceRef) return selected;
+      }
+      return null;
+    },
     forTask(runtime, taskId) {
       const key = ownerKey(runtime.owner);
       const owned = () => {
@@ -325,4 +343,5 @@ export function createBillSourceStore(db, tasks, { now = Date.now } = {}) {
       };
     },
   };
+  return store;
 }

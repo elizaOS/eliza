@@ -82,8 +82,14 @@ function fixture(t, application = "ai.elizaos.app") {
           "storage",
           "tabs",
           "webNavigation",
+          "webRequest",
         ],
-        host_permissions: ["http://*/*", "https://*/*"],
+        host_permissions: [
+          "http://*/*",
+          "https://*/*",
+          "ws://*/*",
+          "wss://*/*",
+        ],
         background: { service_worker: "background.mjs", type: "module" },
       });
     if (name === "runtime-config.mjs")

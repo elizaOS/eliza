@@ -24,6 +24,7 @@ import {
   getFirstRunProviderOption,
   hasExplicitCanonicalRuntimeConfig,
   isAndroidMobile,
+  isElizaOsAndroidRuntime,
   isLocalOnlyInferenceInConfig,
   isMobilePlatform,
   lifeOpsPassiveConnectorsSetting,
@@ -108,13 +109,6 @@ function orchestratorCompatPluginRequested(
     "ELIZA_AGENT_SELECTION_STRATEGY",
     "ELIZA_MAX_CONCURRENT_SPAWNS",
   ].some((key) => Boolean(process.env[key]?.trim()));
-}
-
-function isElizaOsAndroidRuntime(): boolean {
-  return (
-    isAndroidMobile() &&
-    process.env.ELIZA_LOCAL_LLAMA?.trim().toLowerCase() === "1"
-  );
 }
 
 /**
@@ -345,8 +339,8 @@ export function collectDeniedPluginNames(names: Iterable<string>): Set<string> {
   return denied;
 }
 
-/** Plugin names the operator skips through `ELIZA_SKIP_PLUGINS`. */
-export function readEnvSkipPlugins(
+/** ELIZA_SKIP_PLUGINS as a list of names. */
+export function readSkipPluginNames(
   env: NodeJS.ProcessEnv = process.env,
 ): string[] {
   return (env.ELIZA_SKIP_PLUGINS ?? "")
@@ -355,14 +349,14 @@ export function readEnvSkipPlugins(
     .filter(Boolean);
 }
 
-/** The deny set a host configured: `plugins.deny` plus `ELIZA_SKIP_PLUGINS`. */
+/** Every name `config.plugins.deny` and ELIZA_SKIP_PLUGINS deny. */
 export function collectConfiguredDeniedPluginNames(
-  config: Pick<ElizaConfig, "plugins">,
+  config: Pick<ElizaConfig, "plugins"> | undefined,
   env: NodeJS.ProcessEnv = process.env,
 ): Set<string> {
   return collectDeniedPluginNames([
-    ...(config.plugins?.deny ?? []),
-    ...readEnvSkipPlugins(env),
+    ...(config?.plugins?.deny ?? []),
+    ...readSkipPluginNames(env),
   ]);
 }
 

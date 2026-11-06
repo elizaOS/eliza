@@ -8,6 +8,7 @@ import android.os.Bundle;
 import android.os.Handler;
 import android.os.Looper;
 import android.os.ParcelFileDescriptor;
+import android.os.SystemClock;
 import android.speech.RecognitionListener;
 import android.speech.RecognitionSupport;
 import android.speech.RecognitionSupportCallback;
@@ -20,6 +21,8 @@ import java.util.Locale;
 import java.util.concurrent.CancellationException;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.concurrent.atomic.AtomicReference;
 
 /**
  * Android's on-device English recognizer on a finished recording. It uses
@@ -40,9 +43,13 @@ public final class OnDeviceRecognizer {
     private static final java.util.regex.Pattern LANGUAGE_TAG =
             java.util.regex.Pattern.compile("[a-z]{2,3}(?:-[A-Za-z0-9]{2,8})*");
 
-    /** Learned once per process and language; absent until asked. */
-    private static final java.util.concurrent.ConcurrentHashMap<String, Boolean> usable =
-            new java.util.concurrent.ConcurrentHashMap<>();
+    /** How long a "no model for this language" answer is kept, so a model installed later is seen. */
+    static final long ABSENT_FOR_MILLIS = 60_000;
+    /** How long a probe the recognition service did not answer reads as unavailable before the next one. */
+    static final long RETRY_AFTER_MILLIS = 30_000;
+    /** What the recognition service answered, per language: see {@link RecognizerAvailability}. */
+    private static final RecognizerAvailability availability =
+            new RecognizerAvailability(SystemClock::elapsedRealtime, ABSENT_FOR_MILLIS, RETRY_AFTER_MILLIS);
 
     private final Context context;
     private final String language;
@@ -78,37 +85,46 @@ public final class OnDeviceRecognizer {
     /**
      * True when Android 13 or later has an on-device recognition service with
      * an installed model for the language's primary subtag
-     * ({@code checkRecognitionSupport}). The answer is kept for the process
-     * per language. Not on the main thread.
+     * ({@code checkRecognitionSupport}). An installed model is kept for the
+     * process; "not installed" is asked again after {@link #ABSENT_FOR_MILLIS}.
+     * A probe the service does not answer within 5 seconds reads as false and is
+     * asked again after {@link #RETRY_AFTER_MILLIS}; an error that says the
+     * language is not supported counts as "not installed". Not on the main
+     * thread. A call that asks the service again (the first one, and one after
+     * either window ends) can block for up to 5 seconds, so keep it off
+     * latency-sensitive paths.
      */
     public static boolean available(Context context, String languageTag) {
         String language = requireLanguage(languageTag);
-        if (demotedAll) return false;
-        Boolean known = usable.get(language);
-        if (known != null) return known;
-        boolean result = Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU
+        return availability.available(language, ticket -> Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU
                 && SpeechRecognizer.isOnDeviceRecognitionAvailable(context)
-                && languageInstalled(context.getApplicationContext(), language);
-        usable.putIfAbsent(language, result);
-        return usable.get(language);
+                ? languageInstalled(context.getApplicationContext(), language, ticket)
+                : RecognizerAvailability.Answer.ABSENT);
     }
 
     /** Turns the recognizer off for every language for the rest of the process. */
     public static void demote() {
-        demotedAll = true;
+        availability.demoteAll();
     }
 
     /** Turns the recognizer off for one language for the rest of the process. */
     public static void demote(String languageTag) {
-        usable.put(requireLanguage(languageTag), false);
+        availability.demote(requireLanguage(languageTag));
     }
 
-    private static volatile boolean demotedAll;
+    /** Turns the recognizer off for one language for {@code forMillis}; then it is asked again. */
+    public static void demote(String languageTag, long forMillis) {
+        availability.demote(requireLanguage(languageTag), forMillis);
+    }
 
-    private static boolean languageInstalled(Context context, String language) {
-        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU) return false;
+    /** Asks the recognition service once; an answer after the 5 second wait is recorded when it comes. */
+    private static RecognizerAvailability.Answer languageInstalled(Context context, String language, long ticket) {
+        // Repeats the caller's check so the API 31 and 33 calls below are guarded in this method.
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU) return RecognizerAvailability.Answer.ABSENT;
         CountDownLatch answered = new CountDownLatch(1);
-        boolean[] installed = {false};
+        AtomicReference<RecognizerAvailability.Answer> answer =
+                new AtomicReference<>(RecognizerAvailability.Answer.UNANSWERED);
+        AtomicBoolean gaveUp = new AtomicBoolean();
         SpeechRecognizer[] probe = {null};
         Handler main = new Handler(Looper.getMainLooper());
         main.post(() -> {
@@ -120,15 +136,29 @@ public final class OnDeviceRecognizer {
                 probe[0].checkRecognitionSupport(intent, Runnable::run, new RecognitionSupportCallback() {
                     @Override
                     public void onSupportResult(RecognitionSupport support) {
+                        boolean installed = false;
                         for (String tag : support.getInstalledOnDeviceLanguages()) {
                             String installedPrimary = tag.toLowerCase(Locale.ROOT).split("[-_]", 2)[0];
-                            if (installedPrimary.equals(primary)) installed[0] = true;
+                            if (installedPrimary.equals(primary)) installed = true;
                         }
+                        RecognizerAvailability.Answer heard = installed
+                                ? RecognizerAvailability.Answer.INSTALLED : RecognizerAvailability.Answer.ABSENT;
+                        answer.set(heard);
+                        if (gaveUp.get()) availability.record(language, heard, ticket);
                         answered.countDown();
                     }
 
                     @Override
                     public void onError(int error) {
+                        // "Not supported" is a no-model answer; any other error is not an
+                        // answer, and the language is asked again after the retry window.
+                        if (error == SpeechRecognizer.ERROR_LANGUAGE_NOT_SUPPORTED
+                                || error == SpeechRecognizer.ERROR_LANGUAGE_UNAVAILABLE) {
+                            answer.set(RecognizerAvailability.Answer.ABSENT);
+                            if (gaveUp.get()) {
+                                availability.record(language, RecognizerAvailability.Answer.ABSENT, ticket);
+                            }
+                        }
                         answered.countDown();
                     }
                 });
@@ -137,14 +167,16 @@ public final class OnDeviceRecognizer {
             }
         });
         try {
-            answered.await(5, TimeUnit.SECONDS);
+            if (!answered.await(5, TimeUnit.SECONDS)) gaveUp.set(true);
         } catch (InterruptedException interrupted) {
             Thread.currentThread().interrupt();
+            gaveUp.set(true);
         }
         main.post(() -> {
             if (probe[0] != null) probe[0].destroy();
         });
-        return installed[0];
+        // Read after gaveUp is set: an answer that comes now is returned here or recorded late.
+        return answer.get();
     }
 
     /**

@@ -69,7 +69,7 @@ import {
   MODEL_PROVIDER_PLUGIN_NAMES,
   OPTIONAL_PLUGIN_MAP,
   type PluginLoadReasons,
-  readEnvSkipPlugins,
+  readSkipPluginNames,
 } from "./plugin-collector.ts";
 import {
   collectStagedDirectoryLinks,
@@ -2674,7 +2674,7 @@ export async function resolvePlugins(
     ...(config.plugins?.installs ?? {}),
   };
 
-  const envSkipPlugins = readEnvSkipPlugins();
+  const envSkipPlugins = readSkipPluginNames();
   const denyList = collectConfiguredDeniedPluginNames(config);
   if (envSkipPlugins.length > 0) {
     logger.info(

@@ -8,7 +8,7 @@ import {
 } from "../test/speech-relay-live-report";
 
 // Literal: the protected workflow runs this file with Bun and no installed packages.
-const UNIQUE_SESSION_HEADERS = { "x-eliza-speech-session-id": "unique-v1" };
+const RETIREMENT_HEADERS = { "X-Eliza-Speech-Retirement-Version": "1" };
 const environment = process.env.ELIZA_VOICE_CLOUD_ENVIRONMENT;
 const target =
   environment === "staging"
@@ -331,104 +331,144 @@ maybe(
   60_000,
 );
 
-// Staging only: compares session open for named and unnamed session objects in
-// one deployment. Pairs alternate order, so neither kind always runs first.
-const AB_PAIRS = 3;
+// Staging only: first-touch cost of a new object in each Worker script. Rounds
+// alternate which script goes first. This file must import no packages: the
+// protected workflow runs it with Bun alone.
 (environment === "staging" ? maybe : test.skip)(
-  "named and unnamed speech session objects open in one deployment",
+  "new objects in the lean and API Worker scripts answer a first request",
   reportedSpeechRelayTest(async (stage) => {
     check(target, "SPEECH_CONFIGURATION_INVALID");
     const base = process.env.ELIZA_VOICE_CLOUD_API_URL;
     const key = process.env.ELIZAOS_CLOUD_API_KEY;
     check(base === target.api && key, "SPEECH_CONFIGURATION_INVALID");
+    stage("session");
+    for (let round = 0; round < 6; round++) {
+      const response = await fetch(
+        `${base}/api/v1/voice/speech/hosting-probe?first=${round % 2 ? "api" : "lean"}`,
+        {
+          method: "POST",
+          headers: { Authorization: `Bearer ${key}` },
+          signal: AbortSignal.timeout(30_000),
+        },
+      );
+      check(response.ok, `SPEECH_HTTP_STATUS_${response.status}`);
+      console.info(
+        JSON.stringify({
+          phase: "speech-relay-live",
+          status: "passed",
+          ...((await response.json()) as Record<string, number>),
+        }),
+      );
+    }
+  }),
+  120_000,
+);
+
+// The retirement protocol a proof-capable client (Alpha) requires before it
+// opens the microphone: proof-bound consent and mint, a ready socket, and an
+// owner revocation that returns a confirmed retirement for that session.
+maybe(
+  "deployed speech confirms retirement of a proof-bound session",
+  reportedSpeechRelayTest(async (stage) => {
+    check(target, "SPEECH_CONFIGURATION_INVALID");
+    const base = process.env.ELIZA_VOICE_CLOUD_API_URL;
+    const key = process.env.ELIZAOS_CLOUD_API_KEY;
+    const commit = process.env.ELIZA_VOICE_CLOUD_COMMIT;
+    check(
+      base === target.api && key && /^[a-f0-9]{40}$/.test(commit ?? ""),
+      "SPEECH_CONFIGURATION_INVALID",
+    );
     const headers = {
       Authorization: `Bearer ${key}`,
       "Content-Type": "application/json",
     };
-    const openSession = async (unique: boolean) => {
-      const serverTimings: Record<string, number> = {};
-      const json = speechJson(base, headers, serverTimings);
-      const started = performance.now();
-      stage("consent");
-      const consent = await json("/api/v1/voice/speech/consent", {}, "consent");
-      const consentAt = performance.now();
-      stage("session");
-      const minted = await json(
-        "/api/v1/voice/speech/session",
-        { consentNonce: consent.consentNonce },
-        "session",
-        unique ? UNIQUE_SESSION_HEADERS : {},
-      );
-      const sessionAt = performance.now();
-      check(
+    const json = speechJson(base, headers, {});
+    stage("health");
+    const health = await json("/api/health");
+    check(
+      health.commit === commit && health.environment === environment,
+      "SPEECH_RELEASE_MISMATCH",
+    );
+    stage("consent");
+    const consent = await json(
+      "/api/v1/voice/speech/consent",
+      {},
+      undefined,
+      RETIREMENT_HEADERS,
+    );
+    check(consent.retirementProofVersion === 1, "SPEECH_RETIREMENT_CONSENT");
+    stage("session");
+    const minted = await json(
+      "/api/v1/voice/speech/session",
+      { consentNonce: consent.consentNonce },
+      undefined,
+      RETIREMENT_HEADERS,
+    );
+    check(
+      minted.retirementProofVersion === 1 &&
         typeof minted.sessionId === "string" &&
-          typeof minted.token === "string" &&
-          typeof minted.wsUrl === "string" &&
-          /^[0-9a-f]{64}$/.test(minted.sessionId) === unique,
-        "SPEECH_MINT_INVALID",
+        typeof minted.token === "string" &&
+        typeof minted.wsUrl === "string",
+      "SPEECH_RETIREMENT_MINT",
+    );
+    stage("websocket");
+    const socket = new WebSocket(minted.wsUrl);
+    const ready = deferred<void>();
+    socket.addEventListener("open", () => {
+      stage("ready");
+      socket.send(JSON.stringify({ t: "hello", token: minted.token }));
+    });
+    socket.addEventListener("error", () =>
+      ready.reject(new Error("SPEECH_SOCKET_FAILED")),
+    );
+    socket.addEventListener("close", () =>
+      ready.reject(new Error("SPEECH_SOCKET_CLOSED")),
+    );
+    socket.addEventListener("message", (event) => {
+      if (typeof event.data !== "string") return;
+      const frame = JSON.parse(event.data) as { t?: unknown };
+      if (frame.t === "ready") ready.resolve();
+      else if (frame.t === "error")
+        ready.reject(new Error("SPEECH_PROVIDER_REFUSED"));
+    });
+    let retired = false;
+    try {
+      await bounded(ready.promise, "SPEECH_READY_TIMEOUT");
+      stage("revocation");
+      const revokeAt = performance.now();
+      const revoked = await json(
+        `/api/v1/voice/speech/session/${minted.sessionId}/revoke`,
+        {},
+        undefined,
+        RETIREMENT_HEADERS,
       );
-      stage("websocket");
-      const socket = new WebSocket(minted.wsUrl);
-      const ready = deferred<void>();
-      let socketOpenAt = 0;
-      socket.addEventListener("open", () => {
-        socketOpenAt = performance.now();
-        stage("ready");
-        socket.send(JSON.stringify({ t: "hello", token: minted.token }));
-      });
-      socket.addEventListener("error", () =>
-        ready.reject(new Error("SPEECH_SOCKET_FAILED")),
+      retired = true;
+      const proof = revoked.retirement as Record<string, unknown> | undefined;
+      check(
+        revoked.revoked === true &&
+          proof?.version === 1 &&
+          proof.sessionId === minted.sessionId &&
+          proof.state === "confirmed",
+        "SPEECH_RETIREMENT_UNCONFIRMED",
       );
-      socket.addEventListener("close", () =>
-        ready.reject(new Error("SPEECH_SOCKET_CLOSED")),
+      console.info(
+        JSON.stringify({
+          phase: "speech-relay-live",
+          status: "passed",
+          retirement: "confirmed",
+          revokeMs: Math.round(performance.now() - revokeAt),
+        }),
       );
-      socket.addEventListener("message", (event) => {
-        if (typeof event.data !== "string") return;
-        const frame = JSON.parse(event.data) as { t?: unknown };
-        if (frame.t === "ready") ready.resolve();
-        else if (frame.t === "error")
-          ready.reject(new Error("SPEECH_PROVIDER_REFUSED"));
-      });
-      try {
-        await bounded(ready.promise, "SPEECH_READY_TIMEOUT");
-        const readyAt = performance.now();
-        console.info(
-          JSON.stringify({
-            phase: "speech-relay-live",
-            status: "passed",
-            idUnique: unique ? 1 : 0,
-            consentMs: Math.round(consentAt - started),
-            sessionMs: Math.round(sessionAt - consentAt),
-            wsOpenMs: Math.round(socketOpenAt - sessionAt),
-            wsReadyMs: Math.round(readyAt - sessionAt),
-            bootstrapMs: Math.round(readyAt - started),
-            ...serverTimings,
-          }),
-        );
-      } finally {
-        stage("revocation");
+    } finally {
+      if (!retired)
         await json(
           `/api/v1/voice/speech/session/${minted.sessionId}/revoke`,
           {},
+          undefined,
+          RETIREMENT_HEADERS,
         ).catch(() => {});
-        socket.close();
-      }
-    };
-    for (let pair = 0; pair < AB_PAIRS; pair++) {
-      for (const unique of pair % 2 ? [true, false] : [false, true]) {
-        try {
-          await openSession(unique);
-        } catch (error) {
-          // The strict limit may be 5 a minute: keep the pairs already measured.
-          if (
-            error instanceof Error &&
-            error.message === "SPEECH_HTTP_STATUS_429"
-          )
-            return;
-          throw error;
-        }
-      }
+      socket.close();
     }
   }),
-  120_000,
+  60_000,
 );

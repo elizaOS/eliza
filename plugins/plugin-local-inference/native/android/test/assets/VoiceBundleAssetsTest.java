@@ -37,6 +37,9 @@ public final class VoiceBundleAssetsTest {
         check(!VoiceBundleAssets.isPackaged(context), "absent bundle must stay absent");
         manifest(assets, "first model bytes");
         check(VoiceBundleAssets.isPackaged(context), "present manifest");
+        // A status read before the first install: the languages come from the APK, nothing is copied.
+        check(VoiceBundleAssets.packagedLanguages(context).equals(java.util.List.of("en")), "v1 speaks English");
+        check(!Files.exists(files.resolve("paradee-voice-v1")), "reading the languages installs nothing");
         VoiceBundleAssets.Installation first = VoiceBundleAssets.install(context);
         check(first.root.equals(files.resolve("paradee-voice-v1").toFile()), "legacy storage identity");
         check(Files.readString(first.model.toPath()).equals("first model bytes"), "installed model bytes");
@@ -78,11 +81,16 @@ public final class VoiceBundleAssetsTest {
         Files.writeString(assets.resolve(VoiceBundleAssets.ASSET_ROOT).resolve("manifest.json"), v2.toString());
         VoiceBundleAssets.Installation two = VoiceBundleAssets.install(context);
         check(two.voices.keySet().equals(java.util.Collections.singleton("es")), "v2 voices");
+        check(VoiceBundleAssets.packagedLanguages(context).equals(java.util.List.of("en", "es")), "v2 languages before install");
         check(Files.readString(two.voices.get("es").toPath()).equals("spanish bytes"), "installed Spanish model");
         for (Object[] bad : new Object[][]{{"es", "../outside.gguf"}, {"ES!", "tts/paradee/es.gguf"}}) {
             v2.put("voices", new JSONObject().put((String) bad[0], bad[1]));
             Files.writeString(assets.resolve(VoiceBundleAssets.ASSET_ROOT).resolve("manifest.json"), v2.toString());
             rejected(context);
+            if ("ES!".equals(bad[0])) {
+                try { VoiceBundleAssets.packagedLanguages(context); throw new AssertionError("invalid language listed"); }
+                catch (java.io.IOException expected) {}
+            }
         }
         try { Class.forName("ai.eliza.voice.VoiceNative"); throw new AssertionError("installer required a JNI owner"); }
         catch (ClassNotFoundException expected) {}

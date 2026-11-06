@@ -146,6 +146,13 @@ export interface NativeTaskBinding extends NativeTaskContext {
   revoked: boolean;
   /** Overlay display name (cursor tag and label mark). Defaults to "Eliza". */
   assistantName?: string;
+  /**
+   * The host's commit words for the languages it serves, as one regular
+   * expression source (flags `iu`, at most 4096 characters). A control whose
+   * name matches it is never clicked without a commit grant, as with the
+   * browser's own English COMMIT_CONTROL. Requires `task-commit-pattern`.
+   */
+  commitPattern?: string;
   targets: Array<{
     selector: string;
     action: "click" | "fill" | "fill-code" | "select" | "scroll" | "follow";
@@ -1052,6 +1059,16 @@ export class NativeSocketBrowserTarget implements BrowserTarget {
       throw new BrowserDispatchFailure(
         "UNSUPPORTED",
         "This browser does not support a configured assistant name.",
+        { targetId: this.id },
+      );
+    // An older browser would ignore the pattern and press those controls.
+    if (
+      binding.commitPattern !== undefined &&
+      !this.advertised.has("task-commit-pattern")
+    )
+      throw new BrowserDispatchFailure(
+        "UNSUPPORTED",
+        "This browser does not support the host's commit words.",
         { targetId: this.id },
       );
     // Rebinding retires the old offer before any in-flight answer can arrive.

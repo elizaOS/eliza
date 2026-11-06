@@ -109,6 +109,10 @@ export function createNativeCloudAuth({
   readActive = async () => null,
   clearActive = async () => {},
   beforeStart = async () => {},
+  // true: `config` answers `{available: false}` when Cloud does not know or
+  // confirm this application (HTTP 400, 401 or 403, or a binding that does not
+  // match) instead of throwing. Other failures still throw.
+  answerUnavailableConfig = false,
 }) {
   if (
     !binding ||
@@ -127,6 +131,8 @@ export function createNativeCloudAuth({
     );
   if (activateVerified !== undefined && typeof activateVerified !== "function")
     throw new TypeError("Verified activation callback must be a function");
+  if (typeof answerUnavailableConfig !== "boolean")
+    throw new TypeError("Unavailable configuration answer must be a boolean");
   const redirect = new URL(binding.redirectUri);
   if (
     redirect.protocol !== "https:" ||
@@ -262,6 +268,7 @@ export function createNativeCloudAuth({
       throw fail(
         message("error8", "Application account registration is unavailable."),
         503,
+        "application_unregistered",
       );
     return {
       available: true,
@@ -1108,7 +1115,29 @@ export function createNativeCloudAuth({
           return await accountMethods.handle(operation, input, ticket);
         if (BILLING_OPERATIONS.includes(operation))
           return await billingOperation(operation, input, ticket, scope);
-        if (operation === "config") return await config(ticket);
+        if (operation === "config") {
+          try {
+            return await config(ticket);
+          } catch (error) {
+            if (
+              !answerUnavailableConfig ||
+              !(
+                error.code === "application_unregistered" ||
+                [400, 401, 403].includes(error.status)
+              )
+            )
+              throw error;
+            // A saved sign-in cannot finish for an application Cloud refuses.
+            return {
+              available: false,
+              pending: false,
+              unavailable: message(
+                "error8",
+                "Application account registration is unavailable.",
+              ),
+            };
+          }
+        }
         if (operation === "resume") {
           const raw = await pendingStore.read();
           check(ticket);
