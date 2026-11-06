@@ -34,6 +34,25 @@ mock.module("./advertising", () => ({
   },
 }));
 
+const posts: string[] = [];
+mock.module("./social-media", () => ({
+  socialMediaService: {
+    createPost: async (input: { platforms: string[] }) => {
+      posts.push(input.platforms[0] ?? "");
+      return {
+        results: [{ platform: input.platforms[0], success: true, postId: `post-${posts.length}` }],
+      };
+    },
+  },
+}));
+mock.module("./seo", () => ({
+  seoService: {
+    createRequest: async () => {
+      throw new Error("INDEXNOW_KEY is required for IndexNow submission");
+    },
+  },
+}));
+
 const { appPromotionService } = await import("./app-promotion");
 const contentSpy = spyOn(
   appPromotionService as unknown as {
@@ -71,5 +90,23 @@ test("a refused ad creative returns the created campaign as a partial result", a
     campaignId: "campaign-1",
   });
   expect(result.channels.advertising?.error).toContain("providerAssetId");
+  expect(result.errors.length).toBeGreaterThan(0);
+});
+
+test("a failed SEO step keeps the social posts that were already published", async () => {
+  const result = await appPromotionService.promoteApp("org-1", "user-1", "app-1", {
+    channels: ["social", "seo"],
+    social: { platforms: ["bluesky"] },
+    seo: { generateMeta: true, generateSchema: true },
+  } as Parameters<typeof appPromotionService.promoteApp>[3]);
+
+  expect(posts).toEqual(["bluesky"]);
+  expect(result.channels.social?.platforms[0]).toMatchObject({
+    platform: "bluesky",
+    success: true,
+    postId: "post-1",
+  });
+  expect(result.channels.seo).toMatchObject({ success: false });
+  expect(result.channels.seo?.error).toContain("INDEXNOW_KEY");
   expect(result.errors.length).toBeGreaterThan(0);
 });

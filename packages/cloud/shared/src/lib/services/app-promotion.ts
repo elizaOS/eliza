@@ -519,12 +519,19 @@ Return ONLY valid JSON, no markdown.`;
         text: postText,
       };
 
-      const postResult = await socialMediaService.createPost({
-        organizationId,
-        userId,
-        content: postContent,
-        platforms: [platform],
-      });
+      let postResult: Awaited<ReturnType<typeof socialMediaService.createPost>>;
+      try {
+        postResult = await socialMediaService.createPost({
+          organizationId,
+          userId,
+          content: postContent,
+          platforms: [platform],
+        });
+      } catch (error) {
+        // Earlier platforms may already be posted; keep their results.
+        results.push({ platform, success: false, error: extractErrorMessage(error) });
+        continue;
+      }
 
       const platformResult = postResult.results.find((r) => r.platform === platform);
       results.push({
@@ -557,16 +564,28 @@ Return ONLY valid JSON, no markdown.`;
     }
 
     const seoType = this.determineSeoType(config);
-    const result = await seoService.createRequest({
-      organizationId,
-      userId,
-      appId: app.id,
-      type: seoType,
-      pageUrl: app.app_url,
-      keywords: [app.name, "ai app", "eliza cloud"],
-      promptContext: `App: ${app.name}. ${app.description || ""}`,
-      operationContext,
-    });
+    let result: Awaited<ReturnType<typeof seoService.createRequest>>;
+    try {
+      result = await seoService.createRequest({
+        organizationId,
+        userId,
+        appId: app.id,
+        type: seoType,
+        pageUrl: app.app_url,
+        keywords: [app.name, "ai app", "eliza cloud"],
+        promptContext: `App: ${app.name}. ${app.description || ""}`,
+        operationContext,
+      });
+    } catch (error) {
+      // Social posts run before SEO and are already published and charged.
+      // Failing the whole promotion here would drop their results and make
+      // the client retry, which posts them again.
+      logger.error("[AppPromotion] SEO optimization failed", {
+        appId: app.id,
+        error: extractErrorMessage(error),
+      });
+      return { success: false, error: extractErrorMessage(error) };
+    }
 
     return {
       success: result.request.status === "completed",
