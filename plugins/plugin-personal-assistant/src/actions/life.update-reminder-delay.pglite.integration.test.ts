@@ -720,6 +720,61 @@ it("asks instead of moving the saved namesake when a different reminder was edit
   }
 });
 
+it("asks instead of moving the only namesake when a reminder of another title was edited since", async () => {
+  const saved = await seed("Call mom", {
+    ...STRETCH_CADENCE,
+    dueAt: CALL_MOM_9PM,
+  });
+  const milk = await seed("Buy milk", {
+    ...STRETCH_CADENCE,
+    dueAt: CALL_MOM_4PM,
+  });
+  const conversation = {
+    roomId,
+    entityId: service.ownerEntityId() as UUID,
+  } as Memory;
+  try {
+    await writeRecentLifeSaveCache(fixture.runtime, conversation, {
+      definitionId: saved.definition.id,
+      title: saved.definition.title,
+      createdAt: Date.now(),
+    });
+    const moved = await updateReminder(
+      {
+        title: "Buy milk",
+        target: "Buy milk",
+        details: { cadence: { kind: "once", dueAt: CALL_MOM_5PM } },
+      },
+      "move buy milk to 5pm",
+    );
+    expect(moved.success, JSON.stringify(moved)).toBe(true);
+    const movedMilk = (await service.getDefinition(milk.definition.id))
+      .definition;
+    // The planner repeats the saved title; "that" is the edited Buy milk.
+    const followed = await updateReminder(
+      {
+        title: "Call mom",
+        target: "Call mom",
+        details: { cadence: { kind: "once", dueAt: CALL_MOM_530PM } },
+      },
+      "actually make that 5:30pm",
+    );
+    expect(followed.success, JSON.stringify(followed)).toBe(false);
+    expect(followed.text).toContain("Multiple items match");
+    expect(
+      (await service.getDefinition(saved.definition.id)).definition,
+    ).toEqual(saved.definition);
+    expect(
+      (await service.getDefinition(milk.definition.id)).definition,
+    ).toEqual(movedMilk);
+  } finally {
+    await clearRecentLifeSaveCache(fixture.runtime, conversation);
+    await clearRecentLifeEditCache(fixture.runtime, conversation);
+    for (const entry of [saved, milk])
+      await service.deleteDefinition(entry.definition.id);
+  }
+});
+
 // Each namesake case the reviews probed, at the trajectory's 5:01 AM PDT clock.
 // A row names the one definition that may change. A row without one (except
 // the snooze) must ask "Multiple items match" and change nothing, as the base

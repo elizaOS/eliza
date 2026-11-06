@@ -1521,7 +1521,33 @@ async function resolveDefinitionForMutation(
   // target "stretch-20min-2026-10-30T13-01z", title "Stretch"). When the
   // target names nothing, the title may resolve the one item it matches;
   // ambiguity asks and zero matches refuse.
-  const resolveTarget = (handle: string): DefinitionResult => {
+  // "That" names the live reminder this conversation touched last. When the
+  // planner's target or title names a different one, the name cannot settle
+  // which: ask between the two instead of moving the named one.
+  const touchedLast =
+    namesakeOp && !namesakeOp.cancel
+      ? defs.find(
+          (entry) =>
+            entry.definition.id === namesakeOp.recentTouchIds?.[0] &&
+            entry.definition.status !== "archived" &&
+            entry.definition.status !== "completed",
+        )
+      : undefined;
+  const followsThat =
+    touchedLast !== undefined &&
+    FOLLOW_UP_RETIME_RE.test(normalizeTitle(ownerText).replace(/[.!?]+$/, ""));
+  const unlessThatIsAnother = (result: DefinitionResult): DefinitionResult =>
+    followsThat && touchedLast && result.match && result.match !== touchedLast
+      ? {
+          match: null,
+          ambiguousCandidates: [result.match, touchedLast].map(
+            definitionDisambiguationLabel,
+          ),
+        }
+      : result;
+  const resolveTarget = (handle: string): DefinitionResult =>
+    unlessThatIsAnother(resolveNamedTarget(handle));
+  const resolveNamedTarget = (handle: string): DefinitionResult => {
     const byTarget = resolveDefinitionInRecords(defs, handle, destructive);
     // A handle that asks among the named group alone takes the chosen copy:
     // with the group's other copies set aside, the same match finds only it.
@@ -1553,6 +1579,7 @@ async function resolveDefinitionForMutation(
       !explicitlyNamed.includes(byTitle[0])
     )
       return { match: null, ambiguousCandidates: [] };
+
     return byTitle.length === 1
       ? { match: byTitle.at(0) ?? null, ambiguousCandidates: [] }
       : {
