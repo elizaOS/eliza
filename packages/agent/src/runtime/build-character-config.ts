@@ -22,12 +22,14 @@ import {
   resolveStylePresetById,
   resolveStylePresetByName,
 } from "@elizaos/host/protocol";
+import { collectConnectorEnvVars } from "../config/env-vars.ts";
 import { assertNoRetiredCharacterToolRestrictions } from "../config/retired-tool-policy.ts";
 import {
   applyAdvancedCapabilitySettings,
   resolveAdvancedCapabilitiesEnabled,
 } from "./advanced-capabilities-config.ts";
 import { defaultCharacterSystemTemplate } from "./default-character-prompt.js";
+import { isVaultRef } from "./operations/vault-bridge.ts";
 import { projectConnectorSettings } from "./project-connector-settings.ts";
 
 /**
@@ -218,8 +220,18 @@ export function buildCharacterFromConfig(config: ElizaConfig): Character {
     "GITHUB_OAUTH_CLIENT_ID",
   ];
 
+  // A connector credential held in the vault reaches the runtime through the
+  // resolved overlay in runtime settings, never through process.env. Copying
+  // an older process.env value of the same key into character secrets would
+  // shadow it, because getSetting reads secrets first.
+  const vaultHeldConnectorKeys = new Set(
+    Object.entries(collectConnectorEnvVars(config))
+      .filter(([, value]) => isVaultRef(value.trim()))
+      .map(([key]) => key),
+  );
   const secrets: Record<string, string> = {};
   for (const key of secretKeys) {
+    if (vaultHeldConnectorKeys.has(key)) continue;
     const value = process.env[key];
     if (value?.trim()) {
       secrets[key] = value;

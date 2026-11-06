@@ -263,3 +263,41 @@ it.each(["boot", "reload", "operator", "override"])(
     }
   },
 );
+
+it("serves a vault-held connector token over an older copy of the same key in config env", async () => {
+  const dir = await mkdtemp(path.join(tmpdir(), "connector-vault-token-"));
+  const configPath = path.join(dir, "eliza.json");
+  vi.stubEnv("ELIZA_STATE_DIR", dir);
+  vi.stubEnv("ELIZA_CONFIG_PATH", configPath);
+  vi.stubEnv("ELIZA_PERSIST_CONFIG_PATH", configPath);
+  vi.stubEnv("TELEGRAM_BOT_TOKEN", "");
+  try {
+    // Bot A was set through the plugin form (config env); bot B was then
+    // connected in the Telegram setup panel, which stores a vault ref.
+    saveElizaConfig({
+      agents: { list: [{ id: "main", default: true, name: "Eliza" }] },
+      env: { TELEGRAM_BOT_TOKEN: "bot-a-token" },
+      connectors: {
+        telegram: {
+          enabled: true,
+          botToken: "vault://connector.main.telegram.42.bot-token",
+        },
+      },
+    });
+    const bootConfig = loadElizaConfig();
+    expect(process.env.TELEGRAM_BOT_TOKEN).toBe("bot-a-token");
+    const runtime = new AgentRuntime({
+      character: buildCharacterFromConfig(bootConfig),
+      settings: buildRuntimeSettingsProjection(bootConfig, {
+        env: process.env,
+        // What the boot resolver reads from the vault for the ref.
+        connectorSecretsOverlay: { TELEGRAM_BOT_TOKEN: "bot-b-token" },
+      }),
+      logLevel: "fatal",
+    });
+    expect(runtime.getSetting("TELEGRAM_BOT_TOKEN")).toBe("bot-b-token");
+  } finally {
+    vi.unstubAllEnvs();
+    await rm(dir, { recursive: true, force: true });
+  }
+});
