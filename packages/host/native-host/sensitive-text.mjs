@@ -79,6 +79,38 @@ const matcherFinds = (matcher, text) =>
       (spokenDigits(text) !== text &&
         [...matcher.spans(spokenDigits(text))].length > 0);
 
+/**
+ * Credential shapes found with no telling words around them: provider keys, a
+ * private key block, a bearer token and a signed web token. The check and the
+ * scrubber both use this list. A host can give the same list to a repository
+ * or build-output scanner, so the scanner and the runtime check agree. Each
+ * pattern has the global flag; `String.prototype.search` and `matchAll` do
+ * not depend on its `lastIndex`.
+ * @type {ReadonlyArray<Readonly<{ name: string, pattern: RegExp }>>}
+ */
+export const CREDENTIAL_SHAPES = Object.freeze(
+  [
+    {
+      name: "provider-key",
+      pattern:
+        /\b(?:csk-|sk-(?:proj-|live-)?|gh[pousr]_|github_pat_|AIza)[A-Za-z0-9_-]{16,}\b/g,
+    },
+    {
+      name: "private-key",
+      pattern:
+        /-----BEGIN (?:RSA |EC |OPENSSH )?PRIVATE KEY-----[\s\S]*?(?:-----END (?:RSA |EC |OPENSSH )?PRIVATE KEY-----|$)/g,
+    },
+    {
+      name: "bearer-token",
+      pattern: /\b(Bearer\s+)([A-Za-z0-9._~+/-]{12,}=*)/gi,
+    },
+    {
+      name: "signed-web-token",
+      pattern: /\beyJ[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\b/g,
+    },
+  ].map(Object.freeze),
+);
+
 /** Conservative recognition, not a promise to identify every possible secret.
  * Reject the whole input rather than silently changing a user's instructions.
  * Never include the matched value in an error or a log.
@@ -93,16 +125,7 @@ export function containsSensitiveText(value, { matchers = [] } = {}) {
   );
 }
 function sensitive(text) {
-  if (
-    /\b(?:csk-|sk-(?:proj-|live-)?|gh[pousr]_|github_pat_|AIza)[A-Za-z0-9_-]{16,}\b/.test(
-      text,
-    )
-  )
-    return true;
-  if (/-----BEGIN (?:RSA |EC |OPENSSH )?PRIVATE KEY-----/.test(text))
-    return true;
-  if (/\bBearer\s+[A-Za-z0-9._~+/-]{12,}/i.test(text)) return true;
-  if (/\beyJ[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\b/.test(text))
+  if (CREDENTIAL_SHAPES.some(({ pattern }) => text.search(pattern) !== -1))
     return true;
   if (
     /\b(?:password|passphrase|api[ _-]?key|access[ _-]?token|refresh[ _-]?token|client[ _-]?secret)\s*(?:is\s+|=\s*|:\s*)\S+/i.test(
@@ -197,24 +220,15 @@ const CLAUSE = "(?:[^\\n.!?;,]|[.!?;,](?![\\s.!?;,]|$))+";
  * the first word of a clause only (`password`, `clause`).
  */
 const RULES = [
-  {
-    pattern:
-      /\b(?:csk-|sk-(?:proj-|live-)?|gh[pousr]_|github_pat_|AIza)[A-Za-z0-9_-]{16,}\b/g,
-    kind: "phrase",
-  },
-  {
-    pattern:
-      /-----BEGIN (?:RSA |EC |OPENSSH )?PRIVATE KEY-----[\s\S]*?(?:-----END (?:RSA |EC |OPENSSH )?PRIVATE KEY-----|$)/g,
-    kind: null,
-  },
-  { pattern: /\b(Bearer\s+)([A-Za-z0-9._~+/-]{12,}=*)/gi, kind: "phrase" },
-  {
-    pattern: /\beyJ[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\b/g,
-    kind: "phrase",
-  },
-  // "my password is not working" names no password: only the word right after
-  // "password is" is remembered, and only when it looks like a credential.
-  // The clause is still removed.
+  // A private key block is removed but not remembered: it is too long to
+  // come back word for word.
+  ...CREDENTIAL_SHAPES.map(({ name, pattern }) => ({
+    pattern,
+    kind: name === "private-key" ? null : "phrase",
+  })),
+  // "my password is not working" names no password: by default only the word
+  // right after "password is" is remembered, and only when it looks like a
+  // credential. The clause is still removed.
   {
     pattern: new RegExp(
       `\\b(password\\s*(?:is\\s+|=\\s*|:\\s*))(${CLAUSE})`,
@@ -273,7 +287,7 @@ const RUN = new RegExp(
 );
 /** A remembered value is found inside a run at most this many digits longer. */
 const EXTRA_DIGITS = 2;
-/** Refuse new values at capacity; only the host may clear session memory. */
+/** At capacity, refuse new values (or forget all, when the host opts in). */
 const REMEMBER_LIMIT = 128;
 
 /** cyrb53: a fast 53-bit keyed string hash for comparison. Not cryptographic. */
@@ -330,12 +344,27 @@ function matcherSpans(matchers, text) {
  * again wherever it comes back later, also as spoken digit words or as the
  * start or end of a code that a transcript heard only in part. Use one
  * scrubber per signed-in session and call `clear()` when the session ends.
- * @param {{ seed?: number, matchers?: SensitiveTextMatcher[] }} [options]
+ *
+ * Opt-in host policy, both off by default:
+ * - `passwordWords: "credential"` also remembers every other word of the
+ *   clause after "password is" that looks like a credential (four or more
+ *   characters with a non-letter: "Tr0ub4dor"). Plain words are never
+ *   remembered. The default remembers the first word only.
+ * - `onFull: "forget"` forgets every remembered value when the memory is full
+ *   and continues. The default, `"refuse"`, throws SENSITIVE_TEXT_CAPACITY on
+ *   every later call until `clear()`.
+ * @param {{ seed?: number, matchers?: SensitiveTextMatcher[], passwordWords?: "first" | "credential", onFull?: "refuse" | "forget" }} [options]
  */
 export function createSecretScrubber({
   seed = randomSeed(),
   matchers = [],
+  passwordWords = "first",
+  onFull = "refuse",
 } = {}) {
+  if (!["first", "credential"].includes(passwordWords))
+    throw new TypeError('passwordWords must be "first" or "credential"');
+  if (!["refuse", "forget"].includes(onFull))
+    throw new TypeError('onFull must be "refuse" or "forget"');
   const digitSecrets = new Set();
   const digitParts = new Set();
   const digitLengths = new Set();
@@ -361,7 +390,10 @@ export function createSecretScrubber({
     phraseLengths.clear();
   }
   function rememberFingerprint(values, fingerprint) {
-    if (!values.has(fingerprint) && size() >= REMEMBER_LIMIT) exhausted = true;
+    if (!values.has(fingerprint) && size() >= REMEMBER_LIMIT) {
+      if (onFull === "forget") clear();
+      else exhausted = true;
+    }
     requireCapacity();
     values.add(fingerprint);
   }
@@ -407,7 +439,11 @@ export function createSecretScrubber({
     const words = tokensOf(value)
       .map((token) => token.word)
       .filter((word) => word !== SECRET_REMOVED_MARK);
-    if (kind === "password") return rememberClauseValue(words[0]);
+    if (kind === "password") {
+      rememberClauseValue(words[0]);
+      if (passwordWords === "credential") rememberWords(words.slice(1));
+      return;
+    }
     if (!words.length || words.length > 12) return;
     rememberFingerprint(phraseSecrets, key(words.join(" ")));
     phraseLengths.add(words.length);
@@ -562,11 +598,14 @@ export function createSecretScrubber({
  * with a memory. A refused value is remembered, and later text that carries
  * it is refused too, also without telling words. The whole text is refused,
  * never silently changed.
- * @param {{ matchers?: SensitiveTextMatcher[], scrubber?: ReturnType<typeof createSecretScrubber> }} [options]
+ * `passwordWords` and `onFull` are passed to the scrubber it makes.
+ * @param {{ matchers?: SensitiveTextMatcher[], passwordWords?: "first" | "credential", onFull?: "refuse" | "forget", scrubber?: ReturnType<typeof createSecretScrubber> }} [options]
  */
 export function createSensitiveTextGate({
   matchers = [],
-  scrubber = createSecretScrubber({ matchers }),
+  passwordWords,
+  onFull,
+  scrubber = createSecretScrubber({ matchers, passwordWords, onFull }),
 } = {}) {
   return {
     scrubber,
