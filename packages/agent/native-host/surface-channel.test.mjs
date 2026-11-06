@@ -136,6 +136,44 @@ test("an account change seen by a new command wakes a held pull", async (t) => {
   await assert.rejects(waiting, { code: "STALE_REF" });
 });
 
+test("an account change during a hold is seen when the hold ends", async (t) => {
+  const { account, channel } = setup(t);
+  const connection = await connect(channel);
+  const waiting = pull(channel, connection);
+  await flush();
+  account.value = "owner-b";
+  t.mock.timers.tick(SURFACE_PULL_HOLD_MS - 1);
+  assert.equal(await state(waiting), "pending");
+  t.mock.timers.tick(1);
+  await assert.rejects(waiting, { code: "STALE_REF" });
+  assert.equal(channel.connectionId(), null);
+});
+
+test("the next pull has the full expiry after a held pull returns", async (t) => {
+  const { channel } = setup(t);
+  for (const [late, outcome] of [
+    [SURFACE_CONNECTION_TTL_MS - 100, "current"],
+    [SURFACE_CONNECTION_TTL_MS, "expired"],
+  ]) {
+    const connection = await connect(channel, late);
+    const waiting = pull(channel, connection);
+    await flush();
+    t.mock.timers.tick(SURFACE_PULL_HOLD_MS);
+    assert.equal((await waiting).command, null);
+    t.mock.timers.tick(late);
+    if (outcome === "current") {
+      assert.equal(channel.connectionId(), connection.connectionId);
+      const again = pull(channel, connection);
+      await flush();
+      t.mock.timers.tick(SURFACE_PULL_HOLD_MS);
+      assert.equal((await again).command, null);
+    } else {
+      assert.equal(channel.connectionId(), null);
+      await assert.rejects(pull(channel, connection), { code: "STALE_REF" });
+    }
+  }
+});
+
 test("a hold that reaches the connection expiry is refused", () => {
   for (const pullHoldMs of [0, SURFACE_CONNECTION_TTL_MS, 1.5])
     assert.throws(

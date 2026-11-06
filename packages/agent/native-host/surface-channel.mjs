@@ -7,7 +7,7 @@ export const SURFACE_CHANNEL_PATHS = new Set([
   "/browser/surface/close",
 ]);
 export const SURFACE_CHANNEL_BYTES = 2 * 1024 * 1024;
-/** A connection expires this long after its last pull. */
+/** A connection expires this long after a pull arrives or returns. */
 export const SURFACE_CONNECTION_TTL_MS = 15000;
 /** An idle pull waits this long, below the connection TTL, unless woken. */
 export const SURFACE_PULL_HOLD_MS = 10000;
@@ -206,6 +206,8 @@ export function createSurfaceCommandChannel({
         });
       }
       current(scope, await owner());
+      // The client gets the full TTL to send its next pull.
+      scope.expiresAt = now() + SURFACE_CONNECTION_TTL_MS;
       const cancellations = [...scope.cancellations];
       scope.cancellations.clear();
       const entry = next();
