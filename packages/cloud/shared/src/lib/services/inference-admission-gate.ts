@@ -28,11 +28,12 @@ import {
   type InferenceCredentialCheck,
   InferenceCredentialRevokedError,
 } from "./inference-credential-revocation";
+import { INFERENCE_RATE_LIMIT_GATE_PREFIX } from "./inference-policy-contract";
 import type { EndpointType } from "./org-rate-limits";
 
 const GATE_BINDING = "INFERENCE_ADMISSION_GATES";
 const GATE_ORIGIN = "https://inference-admission.internal";
-const RATE_LIMIT_GATE_PREFIX = "rate-limit:v2:";
+
 const HYDRATION_GATE_TIMEOUT_MS = 5_000;
 const GATE_OPERATION_TIMEOUT_MS = 1_500;
 // One bounded readiness window avoids canceling a rate actor before it can run.
@@ -93,6 +94,14 @@ export interface InferenceAdmissionBalanceObservation {
   balanceRevision: string;
   /** "funding" for subscriber capacity (credit plus spendable allowance). */
   balanceView?: "funding";
+}
+
+/** Exact live zero-release evidence; an absent/ambiguous lease is not this proof. */
+export interface InferenceAdmissionZeroReleaseReceipt {
+  version: 1;
+  organizationId: string;
+  requestId: string;
+  state: "not_reserved" | "released_zero";
 }
 
 export interface InferenceAdmissionLease {
@@ -238,7 +247,12 @@ function rateLimitGateStub(organizationId: string): RuntimeDurableObjectStub {
       "Inference admission Durable Object binding is missing",
     );
   }
-  return namespace.getByName(`${RATE_LIMIT_GATE_PREFIX}${organizationId}`);
+  return namespace.getByName(`${INFERENCE_RATE_LIMIT_GATE_PREFIX}${organizationId}`);
+}
+
+function gateTimingHeader(response: Response, name: string): number | undefined {
+  const value = response.headers.get(name);
+  return value !== null && /^(?:0|[1-9]\d*)(?:\.\d+)?$/.test(value) ? Number(value) : undefined;
 }
 
 async function gateFetch(
@@ -248,24 +262,32 @@ async function gateFetch(
   stub = gateStub(organizationId),
   signal?: AbortSignal,
 ): Promise<Response> {
+  let sentAt = 0;
   try {
     return await observeInferenceDependency(
       "durable_object",
       path,
-      () =>
-        stub.fetch(
+      () => {
+        sentAt = Date.now();
+        return stub.fetch(
           new Request(`${GATE_ORIGIN}${path}`, {
             method: "POST",
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify(body),
             signal,
           }),
-        ),
+        );
+      },
       (response) => {
-        const value = response.headers.get("x-eliza-gate-handler-ms");
-        return value !== null && /^(?:0|[1-9]\d*)(?:\.\d+)?$/.test(value)
-          ? Number(value)
-          : undefined;
+        const handlerMs = gateTimingHeader(response, "x-eliza-gate-handler-ms");
+        const enteredAt = gateTimingHeader(response, "x-eliza-gate-entered-at");
+        const activatedAt = gateTimingHeader(response, "x-eliza-gate-activated-at");
+        return {
+          handlerMs,
+          entryMs: enteredAt === undefined ? undefined : enteredAt - sentAt,
+          // The object was constructed for this call: activation was on path.
+          cold: activatedAt === undefined ? undefined : activatedAt >= sentAt,
+        };
       },
     );
   } catch (error) {
@@ -753,6 +775,56 @@ export async function consumeInferenceRateLimit(params: {
 }
 
 /**
+ * Consume the primary path's `rate-limit:v2` windows after the organization
+ * object accepts the cached (epoch, generation, key cap) proof. Every outcome
+ * other than an allow or a denial (stale epoch, pending mutation, revoked
+ * credential, cold object, transport failure) throws, and the caller decides
+ * on the primary path instead.
+ */
+export async function consumeAuthorizedInferenceRateLimit(params: {
+  organizationId: string;
+  endpointType: EndpointType;
+  policyEpoch: string;
+  policyGeneration: string;
+  credential: {
+    kind: "api_key";
+    credentialId: string;
+    userId: string;
+    rateLimit: number;
+    expiresAt: number | null;
+  };
+}): Promise<InferenceRateLimitDecision> {
+  const operationStartedAt = Date.now();
+  const response = await gateFetch(
+    params.organizationId,
+    "/rate-policy/rate",
+    {
+      organizationId: params.organizationId,
+      endpointType: params.endpointType,
+      policyEpoch: params.policyEpoch,
+      policyGeneration: params.policyGeneration,
+      credential: params.credential,
+      operationId: crypto.randomUUID(),
+      operationDeadlineAt: operationStartedAt + RATE_LIMIT_GATE_TIMEOUT_MS,
+      // Captured before any queue so a delayed arrival keeps its window.
+      windowStartedAt: Math.floor(operationStartedAt / 60_000) * 60_000,
+    },
+    gateStub(params.organizationId),
+    AbortSignal.timeout(RATE_LIMIT_GATE_TIMEOUT_MS),
+  );
+  if (response.status !== 200 && response.status !== 429)
+    throw new InferenceAdmissionGateUnavailableError(
+      `Inference rate policy refused with status ${response.status}`,
+    );
+  const decision = await parseRateLimitResponse(response);
+  if ((response.status === 200) !== decision.allowed)
+    throw new InferenceAdmissionGateUnavailableError(
+      "Inference rate policy returned an inconsistent decision",
+    );
+  return decision;
+}
+
+/**
  * Atomically lease an estimated charge from the cached organization balance.
  * Duplicate request IDs are idempotent only when the amount is identical.
  */
@@ -1197,7 +1269,9 @@ export async function fenceInferenceAdmissionLeaseForSettlement(
 /** Release a lease only when no provider dispatch was attempted. */
 export async function releaseInferenceAdmissionLease(
   lease: InferenceAdmissionLease,
+  onTerminalZero?: (receipt: Readonly<InferenceAdmissionZeroReleaseReceipt>) => void,
 ): Promise<void> {
+  const { organizationId, requestId } = lease;
   if (lease.providerDispatched) {
     throw new InferenceAdmissionGateUnavailableError(
       "Dispatched inference work cannot be released without accounting",
@@ -1209,13 +1283,14 @@ export async function releaseInferenceAdmissionLease(
   ) {
     lease.preProviderCancellationToken = undefined;
     lease.preparedDispatch = undefined;
+    onTerminalZero?.({ version: 1, organizationId, requestId, state: "not_reserved" });
     return;
   }
   const response = await gateFetch(
-    lease.organizationId,
+    organizationId,
     "/release",
     {
-      requestId: lease.requestId,
+      requestId,
       ...(lease.preProviderCancellationToken && {
         preProviderCancellationToken: lease.preProviderCancellationToken,
       }),
@@ -1242,6 +1317,7 @@ export async function releaseInferenceAdmissionLease(
   }
   await parseLeaseTransitionResponse(response, "released");
   lease.preProviderCancellationToken = undefined;
+  onTerminalZero?.({ version: 1, organizationId, requestId, state: "released_zero" });
 }
 
 /**
@@ -1258,6 +1334,7 @@ export async function settleInferenceAdmissionLease(
    * Supplying it avoids a separate balance readback after the debit.
    */
   observedBalance?: InferenceAdmissionBalanceObservation,
+  onTerminalZero?: (receipt: Readonly<InferenceAdmissionZeroReleaseReceipt>) => void,
 ): Promise<void> {
   const balanceBackedUsd = finiteNonNegative(balanceBackedCostUsd, "balanceBackedCostUsd");
   const gateConsumedUsd = finiteNonNegative(gateConsumedCostUsd, "gateConsumedCostUsd");
@@ -1268,7 +1345,7 @@ export async function settleInferenceAdmissionLease(
   }
   if (!lease.providerDispatched) {
     if (balanceBackedUsd === 0 && gateConsumedUsd === 0) {
-      await releaseInferenceAdmissionLease(lease);
+      await releaseInferenceAdmissionLease(lease, onTerminalZero);
       return;
     }
     await markInferenceAdmissionLeaseDispatched(lease);

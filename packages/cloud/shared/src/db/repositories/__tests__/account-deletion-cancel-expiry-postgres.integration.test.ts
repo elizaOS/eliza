@@ -15,6 +15,7 @@ import {
 import { accountDeletionExports } from "../../schemas/account-deletion-exports";
 import { accountDeletionPhaseReceipts } from "../../schemas/account-deletion-phase-receipts";
 import { accountDeletionRequests } from "../../schemas/account-deletion-requests";
+import { nativeAppPublishers } from "../../schemas/native-app-publishers";
 import { organizationBalanceRevisionSequence, organizations } from "../../schemas/organizations";
 import { providerAdmissions } from "../../schemas/provider-admissions";
 import { users } from "../../schemas/users";
@@ -373,6 +374,7 @@ async function initializeHarness(): Promise<void> {
       accountDeletionRequests,
       organizationBalanceRevisionSequence,
       organizations,
+      nativeAppPublishers,
       providerAdmissions,
       users,
     } as never,

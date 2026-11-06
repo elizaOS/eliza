@@ -15,6 +15,7 @@ __filename = "\"/worker.js\""
 
 [alias]
 "@elizaos/cloud-shared/lib/services/inference-admission-recovery" = "./src/recovery-service.ts"
+"@elizaos/cloud-shared/lib/services/inference-policy-primary" = "./src/policy-service.ts"
 "@elizaos/plugin-elevenlabs" = "../api/src/stubs/elizaos-plugin-elevenlabs.ts"
 "@elizaos/cloud-sdk" = "../sdk/src/index.ts"
 "@elizaos/cloud-shared" = "../shared/src/index.ts"
@@ -57,6 +58,9 @@ INFERENCE_STRONG_REVOCATION_ENABLED = "true"
 INFERENCE_SNAPSHOT_ADMISSION_ENABLED = "true"
 INFERENCE_PASSTHROUGH_STREAMING = "true"
 INFERENCE_PASSTHROUGH_EMBEDDINGS = "true"
+# The canonical gate serves speech revocation subscriptions only while this
+# matches the staging API; the source contract checks every gate-read variable.
+VOICE_SPEECH_RELAY_ENABLED = "true"
 # Source leaves funded admission unset; target preserves its disabled default.
 # Never enable it or invent a seal while preparing this split.
 

@@ -296,6 +296,13 @@ final class ElizaBionicInferenceServer {
         LocalServerSocket s = serverSocket;
         serverSocket = null;
         if (s != null) {
+            // close() alone leaves accept() blocked and the abstract address bound,
+            // so a same-process restart would fail with "Address already in use".
+            try {
+                android.system.Os.shutdown(s.getFileDescriptor(), android.system.OsConstants.SHUT_RDWR);
+            } catch (android.system.ErrnoException ignored) {
+                // Already closed by the peer; close() below still runs.
+            }
             try {
                 s.close();
             } catch (IOException ignored) {
