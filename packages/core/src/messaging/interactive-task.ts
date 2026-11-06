@@ -738,7 +738,21 @@ export function transitionInteractiveTask(
 	task.revision++;
 	task.updatedAt = context.now;
 	validateInteractiveTask(task);
-	const event: TaskEvent = {
+	const operationId =
+		transition.type === "prepare"
+			? transition.proposal.id
+			: "operationId" in transition
+				? transition.operationId
+				: undefined;
+	// Per-origin audit for extended tasks; single-origin events are unchanged.
+	const eventOrigin =
+		transition.type === "extend-origin" || transition.type === "retract-origin"
+			? transition.origin
+			: task.originGrants &&
+					(transition.type === "observe" || transition.type === "resume")
+				? transition.observation.origin
+				: undefined;
+	const event: unknown = {
 		eventId: `${task.id}#${task.revision}`,
 		schemaVersion: 1,
 		taskId: task.id,
@@ -747,24 +761,14 @@ export function transitionInteractiveTask(
 		kind: transition.type,
 		at: context.now,
 		status: task.status,
+		...(operationId !== undefined && {
+			operationId,
+			operationStatus: task.operations.find(
+				(operation) => operation.proposal.id === operationId,
+			)?.status,
+		}),
+		...(eventOrigin !== undefined && { origin: eventOrigin }),
 	};
-	if ("operationId" in transition) event.operationId = transition.operationId;
-	// Per-origin audit for extended tasks; single-origin events are unchanged.
-	if (
-		transition.type === "extend-origin" ||
-		transition.type === "retract-origin"
-	)
-		event.origin = transition.origin;
-	else if (
-		task.originGrants &&
-		(transition.type === "observe" || transition.type === "resume")
-	)
-		event.origin = transition.observation.origin;
-	if (transition.type === "prepare") event.operationId = transition.proposal.id;
-	if (event.operationId)
-		event.operationStatus = task.operations.find(
-			(operation) => operation.proposal.id === event.operationId,
-		)?.status;
 	validateTaskEvent(event);
 	return { task, event };
 }

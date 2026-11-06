@@ -9,6 +9,7 @@ import {
 
 // Literal: the protected workflow runs this file with Bun and no installed packages.
 const UNIQUE_SESSION_HEADERS = { "x-eliza-speech-session-id": "unique-v1" };
+const RETIREMENT_HEADERS = { "X-Eliza-Speech-Retirement-Version": "1" };
 const environment = process.env.ELIZA_VOICE_CLOUD_ENVIRONMENT;
 const target =
   environment === "staging"
@@ -431,4 +432,113 @@ const AB_PAIRS = 3;
     }
   }),
   120_000,
+);
+
+// The retirement protocol a proof-capable client (Alpha) requires before it
+// opens the microphone: proof-bound consent and mint, a ready socket, and an
+// owner revocation that returns a confirmed retirement for that session.
+maybe(
+  "deployed speech confirms retirement of a proof-bound session",
+  reportedSpeechRelayTest(async (stage) => {
+    check(target, "SPEECH_CONFIGURATION_INVALID");
+    const base = process.env.ELIZA_VOICE_CLOUD_API_URL;
+    const key = process.env.ELIZAOS_CLOUD_API_KEY;
+    const commit = process.env.ELIZA_VOICE_CLOUD_COMMIT;
+    check(
+      base === target.api && key && /^[a-f0-9]{40}$/.test(commit ?? ""),
+      "SPEECH_CONFIGURATION_INVALID",
+    );
+    const headers = {
+      Authorization: `Bearer ${key}`,
+      "Content-Type": "application/json",
+    };
+    const json = speechJson(base, headers, {});
+    stage("health");
+    const health = await json("/api/health");
+    check(
+      health.commit === commit && health.environment === environment,
+      "SPEECH_RELEASE_MISMATCH",
+    );
+    stage("consent");
+    const consent = await json(
+      "/api/v1/voice/speech/consent",
+      {},
+      undefined,
+      RETIREMENT_HEADERS,
+    );
+    check(consent.retirementProofVersion === 1, "SPEECH_RETIREMENT_CONSENT");
+    stage("session");
+    const minted = await json(
+      "/api/v1/voice/speech/session",
+      { consentNonce: consent.consentNonce },
+      undefined,
+      RETIREMENT_HEADERS,
+    );
+    check(
+      minted.retirementProofVersion === 1 &&
+        typeof minted.sessionId === "string" &&
+        typeof minted.token === "string" &&
+        typeof minted.wsUrl === "string",
+      "SPEECH_RETIREMENT_MINT",
+    );
+    stage("websocket");
+    const socket = new WebSocket(minted.wsUrl);
+    const ready = deferred<void>();
+    socket.addEventListener("open", () => {
+      stage("ready");
+      socket.send(JSON.stringify({ t: "hello", token: minted.token }));
+    });
+    socket.addEventListener("error", () =>
+      ready.reject(new Error("SPEECH_SOCKET_FAILED")),
+    );
+    socket.addEventListener("close", () =>
+      ready.reject(new Error("SPEECH_SOCKET_CLOSED")),
+    );
+    socket.addEventListener("message", (event) => {
+      if (typeof event.data !== "string") return;
+      const frame = JSON.parse(event.data) as { t?: unknown };
+      if (frame.t === "ready") ready.resolve();
+      else if (frame.t === "error")
+        ready.reject(new Error("SPEECH_PROVIDER_REFUSED"));
+    });
+    let retired = false;
+    try {
+      await bounded(ready.promise, "SPEECH_READY_TIMEOUT");
+      stage("revocation");
+      const revokeAt = performance.now();
+      const revoked = await json(
+        `/api/v1/voice/speech/session/${minted.sessionId}/revoke`,
+        {},
+        undefined,
+        RETIREMENT_HEADERS,
+      );
+      retired = true;
+      const proof = revoked.retirement as Record<string, unknown> | undefined;
+      check(
+        revoked.revoked === true &&
+          proof?.version === 1 &&
+          proof.sessionId === minted.sessionId &&
+          proof.state === "confirmed",
+        "SPEECH_RETIREMENT_UNCONFIRMED",
+      );
+      console.info(
+        JSON.stringify({
+          phase: "speech-relay-live",
+          status: "passed",
+          retirement: "confirmed",
+          revokeMs: Math.round(performance.now() - revokeAt),
+        }),
+      );
+    } finally {
+      if (!retired)
+        await json(
+          `/api/v1/voice/speech/session/${minted.sessionId}/revoke`,
+          {},
+          undefined,
+          RETIREMENT_HEADERS,
+        ).catch(() => {});
+      socket.close();
+    }
+  }),
+  60_000,
 );

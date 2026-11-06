@@ -441,6 +441,67 @@ describe("Worker speech rate limit without an admission snapshot", () => {
     expect(redisCalls).toBe(0);
   });
 
+  test("production flags: an app's key keeps its app scope, so another app's route refuses it", async () => {
+    const [{ apps }, { getTableConfig }] = await Promise.all([
+      import("@elizaos/cloud-shared/db/schemas"),
+      import("drizzle-orm/pg-core"),
+    ]);
+    const config = getTableConfig(apps);
+    await pg().exec(
+      `CREATE TABLE IF NOT EXISTS "${config.name}" (${config.columns
+        .map(
+          (column) =>
+            `"${column.name}" ${"enumValues" in column && column.enumValues ? "text" : column.getSQLType()}`,
+        )
+        .join(", ")})`,
+    );
+    const keyId = crypto.randomUUID();
+    const appKey = `eliza_speech_rate_app_${keyId}`;
+    const [ownApp, otherApp] = [crypto.randomUUID(), crypto.randomUUID()];
+    await pg().exec(`INSERT INTO api_keys(id, name, key_hash, key_prefix, organization_id, user_id, rate_limit, is_active, usage_count, created_at, updated_at, user_created) VALUES ('${keyId}', 'app', '${createHash("sha256").update(appKey).digest("hex")}', 'eliza_sp', '${ORG}', '${USER}', 1000, true, 0, now(), now(), true);
+      INSERT INTO apps(id, name, slug, organization_id, created_by_user_id, is_active, is_approved, api_key_id, created_at, updated_at) VALUES
+        ('${ownApp}', 'own', 'own-${ownApp}', '${ORG}', '${USER}', true, true, '${keyId}', now(), now()),
+        ('${otherApp}', 'other', 'other-${otherApp}', '${ORG}', '${USER}', true, true, NULL, now(), now())`);
+    const promoteAssets = new Hono().route(
+      "/apps/:id/promote/assets",
+      (await import("../v1/apps/[id]/promote/assets/route")).default,
+    );
+    // An invalid body: a caller the route admits stops at 400 before provider work.
+    const promote = (rawKey: string, appId: string) =>
+      runWithBindings({ INFERENCE_ADMISSION_GATES }, () =>
+        Promise.resolve(
+          promoteAssets.request(
+            `http://cloud.test/apps/${appId}/promote/assets`,
+            {
+              method: "POST",
+              headers: {
+                authorization: `Bearer ${rawKey}`,
+                "content-type": "application/json",
+              },
+              body: JSON.stringify({ sizes: "none" }),
+            },
+            {},
+            {
+              waitUntil: () => undefined,
+              passThroughOnException: () => undefined,
+              props: {},
+            },
+          ),
+        ),
+      );
+    // Its own app, another app, and an ordinary key (no app scope) on that app.
+    const responses = [
+      await promote(appKey, ownApp),
+      await promote(appKey, otherApp),
+      await promote(keys.plain.raw, otherApp),
+    ];
+    expect(responses.map((response) => response.status)).toEqual([
+      400, 403, 400,
+    ]);
+    const refusal: unknown = await responses[1]!.json();
+    expect(refusal).toEqual({ error: "Access denied" });
+  });
+
   test("STT and TTS take one Durable Object decision and no Redis round trip", async () => {
     const stt = await speak("stt", keys.plain.raw);
     const tts = await speak("tts", keys.plain.raw);

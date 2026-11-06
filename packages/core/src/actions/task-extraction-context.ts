@@ -90,15 +90,19 @@ export function bindTaskExtractionContext(
 					),
 				}
 			: original;
-		if (hashStableJson(expected) !== hashStableJson(projected)) return;
+		// Any other view (e.g. background history that also defers settled
+		// effects) extracts from the full original. It never drops the current
+		// decision binding: its request issuer gates Notes writes.
+		const exact = hashStableJson(expected) === hashStableJson(projected);
+		const view = exact ? projected : original;
 		bindings().set(state.data, {
 			original,
-			projected,
+			projected: view,
 			sourceHash: hashStableJson(original),
-			projectionHash: hashStableJson(projected),
+			projectionHash: hashStableJson(view),
 			requestHash: hashStableJson(message),
 			stateHash: stateFingerprint(state),
-			extractionProjectionAuthorized,
+			extractionProjectionAuthorized: exact && extractionProjectionAuthorized,
 			...(runtime && issuer && validIssuer(issuer, runtime, message)
 				? { issuer }
 				: {}),
@@ -1237,6 +1241,18 @@ export function bindRequestOperationResult(
 						row.op === attempt.registeredOperation ||
 						row.op === attempt.resolved,
 				);
+			// The Notes owner resolves its registered patch action to update before
+			// checking permission. An explicit edit may be fulfilled by that patch;
+			// keep its raw dispatch identity for matching and freshness checks.
+			const requested =
+				value.interpretation?.status === "explicit"
+					? value.interpretation.operations.includes(
+							attempt.registeredOperation,
+						) ||
+						(attempt.registeredOperation === "patch" &&
+							attempt.resolved === "update" &&
+							value.interpretation.operations.includes("update"))
+					: undefined;
 			if (dispatch && canonicalChild)
 				completion = Object.freeze({
 					issuer: attempt.issuer,
@@ -1247,24 +1263,9 @@ export function bindRequestOperationResult(
 					dispatch: Object.freeze(dispatch),
 					canonicalChild,
 					childDefinition: definition(canonicalChild),
-					requested:
-						value.interpretation?.status === "explicit"
-							? value.interpretation.operations.includes(
-									attempt.registeredOperation,
-								)
-							: undefined,
-					rejected:
-						value.interpretation?.status === "explicit" &&
-						value.interpretation.operations.includes(
-							attempt.registeredOperation,
-						) &&
-						noEffectRejection,
-					outsideRequestRejection:
-						value.interpretation?.status === "explicit" &&
-						!value.interpretation.operations.includes(
-							attempt.registeredOperation,
-						) &&
-						noEffectRejection,
+					requested,
+					rejected: requested === true && noEffectRejection,
+					outsideRequestRejection: requested === false && noEffectRejection,
 					ambiguousRejection:
 						value.interpretation?.status !== "explicit" && noEffectRejection,
 				});
