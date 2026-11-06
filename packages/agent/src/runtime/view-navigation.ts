@@ -199,15 +199,17 @@ export const viewNavigationField: ResponseHandlerFieldEvaluator<Navigation> = {
   priority: 19.75,
   // The host evaluator only records a constraint for none/forbidden and
   // ignores optional; none of them reroutes the turn or changes replyText. A
-  // value parse rejects (for example a JSON string instead of an object) is a
-  // soft failure: nothing is staged and the turn is not navigated.
-  directReplyValue: (value) => {
-    const navigation = parseNavigation(value);
-    return (
-      navigation === null ||
-      ["none", "forbidden", "optional"].includes(navigation.disposition)
-    );
-  },
+  // non-object value (for example a JSON string) fails parse softly and no
+  // raw reader treats it as navigation, so nothing is staged. Every object,
+  // well-formed or not, is judged by its disposition, because Stage-1 routing
+  // repair reads the raw disposition (stage1-generation.ts).
+  directReplyValue: (value) =>
+    typeof value !== "object" ||
+    value === null ||
+    Array.isArray(value) ||
+    ["none", "forbidden", "optional"].includes(
+      String((value as { disposition?: unknown }).disposition),
+    ),
   shouldRun({ runtime, message }) {
     const active =
       message.content.source === "client_chat" &&

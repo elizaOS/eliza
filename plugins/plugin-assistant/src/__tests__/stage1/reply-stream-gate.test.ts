@@ -236,6 +236,15 @@ describe("Stage 1 reply stream gate", () => {
           '{"disposition":"none","viewId":"","reason":"general question"}',
       }),
     ).toBe(true);
+    // A malformed object that still names a navigation holds it: Stage-1
+    // routing repair reads the raw disposition and would re-ask the model.
+    for (const visualContinuation of [
+      { disposition: "direct", viewId: "calendar" },
+      { disposition: "planning", viewId: "calendar" },
+      { disposition: "direct", viewId: "calendar", reason: "x", extra: 1 },
+    ]) {
+      expect(gate?.({ ...direct, visualContinuation })).toBe(false);
+    }
     // An unknown top-level key the schema never asked for still holds it.
     expect(gate?.({ ...direct, viewId: "calendar" })).toBe(false);
 
