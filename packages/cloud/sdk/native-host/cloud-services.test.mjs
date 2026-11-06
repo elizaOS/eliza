@@ -1032,6 +1032,18 @@ function googleHost(t, google, extraPolicy = {}) {
         return Response.json({
           authUrl: "https://accounts.google.com/o/oauth2/v2/auth?state=x",
         });
+      if (path === "/api/v1/eliza/google/gmail/inbox-v1/capabilities")
+        return Response.json(
+          google.capabilities ?? {
+            version: 1,
+            attachmentPolicy: {
+              mimeTypes: ["application/pdf", "image/png"],
+              maximumBytes: 5242880,
+              maximumOutgoing: 10,
+              maximumTotalBytes: 5242880,
+            },
+          },
+        );
       if (path.startsWith("/api/v1/eliza/google/gmail/inbox-v1/operations")) {
         if (google.operationResponse) return google.operationResponse(path);
         if (google.operationStatus)
@@ -2139,12 +2151,33 @@ test("the owner mail writer relays Cloud's reviewed two-step operation for the c
     { code: "review_changed", status: 409 },
   );
   google.operationStatus = undefined;
+  // Cloud's attachment limits, read for the same current grant.
+  assert.deepEqual(await writer.capabilities(), {
+    version: 1,
+    accountId: GRANT_A,
+    attachmentPolicy: {
+      mimeTypes: ["application/pdf", "image/png"],
+      maximumBytes: 5242880,
+      maximumOutgoing: 10,
+      maximumTotalBytes: 5242880,
+    },
+  });
+  assert.ok(
+    calls.some((c) =>
+      c.url.endsWith(`/inbox-v1/capabilities?grantId=${GRANT_A}`),
+    ),
+  );
+  // A server without the policy is refused, never filled with copied limits.
+  google.capabilities = { version: 1 };
+  await assert.rejects(writer.capabilities(), { status: 502 });
+  google.capabilities = undefined;
   // Another connected mailbox, or a revoked grant, is refused before Cloud.
   google.connectionId = GRANT_B;
   await assert.rejects(
     writer.prepare({ requestId: OPERATION, proposal: archive }),
     { code: "account_changed" },
   );
+  await assert.rejects(writer.capabilities(), { code: "account_changed" });
   google.connectionId = GRANT_A;
   google.scopes = [READ_SCOPE, "openid"];
   await assert.rejects(

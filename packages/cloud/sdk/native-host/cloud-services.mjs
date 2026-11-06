@@ -2679,6 +2679,42 @@ export function createCloudRoutes({
         }
         return { version: 1, accountId, receipt: confirmed };
       },
+      /** Cloud's limits on the files that one sent message can carry. */
+      async capabilities() {
+        const value = await call(
+          `/api/v1/eliza/google/gmail/inbox-v1/capabilities?grantId=${encodeURIComponent(accountId)}`,
+          undefined,
+          undefined,
+          false,
+        );
+        const policy = value?.attachmentPolicy;
+        const count = (number) => Number.isSafeInteger(number) && number > 0;
+        if (
+          !Array.isArray(policy?.mimeTypes) ||
+          policy.mimeTypes.length > 100 ||
+          !policy.mimeTypes.every(
+            (type) =>
+              typeof type === "string" &&
+              /^[a-z0-9][a-z0-9!#$&^_.+-]{0,63}\/[a-z0-9][a-z0-9!#$&^_.+-]{0,63}$/.test(
+                type,
+              ),
+          ) ||
+          !count(policy.maximumBytes) ||
+          !count(policy.maximumOutgoing) ||
+          !count(policy.maximumTotalBytes)
+        )
+          throw fail(message("invalidCloudResponse"), 502);
+        return {
+          version: 1,
+          accountId,
+          attachmentPolicy: {
+            mimeTypes: [...policy.mimeTypes],
+            maximumBytes: policy.maximumBytes,
+            maximumOutgoing: policy.maximumOutgoing,
+            maximumTotalBytes: policy.maximumTotalBytes,
+          },
+        };
+      },
       /** The canonical receipt of an earlier prepare or dispatch. */
       async observe(input) {
         const requestId = requestIdOf(input?.requestId);

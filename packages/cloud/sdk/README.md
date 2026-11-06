@@ -232,7 +232,9 @@ proposal})` performs exactly that review once, and `observe({requestId})` reads
 the canonical receipt. A change's receipt also carries `mailbox`, the labels
 it left reduced as a read reduces them (null for send and before dispatch).
 `prepare` refuses a send review without a valid `from`, `to`, `cc`, `subject`
-and file names with a 502.
+and file names with a 502. `capabilities()` returns Cloud's
+`attachmentPolicy` (`mimeTypes`, `maximumBytes`, `maximumOutgoing`,
+`maximumTotalBytes`) for outgoing files; a server without it fails with a 502.
 Before each call it checks the signed-in owner, the
 Cloud sign-in and that `accountId` is still the connected grant holding the
 scope the effect needs (`gmail.send` for send, `gmail.modify` otherwise).
