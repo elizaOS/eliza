@@ -24,6 +24,7 @@ import {
   getFirstRunProviderOption,
   hasExplicitCanonicalRuntimeConfig,
   isAndroidMobile,
+  isElizaOsAndroidRuntime,
   isLocalOnlyInferenceInConfig,
   isMobilePlatform,
   lifeOpsPassiveConnectorsSetting,
@@ -108,13 +109,6 @@ function orchestratorCompatPluginRequested(
     "ELIZA_AGENT_SELECTION_STRATEGY",
     "ELIZA_MAX_CONCURRENT_SPAWNS",
   ].some((key) => Boolean(process.env[key]?.trim()));
-}
-
-function isElizaOsAndroidRuntime(): boolean {
-  return (
-    isAndroidMobile() &&
-    process.env.ELIZA_LOCAL_LLAMA?.trim().toLowerCase() === "1"
-  );
 }
 
 /**
