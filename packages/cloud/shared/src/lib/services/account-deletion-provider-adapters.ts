@@ -6,10 +6,11 @@
 
 import { createHash } from "node:crypto";
 import { ElizaError } from "@elizaos/core";
-import { and, eq, inArray, ne, or, sql } from "drizzle-orm";
+import { and, eq, inArray, ne, notInArray, or, sql } from "drizzle-orm";
 import { dbWrite, writeTransaction } from "../../db/helpers";
 import { decideAppBillingDeletionScope } from "../../db/repositories/app-billing-deletion-dispositions";
 import { readAppBillingDeletionObligations } from "../../db/repositories/app-billing-deletion-inventory";
+import { containersRepository } from "../../db/repositories/containers";
 import { subscriptionAuthorityRepository } from "../../db/repositories/subscription-authority";
 import {
   agentBackupGcOutbox,
@@ -34,6 +35,7 @@ import {
 } from "../../db/schemas/agent-vault-key-authority";
 import { appBillingDeletionDispositions } from "../../db/schemas/app-billing-deletion-dispositions";
 import { apps } from "../../db/schemas/apps";
+import { containers } from "../../db/schemas/containers";
 import { llmTrajectories } from "../../db/schemas/llm-trajectories";
 import { managedDomains } from "../../db/schemas/managed-domains";
 import { organizations } from "../../db/schemas/organizations";
@@ -59,6 +61,8 @@ import {
   recoverAppBillingRefundsForAccountDeletion,
 } from "./app-billing-deletion-refund-recovery";
 import { deleteAppWithCleanup } from "./app-cleanup";
+import { type AppContainerTeardownDeps, stopAppContainers } from "./app-container-teardown";
+import { containerJobsWriter } from "./container-jobs-writer";
 import { elizaSandboxService } from "./eliza-sandbox";
 import { prepareInferencePolicyForAccountDeletion } from "./inference-policy-fence";
 import { oauthService } from "./oauth";
@@ -148,6 +152,8 @@ export interface AccountDeletionProviderAdapterDependencies {
   backupAuthority?: AccountDeletionBackupAuthority;
   backupDatabase?: AccountDeletionBackupDatabase;
   computeDatabase?: AccountDeletionComputeDatabase;
+  /** Container stop backend; the app-delete teardown path, scoped to the organization. */
+  containerTeardown?: AppContainerTeardownDeps;
   spoolAuthority?: AccountDeletionSpoolAuthority;
   trajectoryStore?: AccountDeletionTrajectoryStore;
 }
@@ -201,6 +207,8 @@ export interface AccountDeletionBackupDatabase {
 export interface AccountDeletionComputeDatabase {
   inspectOrganization(organizationId: string): Promise<{
     sandboxesRemain: boolean;
+    /** A `containers` row not yet `deleting`/`deleted` (any deploy path). */
+    containersRemain: boolean;
     ambiguousReplacementAttemptsRemain: boolean;
   }>;
 }
@@ -281,6 +289,16 @@ const defaultBackupDatabase: AccountDeletionBackupDatabase = {
   deleteGraph: deleteBackupDatabaseGraph,
 };
 
+const defaultContainerTeardown: AppContainerTeardownDeps = {
+  findContainers: async (organizationId) =>
+    (await containersRepository.listByOrganization(organizationId)).filter(
+      (container) => container.status !== "deleting" && container.status !== "deleted",
+    ),
+  markStoppedForBilling: (containerId, organizationId) =>
+    containersRepository.markStoppedForBilling(containerId, organizationId),
+  jobsWriter: containerJobsWriter,
+};
+
 const defaultComputeDatabase: AccountDeletionComputeDatabase = {
   async inspectOrganization(organizationId) {
     const [sandbox] = await dbWrite
@@ -301,8 +319,19 @@ const defaultComputeDatabase: AccountDeletionComputeDatabase = {
         ),
       )
       .limit(1);
+    const [container] = await dbWrite
+      .select({ id: containers.id })
+      .from(containers)
+      .where(
+        and(
+          eq(containers.organization_id, organizationId),
+          notInArray(containers.status, ["deleting", "deleted"]),
+        ),
+      )
+      .limit(1);
     return {
       sandboxesRemain: sandbox !== undefined,
+      containersRemain: container !== undefined,
       ambiguousReplacementAttemptsRemain: ambiguousReplacementAttempt !== undefined,
     };
   },
@@ -705,7 +734,7 @@ export function createAccountDeletionProviderAdapters(
             errorCode: "COMPUTE_REPLACEMENT_RECONCILIATION_REQUIRED",
           };
         }
-        return observed.sandboxesRemain
+        return observed.sandboxesRemain || observed.containersRemain
           ? { state: "needs_execution" }
           : complete(context, "compute_containers");
       },
@@ -724,6 +753,20 @@ export function createAccountDeletionProviderAdapters(
               severity: "ephemeral",
             });
           }
+        }
+        // Containers deployed outside an app (POST /v1/containers) belong to
+        // no app, so the app teardown never stops them. Stop billing and
+        // enqueue the provider delete for every container the organization
+        // still has; inspection completes only after the daemon deletes them.
+        const teardown = await stopAppContainers(
+          { id: context.requestId, organization_id: context.organizationId },
+          dependencies.containerTeardown ?? defaultContainerTeardown,
+        );
+        if (teardown.errors.length > 0) {
+          throw new ElizaError(teardown.errors.join("; "), {
+            code: "ACCOUNT_DELETION_CONTAINER_PROVIDER_DELETE_FAILED",
+            severity: "ephemeral",
+          });
         }
       },
     },
