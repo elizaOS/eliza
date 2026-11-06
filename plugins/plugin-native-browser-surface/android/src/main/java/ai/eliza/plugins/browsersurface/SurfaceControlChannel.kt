@@ -7,10 +7,15 @@ import androidx.webkit.WebViewCompat
 import androidx.webkit.WebViewFeature
 import com.getcapacitor.JSObject
 import com.getcapacitor.PluginCall
+import org.json.JSONArray
 import org.json.JSONObject
 
 /** Main-thread, main-frame commands. The website never receives the bridge object. */
-internal class SurfaceControlChannel(private val webView: WebView, script: String) {
+internal class SurfaceControlChannel(
+    private val webView: WebView,
+    script: String,
+    private val effects: BrowserEffectWatch,
+) {
     private var documentId: String? = null
     private var documentOrigin: Uri? = null
     private var proxy: JavaScriptReplyProxy? = null
@@ -24,6 +29,10 @@ internal class SurfaceControlChannel(private val webView: WebView, script: Strin
         val observation: Boolean,
         val isCurrent: () -> Boolean,
         val timeout: Runnable,
+        /** The network watch armed for this task effect, restored if the page refuses it. */
+        val watchToken: Any?,
+        /** The binding whose network verdict this task snapshot reports. */
+        val watchScope: String?,
     )
     private var pending: Pending? = null
 
@@ -63,8 +72,13 @@ internal class SurfaceControlChannel(private val webView: WebView, script: Strin
                 request.call.reject("The page returned an invalid command result", outcomeCode(request.effect))
             } else {
                 val error = result.optJSONObject("error")
-                if (error != null) request.call.reject(error.optString("message"), error.optString("kind"))
-                else {
+                val handoff = result.optJSONObject("watchHandoff")
+                result.remove("watchHandoff")
+                if (error != null) {
+                    request.watchToken?.let(effects::cancel)
+                    request.call.reject(error.optString("message"), error.optString("kind"))
+                } else {
+                    request.watchScope?.let { scope -> reportWatch(result, scope, handoff) }
                     if (request.observation) snapshotId = result.optString("snapshotId").takeIf { it.isNotBlank() }
                     request.call.resolve(JSObject().apply {
                         put("documentId", incomingDocument)
@@ -109,9 +123,16 @@ internal class SurfaceControlChannel(private val webView: WebView, script: Strin
         // Native invalidation covers visibility/lifecycle changes even if the
         // DOM and its isolated-world snapshot happen to remain unchanged.
         if (effect || observation) snapshotId = null
+        val policy = command.optJSONObject("taskPolicy")
+        val watchToken = if (policy != null && effect && action in setOf("click", "fill", "select", "scroll")) {
+            effects.arm(policy.optString("origin"), policy.optString("guidanceScope"),
+                System.currentTimeMillis(), policy.optLong("expiresAt"))
+        } else null
+        val watchScope = if (policy != null && observation) policy.optString("guidanceScope") else null
         sequence += 1
         val timeout = Runnable { interrupt("The page command timed out; observe before continuing") }
-        pending = Pending(call, currentDocument, sequence, effect, observation, isCurrent, timeout)
+        pending = Pending(call, currentDocument, sequence, effect, observation, isCurrent, timeout,
+            watchToken, watchScope)
         webView.postDelayed(timeout, 5000)
         try {
             currentProxy.postMessage(JSONObject().apply {
@@ -137,6 +158,21 @@ internal class SurfaceControlChannel(private val webView: WebView, script: Strin
             webView.removeCallbacks(request.timeout)
             request.call.reject(message, outcomeCode(request.effect))
         }
+    }
+
+    /** Adds the network verdict, judged against what the page saw of the person. */
+    private fun reportWatch(result: JSONObject, scope: String, handoff: JSONObject?) {
+        val presses = handoff?.optJSONArray("presses")
+            ?.let { list -> LongArray(list.length()) { list.optLong(it) } } ?: LongArray(0)
+        val activatedAt = (handoff?.opt("activatedAt") as? Number)?.toLong()
+        val consented = handoff?.optJSONArray("consentedUrls")
+            ?.let { list -> (0 until list.length()).map { list.optString(it) } } ?: emptyList()
+        val violation = effects.read(scope, presses, activatedAt, consented)
+        if (violation != null && !result.has("effectViolation")) result.put("effectViolation", violation)
+        result.put("effectWatch", JSONObject().apply {
+            put("frames", "all")
+            put("unseen", JSONArray(BrowserEffectWatch.UNSEEN))
+        })
     }
 
     companion object {

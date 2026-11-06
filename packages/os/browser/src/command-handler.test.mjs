@@ -598,3 +598,82 @@ test("a submit whose reply was lost is a capture gap only when the journal lacks
     captureGapEvents: [denied, lost],
   });
 });
+
+test("a task snapshot reports the network watch and never forwards the page's handoff", async () => {
+  const f = fixture();
+  f.api.runtime = { id: "extension" };
+  f.api.tabs = {
+    get: async () => ({ url: `${binding.origin}/form`, status: "complete" }),
+    update: async () => {},
+  };
+  f.api.webNavigation = {
+    getAllFrames: async () => [{ frameId: 0, documentId: "doc" }],
+  };
+  const handoff = { presses: [1], activatedAt: null, consentedUrls: [] };
+  f.api.scripting = {
+    executeScript: async ({ func }) => [
+      {
+        frameId: 0,
+        documentId: "doc",
+        result:
+          func.name === "installManualActivity"
+            ? { installed: true, refused: [], unconfirmed: [] }
+            : {
+                complete: true,
+                elements: [],
+                blockers: [],
+                watchHandoff: handoff,
+              },
+      },
+    ],
+  };
+  const calls = [];
+  const effects = {
+    arm: () => () => {},
+    close: (tabId) => calls.push(["close", tabId]),
+    read: (...args) => {
+      calls.push(["read", ...args]);
+      return "request";
+    },
+  };
+  const handler = createCommandHandler(f.api, { effects });
+  await handler(
+    { type: "task-bind", id: "bind", binding },
+    f.sender,
+    () => true,
+  );
+  await handler(
+    {
+      type: "command",
+      id: "snap",
+      command: {
+        subaction: "snapshot",
+        id: "1",
+        taskContext: context(binding),
+      },
+    },
+    f.sender,
+    () => true,
+  );
+  const [frame] = f.replies.at(-1).result.frames;
+  assert.equal("watchHandoff" in frame, false);
+  assert.equal(frame.effectViolation, "request");
+  assert.deepEqual(frame.effectWatch, { frames: "all", unseen: ["webrtc"] });
+  assert.deepEqual(calls, [["read", 1, "1", handoff]]);
+  // The host's own navigation ends the watch: the page did not cause it.
+  await handler(
+    {
+      type: "command",
+      id: "go",
+      command: {
+        subaction: "navigate",
+        id: "1",
+        url: `${binding.origin}/next`,
+        taskContext: context(binding),
+      },
+    },
+    f.sender,
+    () => true,
+  );
+  assert.deepEqual(calls.at(-1), ["close", 1]);
+});

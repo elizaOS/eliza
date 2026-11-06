@@ -957,6 +957,16 @@ export function pageCommand(command, snapshotId, validateOnly = false) {
       ...(policy && violation && violation.scope === policy.guidanceScope
         ? { effectViolation: violation.kind }
         : {}),
+      // For the browser host's network watch only; it never reaches a host.
+      ...(policy && globalThis[watchKey]?.scope === policy.guidanceScope
+        ? {
+            watchHandoff: {
+              presses: globalThis[watchKey].presses,
+              activatedAt: globalThis[watchKey].activatedAt,
+              consentedUrls: globalThis[watchKey].consentedUrls,
+            },
+          }
+        : {}),
       ...(policy && consented && consented.scope === policy.guidanceScope
         ? {
             consentedCommit: {
@@ -1216,9 +1226,9 @@ export function pageCommand(command, snapshotId, validateOnly = false) {
   ) {
     // A task fill or click must not submit a form or leave the page, also
     // not through the page's own script (an auto-submitting code field, or
-    // a button that calls form.submit()). For 30 seconds, or until the next
-    // task fill or click, watch what the page does before the person takes
-    // over by activating a control:
+    // a button that calls form.submit()). Until the task binding expires, or
+    // until the next task fill or click, watch what the page does before the
+    // person takes over by activating a control:
     // - a form submit or a page change to another document is stopped,
     //   except a click on a link that opens that link;
     // - a same-document address change (history.pushState) is recorded;
@@ -1228,6 +1238,11 @@ export function pageCommand(command, snapshotId, validateOnly = false) {
     // Snapshots report the first of these, so the host treats the outcome as
     // unknown and pauses the task. A request still in flight when a snapshot
     // is read shows up in a later snapshot.
+    //
+    // This page realm sees only its own document's resource timing. The
+    // browser host also watches the network for every frame, at request start
+    // (see effect-watch.mjs); snapshots hand it the person's presses and the
+    // consented commit as watchHandoff, so it can tell her requests apart.
     //
     // With a commit grant, the one commit the person said yes to goes ahead,
     // once: either the submit the granted control itself sends (and the page
@@ -1261,8 +1276,15 @@ export function pageCommand(command, snapshotId, validateOnly = false) {
           : null,
       // A receipt belongs to this dispatch, not an earlier approved action.
       consented: null,
+      scope: policy.guidanceScope,
+      // For the network watch, in epoch milliseconds: each trusted press,
+      // her first activated control, and the URLs of consented commits.
+      presses: [],
+      activatedAt: null,
+      consentedUrls: [],
       stop: () => controller.abort(),
     };
+    const epoch = (at) => Math.round(performance.timeOrigin + at);
     // The granted control's own form: the only form the grant can send.
     const grantedForm = grant
       ? (node.form ?? node.closest("form") ?? null)
@@ -1458,7 +1480,8 @@ export function pageCommand(command, snapshotId, validateOnly = false) {
           formMatched: false,
         }
       : null;
-    const consentTo = (kind) => {
+    const consentTo = (kind, url) => {
+      watch.consentedUrls.push(url);
       watch.consented ??= {
         grantId: consent.grantId,
         kind,
@@ -1501,7 +1524,9 @@ export function pageCommand(command, snapshotId, validateOnly = false) {
     };
     const options = { capture: true, signal: controller.signal };
     const person = (event) => {
-      if (event.isTrusted) personAt = performance.now();
+      if (!event.isTrusted) return;
+      personAt = performance.now();
+      watch.presses.push(epoch(personAt));
     };
     const personForms = new WeakSet();
     window.addEventListener("pointerdown", person, options);
@@ -1561,6 +1586,7 @@ export function pageCommand(command, snapshotId, validateOnly = false) {
           (event.key === " " && !control.matches('a[href],[role="link"]')));
       if (keyboard ? !controlKey && !enterForm : !control) return;
       activationAt = Math.min(activationAt, performance.now());
+      watch.activatedAt ??= epoch(activationAt);
     };
     window.addEventListener("click", activate, options);
     window.addEventListener("keydown", activate, options);
@@ -1601,7 +1627,7 @@ export function pageCommand(command, snapshotId, validateOnly = false) {
           consent.implicit = submitter === null;
           consent.formHash = sentHash;
           consent.formMatched = grant.formHash !== undefined;
-          consentTo("submit");
+          consentTo("submit", sent.action);
           // A page handler that cancels this submit sends no page load, so
           // none may follow it later; one own-site request still may.
           setTimeout(() => {
@@ -1698,7 +1724,7 @@ export function pageCommand(command, snapshotId, validateOnly = false) {
             consent.pending = false;
             consent.spent = true;
             consent.formHash = loaded;
-            consentTo("submit");
+            consentTo("submit", event.destination.url);
             if (reportHash && loaded) watch.consented.formHash = loaded;
             return;
           }
@@ -1763,7 +1789,7 @@ export function pageCommand(command, snapshotId, validateOnly = false) {
               (grant.formHash === undefined || consent.formMatched)
             ) {
               consent.spent = true;
-              consentTo("request");
+              consentTo("request", entry.name);
               continue;
             }
             record("request");
@@ -1774,7 +1800,7 @@ export function pageCommand(command, snapshotId, validateOnly = false) {
       requests.observe({ type: "resource" });
       controller.signal.addEventListener("abort", () => requests.disconnect());
     }
-    setTimeout(() => controller.abort(), 30000);
+    setTimeout(() => controller.abort(), policy.expiresAt - Date.now());
     globalThis[watchKey] = watch;
   }
   if (command.subaction === "click") {

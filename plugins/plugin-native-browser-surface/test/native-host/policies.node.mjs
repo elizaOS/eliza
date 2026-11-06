@@ -29,6 +29,7 @@ const classes = [
   "BrowserExternalPage",
   "BrowserAutofillExtras",
   "BrowserTabHostConfig",
+  "BrowserEffectWatch",
 ];
 const consumers = [
   "BrowserWebPolicyTest",
@@ -39,6 +40,7 @@ const consumers = [
   "BrowserProfileCaptureTest",
   "BrowserSitePromptTest",
   "BrowserTabHostConfigTest",
+  "BrowserEffectWatchTest",
 ];
 const bin = (name) =>
   process.env.JAVA_HOME ? path.join(process.env.JAVA_HOME, "bin", name) : name;

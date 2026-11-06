@@ -296,7 +296,7 @@ stopped but are reported (`request`, `navigation`); third-party requests and
 requests that start within 1.5 seconds of her own key press or pointer press are
 not. A site request that starts later than that (a long debounce after she stops
 typing) is reported, which pauses the task rather than missing a commit. The
-watch lasts 30 seconds or until the next task fill or click. Same-site
+watch lasts until the binding expires or the next task fill or click. Same-site
 `fetch`, `XMLHttpRequest` and beacon requests each have a fixture. It also checks date fills (`YYYY-MM-DD`, real days only), the
 `expectedSelector` target check and the value-free `hasInput` field flag.
 
@@ -442,7 +442,7 @@ Run its contracts with `node --test protection/domain-lookalike.test.mjs` from
 this directory; the package browser suite includes them.
 
 The task-effect watch covers the interval from a helper action to the person's
-next trusted control activation, for at most 30 seconds. A click on a button or
+next trusted control activation, until the binding expires. A click on a button or
 link, or a submission/activation keypress, creates that handoff. Stray taps,
 scrolling and ordinary typing retain only the short 1.5-second attribution
 window. A person's submission may finish later; its delayed receipt is not treated
@@ -450,6 +450,24 @@ as an automated helper effect. Requests that started before the handoff remain
 reportable when they finish afterward. Synthetic page events do not end the
 interval, and a new helper action starts a new interval. This observation rule
 does not grant permission to execute payment or sign-in controls.
+
+The page sees only its own document's completed requests, so the extension
+also watches the network (`src/effect-watch.mjs`, `webRequest` with `ws` and
+`wss` host access). From each task fill, click, select or scroll, every request
+the tab starts, in any frame and at its start, is a violation (`request`) when
+it is not a GET or HEAD, goes to another site, or is a WebSocket; a window the
+page opens is `window`. A service worker's request counts against tabs on its
+site. Requests within the handoff rule above are hers, and each commit the page
+reports as consented is let through once. The watch ends when the binding
+expires, at the next task effect, at the host's own navigation, or when the main
+frame commits another document. Task snapshots then report `effectWatch:
+{ frames: "all", unseen }`; `unseen` names what it cannot see (WebRTC). Her
+presses inside a child frame are not seen, so her requests there count as the
+helper's: the task pauses rather than missing a commit. A page that keeps
+sending cross-site or POST requests (analytics) after a helper action pauses
+the task the same way. Run `node --conditions=eliza-source
+packages/os/browser/scripts/test-network-watch.mjs` for the real Chromium
+check of each request kind (add `--skip-late` to skip the 31-second case).
 
 The protection builder accepts optional
 `advisory: {referenceDomains, copy, unscanned, unscannedWhileLoading}`. It renders a
