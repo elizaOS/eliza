@@ -543,6 +543,11 @@ export function createCloudRoutes({
   verifiedAccountStore,
   credentialGate,
   pendingCredentialStore,
+  // A host that records why the account signed out. `onRevoked({ key })` runs
+  // when Cloud refuses the stored key at the identity check: inside the
+  // credential critical section, before the key is cleared. `status()` gives
+  // `{ revoked, localDataPending }` for each signed-out access answer.
+  credentialRevocation,
   // false: the host has its own sign-in. `/cloud/login` and its status route answer
   // 404, and no Cloud web origin (cloudSiteBase) is used.
   browserSignIn = true,
@@ -601,6 +606,12 @@ export function createCloudRoutes({
       status: 409,
       code: "VERIFIED_ACCOUNT_REQUIRED",
     });
+  if (
+    credentialRevocation !== undefined &&
+    (typeof credentialRevocation?.onRevoked !== "function" ||
+      typeof credentialRevocation.status !== "function")
+  )
+    throw new TypeError("Credential revocation port must be host functions");
   if (
     verifiedAccountStore !== undefined &&
     (!verifiedAccountStore ||
@@ -903,6 +914,17 @@ export function createCloudRoutes({
       return null;
     return authority;
   }
+  /** The signed-out answer, with the host's revocation when it has one. */
+  async function signedOut() {
+    const status = await credentialRevocation?.status();
+    return status?.revoked === true
+      ? {
+          state: "signed_out",
+          revoked: true,
+          localDataPending: status.localDataPending === true,
+        }
+      : { state: "signed_out" };
+  }
   async function accountAccess() {
     if (!billingEnabled)
       throw fail("Account billing is unavailable in this host", 404);
@@ -925,11 +947,16 @@ export function createCloudRoutes({
     }
     const key = await usableCredential();
     current(epoch);
-    if (!key) return { state: "signed_out" };
+    if (!key) return signedOut();
+    // Only a refusal at the identity check names the stored key as revoked.
+    let identityRefused = false;
     try {
       const user = await parse(
         await request("/api/v1/user", { key, authorityGeneration: epoch }),
-      );
+      ).catch((error) => {
+        identityRefused = error.status === 401;
+        throw error;
+      });
       const snapshot = await parse(
         await request("/api/v1/billing/limits", {
           key,
@@ -941,12 +968,28 @@ export function createCloudRoutes({
     } catch (error) {
       current(epoch);
       if (error.status === 401) {
+        let recorded = true;
         await mutateCredential(async () => {
           current(epoch);
+          if (
+            identityRefused &&
+            credentialRevocation &&
+            (await store.read().catch(() => null)) === key
+          ) {
+            try {
+              await credentialRevocation.onRevoked({ key });
+            } catch {
+              recorded = false;
+              return;
+            }
+          }
           await store.clear();
         });
         current(epoch);
-        return { state: "signed_out" };
+        // The host could not record it: the key stays, and the next check
+        // tries again.
+        if (!recorded) return { state: "unavailable" };
+        return signedOut();
       }
       return { state: "unavailable" };
     }
