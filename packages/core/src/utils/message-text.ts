@@ -38,11 +38,15 @@ export function getUserMessageText(
 		content && typeof content === "object"
 			? (content as { currentMessageText?: unknown; text?: unknown })
 			: null;
+	const currentMessageText =
+		typeof contentObject?.currentMessageText === "string"
+			? contentObject.currentMessageText
+			: null;
 	const raw =
 		typeof content === "string"
 			? content
-			: typeof contentObject?.currentMessageText === "string"
-				? contentObject.currentMessageText
+			: currentMessageText !== null && currentMessageText.trim() !== ""
+				? currentMessageText
 				: typeof contentObject?.text === "string"
 					? contentObject.text
 					: "";
