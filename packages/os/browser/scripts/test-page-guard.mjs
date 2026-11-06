@@ -15,8 +15,24 @@ const controls = [
   press("script", "Pagar", "a", 'href="javascript:void 0"'),
   press("away", "Billing history", "a", 'href="/history"'),
   press("box", "", "input", 'type="checkbox" aria-label="Paperless"'),
-  press("more", "Details", "button", 'type="button" aria-expanded="false"'),
-  press("tab", "Card", "div", 'role="tab" tabindex="0"'),
+  press(
+    "more",
+    "Details",
+    "button",
+    'type="button" aria-expanded="false" aria-controls="more-panel"',
+  ),
+  press("tab", "Card", "div", 'role="tab" tabindex="0" aria-controls="card"'),
+  '<div id="more-panel" hidden>Fees</div><div id="card" role="tabpanel"></div>',
+  // Controls that only claim to disclose: a div with aria-expanded, a button
+  // whose aria-controls names nothing here, and a tab that names nothing.
+  press("claims", "Pagar", "div", 'role="button" aria-expanded="false"'),
+  press(
+    "nowhere",
+    "Pagar",
+    "button",
+    'type="button" aria-expanded="false" aria-controls="missing"',
+  ),
+  press("bare-tab", "Pagar", "div", 'role="tab" tabindex="0"'),
   `<details><summary id="summary" onclick="pressed.push('summary')">Fees</summary>Fee table</details>`,
 ].join("");
 const script = "<script>window.pressed=[]</script>";
@@ -105,7 +121,16 @@ try {
       .catch(() => null);
     return { allowed: result.dispatched === true, ran, result };
   };
-  const opaque = ["#pagar", "#finalize", "#role", "#fragment", "#script"];
+  const opaque = [
+    "#pagar",
+    "#finalize",
+    "#role",
+    "#fragment",
+    "#script",
+    "#claims",
+    "#nowhere",
+    "#bare-tab",
+  ];
   const inert = ["#box", "#more", "#tab", "#summary", "#away"];
 
   // On a page that shows money, a control whose effect only its script

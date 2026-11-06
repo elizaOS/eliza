@@ -300,15 +300,22 @@ export function pageCommand(command, snapshotId, validateOnly = false) {
   };
   // A control whose effect the browser defines, whatever the page's words.
   // A link to the page it is on (href="#") runs only the page's handlers.
-  // A disclosure ([aria-expanded]) or tab ([role=tab]) is the page's own
-  // claim, not the browser's: a heuristic, since its script may still send
-  // something. A submit button never gets here (it is denied above), and the
-  // network watch reports what such a control sends.
+  // A disclosure (a plain button with aria-expanded) or a tab is the page's
+  // own claim, not the browser's: a heuristic, since its script may still
+  // send something. So it counts only as a button element or a tab that
+  // names, with aria-controls, an element in this document; a bare
+  // aria-expanded on a div, or a pay button that claims it, does not. A
+  // submit button never gets here (it is denied above), and the network
+  // watch reports what such a control sends.
+  const discloses = (node) =>
+    node.matches("button[type=button][aria-expanded],[role=tab]") &&
+    (node.getAttribute("aria-controls") ?? "")
+      .split(/\s+/)
+      .some((id) => id !== "" && document.getElementById(id) !== null);
   const inert = (node) => {
     if (
-      node.matches(
-        "input[type=checkbox],input[type=radio],option,summary,[aria-expanded],[role=tab]",
-      )
+      node.matches("input[type=checkbox],input[type=radio],option,summary") ||
+      discloses(node)
     )
       return true;
     if (!(node instanceof HTMLAnchorElement) || !node.hasAttribute("href"))
@@ -1299,7 +1306,10 @@ export function pageCommand(command, snapshotId, validateOnly = false) {
       expected: null,
       stop: () => controller.abort(),
     };
-    const epoch = (at) => Math.round(performance.timeOrigin + at);
+    // The network watch compares these with request times on the wall clock.
+    // performance.now() is monotonic and stops while the device sleeps, so
+    // timeOrigin + performance.now() falls behind Date.now() by every sleep
+    // since the page loaded; the handoff is stamped with Date.now() instead.
     // The granted control's own form: the only form the grant can send.
     const grantedForm = grant
       ? (node.form ?? node.closest("form") ?? null)
@@ -1542,7 +1552,7 @@ export function pageCommand(command, snapshotId, validateOnly = false) {
     const person = (event) => {
       if (!event.isTrusted) return;
       personAt = performance.now();
-      watch.presses.push(epoch(personAt));
+      watch.presses.push(Date.now());
     };
     const personForms = new WeakSet();
     window.addEventListener("pointerdown", person, options);
@@ -1602,7 +1612,7 @@ export function pageCommand(command, snapshotId, validateOnly = false) {
           (event.key === " " && !control.matches('a[href],[role="link"]')));
       if (keyboard ? !controlKey && !enterForm : !control) return;
       activationAt = Math.min(activationAt, performance.now());
-      watch.activatedAt ??= epoch(activationAt);
+      watch.activatedAt ??= Date.now();
     };
     window.addEventListener("click", activate, options);
     window.addEventListener("keydown", activate, options);
@@ -1776,8 +1786,13 @@ export function pageCommand(command, snapshotId, validateOnly = false) {
           (a, b) => a.startTime - b.startTime,
         );
         for (const entry of entries) {
+          // Resource timing carries no method, so a read and a write look the
+          // same here: past 30 s (CROSS_SITE_WINDOW_MS in effect-watch.mjs) a
+          // site's own poll is not taken for the effect's. The network watch,
+          // which sees the method, judges writes for the rest of the binding.
           if (
             entry.startTime < startedAt ||
+            entry.startTime - startedAt > 30000 ||
             !["fetch", "xmlhttprequest", "beacon"].includes(
               entry.initiatorType,
             ) ||

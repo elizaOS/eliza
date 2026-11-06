@@ -480,11 +480,20 @@ frame commits another document. Task snapshots then report `effectWatch:
 presses inside a child frame are not seen, so her requests there count as the
 helper's: the task pauses rather than missing a commit. A page that writes to
 its own site on a timer after a helper action (a session keep-alive POST, its
-own analytics endpoint), or sends a cross-site fetch or POST within 30 seconds
-of it, pauses the task the same way; a cross-site write after those 30 seconds
-is not seen. The disclosure (`aria-expanded`) and tab (`role=tab`) controls the
-money-page click rule allows are the page's own claims, so that rule is a
-heuristic. Run `node --conditions=eliza-source
+own analytics endpoint or an own-site `sendBeacon`), or sends a cross-site
+fetch or POST within 30 seconds of it (an analytics library that posts with
+`fetch` or XMLHttpRequest, such as a Segment or Sentry upload, included; only a
+`ping` beacon and a CSP report are exempt), pauses the task the same way; a
+cross-site write after those 30 seconds is not seen. The in-page watch, which
+cannot see a request's method, records the page's own fetch, XMLHttpRequest or
+beacon only within 30 seconds of the effect, so a site's own GET poll after
+that is not a violation; the network watch judges writes for the rest of the
+binding. Her presses and her first activated control reach the network watch
+stamped with `Date.now()`, the wall clock request times use, since
+`performance.now()` stops while the device sleeps. The money-page click rule
+allows a disclosure (a `button type=button` with `aria-expanded`) or a tab
+(`role=tab`) only when its `aria-controls` names an element in the document;
+that is still the page's own claim, so the rule is a heuristic. Run `node --conditions=eliza-source
 packages/os/browser/scripts/test-network-watch.mjs` for the real Chromium
 check of each request kind (add `--skip-late` to skip the 31-second case).
 

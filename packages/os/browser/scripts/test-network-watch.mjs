@@ -31,8 +31,10 @@ const pages = {
   "/socket": page(
     `<script>go.onclick=()=>{try{new WebSocket("ws://bank.test:PORT/socket")}catch{}}</script>`,
   ),
+  // After the old 30 second window: the site's own poll (a read), then a
+  // write.
   "/late": page(
-    `<script>go.onclick=()=>setTimeout(()=>fetch("/api/pay",{method:"POST"}),${late})</script>`,
+    `<script>go.onclick=()=>{setTimeout(()=>fetch("/api/poll"),${late});setTimeout(()=>fetch("/api/pay",{method:"POST"}),${late + 2500})}</script>`,
   ),
   "/window": page(
     `<script>go.onclick=()=>open("http://other.test:PORT/child")</script>`,
@@ -45,6 +47,11 @@ const pages = {
   // beacon, a CDN image, script and stylesheet, and an ad pixel.
   "/analytics": page(
     `<script>go.onclick=()=>{navigator.sendBeacon("http://other.test:PORT/g/collect","v=2");new Image().src="http://other.test:PORT/cdn/logo.png";new Image().src="http://other.test:PORT/px.gif?ev=click";const s=document.createElement("script");s.src="http://other.test:PORT/cdn/app.js";document.head.append(s);const l=document.createElement("link");l.rel="stylesheet";l.href="http://other.test:PORT/cdn/a.css";document.head.append(l)}</script>`,
+  ),
+  // An analytics library that posts its events with fetch to another site.
+  // Only a ping beacon is telemetry by type, so within 30 s this counts.
+  "/analytics-fetch": page(
+    `<script>go.onclick=()=>fetch("http://other.test:PORT/v1/batch",{method:"POST",mode:"no-cors",body:"{}"})</script>`,
   ),
   // A granted form POST that loads a page, and a granted fetch whose
   // response is slow.
@@ -60,8 +67,12 @@ const pages = {
     `<iframe id="f" src="http://other.test:PORT/poster"></iframe><script>go.onclick=()=>f.contentWindow.postMessage("pay","*")</script>`,
   ),
   "/poster": `<form id="p" action="http://bank.test:PORT/done" method="post" target="_top"></form><script>onmessage=()=>p.submit()</script>`,
+  // The click's own write, and a control of hers that sends nothing.
+  "/then-hers": page(
+    `<button id="mine" type="button">Mine</button><script>go.onclick=()=>fetch("/api/pay",{method:"POST"})</script>`,
+  ),
   "/hers": page(
-    `<button id="mine" type="button" onclick="fetch('http://other.test:PORT/api/pay',{method:'POST',mode:'no-cors'})">Mine</button><script>go.onclick=()=>{}</script>`,
+    `<button id="mine" type="button" onclick="fetch('http://other.test:PORT/api/pay',{method:'POST',mode:'no-cors'})">Mine</button><div id="tile" onclick="fetch('http://other.test:PORT/api/tile',{method:'POST',mode:'no-cors'})">Tile</div><script>go.onclick=()=>{}</script>`,
   ),
 };
 const server = createServer((request, response) => {
@@ -230,12 +241,32 @@ try {
       ([tabId, scope]) => globalThis.watch.read(tabId, scope),
       [clickedTab, String(scope)],
     );
-  // The network watch's verdict in the next task snapshot.
-  const verdict = async () => {
+  // The network watch's verdict in the next task snapshot, and the page's.
+  const verdicts = async () => {
     const { value } = await snapshot();
     assert.equal("watchHandoff" in value, false);
-    return value.effectViolation ?? null;
+    return { network: value.effectViolation ?? null, page: value.page ?? null };
   };
+  const verdict = async () => (await verdicts()).network;
+  // As after the phone slept with the page open: performance.now() stops
+  // during sleep, so timeOrigin + performance.now() falls behind the wall
+  // clock that request times use. Set in the page command's own world.
+  const sleep = (ms) =>
+    worker.evaluate(
+      async ([tabId, ms]) => {
+        await chrome.scripting.executeScript({
+          target: { tabId, frameIds: [0] },
+          func: (ms) =>
+            Object.defineProperty(performance, "timeOrigin", {
+              value: performance.timeOrigin - ms,
+              configurable: true,
+            }),
+          args: [ms],
+          world: "ISOLATED",
+        });
+      },
+      [clickedTab, ms],
+    );
   const cases = [
     ["/frame-cross", "request", `POST other.test:${port}/api/pay`],
     ["/frame-same", "request", `POST bank.test:${port}/api/pay`],
@@ -243,6 +274,7 @@ try {
     ["/image", null, `GET other.test:${port}/p.gif?amount=84`],
     ["/fetch-cross", "request", `GET other.test:${port}/api/q?amount=84`],
     ["/analytics", null, `POST other.test:${port}/g/collect`],
+    ["/analytics-fetch", "request", `POST other.test:${port}/v1/batch`],
     ["/socket", "request", `UPGRADE bank.test:${port}/socket`],
     ["/window", "window", `GET other.test:${port}/child`],
     ["/read", null, `GET bank.test:${port}/api/balance`],
@@ -259,6 +291,20 @@ try {
   await tab.waitForTimeout(600);
   assert.ok(received.includes(`POST other.test:${port}/api/pay`));
   assert.equal(await verdict(), null);
+  // After ten minutes of sleep her press is still hers, and her later tap
+  // does not take over a write the click sent before it.
+  // A tile is no control, so only her press makes its write hers.
+  await taskClick("/hers");
+  await sleep(600000);
+  await tab.click("#tile");
+  await tab.waitForTimeout(600);
+  assert.ok(received.includes(`POST other.test:${port}/api/tile`));
+  assert.equal(await verdict(), null, "her press after sleep");
+  await taskClick("/then-hers");
+  await sleep(600000);
+  await tab.click("#mine");
+  await tab.waitForTimeout(300);
+  assert.equal(await verdict(), "request", "the click's write after sleep");
   // Her press after the last read, and the next task effect with no read in
   // between: the press reaches the earlier effect through the next result.
   // A key press leaves the snapshot fresh (a pointer press would not).
@@ -313,14 +359,26 @@ try {
   // A request the page starts after the old 30 second window.
   if (late) {
     const before = received.length;
-    await taskClick("/late", late + 1500);
+    await taskClick("/late", late + 1000);
+    assert.ok(
+      received.slice(before).includes(`GET bank.test:${port}/api/poll`),
+    );
+    assert.ok(
+      !received.slice(before).includes(`POST bank.test:${port}/api/pay`),
+    );
+    assert.deepEqual(
+      await verdicts(),
+      { network: null, page: null },
+      "the site's own poll after 30 s",
+    );
+    await tab.waitForTimeout(2500);
     assert.ok(
       received.slice(before).includes(`POST bank.test:${port}/api/pay`),
     );
     assert.equal(await verdict(), "request");
   }
   console.log(
-    `network watch: ok (frames, cross-site, image, cross-site fetch, a site's analytics and CDN, WebSocket, window, own-site GET, her press, her press before the next effect, granted form page load, granted fetch in flight, links and redirects, top-level POST${late ? ", after 30 s" : ""})`,
+    `network watch: ok (frames, cross-site, image, cross-site fetch, a site's analytics and CDN, fetch analytics, WebSocket, window, own-site GET, her press, her press and the click's write after sleep, her press before the next effect, granted form page load, granted fetch in flight, links and redirects, top-level POST${late ? ", a poll and a write after 30 s" : ""})`,
   );
 } catch (error) {
   failed = true;
