@@ -224,23 +224,27 @@ export function createLocalAgentGateway({
       ) {
         surfaceChannel?.revoke();
         epoch++;
+        // Stop the turn of every room the gateway knows, not only the rooms
+        // with an open request: a turn keeps running upstream after its
+        // renderer request closed, and must not survive the sign-out.
+        const roomIds = new Set(
+          [...rooms.values()].map(({ roomId }) => roomId),
+        );
         rooms.clear();
         for (const request of pending) {
           request.controller.abort();
-          if (request.roomId)
-            void fetchImpl(
-              new URL(`/api/turns/${request.roomId}/abort`, target),
-              {
-                method: "POST",
-                headers: {
-                  Authorization: `Bearer ${token}`,
-                  "Content-Type": "application/json",
-                },
-                body: JSON.stringify({ reason: "cloud-logout" }),
-                signal: AbortSignal.timeout(5000),
-              },
-            ).catch(() => {});
+          if (request.roomId) roomIds.add(request.roomId);
         }
+        for (const roomId of roomIds)
+          void fetchImpl(new URL(`/api/turns/${roomId}/abort`, target), {
+            method: "POST",
+            headers: {
+              Authorization: `Bearer ${token}`,
+              "Content-Type": "application/json",
+            },
+            body: JSON.stringify({ reason: "cloud-logout" }),
+            signal: AbortSignal.timeout(5000),
+          }).catch(() => {});
         await taskGateway?.revoke();
         await persist();
       }
