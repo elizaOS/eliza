@@ -68,6 +68,7 @@ import {
   type ListConnectorAccountsParams,
   type Log,
   type LogBody,
+  type LogInventoryRow,
   logger,
   MESSAGE_CONTENT_PARENT_INLINE_MAX_BYTES,
   MESSAGE_CONTENT_READ_MAX_SEGMENTS,
@@ -4230,6 +4231,29 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<DrizzleDatabase
       if (logs.length === 0) return [];
 
       return logs;
+    });
+  }
+
+  async getLogInventory(params: { excludeTypes?: readonly string[] }): Promise<LogInventoryRow[]> {
+    const excludeTypes = params.excludeTypes ?? [];
+    // Same rows and order as getLogs, without the body column.
+    return this.withEntityContext(null, async (tx) => {
+      const rows = await tx
+        .select({ id: logTable.id, roomId: logTable.roomId, createdAt: logTable.createdAt })
+        .from(logTable)
+        .innerJoin(roomTable, eq(roomTable.id, logTable.roomId))
+        .where(
+          and(
+            eq(roomTable.agentId, this.agentId),
+            excludeTypes.length > 0 ? notInArray(logTable.type, [...excludeTypes]) : undefined
+          )
+        )
+        .orderBy(desc(logTable.createdAt), desc(logTable.id));
+      return rows.map((row) => ({
+        id: row.id as UUID,
+        roomId: row.roomId as UUID,
+        createdAt: new Date(row.createdAt as string | number | Date),
+      }));
     });
   }
 

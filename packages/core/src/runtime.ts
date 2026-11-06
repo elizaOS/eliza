@@ -148,6 +148,7 @@ import type {
 	ListConnectorAccountsParams,
 	Log,
 	LogBody,
+	LogInventoryRow,
 	MessageSearchHit,
 	OAuthFlowRecord,
 	PatchOp,
@@ -4709,6 +4710,11 @@ export class AgentRuntime implements IAgentRuntime {
 		offset?: number;
 	}): Promise<Log[]> {
 		return this.adapter.getLogs(params);
+	}
+	async getLogInventory(params: {
+		excludeTypes?: readonly string[];
+	}): Promise<LogInventoryRow[]> {
+		return this.adapter.getLogInventory(params);
 	}
 	// Batch log methods
 	async getLogsByIds(logIds: UUID[]): Promise<Log[]> {
