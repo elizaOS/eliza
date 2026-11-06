@@ -19,7 +19,9 @@
  * also reads ELIZA_MAPS_COVERAGE_JSON (default: the world),
  * ELIZA_MAPS_DATASET_REVISION, ELIZA_MAPS_ROUTE_ALTERNATIVES,
  * ELIZA_MAPS_LANGUAGE (BCP-47, e.g. `en-US`), ELIZA_MAPS_REGION (CLDR, e.g.
- * `US`) and ELIZA_MAPS_TILES (`false` turns the tiles proxy off).
+ * `US`), ELIZA_MAPS_TILES (`false` turns the tiles proxy off),
+ * ELIZA_MAPS_TRAFFIC (`none` drops live traffic, which bills as Routes Pro)
+ * and ELIZA_MAPS_TRANSIT (`false` drops transit).
  *
  * A missing required setting means Maps is not configured (null). An invalid
  * setting throws; the route reports it as not configured without echoing it.
@@ -224,6 +226,8 @@ export function googleMapsProviderFromEnv(
     language: setting(env, "ELIZA_MAPS_LANGUAGE"),
     region: setting(env, "ELIZA_MAPS_REGION"),
     tiles: env.ELIZA_MAPS_TILES !== "false",
+    traffic: env.ELIZA_MAPS_TRAFFIC !== "none",
+    transit: env.ELIZA_MAPS_TRANSIT !== "false",
     fetchImpl,
   });
 }
@@ -249,6 +253,8 @@ export const MAPS_PROVIDER_SETTINGS = [
   "ELIZA_MAPS_LANGUAGE",
   "ELIZA_MAPS_REGION",
   "ELIZA_MAPS_TILES",
+  "ELIZA_MAPS_TRAFFIC",
+  "ELIZA_MAPS_TRANSIT",
   "GOOGLE_MAPS_API_KEY",
 ] as const;
 
