@@ -59,7 +59,8 @@ const envelope = (
 ) =>
   JSON.stringify({
     shouldRespond: "RESPOND",
-    contexts: route.contexts ?? (route.intents?.length ? ["calendar"] : ["simple"]),
+    contexts:
+      route.contexts ?? (route.intents?.length ? ["calendar"] : ["simple"]),
     intents: route.intents ?? [],
     candidateActionNames: route.candidateActionNames ?? [],
     replyEffectStatus: route.replyEffectStatus ?? "none",
@@ -149,7 +150,11 @@ async function runTurn(
           ...strategy,
           ...(finalText
             ? { didRespond: true }
-            : { didRespond: false, responseContent: null, responseMessages: [] }),
+            : {
+                didRespond: false,
+                responseContent: null,
+                responseMessages: [],
+              }),
           outcome: { status: "completed", effects: [] },
         };
       },
@@ -259,7 +264,8 @@ it("streams a direct reply as growing token text before reply_ready", async () =
   for (const [index, text] of drafts.entries()) {
     expect(tokens[index]?.provisional).toBe(true);
     expect(reply.startsWith(text)).toBe(true);
-    if (index > 0) expect(text.length).toBeGreaterThan(drafts[index - 1].length);
+    if (index > 0)
+      expect(text.length).toBeGreaterThan(drafts[index - 1].length);
   }
   expect(drafts.at(-1)).toBe(reply);
   expect(tokens.at(-1)).toEqual({ type: "token", fullText: reply });
