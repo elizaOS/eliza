@@ -61,6 +61,44 @@ test("the planner sees the step shown on the previous page", async () => {
   ]);
 });
 
+test("an unconfirmed cancel while hiding guidance never fails the step", async () => {
+  const owner = { actorId: "owner" };
+  const task = {
+    id: "task-1",
+    revision: 1,
+    epoch: 1,
+    status: "paused",
+    operations: [],
+    observation: { id: "observed" },
+  };
+  const runtime = { owner, get: () => task, observe: async () => {} };
+  let failure = Object.assign(new Error("not confirmed"), {
+    kind: "UNCERTAIN_OUTCOME",
+    reason: "cancel-unconfirmed",
+  });
+  const workflow = new GuidedWebsiteWorkflow({
+    runtime,
+    actuator: {
+      readObservation: () => ({
+        observation: task.observation,
+        snapshot: page("A"),
+      }),
+      quiesce: async () => {
+        throw failure;
+      },
+    },
+    taskId: task.id,
+    planStep: async () => assert.fail("a paused task plans nothing"),
+  });
+  assert.deepEqual(await workflow.refresh(), {
+    kind: "paused",
+    taskId: task.id,
+  });
+  // Any other cleanup failure still ends the step.
+  failure = new Error("Guidance cleanup owner is invalid");
+  await assert.rejects(workflow.refresh(), /cleanup owner is invalid/);
+});
+
 test("the planner sees page blockers by control ref, never a selector", () => {
   const snapshot = {
     ...page("A"),
