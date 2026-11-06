@@ -20,9 +20,15 @@ segment, `send`, `speak`, an optional semantic `endpoint` and the conversation b
 The controller joins the segments of one utterance, asks `endpoint` once per utterance after a
 short gap with a bounded deadline, and always submits after the long gap: an unavailable,
 failing or late endpoint decision is never treated as complete. Resumed speech cancels a
-pending submit, and confirmed speech over echo-cancelled capture interrupts an in-flight reply
-or its playback (barge-in); only fully played sentences count as heard. Generation fencing
-drops late endpoint, reply and playback callbacks, so a submitted turn is never resent. Mute,
+pending submit. A submitted turn closes the capture until its reply has played (the busy hold,
+published as `inputHeld` once the close fulfilled), then reopens it unless Mute, Stop or a binding
+change keeps it closed. The turn is sent only after that close fulfilled; a close that fails ends
+the conversation, with nothing reopened, and so does a Mute close that fails before a turn
+waits on it, at once and also with nothing to send (Unmute never reopens over it). The host
+bounds `close()`: one that never settles keeps the turn unsent until Stop.
+`interruptSpeech()` cuts a playing reply, and only fully played sentences count as heard.
+Generation fencing drops late endpoint, reply and playback callbacks, so a submitted turn is
+never resent. Mute,
 stop, binding changes and owner-input pauses are handled; approvals are never given by voice.
 `ASSISTANT_TIMING_DEFAULTS` are engineering defaults, not measured or accepted values. The module
 has no DOM, storage, network or platform speech imports, and `bun run --cwd packages/voice test`
@@ -102,12 +108,12 @@ Eliza Cloud, and it is not Clef, network or latency evidence.
 which products render instead of writing their own copy (`SPEECH_DISCLOSURES`,
 `speechDisclosures({ serviceName, deviceNoun })`, `speechDisclosure(route)`):
 
-| Route | Leaves the device |
-| --- | --- |
-| `local-turn`, `local-stt`, `local-tts` | nothing |
-| `clef-turn` | the current transcript text and at most 6 recent text turns; never audio |
-| `cloud-stt` | the recorded audio |
-| `cloud-tts` | the reply text |
+| Route                                  | Leaves the device                                                        |
+| -------------------------------------- | ------------------------------------------------------------------------ |
+| `local-turn`, `local-stt`, `local-tts` | nothing                                                                  |
+| `clef-turn`                            | the current transcript text and at most 6 recent text turns; never audio |
+| `cloud-stt`                            | the recorded audio                                                       |
+| `cloud-tts`                            | the reply text                                                           |
 
 Only the service name and the device noun can be substituted. The table covers speech routes;
 conversation text sent to a language model is the model setting's disclosure.

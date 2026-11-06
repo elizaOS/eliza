@@ -638,15 +638,22 @@ async function admitFromCachedPolicy(
     admissionSnapshot?: InferenceAdmissionSnapshot;
     apiKeyId?: string | null;
     apiKeyRateLimit?: number;
+    awaitHydrationMs?: number;
   },
 ): Promise<Response | null> {
   let snapshot = options.admissionSnapshot;
   if (!isInferenceAdmissionSnapshot(snapshot)) {
     if (!options.executionCtx) throw new OrgRateLimitCacheNotReadyError("warming", "miss");
     // Callers without a combined auth decision read the organization
-    // projection from the cache; a miss hydrates under `waitUntil`.
+    // projection from the cache; a miss hydrates under `waitUntil`. A caller
+    // may join that same authoritative hydration for a bounded time instead
+    // of returning warming and paying a client retry.
     try {
-      snapshot = await getInferenceAdmissionSnapshotCacheOnly(organizationId, options.executionCtx);
+      snapshot = await getInferenceAdmissionSnapshotCacheOnly(
+        organizationId,
+        options.executionCtx,
+        options.awaitHydrationMs ? { awaitHydrationMs: options.awaitHydrationMs } : {},
+      );
     } catch (error) {
       if (error instanceof InferenceAdmissionSnapshotCacheWarmingError)
         throw new OrgRateLimitCacheNotReadyError("warming", "miss");
@@ -837,6 +844,12 @@ export async function enforceOrgRateLimit(
     apiKeyRateLimit?: number;
     /** Combined auth-cache admission snapshot (tier, key-cap ceiling, budget epoch). */
     admissionSnapshot?: InferenceAdmissionSnapshot;
+    /**
+     * `cacheOnly` without a snapshot: join the scheduled authoritative
+     * hydration of a cold organization projection for up to this long.
+     * Hydration itself is unchanged; past the bound the request stays warming.
+     */
+    awaitHydrationMs?: number;
     /** Authenticated user; with the organization and plan it keys the plan buckets. */
     userId?: string | null;
     /**

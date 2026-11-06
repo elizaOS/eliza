@@ -279,6 +279,17 @@ Point Cloud's `LOGIN_API_URL` at the verified login Worker only after login,
 refresh, logout, provider callbacks, and database readiness pass in staging.
 Preserve the original service until production acceptance and rollback checks pass.
 
+For a staging tenant that should send sign-in emails through Cloudflare Email
+Sending, set `CLOUDFLARE_EMAIL_TENANT_ID` to the tenant ID resolved by Steward,
+`CLOUDFLARE_EMAIL_ACCOUNT_ID` to the sending account, and
+`CLOUDFLARE_EMAIL_FROM` to a bare sender address on a verified sending domain.
+Supply `CLOUDFLARE_EMAIL_API_TOKEN` as a runtime secret with Email Sending Edit
+for that account. Only the matching tenant switches providers. Incomplete
+configuration refuses to issue a challenge. The provider must report the
+recipient as delivered or queued with a message ID; queue acceptance does
+not prove the code reached the inbox. Remove the tenant selector to restore
+the previous provider, then verify receipt and redemption separately.
+
 For Redis login-state transfer, pipe a JSON snapshot with `capturedAtMs` and
 `entries: [{key, value, expiresAtMs}]` into
 `bun --conditions=eliza-source packages/auth/src/server/migrate-redis-state.ts`.

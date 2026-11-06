@@ -18,6 +18,7 @@ import {
   describe,
   expect,
   setDefaultTimeout,
+  spyOn,
   test,
 } from "bun:test";
 import { createHash } from "node:crypto";
@@ -374,7 +375,7 @@ async function generatePersonalMediaOnce(
 }
 
 describe("Worker speech rate limit without an admission snapshot", () => {
-  test("cold STT, TTS and relay bootstrap expose a retryable auth code before dispatch", async () => {
+  test("a cold projection hydrates inside the first STT, TTS and relay bootstrap request", async () => {
     const [
       { cache },
       { CacheKeys },
@@ -390,16 +391,115 @@ describe("Worker speech rate limit without an admission snapshot", () => {
       resetInferenceAdmissionMemoryCacheForTests();
       await cache.del(CacheKeys.inference.orgAdmission(ORG));
       const response = await speakOnce(route, keys[`cold_${route}`].raw);
-      expect(response.status).toBe(503);
-      expect(response.headers.get("Retry-After")).toBe("1");
-      expect(await response.json()).toMatchObject({
-        code: "auth_cache_warming",
-        retryAfterSeconds: 1,
-        details: { retryable: true, retryAfterSeconds: 1 },
+      // One request: no warming refusal, no client retry. The limiter then
+      // decides from the authoritative projection it just published.
+      expect(response.status).not.toBe(503);
+      expect(
+        await cache.get(CacheKeys.inference.orgAdmission(ORG)),
+      ).toMatchObject({
+        rateLimits: { strictRpm: strictRpm },
       });
+    }
+    // The limiter itself takes no Redis round trip; an admitted consent
+    // request then writes its nonce to the consent store.
+    expect(
+      gateCalls.filter((call) => call.path === "/rate-limit"),
+    ).toHaveLength(4);
+  });
+
+  test("a cold projection whose hydration is not acknowledged keeps the retryable warming code", async () => {
+    const [
+      { cache },
+      { CacheKeys },
+      { resetInferenceAdmissionMemoryCacheForTests },
+    ] = await Promise.all([
+      import("@elizaos/cloud-shared/lib/cache/client"),
+      import("@elizaos/cloud-shared/lib/cache/keys"),
+      import("@elizaos/cloud-shared/lib/services/inference-admission-snapshot"),
+    ]);
+    const write = spyOn(cache, "setWithOutcome").mockResolvedValue({
+      kind: "unavailable",
+      backend: "memory",
+    } as Awaited<ReturnType<typeof cache.setWithOutcome>>);
+    try {
+      for (const route of ["stt", "tts", "consent", "session"] as const) {
+        resetInferenceAdmissionMemoryCacheForTests();
+        await cache.del(CacheKeys.inference.orgAdmission(ORG));
+        const response = await speakOnce(route, keys[`cold_${route}`].raw);
+        expect(response.status).toBe(503);
+        expect(response.headers.get("Retry-After")).toBe("1");
+        expect(await response.json()).toMatchObject({
+          code: "auth_cache_warming",
+          retryAfterSeconds: 1,
+          details: { retryable: true, retryAfterSeconds: 1 },
+        });
+      }
+    } finally {
+      write.mockRestore();
     }
     expect(gateCalls).toHaveLength(0);
     expect(redisCalls).toBe(0);
+  });
+
+  test("production flags: an app's key keeps its app scope, so another app's route refuses it", async () => {
+    const [{ apps }, { getTableConfig }] = await Promise.all([
+      import("@elizaos/cloud-shared/db/schemas"),
+      import("drizzle-orm/pg-core"),
+    ]);
+    const config = getTableConfig(apps);
+    await pg().exec(
+      `CREATE TABLE IF NOT EXISTS "${config.name}" (${config.columns
+        .map(
+          (column) =>
+            `"${column.name}" ${"enumValues" in column && column.enumValues ? "text" : column.getSQLType()}`,
+        )
+        .join(", ")})`,
+    );
+    const keyId = crypto.randomUUID();
+    const appKey = `eliza_speech_rate_app_${keyId}`;
+    const [ownApp, otherApp] = [crypto.randomUUID(), crypto.randomUUID()];
+    await pg().exec(`INSERT INTO api_keys(id, name, key_hash, key_prefix, organization_id, user_id, rate_limit, is_active, usage_count, created_at, updated_at, user_created) VALUES ('${keyId}', 'app', '${createHash("sha256").update(appKey).digest("hex")}', 'eliza_sp', '${ORG}', '${USER}', 1000, true, 0, now(), now(), true);
+      INSERT INTO apps(id, name, slug, organization_id, created_by_user_id, is_active, is_approved, api_key_id, created_at, updated_at) VALUES
+        ('${ownApp}', 'own', 'own-${ownApp}', '${ORG}', '${USER}', true, true, '${keyId}', now(), now()),
+        ('${otherApp}', 'other', 'other-${otherApp}', '${ORG}', '${USER}', true, true, NULL, now(), now())`);
+    const promoteAssets = new Hono().route(
+      "/apps/:id/promote/assets",
+      (await import("../v1/apps/[id]/promote/assets/route")).default,
+    );
+    // An invalid body: a caller the route admits stops at 400 before provider work.
+    const promote = (rawKey: string, appId: string) =>
+      runWithBindings({ INFERENCE_ADMISSION_GATES }, () =>
+        Promise.resolve(
+          promoteAssets.request(
+            `http://cloud.test/apps/${appId}/promote/assets`,
+            {
+              method: "POST",
+              headers: {
+                authorization: `Bearer ${rawKey}`,
+                "content-type": "application/json",
+              },
+              body: JSON.stringify({ sizes: "none" }),
+            },
+            {},
+            {
+              waitUntil: () => undefined,
+              passThroughOnException: () => undefined,
+              props: {},
+            },
+          ),
+        ),
+      );
+    // Its own app, another app, and an ordinary key (no app scope) on that app.
+    const responses = [
+      await promote(appKey, ownApp),
+      await promote(appKey, otherApp),
+      await promote(keys.plain.raw, otherApp),
+    ];
+    expect(responses.map((response) => response.status)).toEqual([
+      400, 403, 400,
+    ]);
+    const refusal: unknown = await responses[1]!.json();
+    expect(refusal).toEqual({ error: "Access denied" });
   });
 
   test("STT and TTS take one Durable Object decision and no Redis round trip", async () => {
