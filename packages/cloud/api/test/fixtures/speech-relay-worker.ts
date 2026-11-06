@@ -93,11 +93,6 @@ export default {
           "22222222-2222-4222-8222-222222222222",
       ).fetch(new Request(url, request));
     }
-    if (new URL(request.url).pathname === "/test-unique-id")
-      return Response.json({ id: env.SESSIONS.newUniqueId().toString() });
-    const unique = request.headers.get("x-test-object-id");
-    if (unique)
-      return env.SESSIONS.get(env.SESSIONS.idFromString(unique)).fetch(request);
     const name = request.headers.get("x-test-session") ?? "test";
     return env.SESSIONS.get(env.SESSIONS.idFromName(name)).fetch(request);
   },

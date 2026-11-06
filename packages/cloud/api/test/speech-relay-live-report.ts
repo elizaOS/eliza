@@ -99,8 +99,11 @@ const timings = [
   "sessionMs",
   "wsReadyMs",
   "bootstrapMs",
-  // 1 for an unnamed session object, 0 for a named one (staging A/B lines).
-  "idUnique",
+  // Staging hosting probe: a new and a live object in each Worker script.
+  "leanNewMs",
+  "apiNewMs",
+  "leanLiveMs",
+  "apiLiveMs",
   "ttsStartupMs",
   "firstPcmMs",
   "ttsCompleteMs",
