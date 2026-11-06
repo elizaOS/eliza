@@ -13,7 +13,6 @@ import type {
 import type { PricingCacheReadOptions } from "@elizaos/cloud-shared/lib/services/ai-pricing/cache";
 import {
   AiPricingCacheUnavailableError,
-  AiPricingCacheWarmingError,
 } from "@elizaos/cloud-shared/lib/services/ai-pricing/cache";
 import type { GenerativeOperationContext } from "@elizaos/cloud-shared/lib/services/generative-operation";
 import type {
@@ -321,16 +320,15 @@ export function asGenerativeCacheApiError(
     );
   }
   if (
-    error instanceof AiPricingCacheWarmingError ||
     error instanceof AiPricingCacheUnavailableError ||
     (error instanceof Error &&
       error.name.startsWith("Inference") &&
-      (error.name.includes("Warming") || error.name.includes("Unavailable")))
+      error.name.includes("Unavailable"))
   ) {
     return new ApiError(
       503,
       "service_unavailable",
-      "Generative admission cache is warming; retry shortly",
+      "Generative admission is unavailable; retry shortly",
       { retryable: true, retryAfterSeconds: 1 },
     );
   }
@@ -406,12 +404,12 @@ export async function admitFlatGenerativeOperation(params: {
     if (
       error instanceof Error &&
       error.name.startsWith("Inference") &&
-      (error.name.includes("Warming") || error.name.includes("Unavailable"))
+      error.name.includes("Unavailable")
     ) {
       throw new ApiError(
         503,
         "service_unavailable",
-        "Billing cache is warming; retry shortly",
+        "Billing is unavailable; retry shortly",
         { retryable: true, retryAfterSeconds: 1 },
       );
     }
