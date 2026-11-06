@@ -65,6 +65,7 @@ function financialClaims(reply: string): FinancialClaim[] {
       claims.push({ operation: "swap", requiresSettlement });
     if (/\b(?:bridge|bridged)\b/i.test(sentence))
       claims.push({ operation: "bridge", requiresSettlement });
+    // A decimal point inside an amount ("sent 0.01 ETH") does not end the clause.
     if (
       /\btransfer(?:red)?\b/i.test(sentence) ||
       sentence
@@ -72,7 +73,7 @@ function financialClaims(reply: string): FinancialClaim[] {
         .some(
           (clause) =>
             !/\b(?:swap|bridge|order|trade|governance)\b/i.test(clause) &&
-            /\b(?:sent|submitted)\b[^.!?]*\b(?:SOL|ETH|BTC|USDC|USDT|tokens?|funds?|crypto)\b/i.test(
+            /\b(?:sent|submitted)\b(?:[^.!?]|\.(?=\d))*\b(?:SOL|ETH|BTC|USDC|USDT|tokens?|funds?|crypto)\b/i.test(
               clause,
             ),
         )

@@ -1,4 +1,4 @@
-import type { AgentContext, StateData } from "@elizaos/core";
+import type { ActionResult, AgentContext, StateData } from "@elizaos/core";
 import { describe, expect, it } from "vitest";
 import { evaluatePlannedReplyEgress } from "./egress-policy.ts";
 
@@ -124,6 +124,53 @@ describe("financial holding grounding", () => {
     expect(egress("- 5 SOL\n- 10 USDC", "and?", [], providers)).toEqual({
       verdict: "reject",
       kind: "financial_holding",
+    });
+  });
+});
+
+describe("financial completion grounding", () => {
+  const transfer = (success: boolean): ActionResult => ({
+    success,
+    data: {
+      actionName: "WALLET",
+      subaction: "transfer",
+      ...(success
+        ? {
+            status: "submitted",
+            mode: "execute",
+            dryRun: false,
+            transactionHash:
+              "0x5c504ed432cb51138bcf09aa5e8a410dd4a1e204ef84bfed1be16dfba1b22060",
+          }
+        : {}),
+    },
+  });
+  const completion = (reply: string, actionResults: ActionResult[]) =>
+    evaluatePlannedReplyEgress({
+      reply,
+      request: "send it to bob",
+      contexts: ["wallet"],
+      actionResults,
+      actions: [],
+    });
+
+  it.each([
+    "I sent 5 ETH to Bob.",
+    "I sent 0.01 ETH to Bob.",
+    "Sent 1.5 SOL to 7xKXtg2CW87d97TXJSDpbD5jBkheTqA83TZRuJosgAsU.",
+    "I submitted 2.5 USDC to Bob.",
+  ])("rejects the transfer %j without a submitted transfer", (reply) => {
+    for (const actionResults of [[], [transfer(false)]]) {
+      expect(completion(reply, actionResults)).toEqual({
+        verdict: "reject",
+        kind: "financial_completion",
+      });
+    }
+  });
+
+  it("allows a decimal transfer amount the submitted transfer proves", () => {
+    expect(completion("I sent 0.01 ETH to Bob.", [transfer(true)])).toEqual({
+      verdict: "allow",
     });
   });
 });
