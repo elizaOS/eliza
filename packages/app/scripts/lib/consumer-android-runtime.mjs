@@ -8,7 +8,8 @@ import {
   inspectDevelopmentRuntime,
 } from "./committed-source.mjs";
 
-/** Build a pinned mobile payload; the consumer supplies skills and gateway composition. */
+/** Build a pinned mobile payload; the consumer supplies skills and gateway composition.
+ * `embeddingModel: false` stages no BGE embedding model, for an agent that never loads it. */
 export function buildConsumerAndroidRuntime({
   source,
   expectedCommit,
@@ -18,7 +19,10 @@ export function buildConsumerAndroidRuntime({
   stageGateway,
   targetAbi = "arm64-v8a",
   bunTarget = "linux-musl",
+  embeddingModel = true,
 }) {
+  if (typeof embeddingModel !== "boolean")
+    throw new ConsumerSourceError("embeddingModel must be a boolean");
   if (!["arm64-v8a", "x86_64"].includes(targetAbi))
     throw new ConsumerSourceError(
       "Consumer runtime ABI must be arm64-v8a or x86_64",
@@ -104,7 +108,7 @@ export function buildConsumerAndroidRuntime({
   const stageRunner = path.join(output, "stage-runtime.mjs");
   fs.writeFileSync(
     stageRunner,
-    `import {stageAndroidAgentRuntime} from ${JSON.stringify(pathToFileURL(path.join(source, stageRelative)).href)};\nawait stageAndroidAgentRuntime({androidDir:${JSON.stringify(path.join(output, "android"))},spikeDir:${JSON.stringify(path.join(source, "packages/app/scripts/aosp"))},objective:false});\n`,
+    `import {stageAndroidAgentRuntime} from ${JSON.stringify(pathToFileURL(path.join(source, stageRelative)).href)};\nawait stageAndroidAgentRuntime({androidDir:${JSON.stringify(path.join(output, "android"))},spikeDir:${JSON.stringify(path.join(source, "packages/app/scripts/aosp"))},objective:false,embeddingModel:${embeddingModel}});\n`,
     { flag: "wx" },
   );
   execute([stageRunner], {
@@ -204,6 +208,7 @@ export function buildConsumerAndroidRuntime({
     stagedProvenanceSha256: hash(fs.readFileSync(manifestPath)),
     target: targetAbi,
     bunTarget,
+    embeddingModel,
     completedAt: new Date().toISOString(),
     claim:
       "Fresh bundle module-load smoke and staged byte integrity only. Unreviewed development source; not a production APK or on-device execution.",
