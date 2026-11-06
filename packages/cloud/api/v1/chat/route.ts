@@ -83,6 +83,58 @@ import {
   resolveInferenceCredentialAdmissionDenial,
 } from "@/api-app/lib/generative-route-auth";
 
+type ChatBillingContext = Parameters<typeof billUsage>[0];
+
+/**
+ * Settle a stream the client closed before the provider finished. The client
+ * already holds every delivered token, so bill the input estimate plus the
+ * delivered output, the way /v1/chat/completions settles an abort. The
+ * admitted 500-token estimate is only the fallback when nothing was delivered
+ * or billing the delivered text fails; billing at the estimate alone let a
+ * client read any amount of output and pay for 500 tokens.
+ */
+async function settleChatStreamAbort(params: {
+  billingContext: ChatBillingContext;
+  estimatedInputTokens: number;
+  deliveredText: string;
+  billingReservation: CreditReservation | undefined;
+  settleReservation:
+    | ((actualCost: number) => Promise<unknown>)
+    | null
+    | undefined;
+  settleUnknown: (() => Promise<unknown>) | null | undefined;
+}): Promise<void> {
+  const outputTokens = estimateTokens(params.deliveredText);
+  if (outputTokens <= 0 || !params.settleReservation) {
+    await params.settleUnknown?.();
+    return;
+  }
+  try {
+    const billing = await billUsage(
+      params.billingContext,
+      {
+        inputTokens: params.estimatedInputTokens,
+        outputTokens,
+        totalTokens: params.estimatedInputTokens + outputTokens,
+      },
+      params.billingReservation,
+    );
+    await params.settleReservation(billing.totalCost);
+  } catch (error) {
+    // error-policy:J2 the delivered-text charge could not be computed; keep
+    // the admitted unknown-outcome settlement rather than leaving the hold.
+    logger.error("chat-api", "Delivered-text abort billing failed", {
+      requestId: params.billingContext.requestId,
+      error: error instanceof Error ? error.message : String(error),
+    });
+    await params.settleUnknown?.();
+  }
+}
+
+export const __chatStreamSettlementTestHooks = {
+  settleChatStreamAbort,
+} as const;
+
 const ROUTE_MAX_DURATION = 800;
 const DEFAULT_MIN_OUTPUT_TOKENS = 4096;
 const VALID_MESSAGE_ROLES = ["user", "assistant", "system", "tool"] as const;
@@ -640,8 +692,31 @@ app.post("/", async (c) => {
     await markProviderDispatched?.();
     await markAnonymousMessageSlotDispatched?.();
     providerDispatchStarted = true;
+    let deliveredText = "";
+    const abortBillingContext: ChatBillingContext = {
+      organizationId: user.organization_id || "anonymous",
+      userId: user.id,
+      apiKeyId: apiKey?.id,
+      model: selectedModel,
+      provider,
+      billingSource,
+      affiliateCode,
+      requestId,
+    };
+    const settleAbortedStream = () =>
+      settleChatStreamAbort({
+        billingContext: abortBillingContext,
+        estimatedInputTokens,
+        deliveredText,
+        billingReservation,
+        settleReservation,
+        settleUnknown: settleUnknownReservation,
+      });
     const result = streamText({
       model: languageModel,
+      onChunk: ({ chunk }) => {
+        if (chunk.type === "text-delta") deliveredText += chunk.text;
+      },
       system:
         "Powered by elizaOS. Provide clear, accurate, and helpful responses about AI agents, development, and technology.",
       messages: modelMessages,
@@ -795,7 +870,7 @@ app.post("/", async (c) => {
       onAbort: async () => {
         await settleOffResponsePath(executionCtx, async () => {
           await commitAnonymousMessageSlot?.();
-          await settleUnknownReservation?.();
+          await settleAbortedStream();
         });
         logger.info("chat-api", "Aborted chat stream", {
           requestId,
@@ -840,10 +915,10 @@ app.post("/", async (c) => {
           await refundAnonymousMessageSlot?.();
           await settleReservation?.(0);
         } else {
-          // Same terminal decision as onAbort/ambiguous onError: delivered
-          // provider work with unknown cost retains the admitted estimate.
+          // Same terminal decision as onAbort: bill the delivered output, and
+          // keep the admitted estimate only when nothing was delivered.
           await commitAnonymousMessageSlot?.();
-          await settleUnknownReservation?.();
+          await settleAbortedStream();
         }
       });
     const upstreamReader = streamResponse.body.getReader();
