@@ -693,6 +693,73 @@ test("a host request scope wraps each whole request, also its later async work",
   );
 });
 
+test("a rejecting async request scope answers 500 once and never runs the handler twice", async () => {
+  const unhandled = [];
+  const onUnhandled = (reason) => unhandled.push(reason);
+  process.on("unhandledRejection", onUnhandled);
+  let handled = 0;
+  let lateNext;
+  const gateway = createLocalAgentGateway({
+    hostPolicy: policy,
+    upstream: "http://127.0.0.1:9",
+    token: "upstream-authority",
+    inboundToken: "host-authority",
+    requestScope: async (req, _res, next) => {
+      await Promise.resolve();
+      if (req.headers["x-test-case"] === "reject-before") {
+        lateNext = next;
+        throw new Error("host scope rejected");
+      }
+      if (req.headers["x-test-case"] === "reject-after") {
+        await next();
+        throw new Error("host scope rejected after the handler");
+      }
+      if (req.headers["x-test-case"] === "twice") {
+        await next();
+        return next();
+      }
+      return next();
+    },
+    fetchImpl: async () => {
+      handled += 1;
+      return Response.json({});
+    },
+  });
+  const base = await listen(gateway);
+  try {
+    const call = (testCase = "plain") =>
+      fetch(`${base}/health`, {
+        headers: {
+          Authorization: "Bearer host-authority",
+          "X-Test-Case": testCase,
+        },
+        // Without an answer the request would hang; fail instead.
+        signal: AbortSignal.timeout(5_000),
+      });
+    const rejected = await call("reject-before");
+    assert.equal(rejected.status, 500);
+    assert.deepEqual(await rejected.json(), {
+      error: "Local agent unavailable",
+    });
+    assert.equal(handled, 0);
+    // A failed scope cannot start the handler later.
+    assert.throws(() => lateNext(), /Request handler already started/);
+    assert.equal(handled, 0);
+    // A rejection after the handler answered does not answer again.
+    assert.equal((await call("reject-after")).status, 200);
+    assert.equal(handled, 1);
+    assert.equal((await call("twice")).status, 200);
+    assert.equal(handled, 2);
+    assert.equal((await call()).status, 200);
+    assert.equal(handled, 3);
+    await new Promise((resolve) => setImmediate(resolve));
+    assert.deepEqual(unhandled, []);
+  } finally {
+    process.off("unhandledRejection", onUnhandled);
+    await close(gateway);
+  }
+});
+
 test("read-only private JSON enforces real file owner, mode, symlink and byte boundaries", async (t) => {
   const root = await mkdtemp(join(tmpdir(), "private-json-"));
   t.after(() => rm(root, { recursive: true, force: true }));
