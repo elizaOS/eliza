@@ -15,18 +15,14 @@ import { publishInferenceAdmissionPolicy } from "./inference-admission-gate";
 import {
   type InferenceAdmissionSnapshot,
   isInferenceAdmissionSnapshot,
-  startOffResponse,
 } from "./inference-auth-cache";
-import { isSnapshotAdmissionEnabled } from "./inference-billing-deferred";
-import { type EndpointType, type OrgRateLimitConfig } from "./org-rate-limits";
+import type { EndpointType, OrgRateLimitConfig } from "./org-rate-limits";
 import { withOrganizationPolicyAdmission } from "./organization-policy-admission";
 import {
   type OrganizationQuotaPolicy,
-  readOrganizationQuotaPolicy,
   requireOrganizationPolicyBalance,
   requireOrganizationRateTier,
 } from "./organization-quota-policy";
-import { hydrationSettledWithin } from "./shared-runtime/bounded-hydration";
 import { readSubscriberFundingCapacityInTransaction } from "./subscriber-inference-funding";
 
 const admissionMemoryCache = new InMemoryLRUCache<InferenceAdmissionSnapshot>(1_000, 5_000);
@@ -65,14 +61,11 @@ export function inferenceRateLimitConfig(
 export async function loadInferenceAdmissionSnapshot(
   organizationId: string,
 ): Promise<InferenceAdmissionSnapshot> {
-  const { isInferencePolicyAdmissionEnabled } = await import("./inference-funded-budget-admission");
-  if (isInferencePolicyAdmissionEnabled()) {
-    return withOrganizationPolicyAdmission(organizationId, undefined, (policy, tx) =>
-      inferenceAdmissionSnapshotInTransaction(tx, organizationId, policy),
-    );
-  }
-  const policy = await readOrganizationQuotaPolicy(organizationId);
-  return inferenceAdmissionSnapshotFromPolicy(policy);
+  // Always the complete projection (hold and funding included): the Worker
+  // admission lane decides from it without reading the primary again.
+  return withOrganizationPolicyAdmission(organizationId, undefined, (policy, tx) =>
+    inferenceAdmissionSnapshotInTransaction(tx, organizationId, policy),
+  );
 }
 export function inferenceAdmissionSnapshotFromPolicy(
   policy: OrganizationQuotaPolicy,
@@ -109,7 +102,9 @@ export async function inferenceAdmissionSnapshotInTransaction(
   const snapshot = inferenceAdmissionSnapshotFromPolicy(policy);
   const hold = await billingHoldService.getState(organizationId, tx);
   const funding = policy.subscriptionFunded
-    ? await readSubscriberFundingCapacityInTransaction(tx, organizationId, { policy })
+    ? await readSubscriberFundingCapacityInTransaction(tx, organizationId, {
+        policy,
+      })
     : undefined;
   const { readInferenceBudgetPolicy, readInferencePolicy, isRatePolicyAdmissionEnabled } =
     await import("./inference-funded-budget-admission");
@@ -136,7 +131,6 @@ export async function publishInferenceAdmissionSnapshotToGate(
   organizationId: string,
   snapshot: InferenceAdmissionSnapshot,
 ): Promise<void> {
-  if (!isSnapshotAdmissionEnabled()) return;
   // Non-Worker hosts have no gate binding and never serve snapshot admission.
   if (!getCloudBinding("INFERENCE_ADMISSION_GATES")) return;
   await publishInferenceAdmissionPolicy({
@@ -219,57 +213,48 @@ export async function peekInferenceAdmissionSnapshot(
   }
 }
 
+const inflightAdmissionFills = new Map<string, Promise<InferenceAdmissionSnapshot>>();
+
 /**
- * Resolve the shared-runtime billing and rate policy with one remote cache read.
- * Misses hydrate from authoritative stores only under the Worker lifetime.
+ * Resolve the organization admission snapshot cache-first. A warm request does
+ * one isolate or shared-cache read. A cold one fills the cache inline from the
+ * authoritative stores (coalesced per isolate) and is served from that fill,
+ * so a cold cache never fails the request.
  */
-export async function getInferenceAdmissionSnapshotCacheOnly(
+export async function getInferenceAdmissionSnapshotCacheFirst(
   organizationId: string,
-  executionCtx: AdmissionSnapshotExecutionContext,
-  options: {
-    /**
-     * Join the scheduled hydration for up to this long before reporting
-     * warming. The hydration still runs under the Worker lifetime either way.
-     */
-    awaitHydrationMs?: number;
-  } = {},
 ): Promise<InferenceAdmissionSnapshot> {
   const key = CacheKeys.inference.orgAdmission(organizationId);
   const local = admissionMemoryCache.get(key);
   if (isInferenceAdmissionSnapshot(local)) return local;
 
-  let cached: InferenceAdmissionSnapshot | null;
+  let cached: InferenceAdmissionSnapshot | null = null;
   try {
     cached = await cache.get<InferenceAdmissionSnapshot>(key);
   } catch (error) {
-    // error-policy:J4 inference cannot safely proceed without admission policy.
-    throw new InferenceAdmissionSnapshotCacheWarmingError(
-      error instanceof Error ? error.message : undefined,
-    );
+    // error-policy:J4 an unreadable shared cache falls through to the
+    // authoritative fill below instead of failing the request.
+    logger.warn("[inference-admission] admission snapshot cache read failed", {
+      organizationId,
+      error: error instanceof Error ? error.message : String(error),
+    });
   }
   if (isInferenceAdmissionSnapshot(cached)) {
     admissionMemoryCache.set(key, cached);
     return cached;
   }
+  return await fillInferenceAdmissionSnapshot(organizationId);
+}
 
-  const hydration = startOffResponse(() => warmInferenceAdmissionSnapshot(organizationId))
-    .then(() => undefined)
-    .catch((error) => {
-      // error-policy:J7 authoritative hydration is deliberately detached from
-      // the request; the next request remains fail-closed if it did not finish.
-      logger.warn("[inference-admission] combined snapshot hydration failed", {
-        organizationId,
-        error: error instanceof Error ? error.message : String(error),
-      });
-    });
-  executionCtx.waitUntil(hydration);
-  if (
-    options.awaitHydrationMs !== undefined &&
-    options.awaitHydrationMs > 0 &&
-    (await hydrationSettledWithin(hydration, options.awaitHydrationMs))
-  ) {
-    const hydrated = admissionMemoryCache.get(key);
-    if (isInferenceAdmissionSnapshot(hydrated)) return hydrated;
-  }
-  throw new InferenceAdmissionSnapshotCacheWarmingError();
+/** Authoritative fill shared by concurrent cold requests in this isolate. */
+export function fillInferenceAdmissionSnapshot(
+  organizationId: string,
+): Promise<InferenceAdmissionSnapshot> {
+  const existing = inflightAdmissionFills.get(organizationId);
+  if (existing) return existing;
+  const fill = warmInferenceAdmissionSnapshot(organizationId).finally(() => {
+    inflightAdmissionFills.delete(organizationId);
+  });
+  inflightAdmissionFills.set(organizationId, fill);
+  return fill;
 }

@@ -69,8 +69,7 @@ import {
 } from "../image-generation";
 import { isInferenceAdmissionDispatchMarkError } from "../inference-admission-gate";
 import {
-  getInferenceAdmissionSnapshotCacheOnly,
-  InferenceAdmissionSnapshotCacheWarmingError,
+  getInferenceAdmissionSnapshotCacheFirst,
   inferenceRateLimitConfig,
 } from "../inference-admission-snapshot";
 import type { InferenceAdmissionSnapshot } from "../inference-auth-cache";
@@ -1135,22 +1134,8 @@ async function admitTurn(
   let rateLimited: Response | null;
   let admissionSnapshot: InferenceAdmissionSnapshot | undefined;
   if (executionCtx && funding === "organization-credits") {
-    try {
-      admissionSnapshot = await getInferenceAdmissionSnapshotCacheOnly(
-        agent.organization_id,
-        executionCtx,
-        { awaitHydrationMs: SHARED_TURN_HYDRATION_WAIT_MS },
-      );
-    } catch (error) {
-      // error-policy:J1 a combined policy miss remains a retryable warmup and
-      // cannot fall through to synchronous balance or tier reads.
-      if (error instanceof InferenceAdmissionSnapshotCacheWarmingError) {
-        throw new SharedRuntimeCacheWarmingError(
-          "Inference admission cache is warming. Retry shortly.",
-        );
-      }
-      throw error;
-    }
+    // Cache-first: a cold organization projection is filled inline.
+    admissionSnapshot = await getInferenceAdmissionSnapshotCacheFirst(agent.organization_id);
   }
   try {
     rateLimited = await enforceOrgRateLimit(agent.organization_id, "completions", {

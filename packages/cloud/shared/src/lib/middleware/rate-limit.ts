@@ -20,8 +20,7 @@ import {
   InferenceAdmissionGateUnavailableError,
 } from "../services/inference-admission-gate";
 import {
-  getInferenceAdmissionSnapshotCacheOnly,
-  InferenceAdmissionSnapshotCacheWarmingError,
+  getInferenceAdmissionSnapshotCacheFirst,
   inferenceRateLimitConfig,
   warmInferenceAdmissionSnapshot,
 } from "../services/inference-admission-snapshot";
@@ -645,20 +644,8 @@ async function admitFromCachedPolicy(
   if (!isInferenceAdmissionSnapshot(snapshot)) {
     if (!options.executionCtx) throw new OrgRateLimitCacheNotReadyError("warming", "miss");
     // Callers without a combined auth decision read the organization
-    // projection from the cache; a miss hydrates under `waitUntil`. A caller
-    // may join that same authoritative hydration for a bounded time instead
-    // of returning warming and paying a client retry.
-    try {
-      snapshot = await getInferenceAdmissionSnapshotCacheOnly(
-        organizationId,
-        options.executionCtx,
-        options.awaitHydrationMs ? { awaitHydrationMs: options.awaitHydrationMs } : {},
-      );
-    } catch (error) {
-      if (error instanceof InferenceAdmissionSnapshotCacheWarmingError)
-        throw new OrgRateLimitCacheNotReadyError("warming", "miss");
-      throw error;
-    }
+    // projection cache-first; a cold cache is filled inline, never refused.
+    snapshot = await getInferenceAdmissionSnapshotCacheFirst(organizationId);
   }
   const config = options.config ?? inferenceRateLimitConfig(snapshot, endpointType);
   if (

@@ -285,10 +285,7 @@ export async function requireGenerativeKnownIdentity(
     ? await import(
         "@elizaos/cloud-shared/lib/services/inference-admission-snapshot"
       ).then((module) =>
-        module.getInferenceAdmissionSnapshotCacheOnly(
-          identity.organizationId,
-          executionCtx,
-        ),
+        module.getInferenceAdmissionSnapshotCacheFirst(identity.organizationId),
       )
     : await import(
         "@elizaos/cloud-shared/lib/services/inference-admission-snapshot"
