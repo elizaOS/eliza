@@ -31,7 +31,15 @@ createNativeCloudAuth, requireNonSensitiveText, pickMessage, fundingError),
 planKeys, planCurrency, planInterval, speechLanguage, multipartPrefix and presentation
 messages, plus speechVoice. A host with its own sign-in passes
 `browserSignIn: false`: `/cloud/login` and `/cloud/login/status` then answer
-404 and no `cloudSiteBase` is used. These are trusted host settings, never
+404 and no `cloudSiteBase` is used. `accountGoogleLink: false` refuses every
+`/cloud/account/methods/google/*` route. `googleSignInRoutes: false` refuses
+`/cloud/native/start` with `method: "google"` and `/cloud/native/google/return`;
+the host then starts and finishes Google sign-in itself, through the enrollment
+that its `createNativeCloudAuth` built. Each refusal is 404
+`{error, code: "internal_sign_in_only"}` before the enrollment or Cloud is
+called. `error` is the host message `browserSignInUnavailable`,
+`accountGoogleLinkUnavailable` or `googleSignInRoutesUnavailable`, or
+"Cloud route not available". These are trusted host settings, never
 renderer input. The host remains responsible for origin admission and authenticating
 requests before this route handler. Native enrollment keeps its own registered
 application identity. Document runtimes are reviewed host-owned artifacts.
