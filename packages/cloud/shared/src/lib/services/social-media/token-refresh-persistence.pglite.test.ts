@@ -196,3 +196,48 @@ describe("social token refresh persistence", () => {
     expect((await pg.query("SELECT id FROM secrets")).rows).toHaveLength(2);
   });
 });
+
+describe("a member's social connection", () => {
+  test("is never used when another member posts", async () => {
+    const OTHER_USER_ID = "44444444-4444-4444-8444-444444444444";
+    await pg.query(
+      "INSERT INTO users (id,organization_id,steward_user_id) VALUES ($1,$2,'fixture-other')",
+      [OTHER_USER_ID, ORGANIZATION_ID],
+    );
+    // The fixture user linked their personal LinkedIn under this organization.
+    const accessSecret = await testSecretsService.create(
+      {
+        organizationId: ORGANIZATION_ID,
+        name: "FIXTURE_PERSONAL_LINKEDIN_TOKEN",
+        value: "personal-linkedin-token",
+        createdBy: USER_ID,
+      },
+      { actorType: "user", actorId: USER_ID, source: "social-scope-test" },
+    );
+    await pg.query(
+      "INSERT INTO platform_credentials (organization_id,user_id,platform,platform_user_id,status,access_token_secret_id,token_expires_at) VALUES ($1,$2,'linkedin','urn:li:person:fixture','active',$3,$4)",
+      [ORGANIZATION_ID, USER_ID, accessSecret.id, new Date(Date.now() + 3_600_000)],
+    );
+
+    // The member who linked it still posts with it.
+    expect(
+      (
+        await socialMediaService.getCredentialsForPlatform(
+          ORGANIZATION_ID,
+          "linkedin",
+          undefined,
+          USER_ID,
+        )
+      )?.accessToken,
+    ).toBe("personal-linkedin-token");
+    // Another member gets no LinkedIn credential, not this person's account.
+    expect(
+      await socialMediaService.getCredentialsForPlatform(
+        ORGANIZATION_ID,
+        "linkedin",
+        undefined,
+        OTHER_USER_ID,
+      ),
+    ).toBeNull();
+  });
+});

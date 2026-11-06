@@ -1,5 +1,5 @@
 // Coordinates cloud service index behavior behind route handlers.
-import { and, eq } from "drizzle-orm";
+import { and, eq, isNull, or } from "drizzle-orm";
 import { dbRead, dbWrite } from "../../../db/client";
 import { platformCredentials } from "../../../db/schemas/platform-credentials";
 import type {
@@ -70,6 +70,8 @@ class SocialMediaService {
     organizationId: string,
     platform: SocialPlatform,
     credentialId?: string,
+    /** Acting member: a connection another member linked is theirs alone. */
+    userId?: string,
   ): Promise<SocialCredentials | null> {
     const conditions = [
       eq(platformCredentials.organization_id, organizationId),
@@ -77,6 +79,13 @@ class SocialMediaService {
       eq(platformCredentials.platform, platform),
     ];
     if (credentialId) conditions.push(eq(platformCredentials.id, credentialId));
+    if (userId) {
+      const ownOrShared = or(
+        isNull(platformCredentials.user_id),
+        eq(platformCredentials.user_id, userId),
+      );
+      if (ownOrShared) conditions.push(ownOrShared);
+    }
 
     const [credential] = await dbRead
       .select()
@@ -342,6 +351,7 @@ class SocialMediaService {
             organizationId,
             platform,
             credentialIds?.[platform],
+            userId,
           );
           if (!credentials)
             return {
