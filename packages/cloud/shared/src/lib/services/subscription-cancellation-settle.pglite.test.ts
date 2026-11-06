@@ -66,16 +66,14 @@ function scheduled(f: Awaited<ReturnType<typeof seed>>) {
   };
 }
 async function row(id: string) {
-  const result = await client
-    .getPgliteClientForTests()
-    .query<{
-      status: string;
-      error_code: string | null;
-      cancellation_dispatch_state: string | null;
-    }>(
-      "SELECT status,error_code,cancellation_dispatch_state FROM billing_subscription_commands WHERE id=$1",
-      [id],
-    );
+  const result = await client.getPgliteClientForTests().query<{
+    status: string;
+    error_code: string | null;
+    cancellation_dispatch_state: string | null;
+  }>(
+    "SELECT status,error_code,cancellation_dispatch_state FROM billing_subscription_commands WHERE id=$1",
+    [id],
+  );
   return result.rows[0];
 }
 /** Moves the settle window's start into the past instead of waiting for it. */
