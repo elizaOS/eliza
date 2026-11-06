@@ -202,6 +202,14 @@
     const key = "__elizaBrowserControlV1";
     const monitorKey = "__elizaBrowserObservationV1";
     const watchKey = "__elizaTaskEffectWatchV1";
+    // What the network watch needs from this realm (effect-watch.mjs): her
+    // presses, her first activated control, and the granted commit's address.
+    const handoffOf = (watch) => ({
+      presses: watch.presses,
+      activatedAt: watch.activatedAt,
+      consentedUrls: watch.consentedUrls,
+      expected: watch.expected,
+    });
     const grantKey = "__elizaCommitGrantsV1";
     // A host-issued grant for the one commit the person said yes to. The bridge
     // checked task, epoch, origin, observation and value and spent it there; the
@@ -1137,11 +1145,7 @@
         // For the browser host's network watch only; it never reaches a host.
         ...(policy && globalThis[watchKey]?.scope === policy.guidanceScope
           ? {
-              watchHandoff: {
-                presses: globalThis[watchKey].presses,
-                activatedAt: globalThis[watchKey].activatedAt,
-                consentedUrls: globalThis[watchKey].consentedUrls,
-              },
+              watchHandoff: handoffOf(globalThis[watchKey]),
             }
           : {}),
         ...(policy && consented && consented.scope === policy.guidanceScope
@@ -1473,6 +1477,7 @@
         presses: [],
         activatedAt: null,
         consentedUrls: [],
+        expected: null,
         stop: () => controller.abort(),
       };
       const epoch = (at) => Math.round(performance.timeOrigin + at);
@@ -1545,6 +1550,7 @@
           return null;
         }
       })();
+      watch.expected = expectedRequest;
       const sameUrl = (url, expected) => {
         try {
           const a = new URL(url, location.href);
@@ -2005,7 +2011,11 @@
           requests.disconnect(),
         );
       }
-      setTimeout(() => controller.abort(), policy.expiresAt - Date.now());
+      // A timer delay above 2^31 - 1 ms fires at once; the cap is 24.8 days.
+      setTimeout(
+        () => controller.abort(),
+        Math.min(policy.expiresAt - Date.now(), 2 ** 31 - 1),
+      );
       globalThis[watchKey] = watch;
     }
     if (command.subaction === "click") {
@@ -2086,7 +2096,16 @@
         behavior: "instant",
       });
     }
-    return { dispatched: true, completed: false, requiresReadback: true };
+    const effectWatch = policy ? globalThis[watchKey] : undefined;
+    return {
+      dispatched: true,
+      completed: false,
+      requiresReadback: true,
+      // Taken out by the browser host before the result leaves it.
+      ...(effectWatch?.scope === policy?.guidanceScope && effectWatch
+        ? { watchHandoff: handoffOf(effectWatch) }
+        : {}),
+    };
   },
   function pageGuidance(request) {
     const key = "__elizaPageGuidanceV1";

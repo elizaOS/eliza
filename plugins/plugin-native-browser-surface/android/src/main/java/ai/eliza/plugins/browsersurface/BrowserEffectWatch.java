@@ -11,15 +11,39 @@ import java.util.Locale;
  * The WebView's network watch after a task fill, click, select or scroll: the same rule as
  * packages/os/browser/src/effect-watch.mjs, fed by {@code shouldInterceptRequest}, which sees
  * every frame's requests at their start. A request the page starts before the person takes
- * over is a violation when it is not a GET or HEAD or goes to another site; a commit the page
- * reports as consented is let through once. The watch lasts until the binding expires, the
- * next task effect or a new main-frame document. Thread-safe: requests arrive on a network
- * thread, commands on the main thread.
+ * over is a violation when it is not a GET or HEAD; after a click, also a GET to another site.
+ * A main-frame GET navigation is left to the page's own watch and the navigation gate. The one
+ * commit a grant consents is let through once, known from the grant and from the page's click
+ * result, so it never waits for the page to see the request complete. The watch lasts until
+ * the binding expires, the next task effect or a new main-frame document. Thread-safe:
+ * requests arrive on a network thread, commands on the main thread.
  */
 public final class BrowserEffectWatch {
     /** What shouldInterceptRequest never sees. */
     public static final List<String> UNSEEN =
             Collections.unmodifiableList(Arrays.asList("websocket", "service-worker", "webrtc"));
+
+    /** What the page reports of the person and of the granted commit (its watchHandoff). */
+    public static final class Handoff {
+        final long[] presses;
+        final Long activatedAt;
+        final List<String> consentedUrls;
+        final String expectedUrl;
+        final String expectedMethod;
+        final boolean expectedExact;
+
+        public Handoff(long[] presses, Long activatedAt, List<String> consentedUrls,
+                String expectedUrl, String expectedMethod, boolean expectedExact) {
+            this.presses = presses == null ? new long[0] : presses;
+            this.activatedAt = activatedAt;
+            this.consentedUrls = consentedUrls == null ? Collections.<String>emptyList() : consentedUrls;
+            this.expectedUrl = expectedUrl;
+            this.expectedMethod = expectedMethod;
+            this.expectedExact = expectedExact;
+        }
+
+        public static final Handoff NONE = new Handoff(null, null, null, null, null, false);
+    }
 
     private static final class Request {
         final String url;
@@ -33,30 +57,65 @@ public final class BrowserEffectWatch {
         }
     }
 
+    /** One address the granted commit may have; a null method matches any. */
+    private static final class Allowed {
+        final String url;
+        final String method;
+        final boolean exact;
+
+        Allowed(String url, String method, boolean exact) {
+            this.url = url;
+            this.method = method == null ? null : method.toUpperCase(Locale.ROOT);
+            this.exact = exact;
+        }
+    }
+
     private static final class Watch {
         final String origin;
         final String scope;
+        final boolean click;
         final long startedAt;
         final long expiresAt;
         long closedAt = Long.MAX_VALUE;
         final List<Request> candidates = new ArrayList<>();
+        final List<Long> presses = new ArrayList<>();
+        long activatedAt = Long.MAX_VALUE;
+        /** Null without a grant: then nothing the page reports excuses a request. */
+        final List<Allowed> granted;
+        boolean grantSpent;
         String violation;
 
-        Watch(String origin, String scope, long startedAt, long expiresAt, String violation) {
+        Watch(String origin, String scope, boolean click, long startedAt, long expiresAt,
+                List<Allowed> granted, String violation) {
             this.origin = origin;
             this.scope = scope;
+            this.click = click;
             this.startedAt = startedAt;
             this.expiresAt = expiresAt;
+            this.granted = granted;
             this.violation = violation;
         }
     }
 
     private Watch watch;
 
-    /** Starts a watch before a task effect is dispatched; returns the token for {@link #cancel}. */
-    public synchronized Object arm(String origin, String scope, long now, long expiresAt) {
+    /**
+     * Starts a watch before a task effect is dispatched; returns the token for {@link #cancel}.
+     * {@code granted} says the effect carries a commit grant; {@code targetUrl} and
+     * {@code targetMethod} are its request target, if it names one (a path is resolved against
+     * the page's origin).
+     */
+    public synchronized Object arm(String origin, String scope, String subaction, long now, long expiresAt,
+            boolean granted, String targetUrl, String targetMethod) {
         Watch previous = watch;
-        watch = new Watch(origin, scope, now, expiresAt,
+        // What the earlier effect set off is judged now, not dropped.
+        if (previous != null) settle(previous);
+        List<Allowed> allowed = null;
+        if (granted) {
+            allowed = new ArrayList<>();
+            if (targetUrl != null) allowed.add(new Allowed(resolve(origin, targetUrl), targetMethod, true));
+        }
+        watch = new Watch(origin, scope, "click".equals(subaction), now, expiresAt, allowed,
                 previous != null && previous.scope.equals(scope) ? previous.violation : null);
         return new Object[] {watch, previous};
     }
@@ -73,37 +132,54 @@ public final class BrowserEffectWatch {
     }
 
     /** One request at its start, from any frame. */
-    public synchronized void observe(String url, String method, long at) {
+    public synchronized void observe(String url, String method, boolean mainFrame, long at) {
         Request request = new Request(url, method == null ? "GET" : method, at);
         if (watch == null || request.at < watch.startedAt || request.at >= watch.expiresAt
-                || request.at >= watch.closedAt || !violates(request, watch.origin)) return;
+                || request.at >= watch.closedAt || !violates(request, mainFrame, watch)) return;
         watch.candidates.add(request);
     }
 
-    /**
-     * The violation for this binding, judged against the person's presses and her first
-     * activated control (epoch milliseconds) and the consented commit URLs the page reports.
-     */
-    public synchronized String read(String scope, long[] presses, Long activatedAt, List<String> consentedUrls) {
+    /** Adds what a task effect's own result reports, without judging. */
+    public synchronized void report(String scope, Handoff handoff) {
+        if (watch != null && watch.scope.equals(scope)) merge(watch, handoff);
+    }
+
+    /** The violation for this binding, judged after adding what the page reports. */
+    public synchronized String read(String scope, Handoff handoff) {
         if (watch == null || !watch.scope.equals(scope)) return null;
-        List<String> consented = new ArrayList<>(consentedUrls);
-        for (Request request : watch.candidates) {
-            if (watch.violation != null || byPerson(request.at, presses, activatedAt)) continue;
-            int excused = -1;
-            for (int i = 0; i < consented.size() && excused < 0; i++)
-                if (samePath(request.url, consented.get(i))) excused = i;
-            if (excused >= 0) consented.remove(excused);
-            else watch.violation = "request";
-        }
-        watch.candidates.clear();
+        merge(watch, handoff);
+        settle(watch);
         return watch.violation;
     }
 
-    private static boolean violates(Request request, String pageOrigin) {
+    private static void merge(Watch watch, Handoff handoff) {
+        if (handoff == null) return;
+        for (long press : handoff.presses) watch.presses.add(press);
+        if (handoff.activatedAt != null) watch.activatedAt = Math.min(watch.activatedAt, handoff.activatedAt);
+        if (watch.granted == null) return;
+        if (handoff.expectedUrl != null)
+            watch.granted.add(new Allowed(handoff.expectedUrl, handoff.expectedMethod, handoff.expectedExact));
+        for (String url : handoff.consentedUrls) if (url != null) watch.granted.add(new Allowed(url, null, false));
+    }
+
+    private static void settle(Watch watch) {
+        for (Request request : watch.candidates) {
+            if (watch.violation != null || byPerson(request.at, watch)) continue;
+            if (watch.granted != null && !watch.grantSpent && allowed(request, watch.granted)) {
+                watch.grantSpent = true;
+                continue;
+            }
+            watch.violation = "request";
+        }
+        watch.candidates.clear();
+    }
+
+    private static boolean violates(Request request, boolean mainFrame, Watch watch) {
         if (!request.method.equals("GET") && !request.method.equals("HEAD")) return true;
+        if (mainFrame || !watch.click) return false;
         try {
             String host = new URI(request.url).getHost();
-            String page = new URI(pageOrigin).getHost();
+            String page = new URI(watch.origin).getHost();
             return host == null || page == null || !sameSite(host, page);
         } catch (Exception error) {
             return true;
@@ -120,10 +196,37 @@ public final class BrowserEffectWatch {
         return String.join(".", Arrays.asList(labels).subList(Math.max(0, labels.length - count), labels.length));
     }
 
-    private static boolean byPerson(long at, long[] presses, Long activatedAt) {
-        if (activatedAt != null && at >= activatedAt) return true;
-        for (long press : presses) if (at - press >= 0 && at - press <= 1500) return true;
+    private static boolean byPerson(long at, Watch watch) {
+        if (at >= watch.activatedAt) return true;
+        for (long press : watch.presses) if (at - press >= 0 && at - press <= 1500) return true;
         return false;
+    }
+
+    private static boolean allowed(Request request, List<Allowed> granted) {
+        for (Allowed allowed : granted) {
+            if (allowed.method != null && !allowed.method.equals(request.method)) continue;
+            if (allowed.exact ? sameAddress(request.url, allowed.url) : samePath(request.url, allowed.url))
+                return true;
+        }
+        return false;
+    }
+
+    private static String resolve(String origin, String url) {
+        try {
+            return new URI(origin).resolve(url).toString();
+        } catch (Exception error) {
+            return url;
+        }
+    }
+
+    private static boolean sameAddress(String url, String other) {
+        try {
+            URI a = new URI(url);
+            URI b = new URI(other);
+            return samePath(url, other) && String.valueOf(a.getRawQuery()).equals(String.valueOf(b.getRawQuery()));
+        } catch (Exception error) {
+            return false;
+        }
     }
 
     private static boolean samePath(String url, String other) {

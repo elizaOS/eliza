@@ -27,6 +27,8 @@ const pages = {
   "/code": `<html lang="de"><p>Betrag 84,20 EUR</p>${controls}${script}</html>`,
   // No amount, but a card field.
   "/card": `<html><input autocomplete="cc-number" aria-label="Número">${controls}${script}</html>`,
+  // A control whose script posts a moment later.
+  "/later": `<button id="go" type="button" onclick="setTimeout(()=>fetch('/api/pay',{method:'POST'}),300)">Show details</button>`,
   // No money at all.
   "/plain": `<html lang="not a tag!"><p>Horario de atención</p>${controls}${script}</html>`,
 };
@@ -151,6 +153,13 @@ try {
   assert.equal((await snapshot()).state.lang, null);
   await open("/card");
   assert.equal((await snapshot()).state.lang, null);
+  // A binding longer than a timer can wait (2^31 - 1 ms) still keeps the
+  // in-page watch on.
+  await open("/later");
+  const month = { expiresAt: Date.now() + 30 * 24 * 3600 * 1000 };
+  assert.equal((await click("#go", month)).allowed, true);
+  await page.waitForTimeout(1500);
+  assert.equal((await snapshot("#go", month)).state.effectViolation, "request");
   console.log("page guard: ok");
 } catch (error) {
   failed = true;

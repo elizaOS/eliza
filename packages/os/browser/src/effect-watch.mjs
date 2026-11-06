@@ -4,12 +4,15 @@
  * own document's completed same-site fetch, XHR and beacon requests.
  *
  * After a task effect, a request the page starts before the person takes
- * over is a violation when it is not a GET or HEAD, goes to another site,
- * is a WebSocket, or opens another window; a commit the person said yes to
- * (the page reports it as consented) is let through once. The watch lasts
- * until the binding expires, the next task effect, the host's own
- * navigation, or the main frame commits another document, after which
- * nothing from the watched document can run.
+ * over is a violation when it is not a GET or HEAD, is a WebSocket, or opens
+ * another window; after a click, also a GET to another site (row C10). A
+ * top-level GET navigation is left to the in-page watch and the navigation
+ * gate, which already allow a click on a link to open that link, redirects
+ * included. The one commit a grant consents is let through once, and so are
+ * the redirect hops of that request. The watch lasts until the binding
+ * expires, the next task effect, the host's own navigation, or the main frame
+ * commits another document, after which nothing from the watched document
+ * can run.
  *
  * It cannot see everything a page's script can do. `unseen` names what it
  * misses, and snapshots say so.
@@ -17,6 +20,14 @@
 
 /** What webRequest cannot see: WebRTC data channels send no HTTP request. */
 export const NETWORK_WATCH_UNSEEN = Object.freeze(["webrtc"]);
+
+/** Task effects the network watch follows. */
+export const WATCHED_EFFECTS = Object.freeze([
+  "click",
+  "fill",
+  "select",
+  "scroll",
+]);
 
 // The page's own site, without public-suffix data, as the in-page watch
 // decides it: the last two or three host labels match. This errs toward
@@ -30,10 +41,18 @@ export function sameSite(host, pageHost) {
   );
 }
 
-/** True when a request is one a task effect may not set off unseen. */
-export function violates(request, pageOrigin) {
+const reads = (request) => ["GET", "HEAD"].includes(request.method);
+
+/**
+ * True when a request is one a task effect may not set off unseen. A GET to
+ * another site counts only after a click: a fill, select or scroll often
+ * loads images or suggestions from another site, and sends nothing she did
+ * not see unless it writes.
+ */
+export function violates(request, pageOrigin, subaction = "click") {
   if (request.type === "window" || request.type === "websocket") return true;
-  if (!["GET", "HEAD"].includes(request.method)) return true;
+  if (!reads(request)) return true;
+  if (request.type === "main_frame" || subaction !== "click") return false;
   try {
     return !sameSite(
       new URL(request.url).hostname,
@@ -47,16 +66,25 @@ export function violates(request, pageOrigin) {
 // Her press, or her activated control, hands the page over to her, as in
 // the in-page watch: anything after her first activated control, or within
 // 1.5 s of a press.
-const byPerson = (at, handoff) =>
-  (Number.isFinite(handoff?.activatedAt) && at >= handoff.activatedAt) ||
-  (Array.isArray(handoff?.presses) &&
-    handoff.presses.some((press) => at - press >= 0 && at - press <= 1500));
+const byPerson = (at, watch) =>
+  at >= watch.activatedAt ||
+  watch.presses.some((press) => at - press >= 0 && at - press <= 1500);
 
-const samePath = (url, other) => {
+const withoutHash = (url, base) => {
+  const parsed = new URL(url, base);
+  parsed.hash = "";
+  return parsed;
+};
+// A commit URL the grant names. `exact` matches the whole address; otherwise
+// origin and path, as for a consented URL the page reports.
+const matches = (request, allowed, base) => {
   try {
-    const a = new URL(url);
-    const b = new URL(other);
-    return a.origin === b.origin && a.pathname === b.pathname;
+    const a = withoutHash(request.url);
+    const b = withoutHash(allowed.url, base);
+    if (allowed.method && allowed.method !== request.method) return false;
+    return allowed.exact
+      ? a.href === b.href
+      : a.origin === b.origin && a.pathname === b.pathname;
   } catch {
     return false;
   }
@@ -65,21 +93,99 @@ const samePath = (url, other) => {
 /** Pure watch state for one browser; transports feed it requests. */
 export function createNetworkWatch({ now = () => Date.now() } = {}) {
   const watches = new Map();
+  // Judges what a watch has collected. A grant's commit is known from the
+  // grant itself and from the page's click result, so a request in flight is
+  // judged at once and never waits for the page to see it complete.
+  const settle = (watch) => {
+    for (const request of watch.candidates.splice(0)) {
+      if (watch.violation || byPerson(request.at, watch)) continue;
+      if (
+        request.requestId !== undefined &&
+        watch.excused.has(request.requestId)
+      )
+        continue;
+      if (
+        watch.grant &&
+        !watch.grant.spent &&
+        request.type !== "window" &&
+        watch.grant.allowed.some((allowed) =>
+          matches(request, allowed, watch.origin),
+        )
+      ) {
+        watch.grant.spent = true;
+        if (request.requestId !== undefined)
+          watch.excused.add(request.requestId);
+        continue;
+      }
+      watch.violation = request.type === "window" ? "window" : "request";
+    }
+  };
+  // What the page saw of the person and of the granted commit. The page's
+  // reports only add to a grant the host issued; without one they excuse
+  // nothing.
+  const merge = (watch, handoff) => {
+    if (!handoff || typeof handoff !== "object") return;
+    if (Array.isArray(handoff.presses))
+      for (const press of handoff.presses)
+        if (Number.isFinite(press)) watch.presses.push(press);
+    if (Number.isFinite(handoff.activatedAt))
+      watch.activatedAt = Math.min(watch.activatedAt, handoff.activatedAt);
+    if (!watch.grant) return;
+    const expected = handoff.expected;
+    if (expected && typeof expected.url === "string")
+      watch.grant.allowed.push({
+        url: expected.url,
+        method:
+          typeof expected.method === "string" ? expected.method : undefined,
+        exact: expected.exact === true,
+      });
+    if (Array.isArray(handoff.consentedUrls))
+      for (const url of handoff.consentedUrls)
+        if (typeof url === "string")
+          watch.grant.allowed.push({ url, exact: false });
+  };
   return {
     /**
      * Starts a watch before a task effect is dispatched. Returns a cancel
      * that restores the previous watch when the effect was refused before
      * it reached the page.
      */
-    arm(tabId, { origin, guidanceScope, expiresAt }) {
+    arm(
+      tabId,
+      { origin, guidanceScope, expiresAt, commitGrant },
+      subaction = "click",
+    ) {
       const previous = watches.get(tabId);
+      // What the earlier effect set off is judged now, not dropped.
+      if (previous) settle(previous);
+      const target = commitGrant?.requestTarget;
       const watch = {
         origin,
         scope: guidanceScope,
+        subaction,
         startedAt: now(),
         expiresAt,
         closedAt: Number.POSITIVE_INFINITY,
         candidates: [],
+        presses: [],
+        activatedAt: Number.POSITIVE_INFINITY,
+        excused: new Set(),
+        // The one commit the host's grant consents, by every address it may
+        // have: the grant's request target, and what the page reports.
+        grant: commitGrant
+          ? {
+              spent: false,
+              allowed: target
+                ? [
+                    {
+                      url: target.url ?? target.path,
+                      method: target.method,
+                      exact: true,
+                    },
+                  ]
+                : [],
+            }
+          : null,
         // A violation stays reported for the rest of this binding.
         violation:
           previous?.scope === guidanceScope ? previous.violation : null,
@@ -99,7 +205,7 @@ export function createNetworkWatch({ now = () => Date.now() } = {}) {
     forget(tabId) {
       watches.delete(tabId);
     },
-    /** One request at its start: { url, method, type, at }. */
+    /** One request at its start: { url, method, type, at, requestId? }. */
     observe(tabId, request) {
       const watch = watches.get(tabId);
       if (
@@ -107,7 +213,7 @@ export function createNetworkWatch({ now = () => Date.now() } = {}) {
         request.at < watch.startedAt ||
         request.at >= watch.expiresAt ||
         request.at >= watch.closedAt ||
-        !violates(request, watch.origin)
+        !violates(request, watch.origin, watch.subaction)
       )
         return;
       watch.candidates.push(request);
@@ -119,30 +225,57 @@ export function createNetworkWatch({ now = () => Date.now() } = {}) {
         .map(([tabId]) => tabId);
     },
     /**
-     * The violation for this binding, if any, judged against what the page
-     * reports of the person (watchHandoff). Each consented commit URL
-     * excuses one request to its origin and path.
+     * Adds what the page reports (watchHandoff) to this binding's watch
+     * without judging: a task effect's own result.
+     */
+    report(tabId, guidanceScope, handoff) {
+      const watch = watches.get(tabId);
+      if (watch && watch.scope === guidanceScope) merge(watch, handoff);
+    },
+    /**
+     * The violation for this binding, if any, judged after adding what the
+     * page reports of the person and of the granted commit (watchHandoff).
      */
     read(tabId, guidanceScope, handoff) {
       const watch = watches.get(tabId);
       if (!watch || watch.scope !== guidanceScope) return null;
-      const consented = Array.isArray(handoff?.consentedUrls)
-        ? [...handoff.consentedUrls]
-        : [];
-      for (const request of watch.candidates.splice(0)) {
-        if (watch.violation || byPerson(request.at, handoff)) continue;
-        const excused = consented.findIndex((url) =>
-          samePath(request.url, url),
-        );
-        if (excused >= 0 && request.type !== "window") {
-          consented.splice(excused, 1);
-          continue;
-        }
-        watch.violation = request.type === "window" ? "window" : "request";
-      }
+      merge(watch, handoff);
+      settle(watch);
       return watch.violation;
     },
   };
+}
+
+/**
+ * Takes the page's watchHandoff out of a task result and hands it to the
+ * network watch: a task effect's result only reports it, a task snapshot's
+ * main frame is judged and carries the verdict. The handoff never reaches a
+ * host.
+ */
+export function applyEffectWatch(effects, command, result) {
+  const scope = command.taskPolicy?.guidanceScope;
+  if (WATCHED_EFFECTS.includes(command.subaction) && result) {
+    const { watchHandoff } = result;
+    delete result.watchHandoff;
+    if (effects && scope !== undefined)
+      effects.report(Number(command.id), scope, watchHandoff);
+    return;
+  }
+  for (const frame of result?.frames || []) {
+    const { watchHandoff } = frame;
+    delete frame.watchHandoff;
+    if (
+      !effects ||
+      frame.frameId !== 0 ||
+      scope === undefined ||
+      command.subaction !== "snapshot"
+    )
+      continue;
+    const violation = effects.read(Number(command.id), scope, watchHandoff);
+    if (violation && frame.effectViolation === undefined)
+      frame.effectViolation = violation;
+    frame.effectWatch = { frames: "all", unseen: NETWORK_WATCH_UNSEEN };
+  }
 }
 
 /** The Chromium extension's watch, fed by webRequest and webNavigation. */
@@ -155,6 +288,7 @@ export function createEffectWatch(api) {
         method: details.method,
         type: details.type,
         at: details.timeStamp,
+        requestId: details.requestId,
       };
       if (details.tabId >= 0) {
         watch.observe(details.tabId, request);

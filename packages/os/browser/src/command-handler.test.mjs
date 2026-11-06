@@ -677,3 +677,84 @@ test("a task snapshot reports the network watch and never forwards the page's ha
   );
   assert.deepEqual(calls.at(-1), ["close", 1]);
 });
+
+test("a task effect's result hands the network watch its handoff and is never judged", async () => {
+  const f = fixture();
+  f.api.runtime = { id: "extension" };
+  f.api.tabs = {
+    get: async () => ({ url: `${binding.origin}/form`, status: "complete" }),
+    update: async () => {},
+    query: async () => [{ id: 1, active: true }],
+  };
+  f.api.webNavigation = {
+    getAllFrames: async () => [{ frameId: 0, documentId: "doc" }],
+  };
+  const handoff = {
+    presses: [],
+    activatedAt: null,
+    consentedUrls: [`${binding.origin}/done`],
+    expected: { url: `${binding.origin}/done`, method: "POST", exact: true },
+  };
+  // Every page script answers as a page that accepted and ran the fill.
+  f.api.scripting = {
+    executeScript: async () => [
+      {
+        frameId: 0,
+        documentId: "doc",
+        result: {
+          validated: true,
+          visible: false,
+          accepted: true,
+          ready: true,
+          dispatched: true,
+          completed: false,
+          requiresReadback: true,
+          watchHandoff: handoff,
+        },
+      },
+    ],
+  };
+  const calls = [];
+  const effects = {
+    arm: (...args) => {
+      calls.push(["arm", args[0], args[2]]);
+      return () => {};
+    },
+    close: () => {},
+    report: (...args) => calls.push(["report", ...args]),
+    read: (...args) => {
+      calls.push(["read", ...args]);
+      return "request";
+    },
+  };
+  const handler = createCommandHandler(f.api, { effects });
+  await handler(
+    { type: "task-bind", id: "bind", binding },
+    f.sender,
+    () => true,
+  );
+  await handler(
+    {
+      type: "command",
+      id: "fill",
+      command: {
+        subaction: "fill",
+        id: "1",
+        selector: "12345678-1234-1234-1234-123456789012:0:3",
+        expectedSelector: "#name",
+        text: "Ana",
+        taskContext: context(binding),
+      },
+    },
+    f.sender,
+    () => true,
+  );
+  const reply = f.replies.at(-1);
+  assert.equal(reply.ok, true, JSON.stringify(reply));
+  assert.equal("watchHandoff" in reply.result, false);
+  assert.equal("effectViolation" in reply.result, false);
+  assert.deepEqual(calls, [
+    ["arm", 1, "fill"],
+    ["report", 1, "1", handoff],
+  ]);
+});

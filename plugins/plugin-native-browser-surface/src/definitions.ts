@@ -488,6 +488,18 @@ export interface ElizaSurfaceManagerPlugin {
           actionId?: string;
           expectedSelector?: string;
           assistantName?: string;
+          /** The host's commit words (a regular expression source, flags `iu`). */
+          commitPattern?: string;
+          /** The one commit the person said yes to, spent by the task bindings. */
+          commitGrant?: {
+            grantId: string;
+            selector?: string;
+            requestTarget?:
+              | { url: string; method: string }
+              | { path: string; method: string };
+            formHash?: string;
+            expiresAt: number;
+          };
           targets: Array<{
             selector: string;
             action: "click" | "fill" | "select" | "scroll" | "follow";

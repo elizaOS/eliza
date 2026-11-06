@@ -87,8 +87,10 @@ labels even if accidentally allowed. A binding's optional `commitPattern` (the
 languages. Words cannot cover every language, so on a page with a card or bank
 field or a currency amount, a click with no commit grant reaches only a control
 whose effect the browser defines: a link to another document, a checkbox or
-radio, an option, a disclosure or a tab. Snapshots report the page's declared
-`lang`, or null. This is an additional guard, not semantic
+radio, an option, a disclosure or a tab. The money check reads the main
+document only: a card field or amount inside an open shadow root or a child
+frame does not count, so such a page relies on the word rules alone. Snapshots
+report the page's declared `lang`, or null. This is an additional guard, not semantic
 proof about arbitrary JavaScript: a reviewed ordinary button or field can run
 site code. Qualify each supported page and its consequences. Protected OTP fills,
 complete sensitive-page policy, and installed Android task binding remain separate
@@ -455,10 +457,17 @@ The page sees only its own document's completed requests, so the extension
 also watches the network (`src/effect-watch.mjs`, `webRequest` with `ws` and
 `wss` host access). From each task fill, click, select or scroll, every request
 the tab starts, in any frame and at its start, is a violation (`request`) when
-it is not a GET or HEAD, goes to another site, or is a WebSocket; a window the
-page opens is `window`. A service worker's request counts against tabs on its
-site. Requests within the handoff rule above are hers, and each commit the page
-reports as consented is let through once. The watch ends when the binding
+it is not a GET or HEAD or is a WebSocket; after a click, also a GET to another
+site. A window the page opens is `window`. A top-level GET navigation is left to
+the page's own watch and the navigation gate, so a click that follows a link,
+also through a redirect to another site, is not one; a top-level POST is. A
+service worker's request counts against tabs on its site. Requests within the
+handoff rule above are hers. A commit grant lets its one commit through at
+request start, matched by the grant's `requestTarget` or by the address the
+page reports in the click result (the granted form's action, or the consented
+commit), and its redirect hops with it; without a grant, nothing the page
+reports excuses a request. What one effect set off is judged when the next one
+starts. The watch ends when the binding
 expires, at the next task effect, at the host's own navigation, or when the main
 frame commits another document. Task snapshots then report `effectWatch:
 { frames: "all", unseen }`; `unseen` names what it cannot see (WebRTC). Her

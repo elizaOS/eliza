@@ -35,6 +35,10 @@ internal class SurfaceControlChannel(
         val watchScope: String?,
     )
     private var pending: Pending? = null
+    /** The last task effect: its reply's watchHandoff reaches the network watch even when a
+     *  page load it started has already interrupted the command. */
+    private data class WatchedEffect(val documentId: String, val sequence: Long, val scope: String)
+    private var watchedEffect: WatchedEffect? = null
 
     init {
         val world = WebViewCompat.getExecutionWorld(webView, "eliza-surface-control-v1")
@@ -57,6 +61,13 @@ internal class SurfaceControlChannel(
                 return@addWebMessageListener
             }
             if (!sameOrigin(origin, webView.url)) return@addWebMessageListener
+            watchedEffect?.takeIf {
+                it.documentId == incomingDocument && it.sequence == data.optLong("sequence", -1)
+            }?.let { watched ->
+                watchedEffect = null
+                data.optJSONObject("result")?.optJSONObject("watchHandoff")
+                    ?.let { effects.report(watched.scope, handoffOf(it)) }
+            }
             val request = pending ?: return@addWebMessageListener
             if (incomingDocument != request.documentId || data.optLong("sequence", -1) != request.sequence) {
                 return@addWebMessageListener
@@ -75,10 +86,13 @@ internal class SurfaceControlChannel(
                 val handoff = result.optJSONObject("watchHandoff")
                 result.remove("watchHandoff")
                 if (error != null) {
-                    request.watchToken?.let(effects::cancel)
+                    // Refused before the page acted: the earlier watch still holds. An uncertain
+                    // outcome may have acted, so its watch stays, as in the Chromium host.
+                    if (error.optString("kind") != "UNCERTAIN_OUTCOME") request.watchToken?.let(effects::cancel)
                     request.call.reject(error.optString("message"), error.optString("kind"))
                 } else {
-                    request.watchScope?.let { scope -> reportWatch(result, scope, handoff) }
+                    // A task effect's handoff was reported above; a snapshot's is judged here.
+                    if (request.observation) request.watchScope?.let { scope -> reportWatch(result, scope, handoff) }
                     if (request.observation) snapshotId = result.optString("snapshotId").takeIf { it.isNotBlank() }
                     request.call.resolve(JSObject().apply {
                         put("documentId", incomingDocument)
@@ -125,11 +139,19 @@ internal class SurfaceControlChannel(
         if (effect || observation) snapshotId = null
         val policy = command.optJSONObject("taskPolicy")
         val watchToken = if (policy != null && effect && action in setOf("click", "fill", "select", "scroll")) {
-            effects.arm(policy.optString("origin"), policy.optString("guidanceScope"),
-                System.currentTimeMillis(), policy.optLong("expiresAt"))
+            // A grant's request target is known now, so its request is excused at its start.
+            val grant = policy.optJSONObject("commitGrant")
+            val target = grant?.optJSONObject("requestTarget")
+            effects.arm(policy.optString("origin"), policy.optString("guidanceScope"), action,
+                System.currentTimeMillis(), policy.optLong("expiresAt"), grant != null,
+                target?.let { (it.opt("url") ?: it.opt("path")) as? String },
+                target?.optString("method"))
         } else null
         val watchScope = if (policy != null && observation) policy.optString("guidanceScope") else null
         sequence += 1
+        watchedEffect = if (watchToken != null) {
+            WatchedEffect(currentDocument, sequence, policy!!.optString("guidanceScope"))
+        } else null
         val timeout = Runnable { interrupt("The page command timed out; observe before continuing") }
         pending = Pending(call, currentDocument, sequence, effect, observation, isCurrent, timeout,
             watchToken, watchScope)
@@ -160,14 +182,22 @@ internal class SurfaceControlChannel(
         }
     }
 
-    /** Adds the network verdict, judged against what the page saw of the person. */
-    private fun reportWatch(result: JSONObject, scope: String, handoff: JSONObject?) {
+    /** The page's watchHandoff: her presses, her first activated control, the granted commit. */
+    private fun handoffOf(handoff: JSONObject?): BrowserEffectWatch.Handoff {
         val presses = handoff?.optJSONArray("presses")
             ?.let { list -> LongArray(list.length()) { list.optLong(it) } } ?: LongArray(0)
         val activatedAt = (handoff?.opt("activatedAt") as? Number)?.toLong()
         val consented = handoff?.optJSONArray("consentedUrls")
             ?.let { list -> (0 until list.length()).map { list.optString(it) } } ?: emptyList()
-        val violation = effects.read(scope, presses, activatedAt, consented)
+        val expected = handoff?.optJSONObject("expected")
+        return BrowserEffectWatch.Handoff(presses, activatedAt, consented,
+            expected?.opt("url") as? String, expected?.opt("method") as? String,
+            expected?.optBoolean("exact") == true)
+    }
+
+    /** Adds the network verdict, judged against what the page saw of the person. */
+    private fun reportWatch(result: JSONObject, scope: String, handoff: JSONObject?) {
+        val violation = effects.read(scope, handoffOf(handoff))
         if (violation != null && !result.has("effectViolation")) result.put("effectViolation", violation)
         result.put("effectWatch", JSONObject().apply {
             put("frames", "all")
