@@ -166,7 +166,8 @@ test("a host words the outcome of a planned browser action", async () => {
       step: "Press Next",
       message: "",
     }),
-    authorizeAction: () => true,
+    authorizeAction: (_input, context) =>
+      context.phase === "dispatch" ? context.authorize() : true,
     words: {
       actionNotSent: "not sent",
       actionUnexpected: "unexpected",

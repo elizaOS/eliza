@@ -395,6 +395,9 @@ const PROTECTED_KIND = {
   "one-time-code": "human-verification",
 };
 const STATUSES = ["act", "wait", "done", "blocked", "needs-help"];
+// Her answer about forms sent on the website covers those forms for the
+// whole task. Every other answer is a yes to one step (see `acknowledge`).
+const MANUAL_ACTIVITY = "manual-activity:";
 // Manual activity is browser-reported evidence; a malformed record stops the task.
 function validManualActivity(activity) {
   return (
@@ -434,6 +437,10 @@ function validManualActivity(activity) {
  * A host can explicitly opt into planned actions with `authorizeAction`. The
  * planner may then propose an `agent-action`; `executeAction` rechecks host
  * authority and page identity before the task runtime dispatches one effect.
+ * `authorizeAction(input, context)` runs twice: while the step is planned
+ * (`context.phase` "plan") it answers true to offer the step; at dispatch
+ * (`context.phase` "dispatch") only the value of `context.authorize()`
+ * dispatches it, so no planning answer can ever authorize an effect.
  * The host remains responsible for consequence policy and readback verification.
  *
  * It stops and asks when the website did something nobody asked for (a form
@@ -466,7 +473,9 @@ export class GuidedWebsiteWorkflow {
       signal,
       words: { ...DEFAULT_WORDS, ...words },
     });
-    this.acknowledged = new Set();
+    // Each answered question, with the task epoch of the yes (null: the
+    // whole task).
+    this.acknowledged = new Map();
     this.history = [];
     this.lastStep = null;
     this.offer = null;
@@ -521,9 +530,24 @@ export class GuidedWebsiteWorkflow {
       ? [{ selector: this.grant.selector, action: this.grant.action ?? "fill" }]
       : [];
   }
-  /** The person answered a stop-and-ask question; the same question is not asked again. */
+  /**
+   * The person answered a stop-and-ask question. A yes to a step covers one
+   * dispatch of that step in the current epoch: the dispatch uses it up,
+   * and a Stop, a resume or any other new epoch clears it. Her answer about
+   * forms sent on the website holds for the task.
+   */
   acknowledge(key) {
-    this.acknowledged.add(key);
+    this.acknowledged.set(
+      key,
+      key.startsWith(MANUAL_ACTIVITY)
+        ? null
+        : this.runtime.get(this.taskId).epoch,
+    );
+  }
+  /** Drops each yes given in another epoch than `epoch`. */
+  forgetAnswers(epoch) {
+    for (const [key, given] of this.acknowledged)
+      if (given !== null && given !== epoch) this.acknowledged.delete(key);
   }
   /**
    * Takes back an answer the host gave for the person, for example when the
@@ -577,6 +601,7 @@ export class GuidedWebsiteWorkflow {
   /** Common task checks before a step; a result here ends the step. */
   async taskGate() {
     const task = this.runtime.get(this.taskId);
+    this.forgetAnswers(task.epoch);
     if (task.status === "paused") {
       await this.clearGuidance();
       return { result: { kind: "paused", taskId: this.taskId } };
@@ -778,7 +803,7 @@ export class GuidedWebsiteWorkflow {
       // and document, and the event ID of each. A new failed submit, or the
       // same address loaded again, asks again; a new address in the same
       // document with the same gaps does not.
-      const key = `manual-activity:${digest({
+      const key = `${MANUAL_ACTIVITY}${digest({
         events: activity.events,
         overflow: activity.overflow,
         captureGap:
@@ -922,7 +947,7 @@ export class GuidedWebsiteWorkflow {
             control: view,
             page: pageView(snapshot, { controls, protectedFields: [] }),
           },
-          { signal: this.signal, taskId: this.taskId },
+          { signal: this.signal, taskId: this.taskId, phase: "plan" },
         ),
         this.signal,
       )) === true;
@@ -969,6 +994,8 @@ export class GuidedWebsiteWorkflow {
         selector: control.element.targetSelector,
         valueRef: plan.valueRef,
         fingerprint,
+        // Her yes to this step, used up when the step is dispatched.
+        answer: check?.key ?? null,
       };
     return this.pointAt(decision, control.element, {
       stepId: `website:${decision.kind}`,
@@ -1008,8 +1035,12 @@ export class GuidedWebsiteWorkflow {
     ) {
       // A new target needs a new epoch. The task stays active: only her
       // Stop pauses it, and a Stop meanwhile fails the observe below.
+      const epoch = task.epoch;
       task = this.runtime.rebind(task.id, task.revision);
       await this.runtime.settle?.(task.id);
+      // The guide's own new binding keeps her yes; her Stop never does.
+      for (const [key, given] of this.acknowledged)
+        if (given === epoch) this.acknowledged.set(key, task.epoch);
       this.grant = {
         epoch: task.epoch,
         selector: offer.selector,
@@ -1038,6 +1069,7 @@ export class GuidedWebsiteWorkflow {
       return this.refresh();
     }
     if (kind === "agent-action") {
+      const authorized = Object.freeze({ offer: offer.key });
       const checked = await this.decideOnFreshPage(
         { observation, snapshot },
         (current, context) => {
@@ -1049,13 +1081,13 @@ export class GuidedWebsiteWorkflow {
               control: view.controls.find((c) => c.ref === offer.ref),
               page: view,
             },
-            context,
+            { ...context, phase: "dispatch", authorize: () => authorized },
           );
         },
         { taskChanged: this.words.changed, pageChanged: this.words.changed },
       );
       if (checked.result) return checked.result;
-      if (checked.decision !== true) {
+      if (checked.decision !== authorized) {
         this.offer = null;
         return blocked(this.words.noTarget, "no-target");
       }
@@ -1072,6 +1104,7 @@ export class GuidedWebsiteWorkflow {
     }
     await this.requireAuthority();
     this.offer = null;
+    if (offer.answer !== null) this.acknowledged.delete(offer.answer);
     const id = `${kind === "offer-fill" ? GUIDED_FILL : PLANNED_ACTION}${operationId}`;
     const result = await this.runtime.execute(task.id, task.revision, {
       id,
