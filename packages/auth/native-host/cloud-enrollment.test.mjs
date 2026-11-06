@@ -267,14 +267,27 @@ test("a second accepted code never overwrites the saved sign-in", async () => {
 // expiry and is replayed; an ack that never landed is refused with 410 once
 // the code has expired (`requireBoundGrantState`).
 function lateAckCloud({ landsWhileLost }) {
-  const cloud = { lost: true, landed: false, codeExpired: false };
+  const cloud = {
+    lost: true,
+    landed: false,
+    codeExpired: false,
+    grantDeleted: false,
+  };
   cloud.fetch = (path, body) => {
     if (!path.endsWith("/ack")) return null;
-    if (cloud.codeExpired && !cloud.landed)
+    if (cloud.grantDeleted)
+      return Response.json(
+        { error: "invalid_authorization_code" },
+        { status: 400 },
+      );
+    if (cloud.codeExpired && !cloud.landed) {
+      // `cleanupExpired` deletes the expired grant before this 410.
+      cloud.grantDeleted = true;
       return Response.json(
         { error: "authorization_code_expired" },
         { status: 410 },
       );
+    }
     if (cloud.lost) {
       if (landsWhileLost) cloud.landed = true;
       return Response.json({}, { status: 503 });
@@ -314,10 +327,22 @@ test("an ack that never landed reports an expired sign-in and Cancel still revok
   await assert.rejects(verify(f, await start(f)), { status: 502 });
   await expireReceipt(f, cloud);
   cloud.lost = false;
+  const acks = () => f.calls.filter((x) => x.path.endsWith("/ack")).length;
+  const before = acks();
   await assert.rejects(f.auth.handle("resume"), {
     status: 410,
     message: "Sign-in expired. Start again.",
   });
+  // The host asked Cloud rather than refusing locally.
+  assert.equal(acks(), before + 1);
+  assert.ok(cloud.grantDeleted);
+  // Cloud has now deleted the grant and answers 400; past acknowledgeBy the
+  // host still reports the same expired sign-in.
+  await assert.rejects(f.auth.handle("resume"), {
+    status: 410,
+    message: "Sign-in expired. Start again.",
+  });
+  assert.equal(acks(), before + 2);
   assert.ok(f.state.pending);
   assert.equal(f.state.active, null);
   await f.auth.cancel();

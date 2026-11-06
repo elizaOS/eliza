@@ -655,13 +655,26 @@ export function createNativeCloudAuth({
     // expiry to the key's own expiry, so Cloud replays it and the key is
     // activated here. An ack that never landed is refused by Cloud with 410
     // once the code expires, which `call` reports as an expired sign-in.
-    const result = await call(
-      api,
-      "/api/v1/app-auth/mobile/ack",
-      pending.proof,
-      undefined,
-      ticket,
-    );
+    // That first 410 also makes Cloud delete the expired grant, so a later
+    // replay of the same proof gets 400/401; past `acknowledgeBy` that is the
+    // same expired sign-in, not a bad code.
+    let result;
+    try {
+      result = await call(
+        api,
+        "/api/v1/app-auth/mobile/ack",
+        pending.proof,
+        undefined,
+        ticket,
+      );
+    } catch (error) {
+      if (
+        (error?.status === 400 || error?.status === 401) &&
+        Date.parse(pending.acknowledgeBy) <= Date.now()
+      )
+        throw fail(message("error9", "Sign-in expired. Start again."), 410);
+      throw error;
+    }
     if (
       result.status !== "acknowledged" ||
       result.credentialId !== pending.proof.credentialId ||
