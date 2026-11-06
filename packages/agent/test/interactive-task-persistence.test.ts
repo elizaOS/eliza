@@ -128,6 +128,20 @@ describe("durable interactive task journal", () => {
         },
       ).task;
       expect(task.status).toBe("cancelled");
+      expect(
+        restarted
+          .events(input.id, owner)
+          .events.filter((event) => event.operationId !== undefined)
+          .map(({ kind, operationId, operationStatus }) => [
+            kind,
+            operationId,
+            operationStatus,
+          ]),
+      ).toEqual([
+        ["prepare", "op-1", "prepared"],
+        ["dispatch", "op-1", "dispatched"],
+        ["reconcile", "op-1", "succeeded"],
+      ]);
       expect(restarted.create({ ...input, id: "task-2" }).id).toBe("task-2");
       expect(() => restarted.create(input)).toThrow(/identity/);
     } finally {

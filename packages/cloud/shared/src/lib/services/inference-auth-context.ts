@@ -937,12 +937,20 @@ export async function resolveInferenceAuthContext(
       return { kind: "suspended", userId: coherent.user.id, reason: "moderation_blocked" };
     }
     if (coherent) ({ user, apiKey } = coherent);
+    // A Worker decision carries the key's app scope even when the combined
+    // cache is not qualified: app routes refuse a sibling app's key from the
+    // decision alone, and an unloaded scope would read as an unscoped key.
+    // The admission snapshot stays optional there; durable admission and the
+    // limiter's bounded hydration read the primary policy themselves.
     const [admission, appScopeId] = authCacheEnabled
       ? await Promise.all([
           coherent ? coherent.admission : loadInferenceAdmissionSnapshot(user.organization_id),
           loadInferenceAppKeyScope(apiKey.id),
         ])
-      : [coherent?.admission, null];
+      : [
+          coherent?.admission,
+          options.cacheOnly === true ? await loadInferenceAppKeyScope(apiKey.id) : null,
+        ];
     const ctx: InferenceAuthContext = {
       v: INFERENCE_AUTH_CONTEXT_VERSION,
       cachedAt: Date.now(),

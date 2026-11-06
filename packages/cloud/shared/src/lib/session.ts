@@ -22,7 +22,10 @@ import { organizationConfig } from "../db/schemas/organization-config";
 import { userIdentities } from "../db/schemas/user-identities";
 import { anonymousSessionsService } from "./services/anonymous-sessions";
 import { charactersService } from "./services/characters";
-import { ensureInferencePolicyMutation } from "./services/inference-policy-fence";
+import {
+  ensureInferencePolicyMutation,
+  lockInferencePolicyUsers,
+} from "./services/inference-policy-fence";
 import { SIGNUP_CREDIT_POLICY } from "./signup-credits";
 import type { UserWithOrganization } from "./types";
 import { logger } from "./utils/logger";
@@ -187,6 +190,10 @@ export async function migrateAnonymousSession(
       .limit(1)
       .then((rows) => rows.map((r) => r.users));
 
+    // The merge below rewrites both users; lock them before any organization fence.
+    await lockInferencePolicyUsers(tx, realUser ? [anonUser.id, realUser.id] : [anonUser.id], {
+      exclusive: true,
+    });
     if (anonUser.organization_id) await ensureInferencePolicyMutation(tx, anonUser.organization_id);
     if (realUser?.organization_id)
       await ensureInferencePolicyMutation(tx, realUser.organization_id);
