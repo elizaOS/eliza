@@ -99,6 +99,21 @@ export interface MapsDisclosure {
   cloudRecords: "operation-and-result-code";
 }
 
+/**
+ * Raster map tiles proxied by Cloud for providers that serve them. `map` in
+ * `capabilities` stays false: device map planes do not consume these tiles yet,
+ * and a host that does must show `attribution` on the map.
+ */
+export interface MapsTilesDescriptor {
+  /** Path template relative to the Cloud origin, e.g. `/api/v1/maps/tiles/{z}/{x}/{y}`. */
+  urlTemplate: string;
+  mapType: "roadmap";
+  minZoom: number;
+  maxZoom: number;
+  tileSize: number;
+  attribution: string;
+}
+
 export interface MapsCoverage {
   providerId: string;
   /** Stable opaque handle for this Cloud provider configuration. */
@@ -122,6 +137,8 @@ export interface MapsCoverage {
     transit: "none";
     offline: { map: false; search: false; routing: false };
   };
+  /** Present only when the provider serves raster tiles through Cloud. */
+  tiles?: MapsTilesDescriptor;
 }
 
 export const MAPS_OPERATIONS = [
@@ -131,6 +148,7 @@ export const MAPS_OPERATIONS = [
   "search",
   "details",
   "routes",
+  "tiles",
 ] as const;
 export type MapsOperation = (typeof MAPS_OPERATIONS)[number];
 
@@ -207,6 +225,26 @@ export const mapsRoutesRequestSchema = z
   })
   .strict();
 
+export const MAPS_MAX_TILE_ZOOM = 22;
+
+/** One XYZ tile address; x and y must lie inside the zoom level's grid. */
+export const mapsTileRequestSchema = z
+  .object({
+    z: z.number().int().min(0).max(MAPS_MAX_TILE_ZOOM),
+    x: z.number().int().min(0),
+    y: z.number().int().min(0),
+  })
+  .strict()
+  .refine(({ z: zoom, x, y }) => x < 2 ** zoom && y < 2 ** zoom, "Tile is outside the grid");
+
+export type MapsTileRequest = z.infer<typeof mapsTileRequestSchema>;
+
+export interface MapsTile {
+  body: ArrayBuffer;
+  contentType: "image/png" | "image/jpeg" | "image/webp";
+  attribution: string;
+}
+
 export type MapsTextSearchRequest = z.infer<typeof mapsTextSearchRequestSchema>;
 export type MapsReverseRequest = z.infer<typeof mapsReverseRequestSchema>;
 export type MapsPlaceDetailsRequest = z.infer<typeof mapsPlaceDetailsRequestSchema>;
@@ -242,6 +280,8 @@ export interface MapsProviderAdapter {
   search(request: MapsTextSearchRequest, signal?: AbortSignal): Promise<MapsPlace[]>;
   details(request: MapsPlaceDetailsRequest, signal?: AbortSignal): Promise<MapsPlace | null>;
   routes(request: MapsRoutesRequest, signal?: AbortSignal): Promise<MapsRoute[]>;
+  /** Raster tile; only providers whose coverage carries `tiles` implement it. */
+  tile?(request: MapsTileRequest, signal?: AbortSignal): Promise<MapsTile>;
 }
 
 /** Whether a coordinate lies inside one region (bounds do not cross the antimeridian). */
