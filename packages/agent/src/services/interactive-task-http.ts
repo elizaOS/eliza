@@ -19,6 +19,16 @@ const taskRoutePattern = new RegExp(
   `^/tasks/(${taskId})(?:/(pause|cancel|resume))?$`,
 );
 
+/** The HTTP status for a task error code. Unlisted codes are conflicts. */
+export function taskErrorStatus(code: string): number {
+  if (code === "TASK_NOT_FOUND") return 404;
+  if (code === "TASK_INVALID") return 400;
+  if (code === "TASK_ACTION_DENIED") return 403;
+  if (code.startsWith("TASK_STORAGE") || code === "TASK_CLEANUP_UNCONFIRMED")
+    return 503;
+  return 409;
+}
+
 function json(status: number, value: unknown): Response {
   return Response.json(value, {
     status,
@@ -214,18 +224,7 @@ export function createInteractiveTaskHandler(options: {
     } catch (error) {
       if (!(error instanceof ElizaError))
         return json(503, { code: "TASK_UNAVAILABLE" });
-      const status =
-        error.code === "TASK_NOT_FOUND"
-          ? 404
-          : error.code === "TASK_INVALID"
-            ? 400
-            : error.code === "TASK_ACTION_DENIED"
-              ? 403
-              : error.code.startsWith("TASK_STORAGE") ||
-                  error.code === "TASK_CLEANUP_UNCONFIRMED"
-                ? 503
-                : 409;
-      return json(status, { code: error.code });
+      return json(taskErrorStatus(error.code), { code: error.code });
     }
   };
 }

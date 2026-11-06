@@ -130,8 +130,10 @@ export {
 export {
 	mergeTaskEventPage,
 	mergeTaskEvents,
+	TASK_EVENT_KINDS,
 	TASK_ID_PATTERN,
 	type TaskEvent,
+	type TaskEventKind,
 	type TaskEventPage,
 	TaskEventReader,
 	type TaskEventReaderOptions,
