@@ -3,6 +3,7 @@ import java.io.File;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.CancellationException;
+import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicReference;
 public final class StreamContract {
     /** VAD under the same owner: own context and lock, unfenced by cancel, kept by trim, retired by close. */
@@ -177,22 +178,41 @@ public final class StreamContract {
             check(voice.synthesize("next", 1).samples.length == 1);
             check(voice.synthesizePhonemes("next", 1).samples.length == 1);
             check(asr.transcribe(new float[]{0.1f}).equals(VoiceNative.heard));
-            CountDownLatch entered = new CountDownLatch(1), release = new CountDownLatch(1);
-            int[] nativeCalls = {0};
-            VoiceNative.entering = () -> { nativeCalls[0]++; entered.countDown(); await(release); };
-            AtomicReference<Throwable> failure = new AtomicReference<>();
-            try {
-                Thread active = new Thread(() -> { try { cancelled(() -> voice.synthesize("active", 1)); } catch (Throwable error) { failure.set(error); } });
-                active.start(); await(entered);
-                Thread queued = new Thread(() -> { try { cancelled(() -> voice.synthesize("queued", 1)); } catch (Throwable error) { failure.set(error); } });
-                queued.start();
-                long deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(5);
-                while (queued.getState() != Thread.State.BLOCKED && System.nanoTime() < deadline) Thread.yield();
-                check(queued.getState() == Thread.State.BLOCKED);
-                voice.cancel(); release.countDown(); join(active); join(queued);
-            } finally { VoiceNative.entering = null; }
-            check(failure.get() == null && nativeCalls[0] == 1);
+            queuedCancelled(voice::cancel, () -> voice.synthesize("call", 1));
+            queuedCancelled(voice::cancel, () -> voice.synthesizePhonemes("call", 1));
+            queuedCancelled(asr::cancel, () -> asr.transcribe(new float[]{0.1f}));
         }
+        // A loaded voice slot (nativeParadeeSynthesizeVoice) is fenced the same way.
+        File other = File.createTempFile("delibes", ".gguf");
+        try (ParadeeVoice voice = ParadeeVoice.slot(other, null, null, "es")) {
+            try {
+                VoiceNative.entering = voice::cancel;
+                cancelled(() -> voice.synthesize("lost", 1));
+            } finally { VoiceNative.entering = null; }
+            check(voice.synthesize("next", 1).samples.length > 0);
+            queuedCancelled(voice::cancel, () -> voice.synthesize("call", 1));
+        } finally { other.delete(); }
+    }
+    /**
+     * One call runs in native code and a second waits for the lock; a cancel then ends both
+     * cancelled, and the waiting call never reaches native code.
+     */
+    static void queuedCancelled(Runnable cancel, Runnable call) throws Exception {
+        CountDownLatch entered = new CountDownLatch(1), release = new CountDownLatch(1);
+        AtomicInteger nativeCalls = new AtomicInteger();
+        VoiceNative.entering = () -> { nativeCalls.incrementAndGet(); entered.countDown(); await(release); };
+        AtomicReference<Throwable> failure = new AtomicReference<>();
+        try {
+            Thread active = new Thread(() -> { try { cancelled(call); } catch (Throwable error) { failure.set(error); } });
+            active.start(); await(entered);
+            Thread queued = new Thread(() -> { try { cancelled(call); } catch (Throwable error) { failure.set(error); } });
+            queued.start();
+            long deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(5);
+            while (queued.getState() != Thread.State.BLOCKED && System.nanoTime() < deadline) Thread.yield();
+            check(queued.getState() == Thread.State.BLOCKED);
+            cancel.run(); release.countDown(); join(active); join(queued);
+        } finally { VoiceNative.entering = null; }
+        check(failure.get() == null && nativeCalls.get() == 1);
     }
     static void check(boolean value) { if (!value) throw new AssertionError(); }
     static void await(CountDownLatch latch) { try { check(latch.await(5, TimeUnit.SECONDS)); } catch (InterruptedException error) { throw new AssertionError(error); } }
