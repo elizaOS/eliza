@@ -73,7 +73,7 @@ test("hostile or foreign homepage URLs cannot pass the first-party origin check"
       /apps.app_url/,
     );
 });
-test("homepage paths never replace the sole exact registered callback or owner/client checks", () => {
+test("homepage paths never replace the sole exact registered callback or organization/client checks", () => {
   for (const allowed_origins of [
     ["https://eliza.app"],
     ["https://eliza.app/reader/other"],
@@ -96,9 +96,7 @@ test("homepage paths never replace the sole exact registered callback or owner/c
   for (const patch of [
     { is_active: false },
     { is_approved: false },
-    { creator_matches_organization: false },
     { organization_is_active: false },
-    { creator_role: "member" },
   ])
     assert.throws(() =>
       validateMobileAppAuthRegistrationRow(row(patch), id, target),
@@ -106,5 +104,17 @@ test("homepage paths never replace the sole exact registered callback or owner/c
   assert.throws(
     () => validateMobileAppAuthRegistrationRow(row(), primary, target),
     /configured app UUID/,
+  );
+  assert.doesNotThrow(() =>
+    validateMobileAppAuthRegistrationRow(
+      row({
+        creator_matches_organization: false,
+        creator_role: "member",
+        creator_exists: false,
+        creator_is_active: false,
+      }),
+      id,
+      target,
+    ),
   );
 });

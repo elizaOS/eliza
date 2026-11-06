@@ -88,13 +88,13 @@ export const apps = pgTable(
     description: text("description"),
     slug: text("slug").notNull().unique(),
 
-    // App owner
+    // The organization owns the app. The creator is retained only as audit metadata.
     organization_id: uuid("organization_id")
       .notNull()
       .references(() => organizations.id, { onDelete: "cascade" }),
-    created_by_user_id: uuid("created_by_user_id")
-      .notNull()
-      .references(() => users.id, { onDelete: "cascade" }),
+    created_by_user_id: uuid("created_by_user_id").references(() => users.id, {
+      onDelete: "set null",
+    }),
 
     // App URL
     app_url: text("app_url").notNull(),
@@ -253,11 +253,7 @@ export const apps = pgTable(
   },
   (table) => ({
     slug_idx: index("apps_slug_idx").on(table.slug),
-    billing_owner_unique: uniqueIndex("apps_billing_owner_idx").on(
-      table.id,
-      table.organization_id,
-      table.created_by_user_id,
-    ),
+    billing_owner_unique: uniqueIndex("apps_billing_owner_idx").on(table.id, table.organization_id),
     organization_idx: index("apps_organization_idx").on(table.organization_id),
     created_by_idx: index("apps_created_by_idx").on(table.created_by_user_id),
     affiliate_code_idx: index("apps_affiliate_code_idx").on(table.affiliate_code),

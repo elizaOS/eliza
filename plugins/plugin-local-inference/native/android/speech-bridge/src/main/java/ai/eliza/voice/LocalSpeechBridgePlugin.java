@@ -467,6 +467,8 @@ public abstract class LocalSpeechBridgePlugin extends Plugin {
   if(!id.matches("[0-9a-fA-F-]{36}")){call.reject("Invalid live capture");return;}
   if(gate.draining()||destroyed||!speechForeground){call.reject(LiveCaptureController.CANCELLED);return;}
   if(focus!=null&&focus.callActive()){call.reject("Voice is paused while a phone call is active",SpeechAudioFocusPolicy.CALL_ACTIVE);return;}
+  // An automatic reopen after a busy hold never prompts: without permission it fails closed.
+  if(Boolean.TRUE.equals(call.getBoolean("reopen",false))&&getPermissionState("microphone")!=PermissionState.GRANTED){call.reject("Microphone permission is not granted","permission");return;}
   LiveCaptureAdmission.Ticket ticket=live.reserve(id,epoch.get());
   if(getPermissionState("microphone")!=PermissionState.GRANTED){livePermissionEpochs.put(call.getCallbackId(),ticket);if(!launch(call,()->requestPermissionForAlias("microphone",call,"liveMicrophonePermission")))livePermissionEpochs.remove(call.getCallbackId());return;}
   startLive(call,ticket);
@@ -475,7 +477,7 @@ public abstract class LocalSpeechBridgePlugin extends Plugin {
  private void startLive(PluginCall call,LiveCaptureAdmission.Ticket ticket){
   String owner=call.getString("ownerId","");
   LiveCaptureController.Route route=Boolean.TRUE.equals(call.getBoolean("nativeAsr",false))?residentRoute(owner):null;
-  live.start(ticket,Boolean.TRUE.equals(call.getBoolean("echoCancel",false)),route,call.getString("roomId",null),new LiveCaptureController.Started(){
+  live.start(ticket,Boolean.TRUE.equals(call.getBoolean("echoCancel",false)),route,call.getString("roomId",null),Boolean.TRUE.equals(call.getBoolean("reopen",false)),new LiveCaptureController.Started(){
    public void started(String id,int sampleRate,boolean echoCancelled,boolean piped){call.resolve(new JSObject().put("captureId",id).put("sampleRate",sampleRate).put("echoCancelled",echoCancelled).put("nativeAsr",piped));}
    public void refused(String message,String code){if(code==null)call.reject(message);else call.reject(message,code);}
   });

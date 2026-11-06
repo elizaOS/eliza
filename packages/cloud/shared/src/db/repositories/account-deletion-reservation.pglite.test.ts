@@ -17,6 +17,14 @@ import { accountDeletionExports } from "../schemas/account-deletion-exports";
 import { accountDeletionPhaseReceipts } from "../schemas/account-deletion-phase-receipts";
 import { accountDeletionRequests } from "../schemas/account-deletion-requests";
 import { apiKeys } from "../schemas/api-keys";
+import {
+  appDeploymentStatusEnum,
+  appReviewStatusEnum,
+  apps,
+  userDatabaseStatusEnum,
+} from "../schemas/apps";
+import { mobileAppAuthGrants } from "../schemas/mobile-app-auth-grants";
+import { nativeAppPublishers } from "../schemas/native-app-publishers";
 import { organizationBalanceRevisionSequence, organizations } from "../schemas/organizations";
 import { providerAdmissions } from "../schemas/provider-admissions";
 import { userSessions } from "../schemas/user-sessions";
@@ -99,6 +107,11 @@ beforeAll(async () => {
       accountDeletionPhaseReceipts,
       accountDeletionRequests,
       apiKeys,
+      apps,
+      appDeploymentStatusEnum,
+      appReviewStatusEnum,
+      userDatabaseStatusEnum,
+      mobileAppAuthGrants,
       organizationBalanceRevisionSequence,
       organizations,
       providerAdmissions,
@@ -108,6 +121,12 @@ beforeAll(async () => {
     dbWrite as never,
   );
   await apply();
+  const publisherMigration = await Bun.file(
+    new URL("../migrations/0551_native_app_publishers.sql", import.meta.url),
+  ).text();
+  for (const statement of publisherMigration.split("--> statement-breakpoint")) {
+    if (statement.trim()) await dbWrite.execute(statement);
+  }
   await dbWrite.execute(`
     CREATE TABLE jobs (
       id uuid PRIMARY KEY,
@@ -357,11 +376,85 @@ beforeEach(async () => {
   await dbWrite.execute("ALTER TABLE agent_backup_admission_work ENABLE TRIGGER USER");
   await dbWrite.delete(providerAdmissions);
   await dbWrite.delete(accountDeletionRequests);
+  await dbWrite.delete(nativeAppPublishers);
   await dbWrite.delete(organizations);
   await seedPersonalAccount();
 });
 
 describe("personal account deletion reservation", () => {
+  test("native publishers reject membership and personal lifecycle changes", async () => {
+    const publisherId = "10000000-0000-4000-8000-000000000090";
+    await dbWrite
+      .insert(organizations)
+      .values({ id: publisherId, name: "Publisher", slug: "publisher" });
+    await dbWrite.insert(nativeAppPublishers).values({ organization_id: publisherId });
+    await expect(
+      Promise.resolve(
+        dbWrite.insert(users).values({
+          id: "20000000-0000-4000-8000-000000000090",
+          organization_id: publisherId,
+          steward_user_id: "publisher-member-refused",
+        }),
+      ),
+    ).rejects.toThrow();
+    await expect(
+      Promise.resolve(
+        dbWrite.update(users).set({ organization_id: publisherId }).where(eq(users.id, userId)),
+      ),
+    ).rejects.toThrow();
+    await expect(
+      Promise.resolve(
+        dbWrite.insert(nativeAppPublishers).values({ organization_id: organizationId }),
+      ),
+    ).rejects.toThrow();
+    await expect(
+      Promise.resolve(
+        dbWrite
+          .update(organizations)
+          .set({ is_active: false })
+          .where(eq(organizations.id, publisherId)),
+      ),
+    ).rejects.toThrow();
+    await expect(
+      Promise.resolve(
+        dbWrite
+          .update(organizations)
+          .set({ account_lifecycle_state: "deletion_recovery" })
+          .where(eq(organizations.id, publisherId)),
+      ),
+    ).rejects.toThrow();
+    await expect(
+      Promise.resolve(dbWrite.delete(organizations).where(eq(organizations.id, publisherId))),
+    ).rejects.toThrow();
+    const { organizationsService } = await import("../../lib/services/organizations");
+    await expect(organizationsService.delete(publisherId)).rejects.toMatchObject({
+      code: "NATIVE_APP_PUBLISHER_RETIREMENT_REQUIRED",
+    });
+    await expect(
+      organizationsService.update(publisherId, { is_active: false }),
+    ).rejects.toMatchObject({
+      code: "NATIVE_APP_PUBLISHER_RETIREMENT_REQUIRED",
+    });
+    expect(
+      (await dbWrite.select().from(organizations).where(eq(organizations.id, publisherId)))[0],
+    ).toMatchObject({
+      is_active: true,
+      account_lifecycle_state: "active",
+      paid_work_fenced_at: null,
+    });
+    expect(
+      await dbWrite.select().from(users).where(eq(users.organization_id, publisherId)),
+    ).toHaveLength(0);
+    const ordinaryId = "10000000-0000-4000-8000-000000000093";
+    await dbWrite
+      .insert(organizations)
+      .values({ id: ordinaryId, name: "Ordinary", slug: "ordinary" });
+    await organizationsService.delete(ordinaryId);
+    expect(
+      await dbWrite.select().from(organizations).where(eq(organizations.id, ordinaryId)),
+    ).toHaveLength(0);
+  });
+
   test("waits for provider admission release before committing the deletion fence", async () => {
     await accountDeletionRequestsRepository.reservePersonalAccountDeletion(
       reservationInput("50000000-0000-4000-8000-000000000090", "provider-race"),
@@ -1413,7 +1506,70 @@ describe("personal account deletion reservation", () => {
     });
   });
 
-  test("atomically erases the personal database graph and retains only an anonymous receipt", async () => {
+  test("atomically erases the personal graph while retaining its memberless publisher and customer grants", async () => {
+    const publisherId = "10000000-0000-4000-8000-000000000090";
+    const publishedAppId = "30000000-0000-4000-8000-000000000090";
+    const customers = [91, 92].map((suffix) => ({
+      organizationId: `10000000-0000-4000-8000-0000000000${suffix}`,
+      userId: `20000000-0000-4000-8000-0000000000${suffix}`,
+      credentialId: `40000000-0000-4000-8000-0000000000${suffix}`,
+    }));
+    await dbWrite.insert(organizations).values([
+      { id: publisherId, name: "Publisher", slug: "publisher" },
+      ...customers.map((customer, index) => ({
+        id: customer.organizationId,
+        name: "Customer",
+        slug: `customer-${index}`,
+      })),
+    ]);
+    await dbWrite.insert(nativeAppPublishers).values({ organization_id: publisherId });
+    await dbWrite.insert(users).values(
+      customers.map((customer, index) => ({
+        id: customer.userId,
+        organization_id: customer.organizationId,
+        steward_user_id: `customer-${index}`,
+        role: "owner",
+      })),
+    );
+    await dbWrite.insert(apps).values({
+      id: publishedAppId,
+      name: "Native product",
+      slug: "native-product",
+      organization_id: publisherId,
+      created_by_user_id: userId,
+      app_url: "https://native.example",
+    });
+    const grantPrincipals = [
+      { organizationId, userId, credentialId: "40000000-0000-4000-8000-000000000090" },
+      ...customers,
+    ];
+    for (const [index, principal] of grantPrincipals.entries()) {
+      await dbWrite.insert(apiKeys).values({
+        id: principal.credentialId,
+        name: `mobile-${index}`,
+        key_hash: `mobile-hash-${index}`,
+        key_prefix: "elk_mob_",
+        user_id: principal.userId,
+        organization_id: principal.organizationId,
+        source_app_id: publishedAppId,
+      });
+      await dbWrite.insert(mobileAppAuthGrants).values({
+        app_id: publishedAppId,
+        client_id: "native.product",
+        user_id: principal.userId,
+        organization_id: principal.organizationId,
+        code_hash: `native-code-${index}`,
+        environment: "staging",
+        redirect_uri: "https://native.example/callback",
+        state_hash: `state-${index}`,
+        code_challenge: `challenge-${index}`,
+        code_challenge_method: "S256",
+        scopes: ["inference"],
+        status: "acknowledged",
+        credential_id: principal.credentialId,
+        expires_at: recoveryExpiresAt,
+      });
+    }
     const input = reservationInput("50000000-0000-4000-8000-000000000009", "erase");
     input.phases.push({
       phase: "database_erasure",
@@ -1646,10 +1802,37 @@ describe("personal account deletion reservation", () => {
       now: irreversibleAt,
     });
     expect(finalized).toMatchObject({ outcome: "completed" });
-    expect((await dbWrite.select().from(organizations)).map(({ id }) => id)).toEqual([
-      otherOrganizationId,
-    ]);
-    expect((await dbWrite.select().from(users)).map(({ id }) => id)).toEqual([otherUserId]);
+    expect((await dbWrite.select().from(organizations)).map(({ id }) => id).sort()).toEqual(
+      [
+        otherOrganizationId,
+        publisherId,
+        ...customers.map((customer) => customer.organizationId),
+      ].sort(),
+    );
+    expect((await dbWrite.select().from(users)).map(({ id }) => id).sort()).toEqual(
+      [otherUserId, ...customers.map((customer) => customer.userId)].sort(),
+    );
+    expect((await dbWrite.select().from(apps).where(eq(apps.id, publishedAppId)))[0]).toMatchObject(
+      {
+        organization_id: publisherId,
+        created_by_user_id: null,
+      },
+    );
+    expect(
+      (await dbWrite.select().from(organizations).where(eq(organizations.id, publisherId)))[0],
+    ).toMatchObject({
+      is_active: true,
+      account_lifecycle_state: "active",
+      paid_work_fenced_at: null,
+    });
+    expect(
+      (await dbWrite.select().from(mobileAppAuthGrants)).map((grant) => grant.user_id).sort(),
+    ).toEqual(customers.map((customer) => customer.userId).sort());
+    expect(
+      (await dbWrite.select().from(apiKeys).where(eq(apiKeys.source_app_id, publishedAppId)))
+        .map((key) => key.id)
+        .sort(),
+    ).toEqual(customers.map((customer) => customer.credentialId).sort());
     expect((await dbWrite.execute("SELECT id FROM jobs")).rows).toEqual([
       { id: crossOrganizationJobId },
     ]);

@@ -5,6 +5,8 @@ import { test } from "node:test";
 import { fileURLToPath } from "node:url";
 import { createCartesiaInkRealtimeSession } from "@elizaos/host/voice/cartesia-ink";
 import { CartesiaSonicTtsAdapter } from "@elizaos/host/voice/cartesia-sonic-tts";
+import { createSpeechRelaySession } from "@elizaos/host/voice/speech-relay-session";
+import { InMemoryVoiceUsageStore } from "@elizaos/host/voice/usage";
 import { attachVoiceWsHandler } from "@elizaos/host/voice/ws-handler";
 import WebSocket, { WebSocketServer } from "ws";
 import { adaptVoiceWebSocket } from "../../src/api/voice-websocket-transport.ts";
@@ -173,6 +175,102 @@ test("real Ink adapter decodes a provider text frame over the normalized transpo
   );
   assert.equal(event.transcript, "Hello Eliza");
 });
+
+for (const stop of ["stop", "revoke", "rate-limit"]) {
+  test(`speech relay preserves native PCM packets through Ink on ${stop}`, async (t) => {
+    const received = [],
+      settled = [];
+    let connected, revoke;
+    const ready = new Promise((resolve) => {
+      connected = resolve;
+    });
+    const url = await fixture(t, (ws) => {
+      ws.on("message", (data, binary) => {
+        if (binary) {
+          assert.equal(data.length, 3200);
+          received.push(Buffer.from(data));
+        } else {
+          assert.deepEqual(JSON.parse(String(data)), { type: "close" });
+          ws.close(1000, "Close message");
+        }
+      });
+    });
+    const relay = await createSpeechRelaySession(
+      {
+        organizationId: "org",
+        userId: "user",
+        cloudSessionId: "session",
+      },
+      "consent",
+      {
+        enabled: true,
+        now: () => 1000,
+        assertCurrent() {},
+        consumeConsent: async () => true,
+        usageStore: new InMemoryVoiceUsageStore(() => 1000),
+        usageLimits: { organizationDailyMinutes: 5, userDailyMinutes: 5 },
+        reserveCredits: async () => ({
+          beforeProviderDispatch: async () => {},
+          settle: async (receipt) => settled.push(receipt),
+        }),
+        subscribeRevoked: (_identity, callback) => {
+          revoke = callback;
+          return () => {};
+        },
+        assertTtsAllowed: async () => {},
+        openTts() {
+          throw Error("No TTS requested");
+        },
+        openStt: (onEvent) => {
+          const ink = createCartesiaInkRealtimeSession({
+            cartesiaApiKey: "fixture-key",
+            webSocketFactory: () => adaptVoiceWebSocket(new WebSocket(url)),
+            onEvent: (event) => {
+              onEvent(event);
+              if (event.type === "connected") connected();
+            },
+          });
+          t.after(() => ink.cancel());
+          return ink;
+        },
+        emit() {},
+        onClosed: (closing) => {
+          void closing.catch(() => {});
+        },
+      },
+    );
+    t.after(() => relay.close());
+    await bounded(ready);
+    const input = Uint8Array.from(
+      { length: stop === "rate-limit" ? 32 * 1024 : 10 * 1024 + 14 },
+      (_, i) => i % 251,
+    );
+    let accepted = 0;
+    for (let offset = 0; offset < input.length; offset += 1024) {
+      const packet = input.slice(offset, offset + 1024);
+      if (stop === "rate-limit" && offset === 31 * 1024) {
+        assert.throws(() => relay.sendPcm(packet), /format or rate/);
+        break;
+      }
+      relay.sendPcm(packet);
+      accepted += packet.length;
+      packet.fill(255); // The relay must own the buffered bytes after return.
+    }
+    if (stop === "stop") await relay.control({ t: "stop" });
+    else if (stop === "revoke") revoke();
+    await bounded(relay.close());
+    assert.throws(() => relay.sendPcm(new Uint8Array(1024)), /closed/);
+    const sentBytes = Math.floor(accepted / 3200) * 3200;
+    assert.deepEqual(
+      Buffer.concat(received),
+      Buffer.from(input.slice(0, sentBytes)),
+    );
+    assert.equal(settled.length, 1);
+    assert.equal(settled[0].pcmBytes, sentBytes);
+    assert.equal(settled[0].sttDrain.audioBytes, sentBytes);
+    assert.equal(settled[0].outcomes.stt, "complete");
+  });
+}
 
 test("real Sonic adapter decodes provider text into PCM over the normalized transport", async (t) => {
   const pcm = Buffer.from([0, 0, 1, 0, 255, 127, 0, 128]);
