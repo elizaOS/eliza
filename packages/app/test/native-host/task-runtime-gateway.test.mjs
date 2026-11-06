@@ -1066,6 +1066,142 @@ test("a revoke reaches every account's task when one runtime fails", async (t) =
   assert.equal(c.get("task-c").authorization.state, "revoked");
 });
 
+test("the owner releases a slot held by a revoked task with an unknown outcome", async (t) => {
+  const directory = await mkdtemp(join(tmpdir(), "eliza-task-acknowledge-"));
+  const bundlePath = join(directory, "task-runtime.mjs");
+  buildTaskRuntime(bundlePath);
+  let taskId = "task-a";
+  const gateway = await createTaskGateway({
+    bundlePath,
+    databasePath: join(directory, "journal.sqlite"),
+    credentialGate: async () => "account-a",
+    actuator: lostReplyActuator,
+    authorizeGoal: async () => grant(taskId),
+  });
+  t.after(async () => {
+    await gateway.close();
+    await rm(directory, { recursive: true, force: true });
+  });
+  assert.equal(
+    (await send(gateway, "POST", "/tasks", { goalRef: "bill" })).status,
+    201,
+  );
+  const runtime = await gateway.forCurrentOwner();
+  const unknown = await fillWithLostReply(runtime, "task-a");
+  assert.equal(unknown.operations[0].status, "unknown");
+  // Sign-out revokes the task; readback then needs an authorization it lost.
+  await gateway.revoke();
+  const { revision } = runtime.get("task-a");
+  await assert.rejects(
+    runtime.reconcile("task-a", revision, "fill-1", async () => true),
+    { code: "TASK_NOT_ACTIVE" },
+  );
+  taskId = "task-b";
+  const blocked = await send(gateway, "POST", "/tasks", { goalRef: "bill" });
+  assert.equal(blocked.status, 409);
+  assert.equal((await blocked.json()).code, "TASK_CONFLICT");
+  const stale = await send(
+    gateway,
+    "POST",
+    "/tasks/task-a/acknowledge-unknown",
+    {
+      expectedRevision: revision - 1,
+    },
+  );
+  assert.equal(stale.status, 409);
+  const acknowledged = await send(
+    gateway,
+    "POST",
+    "/tasks/task-a/acknowledge-unknown",
+    { expectedRevision: revision },
+  );
+  assert.equal(acknowledged.status, 200);
+  assert.equal((await acknowledged.json()).status, "cancelled");
+  // The outcome is still shown as unknown; nothing says the fill succeeded.
+  const shown = await (await send(gateway, "GET", "/tasks/task-a")).json();
+  assert.equal(shown.task.status, "cancelled");
+  assert.equal(shown.task.hasUnknownOutcome, true);
+  assert.equal(runtime.get("task-a").operations[0].status, "unknown");
+  assert.equal(
+    (await send(gateway, "POST", "/tasks", { goalRef: "bill" })).status,
+    201,
+  );
+});
+
+test("a task record from another version does not stop the gateway", async (t) => {
+  const directory = await mkdtemp(join(tmpdir(), "eliza-task-unreadable-"));
+  const bundlePath = join(directory, "task-runtime.mjs");
+  buildTaskRuntime(bundlePath);
+  let taskId = "task-a";
+  const config = {
+    bundlePath,
+    databasePath: join(directory, "journal.sqlite"),
+    credentialGate: async () => "account-a",
+    actuator: lostReplyActuator,
+    authorizeGoal: async () => grant(taskId),
+  };
+  let gateway = await createTaskGateway(config);
+  t.after(async () => {
+    await gateway.close();
+    await rm(directory, { recursive: true, force: true });
+  });
+  assert.equal(
+    (await send(gateway, "POST", "/tasks", { goalRef: "bill" })).status,
+    201,
+  );
+  await gateway.close();
+  // A rollback or a newer build wrote a field this build does not know.
+  const db = new DatabaseSync(config.databasePath);
+  const { document } = db
+    .prepare("SELECT document FROM interactive_task_journal_v1 WHERE id = ?")
+    .get("task-a");
+  db.prepare(
+    "UPDATE interactive_task_journal_v1 SET document = ? WHERE id = ?",
+  ).run(JSON.stringify({ ...JSON.parse(document), laterField: 1 }), "task-a");
+  db.close();
+  gateway = await createTaskGateway(config);
+  assert.deepEqual(
+    await (await send(gateway, "GET", "/tasks/current")).json(),
+    { task: null },
+  );
+  const listed = await (
+    await send(gateway, "GET", "/tasks/current/unreadable")
+  ).json();
+  assert.deepEqual(
+    listed.records.map(({ taskId, reason, acknowledgedAt }) => ({
+      taskId,
+      reason,
+      acknowledgedAt,
+    })),
+    [
+      {
+        taskId: "task-a",
+        reason: "Unexpected task record fields",
+        acknowledgedAt: null,
+      },
+    ],
+  );
+  taskId = "task-b";
+  const held = await send(gateway, "POST", "/tasks", { goalRef: "bill" });
+  assert.equal(held.status, 409);
+  assert.equal((await held.json()).code, "TASK_UNREADABLE");
+  const released = await send(
+    gateway,
+    "POST",
+    "/tasks/task-a/acknowledge-unreadable",
+    {},
+  );
+  assert.equal(released.status, 200);
+  assert.equal(
+    typeof (await released.json()).records[0].acknowledgedAt,
+    "number",
+  );
+  assert.equal(
+    (await send(gateway, "POST", "/tasks", { goalRef: "bill" })).status,
+    201,
+  );
+});
+
 /**
  * Conformance of the owner fence: one account change at the k-th credential
  * read of a request, for every route and every k the request reaches.
@@ -1082,9 +1218,11 @@ test("an account change at any credential read of a request is fenced", async (t
     ["active", "GET", "/tasks/current"],
     ["active", "GET", "/tasks/task-a"],
     ["active", "GET", "/tasks/task-a/events"],
+    ["active", "GET", "/tasks/current/unreadable"],
     ["active", "GET", "/tasks/note"],
     ["active", "POST", "/tasks/note", {}],
     ["empty", "POST", "/tasks", { goalRef: "bill" }],
+    ["unknown", "POST", "/tasks/task-a/acknowledge-unknown", "revision"],
     // A stop may be saved before a later read sees the change; the change
     // revokes the task as well, so either way it does not act again.
     ["active", "POST", "/tasks/task-a/pause", "revision", "stop"],
@@ -1221,6 +1359,9 @@ test("an account change at any credential read of a request is fenced", async (t
   }
   t.diagnostic(`${cases} flip cases`);
   assert.ok(cases > 60);
-  // The saving route reaches the case where the save landed before the change.
-  assert.deepEqual([...savedThenChanged], ["/tasks/note"]);
+  // Both saving routes reach the case where the save landed before the change.
+  assert.deepEqual([...savedThenChanged].sort(), [
+    "/tasks/note",
+    "/tasks/task-a/acknowledge-unknown",
+  ]);
 });
