@@ -122,6 +122,7 @@ export {
 	type TaskOperation,
 	type TaskOriginGrant,
 	type TaskOriginStep,
+	type TaskOutcome,
 	type TaskOwner,
 	type TaskTransition,
 	transitionInteractiveTask,
