@@ -38,10 +38,12 @@
  */
 
 import {
+  extractJsonObjectSpans,
   type IAgentRuntime,
   type ImageDescriptionResult,
   logger,
   ModelType,
+  parseJsonObject,
 } from "@elizaos/core";
 import type { DisplayCapture } from "../platform/capture.js";
 import { frameDhash, hamming, pngDimensions } from "../scene/dhash.js";
@@ -523,6 +525,7 @@ export function brainPromptFor(
   ].join("\n");
 }
 
+/** The body of the first fenced block, or null when the reply has none. */
 function extractFencedBrainBody(value: string): string | null {
   const opener = value.indexOf("```");
   if (opener < 0) return null;
@@ -543,32 +546,62 @@ function extractFencedBrainBody(value: string): string | null {
 }
 
 export function parseBrainOutput(raw: string): BrainOutput {
-  const trimmed = raw.trim();
-  let body = trimmed;
-  const fencedBody = extractFencedBrainBody(trimmed);
-  if (fencedBody !== null) {
-    body = fencedBody.trim();
+  // Read the reply with the shared tolerant object reader. Snipping to
+  // the first `{` and last `}` here corrupted the slice whenever the
+  // prose around the object carried a brace of its own — a braced word
+  // before the object, a `{` the prose never closes, or one after it —
+  // so a reply holding a complete, valid object failed to parse.
+  //
+  // A fenced block still wins over any region in the prose: when the
+  // prose before the fence quotes a JSON snippet, the first region is
+  // the snippet, not the answer, so reading it first regressed fenced
+  // replies that the previous fenced-first reader handled. Only when
+  // the fenced body itself does not parse do we fall back to the
+  // regions in the whole reply.
+  //
+  // Without a fence, walk every top-level object region in order and
+  // accept the first one that validates as a BrainOutput. The shared
+  // reader alone returns only the first region that is JSON, so a
+  // complete JSON snippet quoted in the prose (e.g. `{"ok": true}`)
+  // ahead of the real, unfenced BrainOutput used to abort the turn
+  // even though the model had decided a valid action.
+  const fencedBody = extractFencedBrainBody(raw.trim());
+  const fencedParsed =
+    fencedBody !== null
+      ? parseJsonObject<Record<string, unknown>>(fencedBody)
+      : null;
+  if (fencedParsed) {
+    return validateBrainOutput(fencedParsed, raw);
   }
-  // Allow a leading prose paragraph by snipping to the first `{`.
-  const firstBrace = body.indexOf("{");
-  if (firstBrace > 0) body = body.slice(firstBrace);
-  const lastBrace = body.lastIndexOf("}");
-  if (lastBrace !== -1 && lastBrace < body.length - 1) {
-    body = body.slice(0, lastBrace + 1);
+  for (const { start, end } of extractJsonObjectSpans(raw)) {
+    const candidate = parseJsonObject<Record<string, unknown>>(
+      raw.slice(start, end),
+    );
+    if (!candidate) {
+      continue;
+    }
+    try {
+      return validateBrainOutput(candidate, raw);
+    } catch (error) {
+      if (!(error instanceof BrainParseError)) {
+        throw error;
+      }
+    }
   }
-  let parsed: unknown;
-  try {
-    parsed = JSON.parse(body);
-  } catch (err) {
+  const parsed = parseJsonObject<Record<string, unknown>>(raw);
+  if (!parsed) {
     throw new BrainParseError(
-      `Brain response was not valid JSON: ${err instanceof Error ? err.message : String(err)}`,
+      "Brain response was not valid JSON: the reply did not contain a parseable JSON object",
       raw,
     );
   }
-  if (!parsed || typeof parsed !== "object") {
-    throw new BrainParseError("Brain response is not an object", raw);
-  }
-  const obj = parsed as Record<string, unknown>;
+  return validateBrainOutput(parsed, raw);
+}
+
+function validateBrainOutput(
+  obj: Record<string, unknown>,
+  raw: string,
+): BrainOutput {
   if (typeof obj.scene_summary !== "string") {
     throw new BrainParseError(
       "Brain response scene_summary must be a string",
