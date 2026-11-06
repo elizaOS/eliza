@@ -21,7 +21,7 @@
  *
  *   node packages/app/scripts/paradee-voice/build-native.ts --workspace <dir> \
  *     [--out <native dir>] [--abi arm64-v8a] [--abi x86_64] \
- *     [--model-cache <dir>] [--python <python with torch>]
+ *     [--model-cache <dir>] [--python <python with torch>] [--ffi-exports-only]
  *
  *   node packages/app/scripts/paradee-voice/build-native.ts --models-only \
  *     --workspace <dir> --out <bundle dir> [--model-cache <dir>] [--python ...]
@@ -33,6 +33,10 @@
  * CI matrix stage the product voice stack this way. Files already in place
  * and matching their pins are kept. Desktop speaks English only, so this mode
  * never builds the Spanish voice.
+ *
+ * --ffi-exports-only builds libelizainference with only the eliza_inference_*
+ * FFI exported and unreached code dropped (stage-elizavoice-lib.ts); the JNI
+ * bridge this library ships calls nothing else.
  *
  * --workspace holds downloads and build trees. --out defaults to
  * plugins/plugin-local-inference/native/android/native. --model-cache is
@@ -105,11 +109,16 @@ function parseArgs(argv) {
     modelCache: "",
     python: "python3",
     modelsOnly: false,
+    ffiExportsOnly: false,
   };
   for (let i = 0; i < argv.length; i++) {
     const value = argv[i + 1];
     if (argv[i] === "--models-only") {
       args.modelsOnly = true;
+      continue;
+    }
+    if (argv[i] === "--ffi-exports-only") {
+      args.ffiExportsOnly = true;
       continue;
     }
     if (argv[i] === "--workspace") args.workspace = path.resolve(value);
@@ -418,6 +427,7 @@ function buildInference(args, espeakDir) {
         path.join(args.out, "jniLibs", abi),
         "--espeak-dir",
         espeakDir,
+        ...(args.ffiExportsOnly ? ["--ffi-exports-only"] : []),
       ],
       { env: { ...process.env, ELIZA_NDK_VERSION: NDK_VERSION } },
     );

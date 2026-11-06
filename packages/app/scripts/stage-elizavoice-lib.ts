@@ -10,11 +10,18 @@
  * documented ELIZA_* overrides. Every library is 16 KiB page aligned.
  *
  *   node packages/app/scripts/stage-elizavoice-lib.ts --abi arm64-v8a|x86_64 \
- *     [--variant cpu|vulkan] [--out <dir>] [--espeak-dir <dir>]
+ *     [--variant cpu|vulkan] [--out <dir>] [--espeak-dir <dir>] [--ffi-exports-only]
  *
  * --espeak-dir holds the eSpeak NG build (reused when it matches the pin in
  * the fork's tools/misaki-g2p/pins.json): <abi>/include, <abi>/lib and the
  * compiled English data in data/espeak-ng-data.
+ *
+ * --ffi-exports-only (CPU variant) exports only the eliza_inference_* FFI and
+ * lets the linker drop the code nothing reaches from it: per-function and
+ * per-data sections, --gc-sections and a version script. It is for hosts whose
+ * only caller is the JNI bridge (elizavoice-jni.cpp), which binds
+ * eliza_inference_* alone. Callers that dlsym llama_*, ggml_*, mtmd_* or ov_*
+ * from this library need the default build.
  */
 
 import { execFileSync } from "node:child_process";
@@ -56,17 +63,28 @@ function die(msg) {
 }
 
 function parseArgs(argv) {
-  const out = { abi: "arm64-v8a", variant: "cpu", out: "", espeakDir: "" };
+  const out = {
+    abi: "arm64-v8a",
+    variant: "cpu",
+    out: "",
+    espeakDir: "",
+    ffiExportsOnly: false,
+  };
   for (let i = 0; i < argv.length; i++) {
     if (argv[i] === "--abi") out.abi = argv[++i];
     else if (argv[i] === "--variant") out.variant = argv[++i];
     else if (argv[i] === "--out") out.out = path.resolve(argv[++i]);
     else if (argv[i] === "--espeak-dir")
       out.espeakDir = path.resolve(argv[++i]);
+    else if (argv[i] === "--ffi-exports-only") out.ffiExportsOnly = true;
     else die(`unknown argument ${argv[i]}`);
   }
   if (out.variant !== "cpu" && out.variant !== "vulkan") {
     die(`unsupported --variant ${out.variant} (cpu | vulkan)`);
+  }
+  // The Vulkan variant's sibling libraries call into each other's exports.
+  if (out.ffiExportsOnly && out.variant !== "cpu") {
+    die("--ffi-exports-only needs --variant cpu");
   }
   return out;
 }
@@ -356,10 +374,11 @@ const {
   variant,
   out: outDir,
   espeakDir: espeakArg,
+  ffiExportsOnly,
 } = parseArgs(process.argv.slice(2));
 const platform = ABI_TO_PLATFORM[abi];
 if (!platform) die(`unsupported abi ${abi} (arm64-v8a | x86_64)`);
-log(`variant: ${variant}`);
+log(`variant: ${variant}${ffiExportsOnly ? " (FFI exports only)" : ""}`);
 
 const sdk = resolveSdk();
 const ndk = resolveNdk(sdk);
@@ -381,9 +400,34 @@ const buildDir = path.join(
   repoRoot,
   ".cache",
   "elizavoice-android",
-  variant === "vulkan" ? `${abi}-vulkan` : abi,
+  variant === "vulkan"
+    ? `${abi}-vulkan`
+    : ffiExportsOnly
+      ? `${abi}-ffi-exports`
+      : abi,
 );
 mkdirSync(buildDir, { recursive: true });
+
+// --ffi-exports-only: one version script keeps eliza_inference_* global and
+// makes every other symbol local, so --gc-sections can drop what the FFI never
+// reaches.
+const sharedLinkerFlags = ["-Wl,-z,max-page-size=16384"];
+const sectionFlags = [];
+if (ffiExportsOnly) {
+  const versionScript = path.join(buildDir, "eliza-inference-exports.map");
+  writeFileSync(
+    versionScript,
+    "{\n  global:\n    eliza_inference_*;\n  local:\n    *;\n};\n",
+  );
+  sharedLinkerFlags.push(
+    "-Wl,--gc-sections",
+    `-Wl,--version-script=${versionScript}`,
+  );
+  sectionFlags.push(
+    "-DCMAKE_C_FLAGS=-ffunction-sections -fdata-sections",
+    "-DCMAKE_CXX_FLAGS=-ffunction-sections -fdata-sections",
+  );
+}
 
 // arm64 SIMD floor: GGML_NATIVE=OFF cross-builds to bare armv8-a, which leaves
 // the LLM + ASR matmul/dot kernels (ggml dotprod/i8mm/fp16) AND the eliza QJL
@@ -446,8 +490,9 @@ const baseConfigure = [
   "-DGGML_NATIVE=OFF",
   "-DGGML_OPENMP=OFF",
   ...arm64SimdFlags,
+  ...sectionFlags,
   // 16 KiB page alignment for Android 15+ devices.
-  "-DCMAKE_SHARED_LINKER_FLAGS=-Wl,-z,max-page-size=16384",
+  `-DCMAKE_SHARED_LINKER_FLAGS=${sharedLinkerFlags.join(" ")}`,
   "-DLLAMA_BUILD_OMNIVOICE=ON",
   "-DLLAMA_BUILD_KOKORO=ON",
   "-DKOKORO_ENABLE_ESPEAK=OFF",
