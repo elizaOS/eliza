@@ -232,6 +232,8 @@ export function createNativeCloudAuth({
           ),
           403,
         );
+      if (response.status === 410 && path === "/api/v1/app-auth/mobile/ack")
+        throw fail(message("error9", "Sign-in expired. Start again."), 410);
       if (
         response.status === 409 &&
         (path.startsWith("/user/me/accounts") || path.startsWith("/auth/mfa/"))
@@ -649,8 +651,10 @@ export function createNativeCloudAuth({
   });
   async function finish(ticket, pending, session, scope) {
     // No local refusal once `acknowledgeBy` has passed: the ack may have
-    // landed at Cloud with its reply lost. Cloud's replay of the same proof
-    // decides whether this key is live.
+    // landed at Cloud with its reply lost. A landed ack moves the grant's
+    // expiry to the key's own expiry, so Cloud replays it and the key is
+    // activated here. An ack that never landed is refused by Cloud with 410
+    // once the code expires, which `call` reports as an expired sign-in.
     const result = await call(
       api,
       "/api/v1/app-auth/mobile/ack",
