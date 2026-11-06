@@ -93,6 +93,9 @@ export function createLocalAgentGateway({
   };
   const pending = new Set();
   const rooms = new Map();
+  // Rooms sent a message since the last sign-out: only these can have a turn
+  // that this gateway started still running upstream.
+  const turnRooms = new Set();
   let epoch = 0,
     writeQueue = Promise.resolve();
   const ready = (async () => {
@@ -224,12 +227,11 @@ export function createLocalAgentGateway({
       ) {
         surfaceChannel?.revoke();
         epoch++;
-        // Stop the turn of every room the gateway knows, not only the rooms
+        // Stop the turn of every room sent a message, not only the rooms
         // with an open request: a turn keeps running upstream after its
         // renderer request closed, and must not survive the sign-out.
-        const roomIds = new Set(
-          [...rooms.values()].map(({ roomId }) => roomId),
-        );
+        const roomIds = new Set(turnRooms);
+        turnRooms.clear();
         rooms.clear();
         for (const request of pending) {
           request.controller.abort();
@@ -371,6 +373,7 @@ export function createLocalAgentGateway({
       }
       const active = { controller, roomId: record?.roomId };
       if (isMessage || isCreate) pending.add(active);
+      if (isMessage) turnRooms.add(record.roomId);
       let response;
       let data;
       try {

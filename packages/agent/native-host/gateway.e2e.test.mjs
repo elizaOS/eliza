@@ -435,9 +435,12 @@ test("independent host HTTP authentication, disk ownership restart, stale-accoun
     await rm(root, { recursive: true, force: true });
   }
 });
-test("sign-out stops a room's turn even after its request closed", async () => {
+test("sign-out stops a room's turn even after its request closed, and only rooms sent a message", async () => {
   const requests = [];
   const held = [];
+  // A second conversation that is never sent a message has no turn to stop.
+  const idle = "22222222-2222-4222-8222-222222222222";
+  let conversations = 0;
   const upstream = http.createServer(async (req, res) => {
     let raw = "";
     for await (const chunk of req) raw += chunk;
@@ -448,7 +451,9 @@ test("sign-out stops a room's turn even after its request closed", async () => {
     res.end(
       JSON.stringify(
         req.url === "/api/conversations"
-          ? { conversation: { id, roomId: id } }
+          ? ++conversations === 1
+            ? { conversation: { id, roomId: id } }
+            : { conversation: { id: idle, roomId: idle } }
           : { aborted: true },
       ),
     );
@@ -483,6 +488,7 @@ test("sign-out stops a room's turn even after its request closed", async () => {
     assert.ok(check());
   };
   try {
+    assert.equal((await post("/conversations")).status, 200);
     assert.equal((await post("/conversations")).status, 200);
     const renderer = new AbortController();
     const message = post(
