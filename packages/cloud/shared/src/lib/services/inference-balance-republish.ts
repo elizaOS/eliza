@@ -1,15 +1,9 @@
 /**
  * Post-debit gate-hint republication.
  *
- * This lives in its own module ON PURPOSE. Both inference settlers need it:
- * the KV fast path (`inference-billing-fast-path.ts`) and the DB ledger
- * (`inference-billing-ledger.ts`). Hanging it off the fast path instead would
- * force the ledger to import that module, which transitively pulls in
- * `api-keys` -> `db/repositories` -> `dbRead`, widening the ledger's module
- * graph for a single helper (and breaking callers that mock `db/helpers` at
- * its previous, narrower boundary).
- *
- * Its dependency is the cache projection leaf already used by both settlers.
+ * This lives in its own module so callers that settle balance changes do not
+ * pull in `inference-billing-fast-path` (and its `api-keys` -> repositories
+ * graph) for a single helper. Its dependency is the cache projection leaf.
  */
 
 import { republishOrgBalanceHint } from "./inference-auth-cache";
