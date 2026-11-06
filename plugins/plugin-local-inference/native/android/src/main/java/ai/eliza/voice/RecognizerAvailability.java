@@ -1,6 +1,7 @@
 package ai.eliza.voice;
 
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.atomic.AtomicLong;
 import java.util.function.LongSupplier;
 
 /**
@@ -11,7 +12,8 @@ import java.util.function.LongSupplier;
  * {@code absentForMillis}, so a model installed later is seen. A probe the service did not answer
  * (an error, a timeout, an interrupt) is not an answer: the language reads as unavailable, the
  * next probe waits {@code retryAfterMillis}, and an answer that arrives after the probe gave up
- * is kept. A non-answer never replaces an answer. A demote turns a language off for good or for a
+ * is kept unless a probe that started after it has already answered. A non-answer never replaces
+ * an answer. A demote turns a language off for good or for a
  * time, and no answer ends it early.
  */
 final class RecognizerAvailability {
@@ -21,18 +23,24 @@ final class RecognizerAvailability {
     /** What is known about a language now. */
     enum Known { UNKNOWN, INSTALLED, ABSENT, UNANSWERED, DEMOTED }
 
-    /** Asks the recognition service; may take seconds. */
+    /**
+     * Asks the recognition service; may take seconds. {@code ticket} numbers the probe: pass it to
+     * {@link #record(String, Answer, long)} with an answer that arrives after the probe returned.
+     */
     interface Probe {
-        Answer probe();
+        Answer probe(long ticket);
     }
 
     private static final class Entry {
         final Known known;
         final long until;
+        /** The ticket of the probe whose answer this is; 0 for a demote. */
+        final long ticket;
 
-        Entry(Known known, long until) {
+        Entry(Known known, long until, long ticket) {
             this.known = known;
             this.until = until;
+            this.ticket = ticket;
         }
     }
 
@@ -40,6 +48,7 @@ final class RecognizerAvailability {
     private final LongSupplier clock;
     private final long absentForMillis;
     private final long retryAfterMillis;
+    private final AtomicLong tickets = new AtomicLong();
     private volatile boolean demotedAll;
 
     RecognizerAvailability(LongSupplier clock, long absentForMillis, long retryAfterMillis) {
@@ -51,19 +60,33 @@ final class RecognizerAvailability {
     /** True when the language's model is installed; probes only when nothing current is known. */
     boolean available(String language, Probe probe) {
         Known known = known(language);
-        if (known == Known.UNKNOWN) known = record(language, probe.probe());
+        if (known == Known.UNKNOWN) {
+            long ticket = tickets.incrementAndGet();
+            known = record(language, probe.probe(ticket), ticket);
+        }
         return known == Known.INSTALLED;
     }
 
-    /** Records a probe's answer, including one that arrives late; returns what is known after it. */
+    /** Records the answer of a probe that starts now; returns what is known after it. */
     Known record(String language, Answer answer) {
+        return record(language, answer, tickets.incrementAndGet());
+    }
+
+    /**
+     * Records the answer of the probe numbered {@code ticket}, including one that arrives late;
+     * returns what is known after it. An answer from a probe older than the one whose answer is
+     * held is dropped, so a late answer never overwrites a newer one.
+     */
+    Known record(String language, Answer answer, long ticket) {
         long now = clock.getAsLong();
-        Entry next = answer == Answer.INSTALLED ? new Entry(Known.INSTALLED, Long.MAX_VALUE)
-                : answer == Answer.ABSENT ? new Entry(Known.ABSENT, after(now, absentForMillis))
-                : new Entry(Known.UNANSWERED, after(now, retryAfterMillis));
+        Entry next = answer == Answer.INSTALLED ? new Entry(Known.INSTALLED, Long.MAX_VALUE, ticket)
+                : answer == Answer.ABSENT ? new Entry(Known.ABSENT, after(now, absentForMillis), ticket)
+                : new Entry(Known.UNANSWERED, after(now, retryAfterMillis), ticket);
         Entry kept = entries.compute(language, (key, current) -> {
             boolean live = current != null && now < current.until;
             if (live && current.known == Known.DEMOTED) return current;
+            if (current != null && current.ticket > ticket
+                    && (current.known == Known.INSTALLED || current.known == Known.ABSENT)) return current;
             if (live && answer == Answer.UNANSWERED && current.known != Known.UNANSWERED) return current;
             return next;
         });
@@ -79,7 +102,7 @@ final class RecognizerAvailability {
     void demote(String language, long forMillis) {
         long until = after(clock.getAsLong(), forMillis);
         entries.compute(language, (key, current) -> current != null && current.known == Known.DEMOTED
-                && current.until >= until ? current : new Entry(Known.DEMOTED, until));
+                && current.until >= until ? current : new Entry(Known.DEMOTED, until, 0));
     }
 
     /** Turns every language off for good. */

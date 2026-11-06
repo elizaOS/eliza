@@ -70,7 +70,7 @@ public final class RecognizerAvailabilityTest {
         boolean result = false;
         String[] event = column.split(":");
         switch (event[0]) {
-            case "probe": result = policy.available(L, () -> { probes[0]++; return answer(event[1].charAt(0)); }); break;
+            case "probe": result = policy.available(L, ticket -> { probes[0]++; return answer(event[1].charAt(0)); }); break;
             case "late": policy.record(L, answer(event[1].charAt(0))); break;
             case "demote": policy.demote(L); break;
             case "demote300": policy.demote(L, DEMOTE_FOR); break;
@@ -104,7 +104,7 @@ public final class RecognizerAvailabilityTest {
         now = 0;
         RecognizerAvailability policy = new RecognizerAvailability(() -> now, ABSENT_FOR, RETRY_AFTER);
         // A demote made while a probe runs is not undone by the probe's answer.
-        check(!policy.available(L, () -> { policy.demote(L); return Answer.INSTALLED; }), "demote during probe");
+        check(!policy.available(L, ticket -> { policy.demote(L); return Answer.INSTALLED; }), "demote during probe");
         check(policy.known(L) == Known.DEMOTED, "demote during probe kept");
         // A permanent demote outlasts a shorter one made after it, and a timed one made before it.
         policy.demote(L, DEMOTE_FOR);
@@ -116,17 +116,35 @@ public final class RecognizerAvailabilityTest {
         check(policy.known("en-US") == Known.DEMOTED, "timed then permanent demote");
         // Languages are independent.
         check(policy.known("fr-FR") == Known.UNKNOWN, "other language untouched");
-        check(policy.available("fr-FR", () -> Answer.INSTALLED), "other language probes");
+        check(policy.available("fr-FR", ticket -> Answer.INSTALLED), "other language probes");
         // A service that never answers is asked once per retry window, never on every turn.
         int[] probes = {0};
         for (int turn = 0; turn < 10; turn++) {
-            check(!policy.available("pt-BR", () -> { probes[0]++; return Answer.UNANSWERED; }), "unanswered reads false");
+            check(!policy.available("pt-BR", ticket -> { probes[0]++; return Answer.UNANSWERED; }), "unanswered reads false");
             now += RETRY_AFTER / 2;
         }
         check(probes[0] == 5, "one probe per retry window, got " + probes[0]);
         // The service recovers: the next probe after the window is believed.
         now += RETRY_AFTER;
-        check(policy.available("pt-BR", () -> Answer.INSTALLED), "recovered");
+        check(policy.available("pt-BR", ticket -> Answer.INSTALLED), "recovered");
+        // A late answer from an older probe never overwrites a newer probe's answer: probe 1 gives
+        // up, probe 2 answers after the retry window, then probe 1's answer arrives.
+        for (Answer newer : new Answer[] {Answer.INSTALLED, Answer.ABSENT}) {
+            String language = newer == Answer.INSTALLED ? "ja-JP" : "ko-KR";
+            Answer stale = newer == Answer.INSTALLED ? Answer.ABSENT : Answer.INSTALLED;
+            long[] first = {0};
+            check(!policy.available(language, ticket -> { first[0] = ticket; return Answer.UNANSWERED; }), "probe 1 gives up");
+            now += RETRY_AFTER;
+            check(policy.available(language, ticket -> newer) == (newer == Answer.INSTALLED), "probe 2 answers");
+            policy.record(language, stale, first[0]);
+            check(policy.known(language) == (newer == Answer.INSTALLED ? Known.INSTALLED : Known.ABSENT),
+                    "a stale late " + stale + " kept the newer " + newer);
+        }
+        // A late answer from the newest probe is still kept over its own unanswered entry.
+        long[] last = {0};
+        check(!policy.available("zh-CN", ticket -> { last[0] = ticket; return Answer.UNANSWERED; }), "unanswered");
+        policy.record("zh-CN", Answer.INSTALLED, last[0]);
+        check(policy.known("zh-CN") == Known.INSTALLED, "the newest probe's late answer is kept");
         System.out.println("PASS recognizer availability (" + cells + " cells)");
     }
 }

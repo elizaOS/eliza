@@ -92,6 +92,21 @@ public final class OnDeviceRecognizerProbeTest {
         check(available("es-US"), "the late installed answer is kept");
         check(probes() == before, "no new probe after the late answer");
 
+        // (2b) A late answer from an older probe does not overwrite a newer probe's answer.
+        SpeechRecognizer.supportSilent = true;
+        check(!available("ja-JP"), "probe 1 times out");
+        RecognitionSupportCallback stale = takePending();
+        SpeechRecognizer.supportSilent = false;
+        SpeechRecognizer.installed = List.of("en-US", "ja-JP");
+        advance(OnDeviceRecognizer.RETRY_AFTER_MILLIS);
+        check(available("ja-JP"), "probe 2 answers installed");
+        stale.onError(SpeechRecognizer.ERROR_LANGUAGE_NOT_SUPPORTED);
+        stale.onSupportResult(new RecognitionSupport(List.of()));
+        before = probes();
+        check(available("ja-JP"), "a stale late no-model answer keeps the newer installed answer");
+        check(probes() == before, "no new probe after the stale answer");
+        SpeechRecognizer.installed = List.of("en-US", "de-DE", "it-IT", "es-US", "pt-BR");
+
         // (3) No model: held for its window, then a model installed later is seen.
         SpeechRecognizer.installed = List.of("en-US");
         check(!available("fr-FR"), "no model reads false");
@@ -122,13 +137,13 @@ public final class OnDeviceRecognizerProbeTest {
 
         // Below Android 13 the probe itself answers no model without touching the service.
         Method languageInstalled =
-                OnDeviceRecognizer.class.getDeclaredMethod("languageInstalled", Context.class, String.class);
+                OnDeviceRecognizer.class.getDeclaredMethod("languageInstalled", Context.class, String.class, long.class);
         languageInstalled.setAccessible(true);
         int sdk = Build.VERSION.SDK_INT;
         Build.VERSION.SDK_INT = 32;
         try {
             before = probes();
-            Object below = languageInstalled.invoke(null, CONTEXT, "en-US");
+            Object below = languageInstalled.invoke(null, CONTEXT, "en-US", 0L);
             check("ABSENT".equals(String.valueOf(below)), "below Android 13 the probe answers no model");
             check(probes() == before, "below Android 13 the probe does not ask the service");
         } finally {

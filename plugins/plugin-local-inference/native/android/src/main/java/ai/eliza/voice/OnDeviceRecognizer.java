@@ -96,9 +96,9 @@ public final class OnDeviceRecognizer {
      */
     public static boolean available(Context context, String languageTag) {
         String language = requireLanguage(languageTag);
-        return availability.available(language, () -> Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU
+        return availability.available(language, ticket -> Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU
                 && SpeechRecognizer.isOnDeviceRecognitionAvailable(context)
-                ? languageInstalled(context.getApplicationContext(), language)
+                ? languageInstalled(context.getApplicationContext(), language, ticket)
                 : RecognizerAvailability.Answer.ABSENT);
     }
 
@@ -118,7 +118,7 @@ public final class OnDeviceRecognizer {
     }
 
     /** Asks the recognition service once; an answer after the 5 second wait is recorded when it comes. */
-    private static RecognizerAvailability.Answer languageInstalled(Context context, String language) {
+    private static RecognizerAvailability.Answer languageInstalled(Context context, String language, long ticket) {
         // Repeats the caller's check so the API 31 and 33 calls below are guarded in this method.
         if (Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU) return RecognizerAvailability.Answer.ABSENT;
         CountDownLatch answered = new CountDownLatch(1);
@@ -144,7 +144,7 @@ public final class OnDeviceRecognizer {
                         RecognizerAvailability.Answer heard = installed
                                 ? RecognizerAvailability.Answer.INSTALLED : RecognizerAvailability.Answer.ABSENT;
                         answer.set(heard);
-                        if (gaveUp.get()) availability.record(language, heard);
+                        if (gaveUp.get()) availability.record(language, heard, ticket);
                         answered.countDown();
                     }
 
@@ -155,7 +155,9 @@ public final class OnDeviceRecognizer {
                         if (error == SpeechRecognizer.ERROR_LANGUAGE_NOT_SUPPORTED
                                 || error == SpeechRecognizer.ERROR_LANGUAGE_UNAVAILABLE) {
                             answer.set(RecognizerAvailability.Answer.ABSENT);
-                            if (gaveUp.get()) availability.record(language, RecognizerAvailability.Answer.ABSENT);
+                            if (gaveUp.get()) {
+                                availability.record(language, RecognizerAvailability.Answer.ABSENT, ticket);
+                            }
                         }
                         answered.countDown();
                     }
