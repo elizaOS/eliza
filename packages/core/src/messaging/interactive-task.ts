@@ -727,7 +727,8 @@ export function transitionInteractiveTask(
 					"Resolve the previous operation before a new binding",
 					"TASK_UNKNOWN_OUTCOME",
 				);
-			if (unresolved?.status === "prepared") unresolved.status = "cancelled";
+			if (unresolved?.status === "prepared")
+				setStatus(task, unresolved, "cancelled");
 			task.epoch++;
 			task.observation = null;
 			break;
