@@ -475,8 +475,11 @@ export function createLocalAgentGateway({
   };
   // `requestScope(req, res, next)` lets a host run each request inside its
   // own context (for example an AsyncLocalStorage scope). It must call
-  // `next()` once; `next` returns the handler's promise. A hook that throws
-  // before `next` fails only that request.
+  // `next()` once; `next` returns the handler's promise. The hook runs
+  // synchronously, so an AsyncLocalStorage scope it opens covers the whole
+  // handler. A hook that throws, or returns a promise that rejects, before
+  // `next` fails only that request with one 500, and `next` can no longer
+  // start the handler afterwards. A failure after `next` never answers again.
   const server = http.createServer((req, res) => {
     let started = false;
     const next = () => {
@@ -484,12 +487,20 @@ export function createLocalAgentGateway({
       started = true;
       return handle(req, res);
     };
-    try {
-      requestScope(req, res, next);
-    } catch {
-      if (!started && !res.headersSent)
+    const fail = () => {
+      const answer = !started;
+      started = true;
+      if (answer && !res.headersSent && !res.destroyed && !res.writableEnded)
         json(res, 500, { error: "Local agent unavailable" });
+    };
+    let scoped;
+    try {
+      scoped = requestScope(req, res, next);
+    } catch {
+      return fail();
     }
+    if (scoped && typeof scoped.then === "function")
+      Promise.resolve(scoped).then(undefined, fail);
   });
   server.on("close", () => surfaceChannel?.close());
   return server;
