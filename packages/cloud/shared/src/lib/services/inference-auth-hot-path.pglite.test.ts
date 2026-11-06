@@ -10,6 +10,7 @@
  * Background work (`waitUntil`) runs only after the request returned and the
  * tripwire was disarmed.
  */
+import { BillingHoldActiveError } from "./billing-hold";
 import {
   afterAll,
   afterEach,
@@ -462,44 +463,72 @@ describe("Worker inference auth never queries Postgres", () => {
   });
 });
 
-describe("ordinary Worker billing retains primary authority", () => {
-  for (const snapshotFlag of ["false", "true"]) {
-    test(`a cached clear hold cannot bypass primary admission with snapshot flag ${snapshotFlag}`, async () => {
-      const { admitOrganizationInference } = await import("./organization-inference-admission");
-      primaryArmed = true;
-      primaryTouches = 0;
-      try {
-        await expect(
-          runWithCloudBindingsAsync(
-            {
-              INFERENCE_DEFERRED_ADMISSION: "true",
-              INFERENCE_OPTIMISTIC_BILLING: "true",
-              INFERENCE_SNAPSHOT_ADMISSION_ENABLED: snapshotFlag,
-            },
-            () =>
-              admitOrganizationInference({
-                context: {
-                  organizationId: ORG,
-                  userId: USER,
-                  model: "openai/gpt-5-mini",
-                  provider: "openai",
-                  billingSource: "openai",
-                  requestId: crypto.randomUUID(),
-                },
-                estimatedInputTokens: 0,
-                estimatedOutputTokens: 0,
-                flatCost: { totalCost: 0.1, baseTotalCost: 0.1, platformMarkup: 0 },
-                executionCtx: { waitUntil() {} },
-                admissionSnapshot: admission(),
-              }),
-          ),
-        ).rejects.toThrow();
-        expect(primaryTouches).toBeGreaterThan(0);
-      } finally {
-        primaryArmed = false;
-      }
-    });
-  }
+describe("Worker billing admits from the snapshot and the organization gate only", () => {
+  const admit = async (
+    snapshot: InferenceAdmissionSnapshot,
+    gate: (path: string) => Response,
+  ) => {
+    const { admitOrganizationInference } = await import("./organization-inference-admission");
+    return runWithCloudBindingsAsync(
+      {
+        INFERENCE_ADMISSION_GATES: {
+          getByName() {
+            return {
+              async fetch(request: Request) {
+                return gate(new URL(request.url).pathname);
+              },
+            };
+          },
+        },
+      },
+      () =>
+        admitOrganizationInference({
+          context: {
+            organizationId: ORG,
+            userId: USER,
+            model: "openai/gpt-5-mini",
+            provider: "openai",
+            billingSource: "openai",
+            requestId: crypto.randomUUID(),
+          },
+          estimatedInputTokens: 0,
+          estimatedOutputTokens: 0,
+          flatCost: { totalCost: 0.1, baseTotalCost: 0.1, platformMarkup: 0 },
+          executionCtx: { waitUntil() {} },
+          admissionSnapshot: snapshot,
+        }),
+    );
+  };
+
+  test("a cached hold refuses paid admission without a primary read", async () => {
+    primaryArmed = true;
+    primaryTouches = 0;
+    try {
+      await expect(
+        admit({ ...admission(), billingHold: true }, () => Response.json({ admitted: true })),
+      ).rejects.toThrow(BillingHoldActiveError);
+      expect(primaryTouches).toBe(0);
+    } finally {
+      primaryArmed = false;
+    }
+  });
+
+  test("a cached clear hold is admitted by the gate lease without a primary read", async () => {
+    primaryArmed = true;
+    primaryTouches = 0;
+    const paths: string[] = [];
+    try {
+      const result = await admit(admission(), (path) => {
+        paths.push(path);
+        return Response.json({ admitted: true, availableUsd: 9.9, requiredUsd: 0.1 });
+      });
+      expect(result.mode).toBe("durable_object_debit");
+      expect(paths[0]).toMatch(/^\/lease/);
+      expect(primaryTouches).toBe(0);
+    } finally {
+      primaryArmed = false;
+    }
+  });
 });
 
 describe("mobile lifecycle cache fences", () => {
