@@ -1312,6 +1312,67 @@ it("sends a binding for more than one website only to a task-origins peer", asyn
   }
 });
 
+it("sends the host's commit words only to a peer that applies them", async () => {
+  const directory = await mkdtemp(join(tmpdir(), "native-commit-pattern-"));
+  const socketPath = join(directory, "browser.sock");
+  const binding = {
+    actorId: "actor",
+    accountId: "account",
+    agentId: "agent",
+    taskId: "task",
+    epoch: 1,
+    tabId: "1",
+    bindingRevision: 1,
+    origin: "https://example.test",
+    expiresAt: Date.now() + 60000,
+    revoked: false,
+    targets: [],
+    commitPattern: "\\b(?:pagar|enviar)\\b",
+  };
+  for (const capabilities of [
+    ["task-bind"],
+    ["task-bind", "task-commit-pattern"],
+  ]) {
+    const target = new NativeSocketBrowserTarget(() => {});
+    let socket: Socket | undefined;
+    try {
+      await target.start({ ELIZA_BROWSER_NATIVE_SOCKET: socketPath });
+      socket = createConnection(socketPath);
+      const frames = socketFrames(socket);
+      frames.send({
+        type: "hello",
+        protocol: 2,
+        extensionId: "pmldpcoefklbdbgmggcejkfoinmjfeio",
+        profileId: "pattern-profile",
+        capabilities,
+      });
+      await vi.waitFor(async () => expect(await target.available()).toBe(true));
+      if (!capabilities.includes("task-commit-pattern")) {
+        // An older browser would ignore the words and press those controls.
+        await expect(target.bindTask(binding)).rejects.toMatchObject({
+          kind: "UNSUPPORTED",
+        });
+        expect(frames.messages).toHaveLength(0);
+        continue;
+      }
+      const bound = target.bindTask(binding);
+      await vi.waitFor(() => expect(frames.messages).toHaveLength(1));
+      expect(frames.messages[0]).toMatchObject({ type: "task-bind", binding });
+      frames.send({
+        type: "result",
+        id: frames.messages[0].id,
+        ok: true,
+        result: { bound: true },
+      });
+      await expect(bound).resolves.toEqual({ bound: true });
+    } finally {
+      socket?.destroy();
+      await target.stop();
+    }
+  }
+  await rm(directory, { recursive: true, force: true });
+});
+
 it("reduces the one active HTTPS page to its origin and the complete title", () => {
   const tab = {
     id: "7",

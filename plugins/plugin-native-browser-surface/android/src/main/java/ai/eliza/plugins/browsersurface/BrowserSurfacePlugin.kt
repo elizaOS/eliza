@@ -743,6 +743,8 @@ class ElizaSurfaceManagerPlugin : Plugin() {
             val container = OccludingSurfaceLayout(activity)
             val webView = WebView(activity)
             val gate = BrowserMainFrameGate()
+            // Every frame's requests after a task effect (SurfaceControlChannel arms it).
+            val effects = BrowserEffectWatch()
             webView.webViewClient = object : WebViewClient() {
                 // loadUrl() (the host's navigate) never reaches this callback, so an approved
                 // address is not intercepted again. POST form submissions do not reach it either;
@@ -781,9 +783,17 @@ class ElizaSurfaceManagerPlugin : Plugin() {
                 // Network thread. A main-frame request to an origin the host has not approved
                 // gets a local empty 204, which ends the navigation without sending anything.
                 override fun shouldInterceptRequest(view: WebView, request: WebResourceRequest): WebResourceResponse? {
-                    if (!interceptNavigation || !request.isForMainFrame) return null
+                    val now = System.currentTimeMillis()
+                    if (!interceptNavigation || !request.isForMainFrame) {
+                        effects.observe(request.url.toString(), request.method, request.isForMainFrame, now,
+                            request.requestHeaders?.get("Accept"))
+                        return null
+                    }
                     val target = request.url.toString()
-                    if (gate.admit(target)) return null
+                    if (gate.admit(target)) {
+                        effects.observe(target, request.method, true, now)
+                        return null
+                    }
                     val method = request.method ?: "GET"
                     val gesture = request.hasGesture()
                     view.post {
@@ -803,6 +813,7 @@ class ElizaSurfaceManagerPlugin : Plugin() {
                 }
 
                 override fun onPageStarted(view: WebView, url: String, favicon: Bitmap?) {
+                    effects.close(System.currentTimeMillis())
                     surfaces.values.firstOrNull { it.webView === view }?.let {
                         it.control?.interrupt("The native page navigated", navigation = true)
                         it.historyObservation = null
@@ -1000,7 +1011,7 @@ class ElizaSurfaceManagerPlugin : Plugin() {
             host.addView(container, lp)
             container.visibility = View.GONE
             val control = try {
-                if (SurfaceControlChannel.supported()) SurfaceControlChannel(webView, pageControl) else null
+                if (SurfaceControlChannel.supported()) SurfaceControlChannel(webView, pageControl, effects) else null
             } catch (error: Exception) {
                 host.removeView(container)
                 webView.destroy()
