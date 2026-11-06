@@ -5,6 +5,12 @@ import { NativeHostError } from "./errors.mjs";
 import { initialOwnerFence, ownerFenceStep } from "./task-owner-fence.mjs";
 import { openTaskDatabase } from "./task-storage.mjs";
 
+const TASK_ID = "[A-Za-z0-9][A-Za-z0-9_.:@-]{0,255}";
+const ACKNOWLEDGE_ROUTE = new RegExp(
+  `^/tasks/(${TASK_ID})/acknowledge-(unknown|unreadable)$`,
+);
+const UNREADABLE_ROUTE = "/tasks/current/unreadable";
+
 const answer = (status, value) => Response.json(value, { status });
 const unauthorized = () => answer(401, { code: "TASK_UNAUTHORIZED" });
 /** The account changed after this request saved a change for the former one. */
@@ -60,6 +66,7 @@ export async function createTaskGateway({
     SqliteMessageInteractionSessionStore,
     InteractiveTaskChoices,
     SqliteTaskPresentation,
+    taskErrorStatus,
   } = await import(pathToFileURL(bundlePath).href);
   const db = await openTaskDatabase({
     databasePath,
@@ -218,6 +225,51 @@ export async function createTaskGateway({
     initialOwner = null;
   }
   if (initialOwner) runtimeFor(initialOwner);
+  /** Owner routes for records the task runtime keeps but cannot resolve. */
+  async function recordRoute(request, runtime, commit) {
+    const { pathname } = new URL(request.url);
+    if (pathname === UNREADABLE_ROUTE && request.method === "GET")
+      return answer(200, { records: runtime.unreadable() });
+    const match = ACKNOWLEDGE_ROUTE.exec(pathname);
+    if (!match) return null;
+    if (request.method !== "POST")
+      return answer(405, { code: "TASK_METHOD_NOT_ALLOWED" });
+    const [, id, kind] = match;
+    let input;
+    try {
+      input = await request.json();
+    } catch {
+      return answer(400, { code: "TASK_INVALID" });
+    }
+    const keys =
+      input && typeof input === "object" && !Array.isArray(input)
+        ? Object.keys(input)
+        : null;
+    if (
+      kind === "unknown"
+        ? keys?.length !== 1 ||
+          !Number.isSafeInteger(input.expectedRevision) ||
+          input.expectedRevision < 0
+        : keys?.length !== 0
+    )
+      return answer(400, { code: "TASK_INVALID" });
+    try {
+      if (kind === "unreadable")
+        return answer(200, {
+          records: await commit(() => runtime.acknowledgeUnreadable(id)),
+        });
+      const task = await commit(() =>
+        runtime.acknowledgeUnknown(id, input.expectedRevision),
+      );
+      await runtime.settle(id);
+      return answer(200, { revision: task.revision, status: task.status });
+    } catch (error) {
+      if (error instanceof NativeHostError) throw error;
+      const code =
+        typeof error?.code === "string" ? error.code : "TASK_UNAVAILABLE";
+      return answer(taskErrorStatus(code), { code });
+    }
+  }
   async function handleRequest(request, scope) {
     let owner;
     try {
@@ -264,15 +316,17 @@ export async function createTaskGateway({
     };
     let hostResponse;
     try {
-      hostResponse = await extension?.(request, {
-        owner,
-        runtime,
-        authenticate,
-        requestEpoch,
-        currentEpoch: () => fence.epoch,
-        isCurrent,
-        commit,
-      });
+      hostResponse =
+        (await recordRoute(request, runtime, commit)) ??
+        (await extension?.(request, {
+          owner,
+          runtime,
+          authenticate,
+          requestEpoch,
+          currentEpoch: () => fence.epoch,
+          isCurrent,
+          commit,
+        }));
     } catch (error) {
       if (error?.code === "TASK_UNAUTHORIZED" || !isCurrent()) return refused();
       throw error;
