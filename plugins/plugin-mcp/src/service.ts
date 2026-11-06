@@ -29,11 +29,13 @@ import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { SSEClientTransport } from "@modelcontextprotocol/sdk/client/sse.js";
 import { StdioClientTransport } from "@modelcontextprotocol/sdk/client/stdio.js";
 import { StreamableHTTPClientTransport } from "@modelcontextprotocol/sdk/client/streamableHttp.js";
-import type {
-  CallToolResult,
-  Resource,
-  ResourceTemplate,
-  Tool,
+import {
+  type CallToolResult,
+  ErrorCode,
+  type Resource,
+  type ResourceTemplate,
+  McpError as SdkMcpError,
+  type Tool,
 } from "@modelcontextprotocol/sdk/types.js";
 import type { JSONSchema7 } from "json-schema";
 import {
@@ -63,6 +65,7 @@ import {
   type PingConfig,
   type StdioMcpServerConfig,
 } from "./types";
+import { McpError } from "./utils/error";
 import { buildMcpProviderData } from "./utils/mcp";
 
 const MAX_DISCOVERY_PAGES = 1000;
@@ -666,16 +669,35 @@ export class McpService extends Service {
       );
     }
     const timeout = this.connectionRequestTimeout(connection);
-    const result = await connection.client.callTool(
-      {
-        name: toolName,
-        arguments: toolArguments ? { ...toolArguments } : undefined,
-      },
-      undefined,
-      { timeout }
-    );
+    let result: Awaited<ReturnType<Client["callTool"]>>;
+    try {
+      result = await connection.client.callTool(
+        {
+          name: toolName,
+          arguments: toolArguments ? { ...toolArguments } : undefined,
+        },
+        undefined,
+        { timeout }
+      );
+    } catch (error) {
+      // A JSON-RPC error answer is the server refusing the call. A timeout, a
+      // closed connection or a transport failure happens after the request was
+      // sent, so the tool may have run.
+      if (
+        error instanceof SdkMcpError &&
+        error.code !== ErrorCode.RequestTimeout &&
+        error.code !== ErrorCode.ConnectionClosed
+      ) {
+        throw error;
+      }
+      throw McpError.toolOutcomeUnknown(serverName, toolName, error);
+    }
     if (!result.content) {
-      throw new Error("Invalid tool result: missing content array");
+      throw McpError.toolOutcomeUnknown(
+        serverName,
+        toolName,
+        new Error("Invalid tool result: missing content array")
+      );
     }
     return result as CallToolResult;
   }

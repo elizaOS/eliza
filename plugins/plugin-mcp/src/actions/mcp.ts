@@ -261,7 +261,38 @@ async function handleCallTool(
       toolArguments = toolSelectionArgument.toolArguments;
     }
     const { serverName, toolName } = selection;
-    const result = await mcpService.callTool(serverName, toolName, toolArguments);
+    let result: Awaited<ReturnType<McpService["callTool"]>>;
+    try {
+      result = await mcpService.callTool(serverName, toolName, toolArguments);
+    } catch (error) {
+      if (error instanceof McpError && error.code === "TOOL_OUTCOME_UNKNOWN") {
+        // The tool may have run. Calling it again could repeat a write, so the
+        // planner must not retry this call.
+        return {
+          text: `Tool ${serverName}/${toolName} may have run, but its result was not received. Do not call it again; check its effect first.`,
+          values: {
+            success: false,
+            toolExecuted: false,
+            outcomeUnknown: true,
+            serverName,
+            toolName,
+          },
+          data: {
+            actionName: "MCP",
+            op: "call_tool" as const,
+            serverName,
+            toolName,
+            toolArgumentsJson: JSON.stringify(toolArguments),
+            error: error.message,
+            outcomeUnknown: true,
+            retryable: false,
+          },
+          success: false,
+          error,
+        };
+      }
+      throw error;
+    }
     const { toolOutput, hasAttachments, attachments, isError } = processToolResult(
       result,
       serverName,
@@ -269,20 +300,28 @@ async function handleCallTool(
       runtime,
       message.entityId
     );
-    const replyMemory = await handleToolResponse(
-      runtime,
-      message,
-      serverName,
-      toolName,
-      toolArguments,
-      toolOutput,
-      hasAttachments,
-      attachments,
-      composedState,
-      mcpProvider,
-      callback,
-      isError
-    );
+    // The tool has run. A failure while summarizing its output must not turn
+    // the call into a failure the planner would retry.
+    let replyText = toolOutput;
+    try {
+      const replyMemory = await handleToolResponse(
+        runtime,
+        message,
+        serverName,
+        toolName,
+        toolArguments,
+        toolOutput,
+        hasAttachments,
+        attachments,
+        composedState,
+        mcpProvider,
+        callback,
+        isError
+      );
+      replyText = replyMemory.content.text ?? toolOutput;
+    } catch (error) {
+      runtime.reportError("MCP.callTool.response", error, { serverName, toolName });
+    }
     const data = {
       actionName: "MCP",
       op: "call_tool" as const,
@@ -296,7 +335,7 @@ async function handleCallTool(
     };
     if (isError) {
       return {
-        text: `Tool ${serverName}/${toolName} reported an error. Reasoned response: ${replyMemory.content.text}`,
+        text: `Tool ${serverName}/${toolName} reported an error. Reasoned response: ${replyText}`,
         values: {
           success: false,
           toolExecuted: true,
@@ -315,7 +354,7 @@ async function handleCallTool(
       };
     }
     return {
-      text: `Successfully called tool: ${serverName}/${toolName}. Reasoned response: ${replyMemory.content.text}`,
+      text: `Successfully called tool: ${serverName}/${toolName}. Reasoned response: ${replyText}`,
       values: {
         success: true,
         toolExecuted: true,
