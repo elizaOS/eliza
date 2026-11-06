@@ -461,8 +461,12 @@ function listFiles(dir) {
 
 async function main() {
   const args = parseArgs(process.argv.slice(2));
-  const product = voiceProductInputs(inputs, args.modelsOnly ? args.languages ?? ["en"] : args.languages);
-  if (args.modelsOnly && product.spanish) fail("--models-only prepares English models only");
+  const product = voiceProductInputs(
+    inputs,
+    args.modelsOnly ? (args.languages ?? ["en"]) : args.languages,
+  );
+  if (args.modelsOnly && product.spanish)
+    fail("--models-only prepares English models only");
   if (args.modelsOnly) {
     mkdirSync(args.workspace, { recursive: true });
     mkdirSync(args.out, { recursive: true });
@@ -499,7 +503,10 @@ async function main() {
   for (const relative of product.espeakData) {
     const target = path.join(paradeeDir, "espeak-ng-data", relative);
     mkdirSync(path.dirname(target), { recursive: true });
-    copyFileSync(path.join(espeakDir, "data", "espeak-ng-data", relative), target);
+    copyFileSync(
+      path.join(espeakDir, "data", "espeak-ng-data", relative),
+      target,
+    );
   }
   const missingEspeak = product.espeakData.filter(
     (relative) =>
