@@ -169,6 +169,18 @@ export const viewNavigationField: ResponseHandlerFieldEvaluator<Navigation> = {
     },
     required: ["disposition", "viewId", "reason"],
   },
+  // Written before replyText (20), after the other plugin routing fields: the
+  // disposition decides how replyText is written, and a turn that requests
+  // no navigation can stream its direct answer.
+  priority: 19.75,
+  // The host evaluator only records a constraint for none/forbidden and
+  // ignores optional; none of them reroutes the turn or changes replyText.
+  directReplyValue: (value) =>
+    typeof value === "object" &&
+    value !== null &&
+    ["none", "forbidden", "optional"].includes(
+      String((value as { disposition?: unknown }).disposition),
+    ),
   shouldRun({ runtime, message }) {
     const active =
       message.content.source === "client_chat" &&
