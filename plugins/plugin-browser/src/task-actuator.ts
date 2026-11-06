@@ -556,7 +556,9 @@ export class NativeTaskActuator {
   /**
    * May run after task revocation. It only removes this owner's cached
    * overlay. It resolves only once no cancelled browser command can still
-   * reach the page, so a Pause never answers before its fence did.
+   * reach the page, so a Pause never answers before its fence did. The
+   * overlay is removed first, so an unconfirmed fence never leaves guidance
+   * showing on a stopped task.
    */
   async quiesce({
     owner,
@@ -565,7 +567,14 @@ export class NativeTaskActuator {
     owner: TaskOwner;
     taskId: string;
   }): Promise<void> {
-    await this.options.target.settled?.();
+    try {
+      await this.hideGuidance(owner, taskId);
+    } finally {
+      await this.options.target.settled?.();
+    }
+  }
+
+  private async hideGuidance(owner: TaskOwner, taskId: string): Promise<void> {
     if (!this.activeGuidance.has(taskId)) return;
     const binding = this.guidanceOwner(owner, taskId);
     const revision = (this.guidanceRevisions.get(taskId) ?? 0) + 1;
