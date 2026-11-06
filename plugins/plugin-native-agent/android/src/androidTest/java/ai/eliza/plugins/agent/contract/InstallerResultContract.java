@@ -3,6 +3,8 @@ import android.content.*;
 import ai.eliza.plugins.agent.updater.*;
 /** Real framework session readback; host supplies a fresh journal and installed baseline plan. */
 public final class InstallerResultContract {
+ /** A plan that is still fresh: these cases are about the install, not commit freshness. */
+ private static final UpdateJournal.FreshnessCheck FRESH=(plan,generation)->{};
  private InstallerResultContract() {}
  private static void check(boolean condition,String message){if(!condition)throw new AssertionError(message);}
  public static void run(Context app,UpdateJournal journal,UpdateJournal.Plan plan,String target,String action)throws Exception {
@@ -12,7 +14,7 @@ public final class InstallerResultContract {
   params.setAppPackageName(target);
   int session=installer.createSession(params);
   try {
-   journal.committing(plan.id,session,0);
+   journal.committingWithAction(plan.id,session,0,FRESH,()->{});
    Intent callback=new Intent(action)
     .putExtra("transaction",plan.id).putExtra("expectedSession",session)
     .putExtra(android.content.pm.PackageInstaller.EXTRA_SESSION_ID,session)
@@ -67,7 +69,7 @@ public final class InstallerResultContract {
   params.setAppPackageName(target);
   int session=installer.createSession(params);
   try {
-   journal.committing(plan.id,session,0);
+   journal.committingWithAction(plan.id,session,0,FRESH,()->{});
    check(PackageInstallCoordinator.sessionState(app,target,session)==InstallReadback.Session.UNCOMMITTED,"Fresh session not reported uncommitted");
    UpdateJournal.Snapshot kept=PackageInstallCoordinator.reconcilePending(app,target,journal,60000);
    check(kept.phase==UpdateJournal.Phase.COMMITTING&&PackageInstallCoordinator.hasPendingSession(app,target,session),"Uncommitted session was abandoned at once");

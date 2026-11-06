@@ -7,6 +7,8 @@ import java.util.*;
  * abandoned only when the platform has reported it uncommitted for long
  * enough, never while a just-sealed session is still being verified. */
 public final class InstallReadbackTest {
+  /** A plan that is still fresh: these cases are about the install, not commit freshness. */
+  static final UpdateJournal.FreshnessCheck FRESH=(plan,generation)->{};
   static int assertions;
   static void check(boolean value,String message){assertions++;if(!value)throw new AssertionError(message);}
   static final UpdateJournal.Durability SYNC=p->{try(FileChannel f=FileChannel.open(p,StandardOpenOption.READ)){f.force(true);}};
@@ -24,7 +26,7 @@ public final class InstallReadbackTest {
     @Override public long elapsedRealtime(){return elapsed;}
   }
   static UpdateJournal committing(Path root,String name)throws IOException {
-    UpdateJournal journal=new UpdateJournal(root.resolve(name),SYNC);journal.begin(PLAN,OLD,0);journal.committing("release-11",3,0);return journal;
+    UpdateJournal journal=new UpdateJournal(root.resolve(name),SYNC);journal.begin(PLAN,OLD,0);journal.committingWithAction("release-11",3,0,FRESH,()->{});return journal;
   }
   public static void main(String[] args)throws Exception {
     Path root=Path.of(args[0]);Files.createDirectories(root);
@@ -35,8 +37,8 @@ public final class InstallReadbackTest {
     long wait=InstallReadback.UNCOMMITTED_ABANDON_WAIT_MS,budget=2*wait;
     for(String name:new String[]{"died-before-commit","refused-commit"}) {
       UpdateJournal journal=new UpdateJournal(root.resolve(name),SYNC);journal.begin(PLAN,OLD,0);
-      if(name.equals("died-before-commit"))journal.committing("release-11",3,0);
-      else try{journal.committingWithAction("release-11",3,0,()->{throw new SecurityException("refused");});throw new AssertionError();}catch(UpdateJournal.HandoffFailed expected){assertions++;}
+      if(name.equals("died-before-commit"))journal.committingWithAction("release-11",3,0,FRESH,()->{});
+      else try{journal.committingWithAction("release-11",3,0,FRESH,()->{throw new SecurityException("refused");});throw new AssertionError();}catch(UpdateJournal.HandoffFailed expected){assertions++;}
       Platform platform=new Platform(InstallReadback.Session.UNCOMMITTED);
       check(InstallReadback.reconcile(journal,platform,budget).phase==UpdateJournal.Phase.COMMITTING&&platform.abandoned.isEmpty(),name+": abandoned at once");
       platform.elapsed=wait-1;check(InstallReadback.reconcile(journal,platform,budget).phase==UpdateJournal.Phase.COMMITTING&&platform.abandoned.isEmpty(),name+": abandoned before the wait");

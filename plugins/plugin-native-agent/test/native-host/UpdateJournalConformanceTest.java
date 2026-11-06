@@ -11,6 +11,8 @@ import java.util.*;
  * Model identities are version codes: the baseline is 1, plan p has candidate
  * 2p and recovery 2p+1, and 9 is a package nobody planned. */
 public final class UpdateJournalConformanceTest {
+  /** A plan that is still fresh: these cases are about the install, not commit freshness. */
+  static final UpdateJournal.FreshnessCheck FRESH=(plan,generation)->{};
   record Event(String kind,int plan,long base,long installed,long generation,int session,boolean pending,String blocked,String outcome,UpdateJournal.InstallerFailure failure) {
     @Override public String toString(){return kind+"(p="+plan+",base="+base+",inst="+installed+",g="+generation+",s="+session+",pending="+pending+",blocked="+blocked+",outcome="+outcome+",failure="+failure+")";}
   }
@@ -84,6 +86,17 @@ public final class UpdateJournalConformanceTest {
         if(j.plan==0||j.plan!=e.plan||!j.phase.equals("VERIFIED")||j.gen!=e.generation)return REFUSED;
         n.session=e.session;n.phase="COMMITTING";return n;
       }
+      // A freshness check that refuses leaves the journal as it was.
+      case "staleCommit" -> {return REFUSED;}
+      case "discardVerified" -> {
+        if(j.plan==0||j.plan!=e.plan||!j.phase.equals("VERIFIED")||j.gen!=e.generation)return REFUSED;
+        return j.cleared("IDLE","verified_invalidated:revoked-artifact");
+      }
+      // The model's FixForward: a recovery that cannot load ends the wait.
+      case "recoveryUnavailable" -> {
+        if(j.plan==0||j.plan!=e.plan||!j.phase.equals("RECOVERY_READY")||j.attempts!=0)return REFUSED;
+        n.q.add(cand(j.plan));n.q.add(rec(j.plan));n.phase="QUARANTINED";n.reason="recovery_unavailable:revoked-artifact";return n;
+      }
       case "recovering" -> {
         if(j.plan==0||j.plan!=e.plan||!j.phase.equals("RECOVERY_READY")||j.attempts!=0)return REFUSED;
         n.session=e.session;n.attempts++;n.phase="RECOVERING";return n;
@@ -124,7 +137,10 @@ public final class UpdateJournalConformanceTest {
       case "stage" -> journal.stageValidated(plan(e.plan,e.base,journal.read().channel),id(e.installed),e.generation,()->{});
       case "begin" -> journal.beginValidated(plan(e.plan,e.base,journal.read().channel),id(e.installed),e.generation,()->{});
       case "discard" -> journal.discardStaging(plan,e.generation);
-      case "committing" -> journal.committingWithAction(plan,e.session,e.generation,()->{});
+      case "committing" -> journal.committingWithAction(plan,e.session,e.generation,FRESH,()->{});
+      case "staleCommit" -> journal.committingWithAction(plan,e.session,e.generation,(p,g)->{throw new IOException("stale-metadata");},()->{throw new AssertionError("Stale plan handed off");});
+      case "discardVerified" -> journal.discardVerified(plan,e.generation,"revoked-artifact");
+      case "recoveryUnavailable" -> journal.recoveryUnavailable(plan,"revoked-artifact");
       case "recovering" -> journal.recoveringWithAction(plan,e.session,()->{});
       case "reconcile" -> journal.reconcileInstallerResult(plan,e.session,id(e.installed),e.pending,e.blocked,e.failure);
       // The model abstracts duration; these monotonic readings reach each outcome.
@@ -186,6 +202,8 @@ public final class UpdateJournalConformanceTest {
     for(int i=1;i<BUDGET;i++){spent.add(b1);spent.add(commit(1,1,0));spent.add(reconcile(1,1,1,false,null,UpdateJournal.InstallerFailure.RETRYABLE));}
     r.put("budgetLeft",spent);r.put("budgetCommitting",then(spent,b1,commit(1,1,0)));
     r.put("budgetSpent",then(spent,b1,commit(1,1,0),reconcile(1,1,1,false,null,UpdateJournal.InstallerFailure.RETRYABLE)));
+    r.put("verifiedDiscarded",List.of(b1,new Event("discardVerified",1,0,0,0,0,false,null,"",null)));
+    r.put("recoveryUnavailable",then(rr,new Event("recoveryUnavailable",1,0,0,0,0,false,null,"",null)));
     return r;
   }
   /** Fresh and stale plans, sessions, generations and readbacks for every API. */
@@ -202,6 +220,9 @@ public final class UpdateJournalConformanceTest {
     for(int p=1;p<=2;p++)for(int s:new int[]{1,2,7})for(long inst:new long[]{1,2,3,9})for(boolean pending:new boolean[]{false,true})
       for(UpdateJournal.InstallerFailure failure:UpdateJournal.InstallerFailure.values())e.add(reconcile(p,s,inst,pending,null,failure));
     for(int s=1;s<=2;s++)for(String outcome:new String[]{"below","timeout","regress"})e.add(observeUnknown(1,s,outcome));
+    // A refused freshness check, a refresh that drops the plan, and a recovery that cannot load.
+    for(int p=1;p<=2;p++)for(long g=0;g<=1;g++){e.add(new Event("discardVerified",p,0,0,g,0,false,null,"",null));e.add(new Event("staleCommit",p,0,0,g,5,false,null,"",null));}
+    for(int p=1;p<=2;p++)e.add(new Event("recoveryUnavailable",p,0,0,0,0,false,null,"",null));
     return e;
   }
 
@@ -232,7 +253,7 @@ public final class UpdateJournalConformanceTest {
     }
     if(!differences.isEmpty())throw new AssertionError(differences.size()+" differences, first: "+differences.subList(0,Math.min(5,differences.size())));
     // The first 27 states and 201 events are the model's original 5,427-case table.
-    if(recipes.size()!=35||events.size()!=303||cases!=10605)throw new AssertionError("Case table changed: "+recipes.size()+" x "+events.size());
+    if(recipes.size()!=37||events.size()!=313||cases!=11581)throw new AssertionError("Case table changed: "+recipes.size()+" x "+events.size());
     System.out.println("UpdateJournalConformance: "+cases+" cases ("+recipes.size()+" states x "+events.size()+" events, "+refused+" refusals), 0 differences");
   }
 }
