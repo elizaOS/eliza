@@ -533,7 +533,9 @@ export async function failUnsettledCancellation(
       .update(billingSubscriptionCommands)
       .set({
         status: "FAILED",
-        error_code: sql`CASE WHEN ${dispatched} THEN 'PROVIDER_EFFECT_ABSENT_AFTER_SETTLE' ELSE 'NOT_DISPATCHED_BEFORE_SETTLE' END`,
+        // A command from before dispatch tracking has no state, so whether it was
+        // sent is unknown: its code must not claim that nothing was dispatched.
+        error_code: sql`CASE WHEN ${dispatched} THEN 'PROVIDER_EFFECT_ABSENT_AFTER_SETTLE' WHEN ${billingSubscriptionCommands.cancellation_dispatch_state} IS NULL THEN 'DISPATCH_UNKNOWN_EFFECT_ABSENT_AFTER_SETTLE' ELSE 'NOT_DISPATCHED_BEFORE_SETTLE' END`,
         state_revision: sql`${billingSubscriptionCommands.state_revision} + 1`,
         lease_token: null,
         lease_expires_at: null,
