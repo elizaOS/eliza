@@ -8,6 +8,12 @@ import { mailAddress, mailAddresses, mailboxState } from "./mail-fields.mjs";
 import { createMailboxReadPort } from "./mailbox-read-port.mjs";
 import { createManagedGoogleReadPort } from "./managed-google-read-port.mjs";
 import { executePlanChange, validatePlanChangeInput } from "./plan-change.mjs";
+import {
+  normalizeSubscriptionCode,
+  redeemedSubscriptionGrant,
+  redeemFailureCode,
+  subscriptionGrantFromSnapshot,
+} from "./subscription-grant.mjs";
 import { projectRenewalReview } from "./subscription-review.mjs";
 import { createSpeechStreamSessions } from "./timed-speech.mjs";
 
@@ -336,6 +342,27 @@ const googleReadFailure = (code) =>
     code,
   });
 const CHECKOUT_SESSION_ID = /^cs_(live|test)_[A-Za-z0-9]+$/;
+// A subscription code refusal: its HTTP status and the host message key.
+const REDEEM_REFUSALS = {
+  invalid: [400, "subscriptionCodeInvalid"],
+  "signed-out": [401, "subscriptionCodeSignedOut"],
+  account: [403, "subscriptionCodeAccount"],
+  "already-redeemed": [409, "subscriptionCodeAlreadyRedeemed"],
+  "paid-plan-active": [409, "subscriptionCodePaidPlanActive"],
+  ended: [409, "subscriptionCodeEnded"],
+  "rate-limited": [429, "subscriptionCodeRateLimited"],
+  unavailable: [503, "subscriptionCodeUnavailable"],
+};
+// A bounded JSON body from Cloud; null when it is too large or not JSON.
+async function boundedJson(response, maximum) {
+  try {
+    const value = await bytes(response.body ?? [], maximum);
+    return JSON.parse(value.toString("utf8"));
+  } catch {
+    await response.body?.cancel().catch(() => {});
+    return null;
+  }
+}
 function send(res, status, value) {
   res.writeHead(status, {
     "Content-Type": "application/json",
@@ -626,6 +653,10 @@ export function createCloudRoutes({
   const ownerGmailGrant = ownerWrites
     ? gmailOwnerWriteGrant
     : gmailReadOnlyGrant;
+  // Off unless the host opts in: subscription code redemption
+  // (`POST /cloud/account/subscription/redeem`) and the account's grant from
+  // the billing snapshot, given to `projectAccountAccess` as `{ grant }`.
+  const subscriptionCodes = hostPolicy.subscriptionCodes === true;
   const message = (key) =>
     hostPolicy.messages?.[key] ?? `Cloud service request failed (${key})`;
   // A sign-in route this host turned off. The answer is the same before and
@@ -1000,7 +1031,12 @@ export function createCloudRoutes({
         }),
       );
       current(epoch);
-      return projectAccountAccess(user, snapshot);
+      if (!subscriptionCodes) return projectAccountAccess(user, snapshot);
+      return projectAccountAccess(user, snapshot, {
+        grant: subscriptionGrantFromSnapshot(snapshot, {
+          planKeys: hostPolicy.planKeys,
+        }),
+      });
     } catch (error) {
       current(epoch);
       if (error.status === 401) {
@@ -1029,6 +1065,82 @@ export function createCloudRoutes({
       }
       return { state: "unavailable" };
     }
+  }
+  /**
+   * Redeems a subscription grant code for the saved sign-in. The idempotency
+   * key comes from the code, so a retry after a lost answer, on this or
+   * another device, replays the original grant. A transport failure (the
+   * request may have arrived) is replayed once with the same key; HTTP
+   * refusals are never retried. The grant is reported only if the same
+   * sign-in is still saved. The code is never logged, stored or returned.
+   */
+  async function redeemSubscriptionCode(req, res, signal) {
+    const refuse = (code, extra = {}) => {
+      const [status, key] = REDEEM_REFUSALS[code];
+      send(res, status, { error: message(key), code, ...extra });
+    };
+    // An oversized, non-JSON or unexpected body is the same "invalid" answer.
+    const input = await body(req, 4096).catch(() => null);
+    const code =
+      input && Object.keys(input).every((field) => field === "code")
+        ? normalizeSubscriptionCode(input.code)
+        : null;
+    if (!code) return refuse("invalid");
+    await credentialWrites;
+    const epoch = generation;
+    // A pending disconnect is signed out.
+    const key = await usableCredential().catch((error) => {
+      if (error.status === 401) return null;
+      throw error;
+    });
+    current(epoch);
+    if (!key) return refuse("signed-out");
+    const idempotencyKey = `redeem:${createHash("sha256")
+      .update(`subscription-redeem\0${code}`)
+      .digest("hex")
+      .slice(0, 40)}`;
+    let response;
+    for (let attempt = 0; !response; attempt++) {
+      const timeout = AbortSignal.timeout(20000);
+      try {
+        response = await request("/api/v1/subscription/redeem", {
+          key,
+          method: "POST",
+          json: { code, idempotencyKey },
+          signal: signal ? AbortSignal.any([signal, timeout]) : timeout,
+          authorityGeneration: epoch,
+        });
+      } catch {
+        signal?.throwIfAborted();
+        current(epoch);
+        if (attempt >= 1) return refuse("unavailable");
+        await new Promise((resolve) => setTimeout(resolve, 1000));
+        current(epoch);
+      }
+    }
+    const data = await boundedJson(response, 65536);
+    current(epoch);
+    if (!response.ok) {
+      const failure = redeemFailureCode(response.status, data) ?? "signed-out";
+      const wait = response.headers.get("retry-after");
+      return refuse(
+        failure,
+        failure === "rate-limited" && /^\d{1,6}$/.test(wait ?? "")
+          ? { retryAfter: Number(wait) }
+          : {},
+      );
+    }
+    // A grant is reported only to the sign-in that asked for it.
+    await credentialWrites;
+    current(epoch);
+    if ((await usableCredential().catch(() => null)) !== key)
+      throw fail(message("accountSessionChanged"), 409);
+    const answer = redeemedSubscriptionGrant(data, {
+      planKeys: hostPolicy.planKeys,
+    });
+    if (!answer) return refuse("unavailable");
+    if (answer.status === "ended") return refuse("ended");
+    send(res, 200, { replayed: answer.replayed, grant: answer.grant });
   }
   function speechInput(input) {
     if (
@@ -1201,6 +1313,14 @@ export function createCloudRoutes({
       );
       if (method === "GET" && path === "/cloud/account/access") {
         send(res, 200, await accountAccess());
+        return true;
+      }
+      if (
+        subscriptionCodes &&
+        method === "POST" &&
+        path === "/cloud/account/subscription/redeem"
+      ) {
+        await redeemSubscriptionCode(req, res, signal);
         return true;
       }
       if (method === "GET" && path === "/cloud/account/plans") {
