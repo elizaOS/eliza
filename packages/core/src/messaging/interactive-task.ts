@@ -615,6 +615,11 @@ export function transitionInteractiveTask(
 	// The revision orders the journal and the epoch fences effects; wall time is
 	// audit data and the input to expiry. A clock that steps back must not refuse
 	// a stop, so time never moves backwards in the task: it stays at updatedAt.
+	// The cost is the other direction: a transition committed while the clock
+	// ran ahead stores that future time, and after the clock is corrected every
+	// new action the actuator leases from real time has already expired, so the
+	// task cannot act until real time reaches updatedAt. Stops still work; the
+	// way out is to cancel and start a new task.
 	const now = Math.max(context.now, previous.updatedAt);
 	const task = structuredClone(previous);
 	const unresolved = task.operations.find(isUnresolved);

@@ -223,4 +223,70 @@ describe("interactive task clock", () => {
 			}),
 		).toThrow(expect.objectContaining({ code: "TASK_STALE_ACTION" }));
 	});
+
+	it("after a forward clock jump is corrected, still stops but cannot act until real time catches up", () => {
+		const YEAR = 365 * 24 * 60 * 60 * 1000;
+		const view = (version: number, observedAt: number) => ({
+			id: `view-${version}`,
+			pageId: "page",
+			origin: A,
+			version,
+			inputRevision: 0,
+			observedAt,
+		});
+		const proposal = (task: InteractiveTask, version: number, now: number) => ({
+			id: `op-${version}`,
+			taskId: task.id,
+			epoch: task.epoch,
+			observationId: `view-${version}`,
+			observationVersion: version,
+			inputRevision: 0,
+			targetRef: "button",
+			capability: "click",
+			authorizationId: "grant",
+			// The actuator leases from its own clock.
+			expiresAt: now + 30_000,
+		});
+		const start = (id: string, now: number) =>
+			createInteractiveTask({
+				id,
+				owner,
+				goalRef: "goal",
+				now,
+				authorization: {
+					decisionId: "grant",
+					policyRevision: "policy",
+					decidedAt: new Date(now).toISOString(),
+					state: "active",
+					revokedAt: null,
+				},
+				allowedCapabilities: ["click"],
+				allowedOrigins: [A],
+			});
+		let task = start("task-1", T);
+		// The clock jumps a year ahead while a view is recorded, then NTP fixes it.
+		task = run(task, T + YEAR, {
+			type: "observe",
+			observation: view(1, T + YEAR),
+		}).task;
+		expect(task.updatedAt).toBe(T + YEAR);
+		const now = T + 5;
+		task = run(task, now, { type: "observe", observation: view(2, now) }).task;
+		expect(task.updatedAt).toBe(T + YEAR);
+		expect(() =>
+			run(task, now, { type: "prepare", proposal: proposal(task, 2, now) }),
+		).toThrow(expect.objectContaining({ code: "TASK_STALE_ACTION" }));
+		// A stop still works, and a new task acts on the corrected clock.
+		expect(run(task, now, { type: "cancel" }).task.status).toBe("cancelled");
+		let next = start("task-2", now + 1);
+		next = run(next, now + 2, {
+			type: "observe",
+			observation: view(1, now + 2),
+		}).task;
+		next = run(next, now + 3, {
+			type: "prepare",
+			proposal: proposal(next, 1, now + 3),
+		}).task;
+		expect(next.operations[0].status).toBe("prepared");
+	});
 });
