@@ -135,8 +135,9 @@ export type TaskTransition =
 	| { type: "pause" | "cancel" | "recover" | "revoke" | "complete" }
 	/**
 	 * Trusted host only: a new epoch for a new browser binding, for example a
-	 * new action target. The task stays active and needs a fresh observation,
-	 * so "paused" only ever means that someone stopped the task.
+	 * new action target. The task stays active and needs a fresh observation.
+	 * The guide never pauses a task to take a new binding: a pause is her Stop
+	 * or a host safety stop, and only her Resume ends it.
 	 */
 	| { type: "rebind" }
 	| { type: "prepare"; proposal: TaskActionProposal }
