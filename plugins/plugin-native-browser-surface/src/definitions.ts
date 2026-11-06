@@ -606,8 +606,12 @@ export interface ElizaSurfaceManagerPlugin {
    * for a page that stays shown but is covered, for example a `below-host` page under
    * an opaque host screen. It frees no memory. The surface keeps its visibility, and
    * `presentSurface` does not resume it; call `resumeSurface` before the person sees it
-   * again. Captures, page control and history steps reject while it is paused.
-   * Repeating the call does nothing. iOS rejects with `UNSUPPORTED`. The process-wide
+   * again. While it is paused, `captureSurface`, `controlPage`, `observeHistory` and
+   * `navigateHistory` reject; `goBack`, `goForward`, `navigate` and `reloadSurface` still
+   * run, and `readPage` still reads. Pausing also cancels held page dialogs, refuses new
+   * ones, takes focus and the keyboard from the page, and stops sending it touches.
+   * Repeating the call does nothing. iOS rejects with `UNSUPPORTED`, so a cross-platform
+   * caller must catch it; web rejects as unavailable. The process-wide
    * `WebView.pauseTimers()` is never called, as it would also stop the host WebView.
    */
   pauseSurface(options: SurfaceIdOptions): Promise<void>;

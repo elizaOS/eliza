@@ -76,7 +76,11 @@ and does nothing by itself:
 Android `pauseSurface` calls `WebView.onPause()` on one surface and `resumeSurface`
 undoes it. The page stops drawing and its timers slow to about once a second, even while
 it is shown; its state and history stay. A hidden surface is already treated this way, so
-use it for a page that stays shown under host screens. It frees no memory.
+use it for a page that stays shown under host screens. It frees no memory. A paused
+page gets no touches, focus or keyboard, its held dialogs are cancelled, and capture,
+page control, `observeHistory` and `navigateHistory` reject until `resumeSurface`;
+`goBack`, `goForward`, `navigate` and `reloadSurface` still run. `presentSurface` never
+resumes it. iOS rejects both methods with `UNSUPPORTED`.
 
 Isolated surfaces get a fresh storage profile that is cleared when the surface closes
 and deleted once Android releases it. `createSurface({ ..., profileKey })` instead

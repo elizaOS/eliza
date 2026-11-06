@@ -658,7 +658,8 @@ class ElizaSurfaceManagerPlugin : Plugin() {
         val surface = surfaces[id]
         // Only an intercepting host answers dialogs; any other surface dismisses them as before.
         if (surface == null || surface.webView !== view || !surface.interceptNavigation ||
-            !BrowserPageHandoffs.dialogMayWait(isLive(surface), surface.foregrounded, surface.dialogs.size())) {
+            !BrowserPageHandoffs.dialogMayWait(isLive(surface), surface.foregrounded && !surface.paused,
+                surface.dialogs.size())) {
             result.cancel()
             return true
         }
@@ -1857,6 +1858,12 @@ class ElizaSurfaceManagerPlugin : Plugin() {
                 if (paused) {
                     surface.historyObservation = null
                     surface.control?.interrupt("The native page was paused")
+                    dismissDialogs(surface)
+                    if (surface.webView.hasFocus()) {
+                        activity.getSystemService(android.view.inputmethod.InputMethodManager::class.java)
+                            ?.hideSoftInputFromWindow(surface.webView.windowToken, 0)
+                    }
+                    surface.webView.clearFocus()
                     surface.webView.onPause()
                 } else {
                     surface.webView.onResume()
@@ -2038,11 +2045,7 @@ class ElizaSurfaceManagerPlugin : Plugin() {
 
     /** The below-host input router, made on first use. */
     private fun ensureInputRouter(): BelowHostInputRouter = inputRouter ?: BelowHostInputRouter(activity) {
-        if (surfaces.values.none { it.layer == SurfaceLayer.BELOW_HOST && it.foregrounded && !it.disposed }) {
-            emptyList()
-        } else {
-            surfaces.values.filter { it.layer == SurfaceLayer.BELOW_HOST && it.foregrounded && !it.disposed }.map { it.container }
-        }
+        surfaces.values.filter { takesPageInput(it.layer, it.foregrounded, it.paused, it.disposed) }.map { it.container }
     }.also { inputRouter = it }
 
     /** Keeps the below-host input router directly above the host WebView's branch. */

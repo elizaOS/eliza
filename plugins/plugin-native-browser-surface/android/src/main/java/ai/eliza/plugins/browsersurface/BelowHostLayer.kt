@@ -48,6 +48,13 @@ internal fun pageOwnsPoint(
         hostRects.none { it.contains(x, y) }
 
 /**
+ * True when the input router may send touches to this surface: a shown below-host page
+ * that is not paused (a paused page draws nothing, so a tap would act unseen).
+ */
+internal fun takesPageInput(layer: SurfaceLayer, foregrounded: Boolean, paused: Boolean, disposed: Boolean): Boolean =
+    layer == SurfaceLayer.BELOW_HOST && foregrounded && !paused && !disposed
+
+/**
  * Child index for a new surface container: appended (drawn above the host) for
  * `above-host`, or at the host WebView's own index (drawn below it) for `below-host`.
  */

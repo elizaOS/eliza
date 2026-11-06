@@ -15,6 +15,15 @@ class BelowHostLayerTest {
         pageOwnsPoint(x, y, 200, 100, outer, rects)
 
     @Test
+    fun onlyAShownUnpausedBelowHostPageTakesInput() {
+        assertTrue(takesPageInput(SurfaceLayer.BELOW_HOST, foregrounded = true, paused = false, disposed = false))
+        assertFalse(takesPageInput(SurfaceLayer.BELOW_HOST, foregrounded = true, paused = true, disposed = false))
+        assertFalse(takesPageInput(SurfaceLayer.BELOW_HOST, foregrounded = false, paused = false, disposed = false))
+        assertFalse(takesPageInput(SurfaceLayer.BELOW_HOST, foregrounded = true, paused = false, disposed = true))
+        assertFalse(takesPageInput(SurfaceLayer.ABOVE_HOST, foregrounded = true, paused = false, disposed = false))
+    }
+
+    @Test
     fun thePageOwnsItsRectOutsideHostRects() {
         assertTrue(owns(100f, 50f))
         assertTrue(owns(0f, 50f))
