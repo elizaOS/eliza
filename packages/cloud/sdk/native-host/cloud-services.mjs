@@ -1940,10 +1940,12 @@ export function createCloudRoutes({
                 "applyTextNormalization",
               ]
             : operation === "pull"
-              ? ["streamId", "cursor"]
+              ? ["streamId", "cursor", "batch"]
               : ["streamId", "requestId"];
         if (Object.keys(input).some((field) => !fields.includes(field)))
           throw fail("Unexpected speech stream fields");
+        if (input.batch !== undefined && input.batch !== true)
+          throw fail("Invalid speech stream batch");
         const result =
           operation === "start"
             ? await speechStreams.start({
@@ -1955,6 +1957,7 @@ export function createCloudRoutes({
               ? await speechStreams.pull({
                   streamId: input.streamId,
                   cursor: input.cursor,
+                  batch: input.batch === true,
                   owner,
                 })
               : await speechStreams.cancel({
