@@ -2060,6 +2060,7 @@ export class InferenceAdmissionGate {
         | SessionRevokeRequest
         | SessionBindingStateRequest
         | OrganizationStateRequest
+        | PolicyFenceRequest
         | RateLimitCutoverRequest;
     } catch {
       // error-policy:J3 malformed request bodies are rejected explicitly.
