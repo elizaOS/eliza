@@ -145,6 +145,30 @@ const decisions = new WeakMap<
   }
 >();
 
+/** The navigation decision, or null when the model value is malformed (soft fail). */
+function parseNavigation(value: unknown): Navigation | null {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return null;
+  const v = value as Record<string, unknown>;
+  if (
+    Object.keys(v).some(
+      (k) => !["disposition", "viewId", "reason"].includes(k),
+    ) ||
+    typeof v.disposition !== "string" ||
+    ![
+      "direct",
+      "planning",
+      "optional",
+      "none",
+      "forbidden",
+      "unresolved",
+    ].includes(v.disposition) ||
+    typeof v.viewId !== "string" ||
+    typeof v.reason !== "string"
+  )
+    return null;
+  return v as Navigation;
+}
+
 export const viewNavigationField: ResponseHandlerFieldEvaluator<Navigation> = {
   name: "visualContinuation",
   description:
@@ -174,10 +198,15 @@ export const viewNavigationField: ResponseHandlerFieldEvaluator<Navigation> = {
   // no navigation can stream its direct answer.
   priority: 19.75,
   // The host evaluator only records a constraint for none/forbidden and
-  // ignores optional; none of them reroutes the turn or changes replyText.
+  // ignores optional; none of them reroutes the turn or changes replyText. A
+  // non-object value (for example a JSON string) fails parse softly and no
+  // raw reader treats it as navigation, so nothing is staged. Every object,
+  // well-formed or not, is judged by its disposition, because Stage-1 routing
+  // repair reads the raw disposition (stage1-generation.ts).
   directReplyValue: (value) =>
-    typeof value === "object" &&
-    value !== null &&
+    typeof value !== "object" ||
+    value === null ||
+    Array.isArray(value) ||
     ["none", "forbidden", "optional"].includes(
       String((value as { disposition?: unknown }).disposition),
     ),
@@ -225,27 +254,7 @@ export const viewNavigationField: ResponseHandlerFieldEvaluator<Navigation> = {
   },
   parse(value, { message }) {
     decisions.delete(message);
-    if (!value || typeof value !== "object" || Array.isArray(value))
-      return null;
-    const v = value as Record<string, unknown>;
-    if (
-      Object.keys(v).some(
-        (k) => !["disposition", "viewId", "reason"].includes(k),
-      ) ||
-      typeof v.disposition !== "string" ||
-      ![
-        "direct",
-        "planning",
-        "optional",
-        "none",
-        "forbidden",
-        "unresolved",
-      ].includes(v.disposition) ||
-      typeof v.viewId !== "string" ||
-      typeof v.reason !== "string"
-    )
-      return null;
-    return v as Navigation;
+    return parseNavigation(value);
   },
   handle({ runtime, message, senderRole, value, turnSignal }) {
     turnSignal.throwIfAborted();

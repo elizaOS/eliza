@@ -218,6 +218,35 @@ describe("Stage 1 reply stream gate", () => {
     expect(gate?.(direct)).toBe(true);
     // A notes value in the legacy scalar form is also no effect.
     expect(gate?.({ ...direct, notesRequestEffect: "unresolved" })).toBe(true);
+    // Values a real model wrote on direct-answer turns (Pixel 10a, Nov 2026):
+    // a read-only Notes classification with no operations, and a navigation
+    // value sent as a JSON string, which the field's parser rejects so
+    // nothing is staged.
+    expect(
+      gate?.({
+        ...direct,
+        notesRequestEffect: { classification: "read_only", operations: [] },
+      }),
+    ).toBe(true);
+    expect(gate?.({ ...direct, notesRequestEffect: "read_only" })).toBe(true);
+    expect(
+      gate?.({
+        ...direct,
+        visualContinuation:
+          '{"disposition":"none","viewId":"","reason":"general question"}',
+      }),
+    ).toBe(true);
+    // A malformed object that still names a navigation holds it: Stage-1
+    // routing repair reads the raw disposition and would re-ask the model.
+    for (const visualContinuation of [
+      { disposition: "direct", viewId: "calendar" },
+      { disposition: "planning", viewId: "calendar" },
+      { disposition: "direct", viewId: "calendar", reason: "x", extra: 1 },
+    ]) {
+      expect(gate?.({ ...direct, visualContinuation })).toBe(false);
+    }
+    // An unknown top-level key the schema never asked for still holds it.
+    expect(gate?.({ ...direct, viewId: "calendar" })).toBe(false);
 
     // A value that reroutes the turn or rewrites the reply holds it.
     for (const [field, value] of [
