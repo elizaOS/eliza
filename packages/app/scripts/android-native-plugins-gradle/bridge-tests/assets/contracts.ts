@@ -1911,6 +1911,82 @@
         await rejects("readPage", { ...identity, id });
         await call("presentSurface", { ...identity, id });
         const restored = await waitForPage("First fixture");
+        const rejectCode = async (method, options) => {
+          try {
+            await call(method, options);
+          } catch (error) {
+            return error.code;
+          }
+          throw new Error(`${method} must reject`);
+        };
+        const paused = async () =>
+          (await call("getSurfaceState", { ...identity, id })).paused;
+        await rejects("pauseSurface", {
+          ...identity,
+          session: "wrong-session",
+          id,
+        });
+        await rejects("pauseSurface", {
+          ...identity,
+          owner: "other-owner",
+          id,
+        });
+        await rejects("pauseSurface", { ...identity, id: "missing-surface" });
+        await rejects("pauseSurface", { ...identity });
+        assert((await paused()) === false, "a new surface is not paused");
+        await call("pauseSurface", { ...identity, id });
+        await call("pauseSurface", { ...identity, id });
+        assert(
+          (await paused()) === true,
+          "pauseSurface marks the surface paused",
+        );
+        assert(
+          (await rejectCode("captureSurface", { ...identity, id })) ===
+            "CAPTURE_UNAVAILABLE",
+          "a paused surface cannot be captured",
+        );
+        assert(
+          (await call("readPage", { ...identity, id })).title ===
+            "First fixture",
+          "a paused page stays readable",
+        );
+        await call("presentSurface", { ...identity, id });
+        assert(
+          (await paused()) === true,
+          "presentSurface does not resume a paused surface",
+        );
+        await rejects("resumeSurface", {
+          ...identity,
+          session: "wrong-session",
+          id,
+        });
+        await call("resumeSurface", { ...identity, id });
+        await call("resumeSurface", { ...identity, id });
+        assert((await paused()) === false, "resumeSurface clears paused");
+        const captureDeadline = Date.now() + 5000;
+        let resumedCapture: unknown;
+        let captureError = "";
+        while (!resumedCapture && Date.now() < captureDeadline) {
+          try {
+            resumedCapture = await call("captureSurface", { ...identity, id });
+          } catch (error) {
+            captureError = `${error.code}: ${error.message}`;
+            await new Promise((resolve) => setTimeout(resolve, 100));
+          }
+        }
+        assert(
+          resumedCapture !== undefined,
+          `a resumed surface can be captured again: ${captureError}`,
+        );
+        assert(
+          (
+            await call("getSurfaceState", {
+              ...identity,
+              id: "missing-surface",
+            })
+          ).paused === false,
+          "a missing surface reports paused false",
+        );
         window.nativeBrowserEvidence = {
           first,
           selected,
@@ -2246,6 +2322,23 @@
             await call("presentSurface", { ...identity });
             await rejects("observeHistory", { ...identity, id });
             await call("presentSurface", { ...identity, id });
+            const pausedForward = (await history()).destinations.find(
+              (entry) => entry.direction === "forward",
+            );
+            await call("pauseSurface", { ...identity, id });
+            await rejects("observeHistory", { ...identity, id });
+            // Pausing drops the observation, like hiding does.
+            await rejects("navigateHistory", {
+              ...identity,
+              id,
+              reference: pausedForward.reference,
+            });
+            await rejects("controlPage", {
+              ...identity,
+              id,
+              command: { subaction: "snapshot" },
+            });
+            await call("resumeSurface", { ...identity, id });
             await rejects("navigateHistory", {
               ...identity,
               id,

@@ -166,6 +166,12 @@ export class BrowserSurfaceWeb
   async presentSurface(_options: PresentSurfaceOptions): Promise<void> {
     throw this.unavailable(UNAVAILABLE);
   }
+  async pauseSurface(_options: SurfaceIdOptions): Promise<void> {
+    throw this.unavailable(UNAVAILABLE);
+  }
+  async resumeSurface(_options: SurfaceIdOptions): Promise<void> {
+    throw this.unavailable(UNAVAILABLE);
+  }
   async destroySurface(_options: SurfaceIdOptions): Promise<void> {
     throw this.unavailable(UNAVAILABLE);
   }

@@ -30,6 +30,8 @@ public class ElizaSurfaceManagerPlugin: CAPPlugin, CAPBridgedPlugin, WKNavigatio
         CAPPluginMethod(name: "readPage", returnType: CAPPluginReturnPromise),
         CAPPluginMethod(name: "controlPage", returnType: CAPPluginReturnPromise),
         CAPPluginMethod(name: "presentSurface", returnType: CAPPluginReturnPromise),
+        CAPPluginMethod(name: "pauseSurface", returnType: CAPPluginReturnPromise),
+        CAPPluginMethod(name: "resumeSurface", returnType: CAPPluginReturnPromise),
         CAPPluginMethod(name: "destroySurface", returnType: CAPPluginReturnPromise),
         CAPPluginMethod(name: "getSurfaceState", returnType: CAPPluginReturnPromise),
         CAPPluginMethod(name: "listSurfaceStates", returnType: CAPPluginReturnPromise),
@@ -158,6 +160,17 @@ public class ElizaSurfaceManagerPlugin: CAPPlugin, CAPBridgedPlugin, WKNavigatio
         guard let storage = call.getString("storage"),
               storage == "isolated" || storage == "shared" else {
             call.reject("createSurface requires an explicit storage policy (isolated|shared)")
+            return
+        }
+        switch NativeBrowserSurfaceLayer.parse(call.options["layer"]) {
+        case .aboveHost:
+            break
+        case .unsupported:
+            // Only Android draws a page below the host WebView.
+            call.reject("createSurface layer below-host is not supported on iOS", "UNSUPPORTED")
+            return
+        case .invalid:
+            call.reject("createSurface layer must be above-host or below-host")
             return
         }
         guard let identity = identity(call, operation: "createSurface") else { return }
@@ -403,6 +416,15 @@ public class ElizaSurfaceManagerPlugin: CAPPlugin, CAPBridgedPlugin, WKNavigatio
 
     @objc func navigateHistory(_ call: CAPPluginCall) {
         call.reject("Observed history navigation is not supported on iOS", "UNSUPPORTED")
+    }
+
+    // WKWebView has no public pause like Android's WebView.onPause().
+    @objc func pauseSurface(_ call: CAPPluginCall) {
+        call.reject("Pausing a native page is not supported on iOS", "UNSUPPORTED")
+    }
+
+    @objc func resumeSurface(_ call: CAPPluginCall) {
+        call.reject("Pausing a native page is not supported on iOS", "UNSUPPORTED")
     }
 
     @objc func controlPage(_ call: CAPPluginCall) {
