@@ -18,8 +18,8 @@ import { SQLiteDatabaseAdapter } from "@elizaos/testing/runtime";
 import { expect, it, vi } from "vitest";
 import { createV5ReplyStrategyResult } from "../../../plugins/plugin-assistant/src/services/message/reply-policy.ts";
 import {
+  createStage1DirectReplyStreamGate,
   STAGE1_REPLY_STREAM_FIELDS,
-  stage1DirectReplyStreamGate,
 } from "../../../plugins/plugin-assistant/src/services/message/stage1-reply-stream.ts";
 import { generateChatResponse } from "../src/api/chat-routes.ts";
 import { startApiServer } from "../src/api/server.ts";
@@ -134,7 +134,9 @@ async function runTurn(
             streamStructured: true,
             responseSkeleton: skeleton,
             streamFields: STAGE1_REPLY_STREAM_FIELDS,
-            streamFieldGate: stage1DirectReplyStreamGate,
+            streamFieldGate: createStage1DirectReplyStreamGate(() =>
+              skeleton.spans.flatMap((span) => (span.key ? [span.key] : [])),
+            ),
             onStreamChunk: options?.onStreamChunk,
           });
         }

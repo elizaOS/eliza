@@ -138,8 +138,8 @@ import {
   reportRejectedUserVisibleModelOutput,
 } from "./stage1-output.ts";
 import {
+  createStage1DirectReplyStreamGate,
   STAGE1_REPLY_STREAM_FIELDS,
-  stage1DirectReplyStreamGate,
 } from "./stage1-reply-stream.ts";
 import { parseToolArguments } from "./tool-arguments.ts";
 import { recordMessageHandlerStage } from "./trajectory-stages.ts";
@@ -842,7 +842,14 @@ export async function generateStage1Decision(
       ? {}
       : {
           streamFields: STAGE1_REPLY_STREAM_FIELDS,
-          streamFieldGate: stage1DirectReplyStreamGate,
+          streamFieldGate: createStage1DirectReplyStreamGate(() =>
+            selectedResponseHandlerFields
+              .map((field) => field.name)
+              .filter(
+                (name) =>
+                  !responseHandlerFieldPrompt.skippedFieldNames.includes(name),
+              ),
+          ),
         }),
     // This is the only Stage 1 field intended for the user. Local voice
     // consumes the validated replyText field; planner/evaluator calls leave

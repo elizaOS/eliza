@@ -56,31 +56,46 @@ const DIRECT_REPLY_PRECEDING_FIELDS: Readonly<
   replyEffectStatus: (value) => value === "none" || value === "non_applied",
 };
 
-/** Fields that must have been decided before a direct answer can stream. */
-const REQUIRED_PRECEDING_FIELDS = [
-  "shouldRespond",
-  "contexts",
+/** Fields every streamable attempt must have decided: without them there is no routing decision. */
+const ALWAYS_REQUIRED_FIELDS = ["shouldRespond", "contexts"] as const;
+
+/**
+ * Routing fields that must have been decided before a direct answer can
+ * stream, when the attempt's schema emits them. Stage 1 leaves some out of
+ * its model-facing schema (for example `candidateActionNames`, which the
+ * planner discovers); a field the model never writes can never be waited for.
+ */
+const REQUIRED_WHEN_EMITTED_FIELDS = [
   "intents",
   "candidateActionNames",
   "replyEffectStatus",
-];
+] as const;
 
 /**
- * Allows a Stage-1 attempt's reply to stream only when the fields generated
- * before it route the turn to a direct answer: RESPOND, simple context, no
- * intents, no context reads, no action candidates and no pending or applied
- * effect. Unstructured prose is held: it has no routing decision to check.
+ * Creates the gate for one Stage-1 call. It allows the reply to stream only
+ * when the fields generated before it route the turn to a direct answer:
+ * RESPOND, simple context, no intents, no context reads, no action candidates
+ * and no pending or applied effect. `emittedFieldNames` returns the fields the
+ * call's schema actually asks the model for, read when the gate runs so a
+ * recomposed schema (retry, context read) is honoured. Unstructured prose is
+ * held: it has no routing decision to check.
  */
-export const stage1DirectReplyStreamGate: StructuredStreamGate = (
-  preceding,
-) => {
-  if (!preceding) return false;
-  for (const field of REQUIRED_PRECEDING_FIELDS) {
-    if (!Object.hasOwn(preceding, field)) return false;
-  }
-  for (const [field, value] of Object.entries(preceding)) {
-    const allows = DIRECT_REPLY_PRECEDING_FIELDS[field];
-    if (!allows?.(value)) return false;
-  }
-  return true;
-};
+export function createStage1DirectReplyStreamGate(
+  emittedFieldNames: () => readonly string[],
+): StructuredStreamGate {
+  return (preceding) => {
+    if (!preceding) return false;
+    const emitted = new Set(emittedFieldNames());
+    for (const field of ALWAYS_REQUIRED_FIELDS) {
+      if (!Object.hasOwn(preceding, field)) return false;
+    }
+    for (const field of REQUIRED_WHEN_EMITTED_FIELDS) {
+      if (emitted.has(field) && !Object.hasOwn(preceding, field)) return false;
+    }
+    for (const [field, value] of Object.entries(preceding)) {
+      const allows = DIRECT_REPLY_PRECEDING_FIELDS[field];
+      if (!allows?.(value)) return false;
+    }
+    return true;
+  };
+}
