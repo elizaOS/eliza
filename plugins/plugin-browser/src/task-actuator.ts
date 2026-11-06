@@ -1049,7 +1049,9 @@ export class NativeTaskActuator {
           taskContext: binding.context,
           subaction,
           targetRef: proposal.targetRef,
-          selector: proposal.expectedSelector,
+          // The selector the browser will check. Under "omit" none is sent,
+          // and a commit is never sent without its reviewed control checked.
+          selector: expectedSelector,
           now: this.now(),
         }) ||
         // The page the person said yes on: for an extended task this is the
