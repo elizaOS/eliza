@@ -25,6 +25,7 @@ import { logger } from "@elizaos/cloud-shared/lib/utils/logger";
 import {
   isCommand,
   splitMessage,
+  TELEGRAM_RATE_LIMITS,
 } from "@elizaos/cloud-shared/lib/utils/telegram-helpers";
 import type { AppEnv } from "@elizaos/cloud-shared/types/cloud-worker-env";
 import { ElizaError } from "@elizaos/core";
@@ -401,9 +402,35 @@ ${matchingApp.website_url ? `🌐 Website: ${matchingApp.website_url}` : ""}`;
         const replyText = routed.replyText?.trim();
         // A reply over Telegram's message limit is rejected whole, which
         // fails the update and makes Telegram redeliver it into a new turn.
-        // Send it as ordered parts instead.
-        for (const part of splitMessage(replyText ?? "")) {
-          await ctx.reply(part);
+        // Send it as ordered parts, at the per-chat rate Telegram allows.
+        const parts = splitMessage(replyText ?? "");
+        for (const [index, part] of parts.entries()) {
+          if (index > 0) {
+            await new Promise((resolve) =>
+              setTimeout(
+                resolve,
+                1000 / TELEGRAM_RATE_LIMITS.MESSAGES_PER_SECOND_SAME_CHAT,
+              ),
+            );
+          }
+          try {
+            await ctx.reply(part);
+          } catch (error) {
+            // Nothing reached the owner yet: fail the update so Telegram
+            // redelivers it.
+            if (index === 0) throw error;
+            // Earlier parts already reached the owner. A redelivery would run
+            // the turn again and resend them, so acknowledge the update and
+            // report the parts that were not delivered.
+            logger.error("[Telegram Webhook] Reply only partly delivered", {
+              orgId,
+              chatId,
+              deliveredParts: index,
+              totalParts: parts.length,
+              error: error instanceof Error ? error.message : String(error),
+            });
+            break;
+          }
         }
         return;
       }

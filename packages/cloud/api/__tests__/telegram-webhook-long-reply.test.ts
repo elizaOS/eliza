@@ -17,6 +17,8 @@ const longReply = Array.from(
   (_, index) => `Line ${index + 1} of the weekly report, with its details.`,
 ).join("\n");
 let routed = 0;
+// When set, the fake Bot API rejects every send after this many accepted ones.
+let acceptedBeforeRateLimit: number | null = null;
 
 mock.module(
   "@elizaos/cloud-shared/lib/middleware/rate-limit-hono-cloudflare",
@@ -72,6 +74,20 @@ const fakeTelegramApi = (async (
     return Response.json({ ok: true, result: true });
   }
   const body = JSON.parse(String(init?.body ?? "{}")) as { text: string };
+  if (
+    acceptedBeforeRateLimit !== null &&
+    sent.length >= acceptedBeforeRateLimit
+  ) {
+    return Response.json(
+      {
+        ok: false,
+        error_code: 429,
+        description: "Too Many Requests: retry after 3",
+        parameters: { retry_after: 3 },
+      },
+      { status: 429 },
+    );
+  }
   if (body.text.length > TELEGRAM_MESSAGE_LIMIT) {
     return Response.json(
       {
@@ -101,13 +117,13 @@ app.route("/telegram/:orgId", route);
 
 beforeEach(() => {
   routed = 0;
+  acceptedBeforeRateLimit = null;
   sent.length = 0;
   seenEvents.clear();
 });
 
-test("a reply longer than one Telegram message is delivered in order and the update is acknowledged", async () => {
-  expect(longReply.length).toBeGreaterThan(TELEGRAM_MESSAGE_LIMIT);
-  const response = await app.request(`/telegram/${randomUUID()}`, {
+function deliverUpdate(orgId: string) {
+  return app.request(`/telegram/${orgId}`, {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
@@ -124,9 +140,31 @@ test("a reply longer than one Telegram message is delivered in order and the upd
       },
     }),
   });
+}
+
+test("a reply longer than one Telegram message is delivered in order and the update is acknowledged", async () => {
+  expect(longReply.length).toBeGreaterThan(TELEGRAM_MESSAGE_LIMIT);
+  const response = await deliverUpdate(randomUUID());
 
   expect(response.status).toBe(200);
   expect(routed).toBe(1);
   expect(sent.length).toBeGreaterThan(1);
   expect(sent.join("")).toBe(longReply);
+});
+
+test("a later part that fails after earlier parts arrived does not re-run the turn", async () => {
+  acceptedBeforeRateLimit = 1;
+  const orgId = randomUUID();
+  const first = await deliverUpdate(orgId);
+  expect(first.status).toBe(200);
+  expect(routed).toBe(1);
+  expect(sent).toHaveLength(1);
+
+  // Telegram does not redeliver an acknowledged update; a stray redelivery
+  // is a duplicate and routes no second turn.
+  acceptedBeforeRateLimit = null;
+  const again = await deliverUpdate(orgId);
+  expect(again.status).toBe(200);
+  expect(routed).toBe(1);
+  expect(sent).toHaveLength(1);
 });
