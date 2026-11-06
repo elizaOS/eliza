@@ -175,7 +175,28 @@ class DiscordService {
       `/channels/${this.defaultChannelId}/threads`,
       threadData,
     );
+
+    if (!res.ok) {
+      const errorBody = (await res.json().catch(() => null)) as {
+        message?: string;
+      } | null;
+      const detail = errorBody?.message ? `: ${errorBody.message}` : "";
+      logger.error(`[DiscordService] Thread creation failed (${res.status})${detail}`);
+      return {
+        success: false,
+        error: `Discord thread creation failed (${res.status})${detail}`,
+      };
+    }
+
     const response = (await res.json()) as { id: string };
+
+    if (!response.id) {
+      logger.error("[DiscordService] Thread creation response missing thread id");
+      return {
+        success: false,
+        error: "Discord thread creation failed: response missing thread id",
+      };
+    }
 
     logger.info(`[DiscordService] Thread created: ${response.id}`);
 
