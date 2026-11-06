@@ -318,6 +318,7 @@ export const ANDROID_CLOUD_STRIPPED_TEST_JAVA_FILES = [
   "BionicNetworkPolicyInstrumentedTest.java",
   "BionicSpeechInstrumentedTest.java",
   "CapacitorBgeInstrumentedTest.java",
+  "CopiedModelAssetsInstrumentedTest.java",
   "BionicDecodeLoopTest.java",
   "DeviceRamTierPolicyTest.java",
   "ElizaAgentAutostartPolicyTest.java",
@@ -534,6 +535,7 @@ export const ANDROID_CLOUD_REWRITTEN_JAVA_FILES = [
   "AgentPlugin.java",
   "ElizaNativeBridge.java",
   "ElizaCredentialRetirement.java",
+  "ElizaResidentCredentials.java",
 ];
 
 export const ANDROID_CLOUD_STRIPPED_ASSET_FILES = new Set([
