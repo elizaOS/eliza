@@ -93,7 +93,7 @@ public final class UpdateJournalTest {
     rejects(()->rebootLoop.begin(plan("stable"),OLD,0));
     // Independently encode historical formats; do not derive them by trimming
     // the current writer, which can hide a format migration regression.
-    for(int version=1;version<=3;version++) {
+    for(int version=1;version<=4;version++) {
       Path oldFormat=directory.resolve("format-v"+version);UpdateJournal format=new UpdateJournal(oldFormat,SYNC);
       ByteArrayOutputStream legacyBody=new ByteArrayOutputStream();
       try(DataOutputStream out=new DataOutputStream(legacyBody)) {
@@ -101,11 +101,13 @@ public final class UpdateJournalTest {
         out.writeBoolean(true);out.writeUTF("release-11");out.writeUTF("stable");out.writeUTF("launcher");
         for(UpdateJournal.Identity identity:new UpdateJournal.Identity[]{OLD,NEW,RECOVERY}){out.writeLong(identity.code);out.writeUTF(identity.digest);}
         out.writeInt(0);if(version>=2){out.writeLong(100);out.writeLong(10);out.writeLong(100);}
+        if(version>=4)out.writeBoolean(false);
       }
       ByteArrayOutputStream legacyBytes=new ByteArrayOutputStream();byte[] body=legacyBody.toByteArray();legacyBytes.write(body);legacyBytes.write(java.security.MessageDigest.getInstance("SHA-256").digest(body));Files.write(oldFormat.resolve("journal"),legacyBytes.toByteArray());
       check(format.read().phase==UpdateJournal.Phase.COMMITTING);check(format.read().pendingMillis==(version==1?0:100));check(format.read().probation==null);
       format.observePending("release-11",4,10,200,1000);check(format.read().phase==UpdateJournal.Phase.COMMITTING);check(format.read().pendingMillis==(version==1?0:200));
-      check(java.nio.ByteBuffer.wrap(Files.readAllBytes(oldFormat.resolve("journal"))).getInt(4)==4);
+      check(format.read().reportedFailure==null);check(format.read().releasedCandidate.isEmpty());check(format.read().releases==0);
+      check(java.nio.ByteBuffer.wrap(Files.readAllBytes(oldFormat.resolve("journal"))).getInt(4)==5);
     }
     for(String boundary:new String[]{"before-sync","before-rename","published"}) {
       Path root=directory.resolve("timer-"+boundary);UpdateJournal death=new UpdateJournal(root,SYNC);
@@ -173,7 +175,8 @@ public final class UpdateJournalTest {
       check(stalled.read().reason.equals(stall));
       stalled.reconcile("release-11",3,OLD,true);check(stalled.read().reason.equals(stall));
       long generation=stalled.read().channelGeneration;
-      stalled.reconcile("release-11",3,OLD,false);
+      stalled.reconcile("release-11",3,OLD,false);check(stalled.read().reason.equals(UpdateJournal.OUTCOME_UNKNOWN));
+      stalled.observeOutcomeUnknown("release-11",3,10,0);stalled.observeOutcomeUnknown("release-11",3,10,UpdateJournal.OUTCOME_UNKNOWN_WAIT_MS);
       check(stalled.read().phase==UpdateJournal.Phase.IDLE);check(stalled.read().plan==null);check(stalled.read().reason.equals("install_not_completed"));
       check(stalled.read().quarantine.isEmpty());check(stalled.read().channelGeneration==generation);check(!UpdateJournal.awaitingInstaller(stalled.read()));
       stalled.begin(plan("stable"),OLD,generation);check(stalled.read().phase==UpdateJournal.Phase.VERIFIED);
@@ -195,7 +198,7 @@ public final class UpdateJournalTest {
     catch(UpdateJournal.HandoffFailed wrong){throw new AssertionError("Publish failure reported as handoff");}
     catch(IOException expected){assertions++;}
     // Only a reported candidate fault quarantines. A gone session with no report
-    // waits one readback for a late callback, then releases the plan.
+    // waits observed uptime, not readbacks, for a late callback, then releases.
     UpdateJournal unreported=new UpdateJournal(directory.resolve("unreported"),SYNC);unreported.begin(plan("stable"),OLD,0);unreported.committing("release-11",3,0);
     unreported.reconcile("release-11",3,OLD,false);check(unreported.read().reason.equals("install_outcome_unknown"));check(unreported.read().quarantine.isEmpty());check(UpdateJournal.awaitingInstaller(unreported.read()));
     rejects(()->unreported.begin(plan("stable"),OLD,0));
@@ -203,6 +206,15 @@ public final class UpdateJournalTest {
     check(unreported.read().phase==UpdateJournal.Phase.QUARANTINED);check(unreported.read().quarantine.contains(NEW.digest));check(!unreported.read().quarantine.contains(RECOVERY.digest));
     UpdateJournal unanswered=new UpdateJournal(directory.resolve("unanswered"),SYNC);unanswered.begin(plan("stable"),OLD,0);unanswered.committing("release-11",3,0);
     unanswered.reconcile("release-11",3,OLD,false);unanswered.reconcile("release-11",3,OLD,false);
+    check(unanswered.read().reason.equals(UpdateJournal.OUTCOME_UNKNOWN));check(unanswered.read().pendingMillis==0);
+    unanswered.observeOutcomeUnknown("wrong",3,10,0);unanswered.observeOutcomeUnknown("release-11",4,10,0);check(unanswered.read().reason.equals(UpdateJournal.OUTCOME_UNKNOWN));
+    unanswered.observeOutcomeUnknown("release-11",3,10,1000);unanswered.reconcile("release-11",3,OLD,false);
+    unanswered.observeOutcomeUnknown("release-11",3,10,UpdateJournal.OUTCOME_UNKNOWN_WAIT_MS-1000);check(unanswered.read().pendingMillis==UpdateJournal.OUTCOME_UNKNOWN_WAIT_MS-2000);
+    // A backward clock restarts the wait; a reboot counts only the new uptime.
+    unanswered.observeOutcomeUnknown("release-11",3,10,500);check(unanswered.read().pendingMillis==0);check(unanswered.read().reason.equals(UpdateJournal.OUTCOME_UNKNOWN));
+    unanswered.observeOutcomeUnknown("release-11",3,11,UpdateJournal.OUTCOME_UNKNOWN_WAIT_MS-1);check(unanswered.read().reason.equals(UpdateJournal.OUTCOME_UNKNOWN));
+    rejects(()->unanswered.observeOutcomeUnknown("release-11",3,-1,0));
+    unanswered.observeOutcomeUnknown("release-11",3,11,UpdateJournal.OUTCOME_UNKNOWN_WAIT_MS);
     check(unanswered.read().phase==UpdateJournal.Phase.IDLE);check(unanswered.read().reason.equals("install_not_completed"));check(unanswered.read().quarantine.isEmpty());
     for(UpdateJournal.InstallerFailure report:UpdateJournal.InstallerFailure.values()) {
       UpdateJournal reported=new UpdateJournal(directory.resolve("reported-"+report),SYNC);reported.begin(plan("stable"),OLD,0);reported.committing("release-11",3,0);
@@ -211,9 +223,33 @@ public final class UpdateJournalTest {
       reported.reconcileInstallerResult("release-11",3,OLD,false,null,report);
       boolean rejected=report==UpdateJournal.InstallerFailure.CANDIDATE_REJECTED;
       check(reported.read().phase==(rejected?UpdateJournal.Phase.QUARANTINED:UpdateJournal.Phase.IDLE));check(reported.read().quarantine.isEmpty()!=rejected);
+      // A report while the session is listed survives a reopen and a timeout,
+      // and decides once the session is gone, even with no second report.
+      UpdateJournal early=new UpdateJournal(directory.resolve("reported-early-"+report),SYNC);early.begin(plan("stable"),OLD,0);early.committing("release-11",3,0);
+      early.reconcileInstallerResult("release-11",3,OLD,true,null,report);check(early.read().phase==UpdateJournal.Phase.COMMITTING);
+      early.reconcileInstallerResult("release-11",3,OLD,true,null,null);early.reconcileInstallerResult("release-11",3,OLD,true,null,UpdateJournal.InstallerFailure.RETRYABLE);
+      early.observePending("release-11",3,10,0,1000);early.observePending("release-11",3,10,1000,1000);check(early.read().reason.equals("install_timeout"));
+      early=new UpdateJournal(directory.resolve("reported-early-"+report),SYNC);check(early.read().reportedFailure==report);
+      early.reconcile("release-11",3,OLD,false);
+      check(early.read().phase==(rejected?UpdateJournal.Phase.QUARANTINED:UpdateJournal.Phase.IDLE));check(early.read().quarantine.isEmpty()!=rejected);check(early.read().reportedFailure==null);
       UpdateJournal landed=new UpdateJournal(directory.resolve("reported-installed-"+report),SYNC);landed.begin(plan("stable"),OLD,0);landed.committing("release-11",3,0);
       landed.reconcileInstallerResult("release-11",3,NEW,false,null,report);check(landed.read().phase==UpdateJournal.Phase.PROBATION);check(landed.read().quarantine.isEmpty());
     }
+    // A candidate released MAX_INSTALL_ATTEMPTS_PER_CANDIDATE times in a row is
+    // quarantined, so a lasting block cannot commit the same plan for ever.
+    Path budgetRoot=directory.resolve("retry-budget");
+    for(int attempt=1;attempt<=UpdateJournal.MAX_INSTALL_ATTEMPTS_PER_CANDIDATE;attempt++) {
+      UpdateJournal budget=new UpdateJournal(budgetRoot,SYNC);budget.begin(plan("stable"),OLD,0);budget.committing("release-11",3,0);
+      budget.reconcileInstallerResult("release-11",3,OLD,false,null,UpdateJournal.InstallerFailure.RETRYABLE);
+      check(budget.read().releases==attempt);check(budget.read().releasedCandidate.equals(NEW.digest));
+      boolean spent=attempt==UpdateJournal.MAX_INSTALL_ATTEMPTS_PER_CANDIDATE;
+      check(budget.read().phase==(spent?UpdateJournal.Phase.QUARANTINED:UpdateJournal.Phase.IDLE));
+      check(budget.read().reason.equals(spent?UpdateJournal.RETRY_BUDGET_SPENT:UpdateJournal.INSTALL_RELEASED));check(budget.read().quarantine.contains(NEW.digest)==spent);
+    }
+    UpdateJournal budget=new UpdateJournal(budgetRoot,SYNC);rejects(()->budget.begin(plan("stable"),OLD,0));
+    UpdateJournal.Plan other=new UpdateJournal.Plan("release-13","stable","launcher",OLD,id(13,'d'),id(14,'e'));
+    budget.begin(other,OLD,0);budget.committing("release-13",4,0);budget.reconcileInstallerResult("release-13",4,OLD,false,null,UpdateJournal.InstallerFailure.RETRYABLE);
+    check(budget.read().phase==UpdateJournal.Phase.IDLE);check(budget.read().releases==1);check(budget.read().releasedCandidate.equals(other.candidate.digest));
     UpdateJournal rejectedPair=new UpdateJournal(directory.resolve("rejected-pair"),SYNC);
     rejectedPair.begin(plan("stable"),OLD,0);rejectedPair.committing("release-11",1,0);
     rejectedPair.reconcileInstallerResult("release-11",1,OLD,false,null,UpdateJournal.InstallerFailure.CANDIDATE_REJECTED);

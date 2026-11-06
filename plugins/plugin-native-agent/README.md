@@ -151,8 +151,14 @@ submission finishes the broadcast and leaves durable reconciliation to the host.
 Transaction, immutable/framework session and optional package identity must match;
 success/failure hints never substitute for installed-identity and live-session
 readback, and user-action intents are never launched. Only a reported candidate
-fault (an invalid, conflicting or incompatible APK) quarantines a candidate; a
-gone session without one releases the plan for a later attempt. The Android
+fault (an invalid, conflicting or incompatible APK) quarantines a candidate, and a
+fault reported while the session is still listed is kept until it is gone. A gone
+session with no report waits `UpdateJournal.OUTCOME_UNKNOWN_WAIT_MS` of observed
+uptime for a late callback, then releases the plan for a later attempt; after
+`MAX_INSTALL_ATTEMPTS_PER_CANDIDATE` releases in a row the candidate is
+quarantined. `InstallReadback` abandons our own session only when the platform
+reports it uncommitted (API 29 and later); a committed or unknown session is
+never abandoned and is left to install or to expire on the platform. The Android
 contract uses real PackageInstaller sessions; hosts must also qualify actual installation,
 callback delivery, process death and cached recovery with their signed fixtures.
 

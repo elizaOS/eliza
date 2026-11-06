@@ -91,8 +91,9 @@ public abstract class PackageInstallCoordinator {
       return id;
     } catch(Exception failure) {
       // A throw from Session.commit does not prove the platform refused it, and
-      // abandoning could race an install already under way. Only a session that
-      // was never handed off is abandoned; readback decides the rest.
+      // abandoning could race an install already under way. A session never
+      // handed off is abandoned here; after a handoff, readback abandons it only
+      // if the platform reports it uncommitted, and decides the rest.
       if(!(failure instanceof UpdateJournal.HandoffFailed))try{installer.abandonSession(id);}catch(Exception ignored){}
       try{reconcilePending(context,target,journal,observationBudgetMs);}catch(Exception reconciliation){failure.addSuppressed(reconciliation);}
       throw failure;
@@ -137,24 +138,30 @@ public abstract class PackageInstallCoordinator {
     if(info.applicationInfo==null || (info.applicationInfo.splitSourceDirs!=null && info.applicationInfo.splitSourceDirs.length>0))throw new IOException("Split package not supported by this release lane");
     return new UpdateJournal.Identity(info.getLongVersionCode(),hash(new File(info.applicationInfo.sourceDir)));
   }
-  /** Safe after process death or a missing callback: only own live sessions
-   * count as pending, and installed APK identity wins over callback delivery. */
+  /** Safe after process death or a missing callback: see InstallReadback. */
   public static UpdateJournal.Snapshot reconcilePending(Context context,String target,UpdateJournal journal,long observationBudgetMs)throws Exception {
-    UpdateJournal.Snapshot state=journal.read();
-    if(!UpdateJournal.awaitingInstaller(state))return state;
-    boolean pending=hasPendingSession(context,target,state.sessionId);
-    UpdateJournal.Snapshot reconciled=journal.reconcile(state.plan.id,state.sessionId,installed(context,target),pending);
-    if(pending&&(reconciled.phase==UpdateJournal.Phase.COMMITTING||reconciled.phase==UpdateJournal.Phase.RECOVERING)) {
-      int boot=android.provider.Settings.Global.getInt(context.getContentResolver(),android.provider.Settings.Global.BOOT_COUNT);
-      return journal.observePending(state.plan.id,state.sessionId,boot,android.os.SystemClock.elapsedRealtime(),observationBudgetMs);
+    return InstallReadback.reconcile(journal,platform(context,target),observationBudgetMs);
+  }
+  static InstallReadback.Platform platform(Context context,String target) {
+    return new InstallReadback.Platform() {
+      @Override public UpdateJournal.Identity installed()throws Exception{return PackageInstallCoordinator.installed(context,target);}
+      @Override public InstallReadback.Session session(int id){return sessionState(context,target,id);}
+      @Override public void abandon(int id){context.getPackageManager().getPackageInstaller().abandonSession(id);}
+      @Override public long bootCount()throws Exception{return android.provider.Settings.Global.getInt(context.getContentResolver(),android.provider.Settings.Global.BOOT_COUNT);}
+      @Override public long elapsedRealtime(){return android.os.SystemClock.elapsedRealtime();}
+    };
+  }
+  /** Before API 29 the platform cannot say whether a session was committed. */
+  public static InstallReadback.Session sessionState(Context context,String target,int id) {
+    for(PackageInstaller.SessionInfo session:context.getPackageManager().getPackageInstaller().getMySessions()) {
+      if(session.getSessionId()!=id||!target.equals(session.getAppPackageName()))continue;
+      if(Build.VERSION.SDK_INT<29)return InstallReadback.Session.UNKNOWN;
+      return session.isCommitted()?InstallReadback.Session.COMMITTED:InstallReadback.Session.UNCOMMITTED;
     }
-    return reconciled;
+    return InstallReadback.Session.GONE;
   }
   public static boolean hasPendingSession(Context context,String target,int id) {
-    for(PackageInstaller.SessionInfo session:context.getPackageManager().getPackageInstaller().getMySessions()) {
-      if(session.getSessionId()==id&&target.equals(session.getAppPackageName()))return true;
-    }
-    return false;
+    return sessionState(context,target,id)!=InstallReadback.Session.GONE;
   }
   public static String hash(File file)throws Exception {
     MessageDigest digest=MessageDigest.getInstance("SHA-256");

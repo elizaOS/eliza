@@ -39,15 +39,17 @@ public abstract class InstallerResultReceiver extends BroadcastReceiver {
   boolean pendingSession=PackageInstallCoordinator.hasPendingSession(context,target,session);
   journal.reconcileInstallerResult(transaction,session,PackageInstallCoordinator.installed(context,target),pendingSession,blocked,failure(status));
  }
- /** Faults of the candidate on this device quarantine it; faults of the moment
-  * retry. Success, a generic failure and unknown statuses report nothing. */
+ /** Default: statuses that show the candidate itself cannot install on this
+  * device. They quarantine it, even when reported while the session is listed. */
+ public static final java.util.Set<Integer> CANDIDATE_REJECTED_STATUSES=java.util.Set.of(
+  PackageInstaller.STATUS_FAILURE_INVALID,PackageInstaller.STATUS_FAILURE_CONFLICT,PackageInstaller.STATUS_FAILURE_INCOMPATIBLE);
+ /** Default: faults of the moment, which release the plan for a later attempt. */
+ public static final java.util.Set<Integer> RETRYABLE_STATUSES=java.util.Set.of(
+  PackageInstaller.STATUS_FAILURE_ABORTED,PackageInstaller.STATUS_FAILURE_STORAGE,PackageInstaller.STATUS_FAILURE_TIMEOUT);
+ /** Success, the generic failure and unknown statuses report nothing. */
  public static UpdateJournal.InstallerFailure failure(int status) {
-  switch(status) {
-   case PackageInstaller.STATUS_FAILURE_INVALID: case PackageInstaller.STATUS_FAILURE_CONFLICT: case PackageInstaller.STATUS_FAILURE_INCOMPATIBLE:
-    return UpdateJournal.InstallerFailure.CANDIDATE_REJECTED;
-   case PackageInstaller.STATUS_FAILURE_ABORTED: case PackageInstaller.STATUS_FAILURE_STORAGE: case PackageInstaller.STATUS_FAILURE_TIMEOUT:
-    return UpdateJournal.InstallerFailure.RETRYABLE;
-   default: return null;
-  }
+  if(CANDIDATE_REJECTED_STATUSES.contains(status))return UpdateJournal.InstallerFailure.CANDIDATE_REJECTED;
+  if(RETRYABLE_STATUSES.contains(status))return UpdateJournal.InstallerFailure.RETRYABLE;
+  return null;
  }
 }
