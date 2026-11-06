@@ -40,12 +40,17 @@ export const notesRequestEffectField: ResponseHandlerFieldEvaluator<NotesFieldVa
     shouldRun: ({ senderRole }) => senderRole === "OWNER",
     // No Notes effect. handle only records the classification; it never
     // reroutes the turn or changes replyText.
+    // read_only and unresolved with no operations are both no-ops for the
+    // turn: the classification only narrows what Notes may write later.
+    // mutation_requested, or any listed operation, holds a streamed reply.
     directReplyValue: (value) =>
       value === "unresolved" ||
+      value === "read_only" ||
       (typeof value === "object" &&
         value !== null &&
-        (value as { classification?: unknown }).classification ===
-          "unresolved" &&
+        ["unresolved", "read_only"].includes(
+          String((value as { classification?: unknown }).classification),
+        ) &&
         Array.isArray((value as { operations?: unknown }).operations) &&
         (value as { operations: unknown[] }).operations.length === 0),
     parse(value) {

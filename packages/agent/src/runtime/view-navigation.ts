@@ -145,6 +145,30 @@ const decisions = new WeakMap<
   }
 >();
 
+/** The navigation decision, or null when the model value is malformed (soft fail). */
+function parseNavigation(value: unknown): Navigation | null {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return null;
+  const v = value as Record<string, unknown>;
+  if (
+    Object.keys(v).some(
+      (k) => !["disposition", "viewId", "reason"].includes(k),
+    ) ||
+    typeof v.disposition !== "string" ||
+    ![
+      "direct",
+      "planning",
+      "optional",
+      "none",
+      "forbidden",
+      "unresolved",
+    ].includes(v.disposition) ||
+    typeof v.viewId !== "string" ||
+    typeof v.reason !== "string"
+  )
+    return null;
+  return v as Navigation;
+}
+
 export const viewNavigationField: ResponseHandlerFieldEvaluator<Navigation> = {
   name: "visualContinuation",
   description:
@@ -174,13 +198,16 @@ export const viewNavigationField: ResponseHandlerFieldEvaluator<Navigation> = {
   // no navigation can stream its direct answer.
   priority: 19.75,
   // The host evaluator only records a constraint for none/forbidden and
-  // ignores optional; none of them reroutes the turn or changes replyText.
-  directReplyValue: (value) =>
-    typeof value === "object" &&
-    value !== null &&
-    ["none", "forbidden", "optional"].includes(
-      String((value as { disposition?: unknown }).disposition),
-    ),
+  // ignores optional; none of them reroutes the turn or changes replyText. A
+  // value parse rejects (for example a JSON string instead of an object) is a
+  // soft failure: nothing is staged and the turn is not navigated.
+  directReplyValue: (value) => {
+    const navigation = parseNavigation(value);
+    return (
+      navigation === null ||
+      ["none", "forbidden", "optional"].includes(navigation.disposition)
+    );
+  },
   shouldRun({ runtime, message }) {
     const active =
       message.content.source === "client_chat" &&
@@ -225,27 +252,7 @@ export const viewNavigationField: ResponseHandlerFieldEvaluator<Navigation> = {
   },
   parse(value, { message }) {
     decisions.delete(message);
-    if (!value || typeof value !== "object" || Array.isArray(value))
-      return null;
-    const v = value as Record<string, unknown>;
-    if (
-      Object.keys(v).some(
-        (k) => !["disposition", "viewId", "reason"].includes(k),
-      ) ||
-      typeof v.disposition !== "string" ||
-      ![
-        "direct",
-        "planning",
-        "optional",
-        "none",
-        "forbidden",
-        "unresolved",
-      ].includes(v.disposition) ||
-      typeof v.viewId !== "string" ||
-      typeof v.reason !== "string"
-    )
-      return null;
-    return v as Navigation;
+    return parseNavigation(value);
   },
   handle({ runtime, message, senderRole, value, turnSignal }) {
     turnSignal.throwIfAborted();
