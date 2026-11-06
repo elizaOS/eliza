@@ -70,10 +70,6 @@ export interface ComponentTypeDefinition {
 	validator?: (data: Record<string, JsonValue>) => boolean;
 }
 
-/**
- * Plugin for extending agent functionality
- */
-
 export type PluginEvents = {
 	[K in keyof EventPayloadMap]?: EventHandler<K>[];
 };
@@ -272,32 +268,10 @@ export interface PluginAppBridge {
 	stopRun?: (ctx: PluginAppBridgeRunContext) => Promise<void>;
 }
 
-/**
- * How the app shell treats the screen background while a view is active.
- *
- * - `opaque` (default): the host paints a full-window theme background behind
- * the view, covering status/home-indicator safe areas so the shared wallpaper
- * cannot leak through.
- * - `shared`: the view intentionally sits on the same unified background used
- * by Home/Launcher.
- */
 export type {
 	AppShellBackgroundPolicy,
 	ViewHeaderPolicy,
 } from "./surface-manifest.js";
-
-/**
- * How the app shell frames a view's top bar.
- *
- * - `normal` (default): the shell requires the shared `ViewHeader` (icon-only
- * back + centered title). The uniform-top-bar audit fails any `normal` view
- * that does not render it.
- * - `fullscreen`: the view owns its full window and supplies its own chrome
- * (e.g. an immersive browser/workbench toolbar); no shared header enforced.
- * - `modal`: the view is presented as a modal/sheet with its own dismiss
- * affordance; the shared header is not enforced.
- * - `immersive`: a chrome-free surface (e.g. launcher/background); no header.
- */
 
 /**
  * A nav-tab declaration so an app/plugin can register its own page in the
@@ -434,49 +408,6 @@ export type { ViewModality, ViewType } from "../views/declarations.js";
 export interface CollapsedView extends ViewDeclaration {
 	/** Union of the surfaces this view renders on (across same-id declarations). */
 	modalities: ViewModality[];
-}
-
-/**
- * Retained panel options for a future spatial overlay adapter.
- * All fields are optional and should be interpreted by that adapter.
- */
-export interface XRViewOptions {
-	/**
-	 * Panel width in meters when rendered in world space.
-	 * Defaults to 1.0 m (roughly a letter-size page at arm's length).
-	 */
-	defaultWidthMeters?: number;
-	/**
-	 * Panel height in meters. Defaults to 0.75 m.
-	 */
-	defaultHeightMeters?: number;
-	/**
-	 * How the panel follows the user's gaze / camera.
-	 * - "billboard" — always faces the camera, orbits at fixed distance (default).
-	 * - "fixed" — stays at its world-space transform once opened.
-	 * - "follow" — smoothly lag-follows the camera without rotating.
-	 */
-	followMode?: "billboard" | "fixed" | "follow";
-	/**
-	 * Distance from the camera origin the panel is placed at (meters).
-	 * Defaults to 1.5 m.
-	 */
-	defaultDistance?: number;
-	/**
-	 * Preferred initial position relative to the camera in meters [x, y, z].
-	 * e.g. [0, 0, -1.5] is directly in front.
-	 */
-	defaultOffset?: [number, number, number];
-	/**
-	 * Whether this view supports voice input to its form fields.
-	 * Defaults to true so host adapters can pipe transcripts to focused inputs.
-	 */
-	voiceInputEnabled?: boolean;
-	/**
-	 * Whether this view should render in the full overlay (true) or as a
-	 * side panel / mini panel (false). Defaults to false.
-	 */
-	fullscreen?: boolean;
 }
 
 export type {
@@ -698,12 +629,6 @@ export interface ViewDeclaration {
 	frameUrl?: string;
 	/** Capabilities the agent can exercise on this view when it is mounted. */
 	capabilities?: ViewCapability[];
-	/**
-	 * Optional backend capability handler for operations that do not require a
-	 * mounted UI surface. The view route invokes this before falling back to the
-	 * frontend `view:interact` WebSocket round-trip. Runtime context keeps
-	 * service-backed handlers scoped to the agent that owns the request.
-	 */
 	/** Owner policy before any agent capability delivery (including frontend).
 	 * Runtime-only callback; existing route/role/manifest gates still apply. */
 	beforeAgentInteract?: (
@@ -711,6 +636,12 @@ export interface ViewDeclaration {
 		params: Record<string, unknown> | undefined,
 		context: { runtime: IAgentRuntime },
 	) => void;
+	/**
+	 * Optional backend capability handler for operations that do not require a
+	 * mounted UI surface. The view route invokes this before falling back to the
+	 * frontend `view:interact` WebSocket round-trip. Runtime context keeps
+	 * service-backed handlers scoped to the agent that owns the request.
+	 */
 	serverInteract?: (
 		capability: string,
 		params?: Record<string, unknown>,
@@ -727,11 +658,6 @@ export interface ViewDeclaration {
 	 * hardcoded UI package-name table. Default false.
 	 */
 	pinnable?: boolean;
-	/**
-	 * Future spatial panel behaviour. Only meaningful for a restored adapter that
-	 * understands spatial placement.
-	 */
-	xrOptions?: XRViewOptions;
 }
 
 export interface PluginApp {

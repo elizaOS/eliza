@@ -176,7 +176,10 @@ type UnresolvedOperation = Extract<
 function isUnresolved(
 	operation: TaskOperation,
 ): operation is UnresolvedOperation {
-	return ["prepared", "dispatched", "unknown"].includes(operation.status);
+	const { status } = operation;
+	return (
+		status === "prepared" || status === "dispatched" || status === "unknown"
+	);
 }
 /** Transitions a finished task still accepts: they only narrow what it may do. */
 const AFTER_END: readonly TaskTransition["type"][] = [
@@ -208,11 +211,9 @@ function shape(
 	)
 		reject("Unexpected task record fields");
 }
+const OPAQUE_REF_PATTERN = /^[A-Za-z0-9][A-Za-z0-9_.:@/-]{0,255}$/;
 function id(value: unknown): asserts value is string {
-	if (
-		typeof value !== "string" ||
-		!/^[A-Za-z0-9][A-Za-z0-9_.:@/-]{0,255}$/.test(value)
-	)
+	if (typeof value !== "string" || !OPAQUE_REF_PATTERN.test(value))
 		reject("Expected an opaque task reference");
 }
 function counter(value: unknown): asserts value is number {

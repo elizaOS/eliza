@@ -15,17 +15,12 @@ import type { Task } from "../types/task.js";
 export function createSerialise(): <T>(fn: () => Promise<T>) => Promise<T> {
 	let lock: Promise<void> = Promise.resolve();
 	return <T>(fn: () => Promise<T>): Promise<T> => {
-		if (typeof fn !== "function") {
-			return Promise.reject(
-				new TypeError("Expected function for serialised execution"),
-			);
-		}
 		const prev = lock;
-		let resolve: () => void;
-		lock = new Promise<void>((r) => {
-			resolve = r;
+		let release: () => void;
+		lock = new Promise<void>((resolve) => {
+			release = resolve;
 		});
-		return prev.then(fn).finally(() => resolve());
+		return prev.then(fn).finally(() => release());
 	};
 }
 
@@ -37,10 +32,7 @@ export class Semaphore {
 	private waiters: Array<() => boolean> = [];
 
 	constructor(count: number) {
-		this.permits =
-			typeof count === "number" && Number.isFinite(count)
-				? Math.max(1, Math.floor(count))
-				: 1;
+		this.permits = Number.isFinite(count) ? Math.max(1, Math.floor(count)) : 1;
 	}
 
 	/** Number of currently available permits. */
@@ -135,7 +127,6 @@ export class TaskDrain {
 	private readonly idleIntervalMs?: number;
 	private intervalMs: number;
 	private taskId: UUID | null = null;
-	private workerRegistered = false;
 	private disposed = false;
 
 	private readonly description: string;
@@ -188,7 +179,6 @@ export class TaskDrain {
 					};
 				},
 			});
-			this.workerRegistered = true;
 		}
 
 		await this.ensureTask(runtime);
@@ -321,8 +311,5 @@ export class TaskDrain {
 			this.taskId = null;
 		}
 		// Runtime has no unregisterTaskWorker; a later service may call registerTaskWorker again.
-		if (this.workerRegistered) {
-			this.workerRegistered = false;
-		}
 	}
 }

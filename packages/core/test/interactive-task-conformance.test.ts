@@ -6,6 +6,7 @@
  * A breadth-first search over the spec graph drives the real reducer from a
  * representative task per spec state and tries every event in every state.
  */
+import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 import {
 	createInteractiveTask,
@@ -434,4 +435,60 @@ describe("interactive task reducer conformance", () => {
 		// About 12 s under bun and 40 s under vitest on an idle machine; the
 		// default timeouts are far shorter, and a loaded CI host is slower still.
 	}, 180_000);
+
+	it("has the reachable graph of tla/InteractiveTask.tla, which TLC checks", () => {
+		// The TLA+ module is the model of record: scripts/check-tla.ts writes its
+		// TLC state graph to this file and model-checks the stored invariants.
+		const tla = JSON.parse(
+			readFileSync(
+				new URL("../tla/InteractiveTask.reducer.graph.json", import.meta.url),
+				"utf8",
+			),
+		) as { states: unknown[]; initial: number[]; next: number[][] };
+		const asTla = (s: State) =>
+			JSON.stringify({
+				auth: s.auth,
+				extended: s.extended,
+				obs: s.obs ?? "none",
+				op: { op1: s.op1, op2: s.op2 },
+				scopeB: s.scopeB,
+				status: s.status,
+			});
+		const index = new Map(tla.states.map((s, i) => [JSON.stringify(s), i]));
+		const start: State = {
+			status: "active",
+			auth: "active",
+			obs: null,
+			op1: "none",
+			op2: "none",
+			scopeB: false,
+			extended: false,
+		};
+		const successors = new Map<string, Set<string>>();
+		const queue = [start];
+		successors.set(asTla(start), new Set());
+		while (queue.length) {
+			const s = queue.shift() as State;
+			const from = asTla(s);
+			for (const e of ALPHABET) {
+				const next = step(s, e)?.s;
+				if (!next || asTla(next) === from) continue;
+				successors.get(from)?.add(asTla(next));
+				if (!successors.has(asTla(next))) {
+					successors.set(asTla(next), new Set());
+					queue.push(next);
+				}
+			}
+		}
+		expect(tla.initial.map((i) => JSON.stringify(tla.states[i]))).toEqual([
+			asTla(start),
+		]);
+		expect([...successors.keys()].sort()).toEqual([...index.keys()].sort());
+		for (const [from, to] of successors) {
+			const expected = (tla.next[index.get(from) as number] ?? []).map((i) =>
+				JSON.stringify(tla.states[i]),
+			);
+			expect([...to].sort(), from).toEqual(expected.sort());
+		}
+	});
 });
