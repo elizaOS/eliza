@@ -289,6 +289,17 @@ func copyFile(t *testing.T, from, to string) {
 	}
 }
 
+// copyAdmission copies the admission state and its refresh record, if any.
+func copyAdmission(t *testing.T, from, to string) {
+	t.Helper()
+	copyFile(t, filepath.Join(from, "admission.json"), filepath.Join(to, "admission.json"))
+	if _, err := os.Stat(filepath.Join(from, "refreshed.json")); err == nil {
+		copyFile(t, filepath.Join(from, "refreshed.json"), filepath.Join(to, "refreshed.json"))
+	} else if err = os.Remove(filepath.Join(to, "refreshed.json")); err != nil && !os.IsNotExist(err) {
+		t.Fatal(err)
+	}
+}
+
 func TestFreshAdmissionConformance(t *testing.T) {
 	f := newFreshFixture(t)
 	sequences := [][]int{{}}
@@ -342,7 +353,7 @@ func (f *freshFixture) replay(t *testing.T, sequence []int) (cases int64) {
 		for dv, dev := range freshDevices {
 			for pl, pol := range freshPolicies {
 				cases++
-				copyFile(t, filepath.Join(state, "admission.json"), filepath.Join(work, "admission.json"))
+				copyAdmission(t, state, work)
 				laneFloor := model
 				if dev.channel == "beta" {
 					laneFloor = freshFloor{revoked: []int64{}}
