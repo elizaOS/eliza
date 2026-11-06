@@ -14,6 +14,10 @@ public class UpdateJournal {
   public interface Durability { void syncDirectory(Path path) throws IOException; }
   public interface Faults { void boundary(String name) throws IOException; }
   public interface CommitAction { void commit() throws IOException; }
+  /** What a finished install session reported. CANDIDATE_REJECTED is evidence
+   * that the candidate itself cannot install here; RETRYABLE is a fault of the
+   * moment, such as low storage. Hosts map platform statuses to these. */
+  public enum InstallerFailure { CANDIDATE_REJECTED, RETRYABLE }
   /** The platform handoff threw after the install intent was durable. The
    * platform may still install, so callers must not abandon the session;
    * installed and session readback decide the outcome. */
@@ -177,11 +181,17 @@ public class UpdateJournal {
     return reconcile(state.plan==null?null:state.plan.id,state.sessionId,installed,sessionPending);
   }
   public Snapshot reconcile(String planId,int sessionId,Identity installed,boolean sessionPending) throws IOException {
-    return reconcileInstallerResult(planId,sessionId,installed,sessionPending,null);
+    return reconcileInstallerResult(planId,sessionId,installed,sessionPending,null,null);
+  }
+  public Snapshot reconcileInstallerResult(String planId,int sessionId,Identity installed,boolean sessionPending,String blockedReason)throws IOException {
+    return reconcileInstallerResult(planId,sessionId,installed,sessionPending,blockedReason,null);
   }
   /** Callback status is a hint; installed bytes and our live session win. A
-   * blocked callback must not conceal a later successful platform commit. */
-  public Snapshot reconcileInstallerResult(String planId,int sessionId,Identity installed,boolean sessionPending,String blockedReason)throws IOException {
+   * blocked callback must not conceal a later successful platform commit.
+   * Only a reported candidate fault quarantines. A gone session with no
+   * report is first marked unknown, which leaves a late callback time to
+   * report a fault; a second readback with no report releases the plan. */
+  public Snapshot reconcileInstallerResult(String planId,int sessionId,Identity installed,boolean sessionPending,String blockedReason,InstallerFailure failure)throws IOException {
     if(blockedReason!=null&&!Arrays.asList("user_action_required","policy_blocked").contains(blockedReason))throw new IllegalArgumentException("Unknown installer reason");
     return transact(s->{
       if(!awaitingInstaller(new Snapshot(s)))return;
@@ -194,17 +204,19 @@ public class UpdateJournal {
       if(!previous.matches(installed)){s.phase=Phase.SUPPORT;s.reason="unexpected_installed_identity";return;}
       if(blockedReason!=null){s.phase=Phase.SUPPORT;s.reason=blockedReason;return;}
       if(sessionPending)return;
-      // A stalled install whose session is gone, with the baseline still
-      // running, can no longer install. Release it so the plan can be admitted
-      // again; quarantine and channel generation stay. Recovery stays in support.
-      if(wasBlocked){if(!recovering)release(s);return;}
-      s.phase=recovering?Phase.SUPPORT:Phase.QUARANTINED;
-      quarantine(s,false);s.reason=recovering?"recovery_install_failed":"candidate_install_failed";
+      // The session is gone and the previous code still runs. Recovery is
+      // attempted once, so a failed or stalled one stays in support.
+      if(recovering){if(!wasBlocked){s.phase=Phase.SUPPORT;quarantine(s,false);s.reason="recovery_install_failed";}return;}
+      if(failure==InstallerFailure.CANDIDATE_REJECTED){s.phase=Phase.QUARANTINED;quarantine(s,false);s.reason="candidate_install_failed";return;}
+      // A stalled or retryable install can no longer install. Release it so the
+      // plan can be admitted again; quarantine and channel generation stay.
+      if(wasBlocked||failure==InstallerFailure.RETRYABLE){release(s);return;}
+      s.phase=Phase.SUPPORT;s.reason="install_outcome_unknown";
     });
   }
   public static boolean awaitingInstaller(Snapshot s) {
     return s.phase==Phase.COMMITTING||s.phase==Phase.RECOVERING||
-      (s.phase==Phase.SUPPORT&&("user_action_required".equals(s.reason)||"policy_blocked".equals(s.reason)||"install_timeout".equals(s.reason)||"install_clock_invalid".equals(s.reason)));
+      (s.phase==Phase.SUPPORT&&("user_action_required".equals(s.reason)||"policy_blocked".equals(s.reason)||"install_timeout".equals(s.reason)||"install_clock_invalid".equals(s.reason)||"install_outcome_unknown".equals(s.reason)));
   }
   /** Conservative observed duration only. Never infer elapsed powered-off time
    * from wall time, abandon an in-flight commit or start a competing install. */

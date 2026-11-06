@@ -194,8 +194,30 @@ public final class UpdateJournalTest {
     try{new UpdateJournal(directory.resolve("binder-unpublished"),SYNC,name->{if(name.equals("published"))throw new IOException("lost after rename");}).committingWithAction("release-13",3,0,()->{throw new AssertionError("Handoff ran after failed publish");});throw new AssertionError("Publish failure hidden");}
     catch(UpdateJournal.HandoffFailed wrong){throw new AssertionError("Publish failure reported as handoff");}
     catch(IOException expected){assertions++;}
+    // Only a reported candidate fault quarantines. A gone session with no report
+    // waits one readback for a late callback, then releases the plan.
+    UpdateJournal unreported=new UpdateJournal(directory.resolve("unreported"),SYNC);unreported.begin(plan("stable"),OLD,0);unreported.committing("release-11",3,0);
+    unreported.reconcile("release-11",3,OLD,false);check(unreported.read().reason.equals("install_outcome_unknown"));check(unreported.read().quarantine.isEmpty());check(UpdateJournal.awaitingInstaller(unreported.read()));
+    rejects(()->unreported.begin(plan("stable"),OLD,0));
+    unreported.reconcileInstallerResult("release-11",3,OLD,false,null,UpdateJournal.InstallerFailure.CANDIDATE_REJECTED);
+    check(unreported.read().phase==UpdateJournal.Phase.QUARANTINED);check(unreported.read().quarantine.contains(NEW.digest));check(!unreported.read().quarantine.contains(RECOVERY.digest));
+    UpdateJournal unanswered=new UpdateJournal(directory.resolve("unanswered"),SYNC);unanswered.begin(plan("stable"),OLD,0);unanswered.committing("release-11",3,0);
+    unanswered.reconcile("release-11",3,OLD,false);unanswered.reconcile("release-11",3,OLD,false);
+    check(unanswered.read().phase==UpdateJournal.Phase.IDLE);check(unanswered.read().reason.equals("install_not_completed"));check(unanswered.read().quarantine.isEmpty());
+    for(UpdateJournal.InstallerFailure report:UpdateJournal.InstallerFailure.values()) {
+      UpdateJournal reported=new UpdateJournal(directory.resolve("reported-"+report),SYNC);reported.begin(plan("stable"),OLD,0);reported.committing("release-11",3,0);
+      // A live session outranks any report.
+      reported.reconcileInstallerResult("release-11",3,OLD,true,null,report);check(reported.read().phase==UpdateJournal.Phase.COMMITTING);
+      reported.reconcileInstallerResult("release-11",3,OLD,false,null,report);
+      boolean rejected=report==UpdateJournal.InstallerFailure.CANDIDATE_REJECTED;
+      check(reported.read().phase==(rejected?UpdateJournal.Phase.QUARANTINED:UpdateJournal.Phase.IDLE));check(reported.read().quarantine.isEmpty()!=rejected);
+      UpdateJournal landed=new UpdateJournal(directory.resolve("reported-installed-"+report),SYNC);landed.begin(plan("stable"),OLD,0);landed.committing("release-11",3,0);
+      landed.reconcileInstallerResult("release-11",3,NEW,false,null,report);check(landed.read().phase==UpdateJournal.Phase.PROBATION);check(landed.read().quarantine.isEmpty());
+    }
     UpdateJournal rejectedPair=new UpdateJournal(directory.resolve("rejected-pair"),SYNC);
-    rejectedPair.begin(plan("stable"),OLD,0);rejectedPair.committing("release-11",1,0);rejectedPair.reconcile(OLD,false);
+    rejectedPair.begin(plan("stable"),OLD,0);rejectedPair.committing("release-11",1,0);
+    rejectedPair.reconcileInstallerResult("release-11",1,OLD,false,null,UpdateJournal.InstallerFailure.CANDIDATE_REJECTED);
+    check(rejectedPair.read().phase==UpdateJournal.Phase.QUARANTINED);check(rejectedPair.read().quarantine.contains(NEW.digest));
     UpdateJournal.Plan quarantinedRecovery=new UpdateJournal.Plan("release-13","stable","launcher",OLD,id(13,'d'),id(14,'b'));
     rejects(()->rejectedPair.begin(quarantinedRecovery,OLD,0));
     Path lost=directory.resolve("lost");UpdateJournal loss=new UpdateJournal(lost,SYNC);loss.setChannel("beta");Files.delete(lost.resolve("journal"));rejects(loss::read);rejects(()->loss.setChannel("stable"));

@@ -8,8 +8,8 @@ import java.util.*;
  * Model identities are version codes: the baseline is 1, plan p has candidate
  * 2p and recovery 2p+1, and 9 is a package nobody planned. */
 public final class UpdateJournalConformanceTest {
-  record Event(String kind,int plan,long base,long installed,long generation,int session,boolean pending,String blocked,String outcome) {
-    @Override public String toString(){return kind+"(p="+plan+",base="+base+",inst="+installed+",g="+generation+",s="+session+",pending="+pending+",blocked="+blocked+",outcome="+outcome+")";}
+  record Event(String kind,int plan,long base,long installed,long generation,int session,boolean pending,String blocked,String outcome,UpdateJournal.InstallerFailure failure) {
+    @Override public String toString(){return kind+"(p="+plan+",base="+base+",inst="+installed+",g="+generation+",s="+session+",pending="+pending+",blocked="+blocked+",outcome="+outcome+",failure="+failure+")";}
   }
   /** The model's journal: UpdateJournal.State without revision, channel or timing. */
   static final class J {
@@ -21,7 +21,7 @@ public final class UpdateJournalConformanceTest {
   static final J REFUSED=refused();
   static J refused(){J j=new J();j.phase="REFUSED";return j;}
   static final Set<String> ACTIVE=Set.of("STAGING","VERIFIED","COMMITTING","PROBATION","RECOVERY_READY","RECOVERING","RECOVERY_PROBATION","SUPPORT");
-  static final Set<String> AWAIT=Set.of("user_action_required","policy_blocked","install_timeout","install_clock_invalid");
+  static final Set<String> AWAIT=Set.of("user_action_required","policy_blocked","install_timeout","install_clock_invalid","install_outcome_unknown");
   static long cand(int p){return 2L*p;}
   static long rec(int p){return 2L*p+1;}
   static boolean awaiting(J j){return j.phase.equals("COMMITTING")||j.phase.equals("RECOVERING")||(j.phase.equals("SUPPORT")&&AWAIT.contains(j.reason));}
@@ -35,10 +35,14 @@ public final class UpdateJournalConformanceTest {
     if(e.installed!=previous){n.phase="SUPPORT";n.reason="unexpected_installed_identity";return n;}
     if(e.blocked!=null){n.phase="SUPPORT";n.reason=e.blocked;return n;}
     if(e.pending)return j;
-    // The model's FixExit, applied by readback: a stalled install with no session
-    // and the baseline running is released. A recovery stays in support.
-    if(wasBlocked)return recovering?j:j.cleared("IDLE","install_not_completed");
-    n.phase=recovering?"SUPPORT":"QUARANTINED";n.q.add(cand(j.plan));n.reason=recovering?"recovery_install_failed":"candidate_install_failed";return n;
+    if(recovering){if(wasBlocked)return j;n.phase="SUPPORT";n.q.add(cand(j.plan));n.reason="recovery_install_failed";return n;}
+    // The model's durable evidence: only a reported candidate fault quarantines.
+    if(e.failure==UpdateJournal.InstallerFailure.CANDIDATE_REJECTED){n.phase="QUARANTINED";n.q.add(cand(j.plan));n.reason="candidate_install_failed";return n;}
+    // The model's FixExit, applied by readback, and a reported fault of the
+    // moment: the install can no longer happen, so the plan is released.
+    if(wasBlocked||e.failure==UpdateJournal.InstallerFailure.RETRYABLE)return j.cleared("IDLE","install_not_completed");
+    // No report yet: wait one more readback for a late callback.
+    n.phase="SUPPORT";n.reason="install_outcome_unknown";return n;
   }
   static J stepAdmit(J j,Event e,String target) {
     boolean resume=target.equals("VERIFIED")&&j.phase.equals("STAGING")&&j.plan==e.plan&&j.base==e.base;
@@ -97,7 +101,7 @@ public final class UpdateJournalConformanceTest {
       case "discard" -> journal.discardStaging(plan,e.generation);
       case "committing" -> journal.committingWithAction(plan,e.session,e.generation,()->{});
       case "recovering" -> journal.recoveringWithAction(plan,e.session,()->{});
-      case "reconcile" -> journal.reconcileInstallerResult(plan,e.session,id(e.installed),e.pending,e.blocked);
+      case "reconcile" -> journal.reconcileInstallerResult(plan,e.session,id(e.installed),e.pending,e.blocked,e.failure);
       // The model abstracts duration; these monotonic readings reach each outcome.
       case "observe" -> {
         if(e.outcome.equals("below"))journal.observePending(plan,e.session,1,0,1000);
@@ -116,13 +120,14 @@ public final class UpdateJournalConformanceTest {
     return j;
   }
 
-  static Event ev(String kind){return new Event(kind,0,0,0,0,0,false,null,"");}
-  static Event admit(String kind,int p,long base,long installed,long generation){return new Event(kind,p,base,installed,generation,0,false,null,"");}
-  static Event commit(int p,int s,long generation){return new Event("committing",p,0,0,generation,s,false,null,"");}
-  static Event recover(int p,int s){return new Event("recovering",p,0,0,0,s,false,null,"");}
-  static Event reconcile(int p,int s,long installed,boolean pending,String blocked){return new Event("reconcile",p,0,installed,0,s,pending,blocked,"");}
-  static Event observe(int p,int s,String outcome){return new Event("observe",p,0,0,0,s,false,null,outcome);}
-  static Event health(String kind,long installed){return new Event(kind,0,0,installed,0,0,false,null,"");}
+  static Event ev(String kind){return new Event(kind,0,0,0,0,0,false,null,"",null);}
+  static Event admit(String kind,int p,long base,long installed,long generation){return new Event(kind,p,base,installed,generation,0,false,null,"",null);}
+  static Event commit(int p,int s,long generation){return new Event("committing",p,0,0,generation,s,false,null,"",null);}
+  static Event recover(int p,int s){return new Event("recovering",p,0,0,0,s,false,null,"",null);}
+  static Event reconcile(int p,int s,long installed,boolean pending,String blocked){return reconcile(p,s,installed,pending,blocked,null);}
+  static Event reconcile(int p,int s,long installed,boolean pending,String blocked,UpdateJournal.InstallerFailure failure){return new Event("reconcile",p,0,installed,0,s,pending,blocked,"",failure);}
+  static Event observe(int p,int s,String outcome){return new Event("observe",p,0,0,0,s,false,null,outcome,null);}
+  static Event health(String kind,long installed){return new Event(kind,0,0,installed,0,0,false,null,"",null);}
   @SafeVarargs static List<Event> then(List<Event> prefix,Event... more){List<Event> all=new ArrayList<>(prefix);all.addAll(List.of(more));return all;}
 
   /** Every reachable phase and reason, each as the shortest event path from a new device. */
@@ -134,24 +139,28 @@ public final class UpdateJournalConformanceTest {
     r.put("idle",List.of());r.put("gen1",List.of(ev("setChannel")));r.put("staging",List.of(admit("stage",1,1,1,0)));r.put("verified",List.of(b1));
     r.put("channelChanged",List.of(b1,ev("setChannel")));r.put("committing",com);r.put("probation",prob);r.put("healthy",healthy);
     r.put("rr",rr);r.put("rrHealthy",then(healthy,health("healthFailed",2)));r.put("recovering",rg);r.put("rprob",rp);
-    r.put("recovered",then(rp,health("healthy",3)));r.put("quarantined",then(com,reconcile(1,1,1,false,null)));
+    r.put("recovered",then(rp,health("healthy",3)));r.put("quarantined",then(com,reconcile(1,1,1,false,null,UpdateJournal.InstallerFailure.CANDIDATE_REJECTED)));
     r.put("supPolicy",then(com,reconcile(1,1,1,false,"policy_blocked")));r.put("supUser",then(com,reconcile(1,1,1,false,"user_action_required")));
     r.put("supTimeout",then(com,observe(1,1,"timeout")));r.put("supClock",then(com,observe(1,1,"regress")));r.put("supUnexpected",then(com,reconcile(1,1,9,false,null)));
     r.put("supRPolicy",then(rg,reconcile(1,2,2,false,"policy_blocked")));r.put("supRTimeout",then(rg,observe(1,2,"timeout")));r.put("supRClock",then(rg,observe(1,2,"regress")));
     r.put("supRUnexpected",then(rg,reconcile(1,2,9,false,null)));r.put("supRFailed",then(rg,reconcile(1,2,2,false,null)));r.put("supRHealth",then(rp,health("healthFailed",3)));
     r.put("healthyChannel",then(healthy,ev("setChannel")));r.put("secondPlan",then(healthy,admit("begin",2,2,2,0)));
+    List<Event> unknown=then(com,reconcile(1,1,1,false,null));r.put("outcomeUnknown",unknown);r.put("released",then(unknown,reconcile(1,1,1,false,null)));
     return r;
   }
   /** Fresh and stale plans, sessions, generations and readbacks for every API. */
   static List<Event> events() {
     List<Event> e=new ArrayList<>();e.add(ev("setChannel"));
     for(String kind:new String[]{"stage","begin"})for(int p=1;p<=2;p++)for(long base=1;base<=2;base++)for(long inst=1;inst<=2;inst++)for(long g=0;g<=1;g++)e.add(admit(kind,p,base,inst,g));
-    for(int p=1;p<=2;p++)for(long g=0;g<=1;g++){e.add(new Event("discard",p,0,0,g,0,false,null,""));e.add(commit(p,5,g));}
+    for(int p=1;p<=2;p++)for(long g=0;g<=1;g++){e.add(new Event("discard",p,0,0,g,0,false,null,"",null));e.add(commit(p,5,g));}
     for(int p=1;p<=2;p++)e.add(recover(p,6));
     for(int p=1;p<=2;p++)for(int s:new int[]{1,2,7})for(long inst:new long[]{1,2,3,9})for(boolean pending:new boolean[]{false,true})
       for(String blocked:new String[]{null,"policy_blocked","user_action_required"})e.add(reconcile(p,s,inst,pending,blocked));
     for(int s=1;s<=2;s++)for(String outcome:new String[]{"below","timeout","regress"})e.add(observe(1,s,outcome));
     for(long inst:new long[]{1,2,3,9}){e.add(health("healthy",inst));e.add(health("healthFailed",inst));}
+    // Installer reports, which the model carries as its rejected flag.
+    for(int p=1;p<=2;p++)for(int s:new int[]{1,2,7})for(long inst:new long[]{1,2,3,9})for(boolean pending:new boolean[]{false,true})
+      for(UpdateJournal.InstallerFailure failure:UpdateJournal.InstallerFailure.values())e.add(reconcile(p,s,inst,pending,null,failure));
     return e;
   }
 
@@ -181,7 +190,8 @@ public final class UpdateJournalConformanceTest {
       }
     }
     if(!differences.isEmpty())throw new AssertionError(differences.size()+" differences, first: "+differences.subList(0,Math.min(5,differences.size())));
-    if(recipes.size()!=27||events.size()!=201||cases!=5427)throw new AssertionError("Case table changed: "+recipes.size()+" x "+events.size());
+    // The first 27 states and 201 events are the model's original 5,427-case table.
+    if(recipes.size()!=29||events.size()!=297||cases!=8613)throw new AssertionError("Case table changed: "+recipes.size()+" x "+events.size());
     System.out.println("UpdateJournalConformance: "+cases+" cases ("+recipes.size()+" states x "+events.size()+" events, "+refused+" refusals), 0 differences");
   }
 }

@@ -37,6 +37,17 @@ public abstract class InstallerResultReceiver extends BroadcastReceiver {
   // Includes success, all failure codes and unknown future statuses. Never
   // launch EXTRA_INTENT or treat delivery itself as installation evidence.
   boolean pendingSession=PackageInstallCoordinator.hasPendingSession(context,target,session);
-  journal.reconcileInstallerResult(transaction,session,PackageInstallCoordinator.installed(context,target),pendingSession,blocked);
+  journal.reconcileInstallerResult(transaction,session,PackageInstallCoordinator.installed(context,target),pendingSession,blocked,failure(status));
+ }
+ /** Faults of the candidate on this device quarantine it; faults of the moment
+  * retry. Success, a generic failure and unknown statuses report nothing. */
+ public static UpdateJournal.InstallerFailure failure(int status) {
+  switch(status) {
+   case PackageInstaller.STATUS_FAILURE_INVALID: case PackageInstaller.STATUS_FAILURE_CONFLICT: case PackageInstaller.STATUS_FAILURE_INCOMPATIBLE:
+    return UpdateJournal.InstallerFailure.CANDIDATE_REJECTED;
+   case PackageInstaller.STATUS_FAILURE_ABORTED: case PackageInstaller.STATUS_FAILURE_STORAGE: case PackageInstaller.STATUS_FAILURE_TIMEOUT:
+    return UpdateJournal.InstallerFailure.RETRYABLE;
+   default: return null;
+  }
  }
 }

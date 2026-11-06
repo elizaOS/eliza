@@ -40,8 +40,15 @@ public final class InstallerResultContract {
    long deadline=android.os.SystemClock.elapsedRealtime()+10000;
    while(PackageInstallCoordinator.hasPendingSession(app,target,session)&&android.os.SystemClock.elapsedRealtime()<deadline)Thread.sleep(100);
    check(!PackageInstallCoordinator.hasPendingSession(app,target,session),"Session was not abandoned");
-   InstallerResultReceiver.reconcile(app,target,action,journal,callback);
-   check(UpdateJournal.Phase.QUARANTINED==journal.read().phase,"Missing session was not quarantined");
+   // A gone session quarantines only on a reported candidate fault.
+   InstallerResultReceiver.reconcile(app,target,action,journal,callback.putExtra(android.content.pm.PackageInstaller.EXTRA_STATUS,1));
+   check("install_outcome_unknown".equals(journal.read().reason)&&journal.read().quarantine.isEmpty(),"Unreported failure quarantined the candidate");
+   InstallerResultReceiver.reconcile(app,target,action,journal,callback.putExtra(android.content.pm.PackageInstaller.EXTRA_STATUS,android.content.pm.PackageInstaller.STATUS_FAILURE_INVALID));
+   check(UpdateJournal.Phase.QUARANTINED==journal.read().phase&&journal.read().quarantine.contains(plan.candidate.digest),"Rejected candidate was not quarantined");
+   for(int status:new int[]{android.content.pm.PackageInstaller.STATUS_FAILURE_STORAGE,android.content.pm.PackageInstaller.STATUS_FAILURE_ABORTED,android.content.pm.PackageInstaller.STATUS_FAILURE_TIMEOUT})
+    check(InstallerResultReceiver.failure(status)==UpdateJournal.InstallerFailure.RETRYABLE,"Transient failure not retryable");
+   for(int status:new int[]{android.content.pm.PackageInstaller.STATUS_SUCCESS,android.content.pm.PackageInstaller.STATUS_FAILURE,987654})
+    check(InstallerResultReceiver.failure(status)==null,"Status without evidence reported a failure");
   } finally {try{installer.abandonSession(session);}catch(Exception ignored){}}
  }
 }

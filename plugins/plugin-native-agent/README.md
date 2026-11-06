@@ -150,8 +150,10 @@ explicit callback action, target package, journal and executor. Rejected worker
 submission finishes the broadcast and leaves durable reconciliation to the host.
 Transaction, immutable/framework session and optional package identity must match;
 success/failure hints never substitute for installed-identity and live-session
-readback, and user-action intents are never launched. The Android contract uses
-real PackageInstaller sessions; hosts must also qualify actual installation,
+readback, and user-action intents are never launched. Only a reported candidate
+fault (an invalid, conflicting or incompatible APK) quarantines a candidate; a
+gone session without one releases the plan for a later attempt. The Android
+contract uses real PackageInstaller sessions; hosts must also qualify actual installation,
 callback delivery, process death and cached recovery with their signed fixtures.
 
 ### Local runtime health sampling
