@@ -1672,6 +1672,41 @@ describe("subjectless past-participle openers (Discord group-surface fabrication
   ])("passes %p through (advice / mid-sentence / question)", (reply) => {
     expect(replyClaimsCompletedSideEffect(reply)).toBe(false);
   });
+
+  // The sentence-start anchor also matches the previous sentence's "." / "!" /
+  // "?", so the question check has to start at the claim word itself.
+  it.each([
+    [
+      "Added anything to your calendar lately?",
+      "Hi there. Added anything to your calendar lately?",
+    ],
+    ["Scheduled for 3pm or 4pm?", "Got it! Scheduled for 3pm or 4pm?"],
+    ["Reminder set: 9am or 10am?", "Okay. Reminder set: 9am or 10am?"],
+  ])(
+    "passes the question %s through after an earlier sentence",
+    async (question, reply) => {
+      expect(replyClaimsCompletedSideEffect(question)).toBe(false);
+      expect(replyClaimsCompletedSideEffect(reply)).toBe(false);
+      expect(
+        evaluatePlannedReplyEgress({ reply, actionResults: [], actions: [] }),
+      ).toEqual({ verdict: "allow" });
+      expect(
+        await getClaimEvaluator().shouldRun(
+          makeContext(simpleReplyHandler(reply)),
+        ),
+      ).toBe(false);
+    },
+  );
+
+  it.each([
+    "Anything else? Saved a note: the charger is in the kitchen drawer.",
+    "Want a reminder too? Note saved.",
+  ])("flags %s: an earlier question does not exempt the claim", (reply) => {
+    expect(replyClaimsCompletedSideEffect(reply)).toBe(true);
+    expect(
+      evaluatePlannedReplyEgress({ reply, actionResults: [], actions: [] }),
+    ).toMatchObject({ verdict: "reject", kind: "completed_side_effect" });
+  });
 });
 
 describe("multilingual completed-side-effect claim tiers (#17027 AC7)", () => {

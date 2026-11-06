@@ -157,6 +157,14 @@ function sideEffectClaimSentenceIsQuestion(
   return false;
 }
 
+// Index of the claim's first word. Sentence-anchored patterns match from the
+// previous sentence's terminator (`(?:^|[.!?]\s+)`), which must not decide
+// whether the claim's own sentence is a question.
+function sideEffectClaimWordIndex(match: RegExpMatchArray): number {
+  const firstWordOffset = match[0].search(/[\p{L}\p{N}]/u);
+  return (match.index ?? 0) + Math.max(firstWordOffset, 0);
+}
+
 /**
  * True when a reply ASSERTS that a scheduling/save side effect already
  * happened. When no tool has run in the turn any such assertion is
@@ -686,11 +694,17 @@ export function replyClaimsCompletedSideEffect(
   for (const match of text.matchAll(
     SUBJECTLESS_PAST_SIDE_EFFECT_CLAIM_PATTERN,
   )) {
-    if (sideEffectClaimSentenceIsQuestion(text, match.index)) continue;
+    if (
+      sideEffectClaimSentenceIsQuestion(text, sideEffectClaimWordIndex(match))
+    )
+      continue;
     return true;
   }
   for (const match of text.matchAll(NOUN_FIRST_SIDE_EFFECT_CLAIM_PATTERN)) {
-    if (sideEffectClaimSentenceIsQuestion(text, match.index)) continue;
+    if (
+      sideEffectClaimSentenceIsQuestion(text, sideEffectClaimWordIndex(match))
+    )
+      continue;
     return true;
   }
   for (const match of text.matchAll(PERFECTIVE_SIDE_EFFECT_CLAIM_PATTERN)) {
