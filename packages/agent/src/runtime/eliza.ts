@@ -19,6 +19,7 @@ import { resolveDefaultVaultDataDir } from "@elizaos/auth/vault";
 import {
   AgentRuntime,
   addLogListener,
+  assertActionAllowlistMatchesActions,
   ChannelType,
   type Component,
   createMessageMemory,
@@ -4808,7 +4809,7 @@ export async function startEliza(
   const subAgentCredentialPlugins = shouldRegisterSubAgentCredentialsPlugin()
     ? [{ ...subAgentCredentialsPlugin }]
     : [];
-  const assistantPlugins = createAssistantPlugins(character);
+  const assistantPlugins = createAssistantPlugins(character, config);
   const assistantPlugin = assistantPlugins[0];
   deduplicatePluginActions([
     ...assistantPlugins,
@@ -5989,6 +5990,11 @@ export async function startEliza(
       runtime.logger,
     );
     bootTimer.lap("deferred:complete");
+    // Last, once every deferred step has run: an ELIZA_ACTION_ALLOWLIST entry
+    // that names no registered action (usually an upstream rename) marks the
+    // deferred boot failed and reports INVALID_ACTION_ALLOWLIST. Chat stays
+    // up, and the unmatched name allows nothing.
+    assertActionAllowlistMatchesActions(runtime.actions ?? []);
   };
   try {
     // Time from the register-sql lap up to entering service init (roles
