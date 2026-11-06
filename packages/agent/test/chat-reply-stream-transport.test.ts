@@ -29,6 +29,14 @@ const skeleton: ResponseSkeleton = {
     { kind: "free-json", key: "contexts" },
     { kind: "literal", value: ',"intents":' },
     { kind: "free-json", key: "intents" },
+    { kind: "literal", value: ',"candidateActionNames":' },
+    { kind: "free-json", key: "candidateActionNames" },
+    { kind: "literal", value: ',"replyEffectStatus":' },
+    {
+      kind: "enum",
+      key: "replyEffectStatus",
+      enumValues: ["none", "applied", "non_applied", "pending"],
+    },
     { kind: "literal", value: ',"replyText":' },
     { kind: "free-string", key: "replyText" },
     { kind: "literal", value: ',"facts":' },
@@ -37,11 +45,21 @@ const skeleton: ResponseSkeleton = {
   ],
 };
 
-const envelope = (replyText: string, intents: string[] = []) =>
+const envelope = (
+  replyText: string,
+  route: {
+    contexts?: string[];
+    intents?: string[];
+    candidateActionNames?: string[];
+    replyEffectStatus?: string;
+  } = {},
+) =>
   JSON.stringify({
     shouldRespond: "RESPOND",
-    contexts: intents.length ? ["calendar"] : ["simple"],
-    intents,
+    contexts: route.contexts ?? (route.intents?.length ? ["calendar"] : ["simple"]),
+    intents: route.intents ?? [],
+    candidateActionNames: route.candidateActionNames ?? [],
+    replyEffectStatus: route.replyEffectStatus ?? "none",
     replyText,
     facts: ["the user is planning a trip"],
   });
@@ -248,12 +266,28 @@ it("makes a retry and a validation rewrite visible as replacing revisions", asyn
   });
 }, 60_000);
 
-it("keeps planned-work acknowledgements off the token stream", async () => {
-  const events = await runTurn(
-    [envelope("On it, checking your calendar.", ["read the calendar"])],
-    "You have two meetings tomorrow.",
-  );
-  const texts = clientTexts(events);
-  expect(texts.join("\n")).not.toContain("On it");
-  expect(texts.at(-1)).toBe("You have two meetings tomorrow.");
+it("keeps planned-work acknowledgements and effect claims off the token stream", async () => {
+  for (const [planned, final] of [
+    [
+      envelope("On it, checking your calendar.", {
+        intents: ["read the calendar"],
+      }),
+      "You have two meetings tomorrow.",
+    ],
+    // Simple context, but the action candidate and effect status, generated
+    // before the reply, send this claim to planning: it must not stream.
+    [
+      envelope("Done, I've sent the email to Bob.", {
+        contexts: ["simple"],
+        candidateActionNames: ["SEND_EMAIL"],
+        replyEffectStatus: "applied",
+      }),
+      "I sent the email to Bob.",
+    ],
+  ]) {
+    const events = await runTurn([planned], final);
+    const texts = clientTexts(events);
+    expect(texts.join("\n")).not.toMatch(/On it|Done, I've/);
+    expect(texts.at(-1)).toBe(final);
+  }
 }, 60_000);

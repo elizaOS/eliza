@@ -3,16 +3,17 @@
  *
  * Stage 1 answers simple turns in `replyText` and writes only an
  * acknowledgement there for planned work. The acknowledgement is replaced by
- * the planner's reply, so it must not stream as the answer. The routing
- * fields precede `replyText` in the HANDLE_RESPONSE envelope, so the runtime
- * can ask this gate, before the first reply byte, whether the attempt is
- * already settled as a direct answer. Anything else holds the attempt and the
+ * the planner's reply, so it must not stream as the answer. Every routing
+ * field (field priority below `replyText`'s 20, builtin-field-evaluators.ts)
+ * precedes `replyText` in the HANDLE_RESPONSE envelope, so the runtime can ask
+ * this gate, before the first reply byte, whether the attempt is already
+ * settled as a direct answer. Anything else holds the attempt and the
  * validated final reply is delivered whole, as before.
  *
- * Later validation (source quotes, the transcript guard, egress review,
- * routing heuristics that read fields after `replyText`) can still change the
- * text. That change reaches clients as a stream revision / authoritative
- * snapshot, never as silent divergence: the final reply stays authoritative.
+ * The streamed text is still a draft: later validation (source quotes, the
+ * transcript guard, egress review, message-text routing heuristics, the
+ * addressee gate) can change or withdraw it. Hosts deliver it as provisional
+ * text and the validated final reply confirms, revises or retracts it.
  */
 import type {
   StructuredStreamField,
@@ -56,13 +57,19 @@ const DIRECT_REPLY_PRECEDING_FIELDS: Readonly<
 };
 
 /** Fields that must have been decided before a direct answer can stream. */
-const REQUIRED_PRECEDING_FIELDS = ["shouldRespond", "contexts", "intents"];
+const REQUIRED_PRECEDING_FIELDS = [
+  "shouldRespond",
+  "contexts",
+  "intents",
+  "candidateActionNames",
+  "replyEffectStatus",
+];
 
 /**
  * Allows a Stage-1 attempt's reply to stream only when the fields generated
  * before it route the turn to a direct answer: RESPOND, simple context, no
- * intents, no context reads and no action candidates. Unstructured prose is
- * held: it has no routing decision to check.
+ * intents, no context reads, no action candidates and no pending or applied
+ * effect. Unstructured prose is held: it has no routing decision to check.
  */
 export const stage1DirectReplyStreamGate: StructuredStreamGate = (
   preceding,
