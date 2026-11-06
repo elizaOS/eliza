@@ -1628,8 +1628,14 @@ export async function handleChatCompletionsPOST(
     const skipCatalogLookup = modelUsesReasoningTokens(model) && !fundedBudget;
     const monetizedAppPromise = requestedAppId
       ? (options.requiredAppId
-          ? appsService.getById(requestedAppId)
-          : appsService.getAuthorizedMonetizedAppForUser(requestedAppId, user)
+          ? appsService.getById(requestedAppId, {
+              executionCtx: options.executionCtx,
+            })
+          : appsService.getAuthorizedMonetizedAppForUser(
+              requestedAppId,
+              user,
+              { executionCtx: options.executionCtx },
+            )
         ).then((app) => app ?? null)
       : Promise.resolve(null);
     const platformCredentialConfigured =

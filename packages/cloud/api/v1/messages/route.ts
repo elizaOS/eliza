@@ -761,6 +761,7 @@ app.post("/", async (c) => {
         (await appsService.getAuthorizedMonetizedAppForUser(
           requestedAppId,
           user,
+          { executionCtx },
         )) ?? null;
       appId = monetizedApp?.id ?? null;
       useAppCredits = Boolean(monetizedApp?.monetization_enabled);

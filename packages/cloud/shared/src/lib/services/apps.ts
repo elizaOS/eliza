@@ -41,6 +41,12 @@ import {
 import { lockInferencePolicyUsers } from "./inference-policy-fence";
 import { managedDomainsService } from "./managed-domains";
 
+const appByIdLoads = new Map<string, Promise<App | undefined>>();
+
+export interface AppCacheExecutionContext {
+  waitUntil(promise: Promise<unknown>): void;
+}
+
 function isCachedApp(value: unknown, expectedId: string): value is App {
   if (!value || typeof value !== "object") return false;
   const candidate = value as Partial<App>;
@@ -159,7 +165,10 @@ export class AppsService {
    *
    * Negative cache: missing apps are remembered briefly to absorb invalid IDs.
    */
-  async getById(id: string): Promise<App | undefined> {
+  async getById(
+    id: string,
+    options: { executionCtx?: AppCacheExecutionContext } = {},
+  ): Promise<App | undefined> {
     const inMemory = getInferenceAppById(id);
     if (inMemory) return structuredClone(inMemory);
     const cacheKey = CacheKeys.app.byId(id);
@@ -175,23 +184,49 @@ export class AppsService {
       }
     }
 
-    return await this.loadAndCacheAppById(id);
+    const app = await this.loadAppById(id, options.executionCtx);
+    return app && structuredClone(app);
   }
 
-  private async loadAndCacheAppById(id: string): Promise<App | undefined> {
-    const cacheKey = CacheKeys.app.byId(id);
-    const generation = getAppByIdHydrationGeneration(id);
-    const app = await appsRepository.findById(id);
-    if (getAppByIdHydrationGeneration(id) !== generation) {
+  /**
+   * One primary read per app id per isolate, shared by concurrent cold
+   * lookups. Worker callers publish the projection under `waitUntil`, so the
+   * request does not wait for the shared-cache write before dispatch.
+   */
+  private loadAppById(
+    id: string,
+    executionCtx: AppCacheExecutionContext | undefined,
+  ): Promise<App | undefined> {
+    const existing = appByIdLoads.get(id);
+    if (existing) return existing;
+    const load = (async () => {
+      const generation = getAppByIdHydrationGeneration(id);
+      const app = await appsRepository.findById(id);
+      if (getAppByIdHydrationGeneration(id) !== generation) return app;
+      if (app) setInferenceAppById(id, app);
+      const publish = app
+        ? cache.set(CacheKeys.app.byId(id), app, CacheTTL.app.byId)
+        : cache.set(CacheKeys.app.byId(id), { __none: true }, CacheTTL.app.none);
+      if (!executionCtx) {
+        await publish;
+        return app;
+      }
+      executionCtx.waitUntil(
+        publish.catch((error: unknown) => {
+          // error-policy:J7 the primary row already served this request; a
+          // failed projection write only means the next isolate reads again.
+          logger.warn("[Apps] App cache publication failed", {
+            appId: id,
+            error: error instanceof Error ? error.message : String(error),
+          });
+        }),
+      );
       return app;
-    }
-    if (app) {
-      await cache.set(cacheKey, app, CacheTTL.app.byId);
-      setInferenceAppById(id, app);
-    } else {
-      await cache.set(cacheKey, { __none: true }, CacheTTL.app.none);
-    }
-    return app;
+    })().finally(() => {
+      appByIdLoads.delete(id);
+    });
+    appByIdLoads.set(id, load);
+    return load;
   }
 
   /**
@@ -235,8 +270,9 @@ export class AppsService {
   async getAuthorizedMonetizedAppForUser(
     appId: string,
     _user: { id: string; organization_id: string },
+    options: { executionCtx?: AppCacheExecutionContext } = {},
   ): Promise<App | undefined> {
-    const app = await this.getById(appId);
+    const app = await this.getById(appId, options);
     if (!app?.monetization_enabled) {
       return undefined;
     }
