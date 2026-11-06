@@ -110,3 +110,23 @@ test("a failed SEO step keeps the social posts that were already published", asy
   expect(result.channels.seo?.error).toContain("INDEXNOW_KEY");
   expect(result.errors.length).toBeGreaterThan(0);
 });
+
+test("an advertising promotion whose ad copy fails creates no campaign", async () => {
+  const before = createdCampaigns.length;
+  contentSpy.mockRejectedValueOnce(new Error("model provider returned 503"));
+  const result = await appPromotionService.promoteApp("org-1", "user-1", "app-1", {
+    channels: ["advertising"],
+    advertising: {
+      platform: "snap",
+      adAccountId: "11111111-1111-4111-8111-111111111111",
+      budget: 50,
+      budgetType: "lifetime",
+      objective: "traffic",
+    },
+  });
+
+  expect(createdCampaigns.length).toBe(before);
+  expect(result.channels.advertising?.success).toBe(false);
+  expect(result.channels.advertising?.campaignId).toBeUndefined();
+  expect(result.errors.length).toBeGreaterThan(0);
+});
