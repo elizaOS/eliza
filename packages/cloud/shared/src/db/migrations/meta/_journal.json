@@ -3641,6 +3641,34 @@
       "when": 1796083200167,
       "tag": "0549_drop_erc8004_agent_identity",
       "breakpoints": true
+    },
+    {
+      "idx": 520,
+      "version": "7",
+      "when": 1796083200168,
+      "tag": "0550_app_creator_audit_reference",
+      "breakpoints": true
+    },
+    {
+      "idx": 521,
+      "version": "7",
+      "when": 1796083200169,
+      "tag": "0551_native_app_publishers",
+      "breakpoints": true
+    },
+    {
+      "idx": 522,
+      "version": "7",
+      "when": 1796083200170,
+      "tag": "0552_inference_rate_policy_fences",
+      "breakpoints": true
+    },
+    {
+      "idx": 523,
+      "version": "7",
+      "when": 1796083200171,
+      "tag": "0553_inference_policy_snapshot_fence",
+      "breakpoints": true
     }
   ]
 }

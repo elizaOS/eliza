@@ -130,6 +130,7 @@ export * from "./managed-domains";
 export * from "./mobile-app-auth-grants";
 export * from "./model-pricing";
 export * from "./moderation-violations";
+export * from "./native-app-publishers";
 export * from "./oauth-success-proof-tickets";
 export * from "./oidc";
 export * from "./org-rate-limit-overrides";

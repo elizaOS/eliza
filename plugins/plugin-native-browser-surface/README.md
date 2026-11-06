@@ -105,6 +105,9 @@ These are host primitives, not agent authorization: the caller must compose task
 scope, origin approval, preview and durable effect recording. Cross-origin history
 and iOS are not supported by these methods. Form POST resubmission is refused.
 
+Android `stopLoading` stops the current page load where it is (a no-op when nothing is
+loading) and then sends `navigationChanged`, so the host re-reads `progress`.
+
 Script popups never open. `getSurfaceState` also returns `title`, `canGoBack`,
 `canGoForward`, `progress`, `pageError` and `textZoom`; `setTextZoom` sets the page
 text size from 50 to 300 percent.

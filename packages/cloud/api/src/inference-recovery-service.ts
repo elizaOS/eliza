@@ -13,6 +13,37 @@ import {
 export class InferenceRecoveryService extends WorkerEntrypoint<
   AppEnv["Bindings"]
 > {
+  async loadAdmissionPolicy(organizationId: string) {
+    if (!validRequestId(organizationId))
+      throw new Error("Invalid inference policy organization");
+    return runWithCloudBindingsAsync(
+      this.env as Record<string, unknown>,
+      async () => {
+        const { loadAdmissionPolicy } = await import(
+          "@elizaos/cloud-shared/lib/services/inference-policy-primary"
+        );
+        return loadAdmissionPolicy(organizationId);
+      },
+    );
+  }
+
+  async inspectAdmissionPolicyMutation(
+    organizationId: string,
+    mutationId: string,
+  ) {
+    if (!validRequestId(organizationId) || !validRequestId(mutationId))
+      throw new Error("Invalid inference policy mutation identity");
+    return runWithCloudBindingsAsync(
+      this.env as Record<string, unknown>,
+      async () => {
+        const { inspectAdmissionPolicyMutation } = await import(
+          "@elizaos/cloud-shared/lib/services/inference-policy-primary"
+        );
+        return inspectAdmissionPolicyMutation(organizationId, mutationId);
+      },
+    );
+  }
+
   async recover(
     context: InferenceAdmissionRecoveryContext,
     estimatedCostUsd: number,
