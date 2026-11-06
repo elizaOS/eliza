@@ -66,6 +66,7 @@ const connection = new NativeConnection({
         "reload",
         "close",
         "cancel",
+        "cancel-reply",
         "task-bind",
         "task-guide",
         "task-guide-label",
