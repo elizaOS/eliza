@@ -1089,6 +1089,15 @@ test("the owner releases a slot held by a revoked task with an unknown outcome",
   const runtime = await gateway.forCurrentOwner();
   const unknown = await fillWithLostReply(runtime, "task-a");
   assert.equal(unknown.operations[0].status, "unknown");
+  // While the authorization is active, readback can still settle it.
+  const early = await send(
+    gateway,
+    "POST",
+    "/tasks/task-a/acknowledge-unknown",
+    { expectedRevision: runtime.get("task-a").revision },
+  );
+  assert.equal(early.status, 409);
+  assert.equal((await early.json()).code, "TASK_UNKNOWN_OUTCOME");
   // Sign-out revokes the task; readback then needs an authorization it lost.
   await gateway.revoke();
   const { revision } = runtime.get("task-a");
@@ -1498,4 +1507,141 @@ test("an account change at any credential read of a request is fenced", async (t
     "/tasks/task-a/pause",
     "/tasks/task-a/resume",
   ]);
+});
+
+/** A provider whose database and statements are frozen, as the SQLCipher one's are. */
+const frozenProvider = {
+  open: ({ path }) => {
+    const db = new DatabaseSync(path);
+    return Object.freeze({
+      exec: (sql) => db.exec(sql),
+      prepare: (sql) => {
+        const statement = db.prepare(sql);
+        return Object.freeze({
+          get: (...params) => statement.get(...params),
+          run: (...params) => statement.run(...params),
+          all: (...params) => statement.all(...params),
+        });
+      },
+      close: () => db.close(),
+    });
+  },
+  assertEncryption: () => true,
+};
+
+test("the gateway runs on a provider whose database and statements are frozen", async (t) => {
+  const directory = await mkdtemp(join(tmpdir(), "eliza-task-frozen-"));
+  const bundlePath = join(directory, "task-runtime.mjs");
+  buildTaskRuntime(bundlePath);
+  let account = "account-a";
+  const gateway = await createTaskGateway({
+    bundlePath,
+    databasePath: join(directory, "journal.sqlite"),
+    databaseProvider: frozenProvider,
+    requireEncryptedDatabase: true,
+    credentialGate: async () => account,
+    actuator: { capabilities: ["fill"] },
+    authorizeGoal: async () => grant("task-a"),
+    extensionFactory: ({ db }) => {
+      db.exec("CREATE TABLE IF NOT EXISTS notes (owner TEXT NOT NULL)");
+      return async (request, { owner, authenticate }) => {
+        if (new URL(request.url).pathname !== "/tasks/db-save") return;
+        db.prepare("INSERT INTO notes (owner) VALUES (?)").run(owner.actorId);
+        assert.equal(db.prepare("SELECT owner FROM notes").all().length, 1);
+        account = "account-b";
+        await authenticate().catch(() => undefined);
+        return Response.json({ saved: true });
+      };
+    },
+  });
+  t.after(async () => {
+    await gateway.close();
+    await rm(directory, { recursive: true, force: true });
+  });
+  assert.equal(
+    (await send(gateway, "POST", "/tasks", { goalRef: "bill" })).status,
+    201,
+  );
+  assert.equal((await send(gateway, "GET", "/tasks/task-a")).status, 200);
+  // A save through the frozen database is still noted on the request.
+  const saved = await send(gateway, "POST", "/tasks/db-save", {});
+  assert.equal(saved.status, 409);
+  assert.equal((await saved.json()).code, "TASK_ACCOUNT_CHANGED");
+});
+
+test("a change a host route rolls back is not a save, so the answer is a 401", async (t) => {
+  const directory = await mkdtemp(join(tmpdir(), "eliza-task-rollback-"));
+  const bundlePath = join(directory, "task-runtime.mjs");
+  buildTaskRuntime(bundlePath);
+  let account = "account-a";
+  const gateway = await createTaskGateway({
+    bundlePath,
+    databasePath: join(directory, "journal.sqlite"),
+    credentialGate: async () => account,
+    actuator: { capabilities: ["fill"] },
+    authorizeGoal: async () => grant("task-a"),
+    extensionFactory: ({ db }) => {
+      db.exec("CREATE TABLE IF NOT EXISTS notes (owner TEXT NOT NULL)");
+      return async (request, { owner, authenticate }) => {
+        const { pathname } = new URL(request.url);
+        if (!pathname.startsWith("/tasks/tx-")) return;
+        db.exec("BEGIN IMMEDIATE");
+        db.prepare("INSERT INTO notes (owner) VALUES (?)").run(owner.actorId);
+        db.exec(pathname === "/tasks/tx-commit" ? "COMMIT" : "ROLLBACK");
+        account = account === "account-a" ? "account-b" : "account-a";
+        const current = await authenticate();
+        if (current.actorId !== owner.actorId)
+          return Response.json({ code: "TASK_UNAUTHORIZED" }, { status: 401 });
+        return Response.json({ saved: true });
+      };
+    },
+  });
+  t.after(async () => {
+    await gateway.close();
+    await rm(directory, { recursive: true, force: true });
+  });
+  const rolledBack = await send(gateway, "POST", "/tasks/tx-rollback", {});
+  assert.deepEqual(
+    { status: rolledBack.status, code: (await rolledBack.json()).code },
+    { status: 401, code: "TASK_UNAUTHORIZED" },
+  );
+  const committed = await send(gateway, "POST", "/tasks/tx-commit", {});
+  assert.deepEqual(
+    { status: committed.status, code: (await committed.json()).code },
+    { status: 409, code: "TASK_ACCOUNT_CHANGED" },
+  );
+});
+
+test("an unconfirmed cleanup among other cleanup errors still answers 503", async (t) => {
+  const directory = await mkdtemp(join(tmpdir(), "eliza-task-mixed-cleanup-"));
+  const bundlePath = join(directory, "task-runtime.mjs");
+  buildTaskRuntime(bundlePath);
+  let account = "account-a";
+  const gateway = await createTaskGateway({
+    bundlePath,
+    databasePath: join(directory, "journal.sqlite"),
+    credentialGate: async () => account,
+    actuator: lostReplyActuator,
+  });
+  t.after(async () => {
+    await gateway.close().catch(() => undefined);
+    await rm(directory, { recursive: true, force: true });
+  });
+  const a = await gateway.forCurrentOwner();
+  account = "account-b";
+  const b = await gateway.forCurrentOwner();
+  a.current = () => {
+    throw Object.assign(new Error("storage failed"), {
+      code: "TASK_STORAGE_FAILED",
+    });
+  };
+  b.settle = async () => {
+    throw Object.assign(new Error("cleanup unconfirmed"), {
+      code: "TASK_CLEANUP_UNCONFIRMED",
+    });
+  };
+  account = null;
+  const response = await send(gateway, "GET", "/tasks/current");
+  assert.equal(response.status, 503);
+  assert.equal((await response.json()).code, "TASK_CLEANUP_UNCONFIRMED");
 });

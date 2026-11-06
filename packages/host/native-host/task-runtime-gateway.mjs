@@ -22,12 +22,15 @@ const superseded = () =>
   new NativeHostError("Task authentication superseded", {
     code: "TASK_UNAUTHORIZED",
   });
-/** One error as itself; several keep a code they all share. */
+/** One error as itself; several keep a code they all share, or else say the
+ * cleanup is unconfirmed if any one does, so the caller retries. */
 function combined(errors) {
   if (errors.length === 1) return errors[0];
   const error = new AggregateError(errors, "Task cleanup failed");
   const code = errors[0]?.code;
   if (errors.every((item) => item?.code === code)) error.code = code;
+  else if (errors.some((item) => item?.code === "TASK_CLEANUP_UNCONFIRMED"))
+    error.code = "TASK_CLEANUP_UNCONFIRMED";
   return error;
 }
 
@@ -86,6 +89,9 @@ export async function createTaskGateway({
   // Rows this connection has inserted, updated or deleted. The drivers are
   // synchronous, so nothing else runs between two reads of it.
   const changeCount = db.prepare("SELECT total_changes() AS n");
+  // A change made inside a transaction is a save only once it commits: a
+  // ROLLBACK undoes it, though total_changes() still counts it.
+  let transaction = null;
   /** Run `write`, and note it on the current request if it changed a row. */
   const noted = (write) => {
     const scope = requestScope.getStore();
@@ -99,28 +105,69 @@ export async function createTaskGateway({
       try {
         changed = changeCount.get().n !== before;
       } catch {}
-      if (changed) scope.committed = true;
+      if (changed && transaction) transaction.changed.add(scope);
+      else if (changed) scope.committed = true;
     }
   };
-  const statementFor = (statement) =>
-    new Proxy(statement, {
-      get(target, key) {
-        const value = Reflect.get(target, key);
-        if (typeof value !== "function") return value;
-        if (!["run", "get", "all"].includes(key)) return value.bind(target);
-        return (...args) => noted(() => value.apply(target, args));
-      },
-    });
-  const trackedDb = new Proxy(db, {
-    get(target, key) {
-      const value = Reflect.get(target, key);
-      if (typeof value !== "function") return value;
-      if (key === "prepare")
-        return (...args) => statementFor(value.apply(target, args));
-      if (key === "exec")
-        return (...args) => noted(() => value.apply(target, args));
-      return value.bind(target);
-    },
+  const BEGIN = /^\s*BEGIN\b/i;
+  const COMMIT = /^\s*(?:COMMIT|END)\b/i;
+  const ROLLBACK = /^\s*ROLLBACK\s*(?:TRANSACTION\s*)?;?\s*$/i;
+  const exec = (sql) => {
+    if (typeof sql === "string" && BEGIN.test(sql)) {
+      const result = db.exec(sql);
+      transaction = { changed: new Set() };
+      return result;
+    }
+    if (typeof sql === "string" && ROLLBACK.test(sql)) {
+      const result = db.exec(sql);
+      transaction = null;
+      return result;
+    }
+    if (typeof sql === "string" && COMMIT.test(sql)) {
+      const result = db.exec(sql);
+      for (const scope of transaction?.changed ?? []) scope.committed = true;
+      transaction = null;
+      return result;
+    }
+    return noted(() => db.exec(sql));
+  };
+  // Plain wrappers, not Proxies: a provider may freeze its objects (the
+  // SQLCipher provider does), and a Proxy's get trap cannot return a
+  // replacement for a frozen object's methods.
+  /** Copy `source`'s methods and fields onto a new object; `wrap` replaces some. */
+  const forward = (source, wrap) => {
+    const target = {};
+    const seen = new Set();
+    for (
+      let level = source;
+      level && level !== Object.prototype;
+      level = Object.getPrototypeOf(level)
+    )
+      for (const key of Reflect.ownKeys(level)) {
+        if (key === "constructor" || seen.has(key)) continue;
+        seen.add(key);
+        const replacement = Object.hasOwn(wrap, key) ? wrap[key] : null;
+        Object.defineProperty(target, key, {
+          enumerable: true,
+          get: () => {
+            if (replacement) return replacement;
+            const value = Reflect.get(source, key);
+            return typeof value === "function" ? value.bind(source) : value;
+          },
+        });
+      }
+    return target;
+  };
+  const statementFor = (statement) => {
+    const wrap = {};
+    for (const key of ["run", "get", "all"])
+      if (typeof statement[key] === "function")
+        wrap[key] = (...args) => noted(() => statement[key](...args));
+    return forward(statement, wrap);
+  };
+  const trackedDb = forward(db, {
+    exec,
+    prepare: (...args) => statementFor(db.prepare(...args)),
   });
   const store = new SqliteInteractiveTaskStore(trackedDb);
   const choiceStore = new SqliteMessageInteractionSessionStore(trackedDb);
