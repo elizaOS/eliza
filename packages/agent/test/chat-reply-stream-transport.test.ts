@@ -135,7 +135,9 @@ async function runTurn(
             responseSkeleton: skeleton,
             streamFields: STAGE1_REPLY_STREAM_FIELDS,
             streamFieldGate: createStage1DirectReplyStreamGate(() =>
-              skeleton.spans.flatMap((span) => (span.key ? [span.key] : [])),
+              skeleton.spans.flatMap((span) =>
+                span.key ? [{ name: span.key }] : [],
+              ),
             ),
             onStreamChunk: options?.onStreamChunk,
           });

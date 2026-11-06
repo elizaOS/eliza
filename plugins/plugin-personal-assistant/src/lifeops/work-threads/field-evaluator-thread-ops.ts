@@ -355,7 +355,11 @@ export const threadOpsFieldEvaluator: ResponseHandlerFieldEvaluator<
 > = {
   name: "threadOps",
   description: THREAD_OPS_DESCRIPTION,
-  priority: 30, // Runs before contexts/candidateActions can be finalized.
+  // Written before replyText (20) and run before the other plugin routing
+  // fields, so an abort preempts their handlers.
+  priority: 19,
+  // No op: handle returns without rerouting the turn or changing replyText.
+  directReplyValue: (value) => Array.isArray(value) && value.length === 0,
   schema: THREAD_OPS_SCHEMA,
   shouldRun: threadOpsShouldRun,
   parse: threadOpsParse,

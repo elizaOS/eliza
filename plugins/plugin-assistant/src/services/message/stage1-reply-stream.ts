@@ -7,8 +7,10 @@
  * field (field priority below `replyText`'s 20, builtin-field-evaluators.ts)
  * precedes `replyText` in the HANDLE_RESPONSE envelope, so the runtime can ask
  * this gate, before the first reply byte, whether the attempt is already
- * settled as a direct answer. Anything else holds the attempt and the
- * validated final reply is delivered whole, as before.
+ * settled as a direct answer. A plugin routing field takes part when it
+ * declares `directReplyValue` and is generated before `replyText`. Anything
+ * else holds the attempt and the validated final reply is delivered whole,
+ * as before.
  *
  * The streamed text is still a draft: later validation (source quotes, the
  * transcript guard, egress review, message-text routing heuristics, the
@@ -16,6 +18,7 @@
  * text and the validated final reply confirms, revises or retracts it.
  */
 import type {
+  ResponseHandlerFieldEvaluator,
   StructuredStreamField,
   StructuredStreamGate,
 } from "@elizaos/core";
@@ -34,8 +37,9 @@ const isEmptyList = (value: unknown): boolean =>
   value.every((entry) => typeof entry === "string" && entry.trim() === "");
 
 /**
- * Envelope fields that may precede `replyText` on a direct answer, each with
- * the value that keeps the turn off the planner. Any other preceding field is
+ * Builtin envelope fields that may precede `replyText` on a direct answer,
+ * each with the value that keeps the turn off the planner. Plugin fields
+ * declare theirs with `directReplyValue`; any other preceding field is
  * unknown routing input and holds the stream.
  */
 const DIRECT_REPLY_PRECEDING_FIELDS: Readonly<
@@ -77,8 +81,8 @@ const REQUIRED_WHEN_EMITTED_FIELDS = [
  * Fields written after `replyText` that never change the turn's routing or
  * the reply text. Any other emitted field (for example a plugin field that
  * moves the turn to the planner or replaces the reply after it was written)
- * holds the stream for that call, because the gate decides before such a
- * field is generated.
+ * holds the stream for that call unless it declares `directReplyValue` and
+ * was written before `replyText` with such a value.
  */
 const PASSIVE_FOLLOWING_FIELDS = [
   "replyText",
@@ -89,7 +93,7 @@ const PASSIVE_FOLLOWING_FIELDS = [
   "emotion",
 ] as const;
 
-const STREAM_SAFE_EMITTED_FIELDS: ReadonlySet<string> = new Set([
+const BUILTIN_STREAM_SAFE_FIELDS: ReadonlySet<string> = new Set([
   ...Object.keys(DIRECT_REPLY_PRECEDING_FIELDS),
   ...PASSIVE_FOLLOWING_FIELDS,
 ]);
@@ -98,30 +102,42 @@ const STREAM_SAFE_EMITTED_FIELDS: ReadonlySet<string> = new Set([
  * Creates the gate for one Stage-1 call. It allows the reply to stream only
  * when the fields generated before it route the turn to a direct answer:
  * RESPOND, simple context, no intents, no context reads, no action candidates
- * and no pending or applied effect, with no field in the call's schema that
- * could reroute the turn or rewrite the reply after it streams.
- * `emittedFieldNames` returns the fields the
- * call's schema actually asks the model for, read when the gate runs so a
- * recomposed schema (retry, context read) is honoured. Unstructured prose is
- * held: it has no routing decision to check.
+ * and no pending or applied effect, and every plugin field in the call's
+ * schema was already written with a value it declares keeps a direct answer.
+ * `emittedFields` returns the field evaluators the call's schema actually
+ * asks the model for, read when the gate runs so a recomposed schema (retry,
+ * context read) is honoured. A plugin field written after `replyText` is not
+ * in `preceding`, so it holds the stream whatever it declares. Unstructured
+ * prose is held: it has no routing decision to check.
  */
 export function createStage1DirectReplyStreamGate(
-  emittedFieldNames: () => readonly string[],
+  emittedFields: () => readonly Pick<
+    ResponseHandlerFieldEvaluator,
+    "name" | "directReplyValue"
+  >[],
 ): StructuredStreamGate {
   return (preceding) => {
     if (!preceding) return false;
-    const emitted = new Set(emittedFieldNames());
-    for (const field of emitted) {
-      if (!STREAM_SAFE_EMITTED_FIELDS.has(field)) return false;
+    const fields = emittedFields();
+    const pluginDirectValues = new Map<string, (value: unknown) => boolean>();
+    for (const { name, directReplyValue } of fields) {
+      if (BUILTIN_STREAM_SAFE_FIELDS.has(name)) continue;
+      if (!directReplyValue || !Object.hasOwn(preceding, name)) return false;
+      pluginDirectValues.set(name, directReplyValue);
     }
     for (const field of ALWAYS_REQUIRED_FIELDS) {
       if (!Object.hasOwn(preceding, field)) return false;
     }
     for (const field of REQUIRED_WHEN_EMITTED_FIELDS) {
-      if (emitted.has(field) && !Object.hasOwn(preceding, field)) return false;
+      if (
+        fields.some(({ name }) => name === field) &&
+        !Object.hasOwn(preceding, field)
+      )
+        return false;
     }
     for (const [field, value] of Object.entries(preceding)) {
-      const allows = DIRECT_REPLY_PRECEDING_FIELDS[field];
+      const allows =
+        DIRECT_REPLY_PRECEDING_FIELDS[field] ?? pluginDirectValues.get(field);
       if (!allows?.(value)) return false;
     }
     return true;

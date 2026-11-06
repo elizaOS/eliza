@@ -842,8 +842,8 @@ export async function generateStage1Decision(
       ? {}
       : {
           streamFields: STAGE1_REPLY_STREAM_FIELDS,
-          streamFieldGate: createStage1DirectReplyStreamGate(() =>
-            activeResponseHandlerFields().map((field) => field.name),
+          streamFieldGate: createStage1DirectReplyStreamGate(
+            activeResponseHandlerFields,
           ),
         }),
     // This is the only Stage 1 field intended for the user. Local voice
