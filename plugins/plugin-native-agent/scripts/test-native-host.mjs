@@ -78,6 +78,7 @@ try {
     ["runtime.test", "RuntimeRequestDispatcherTest"],
     ["runtime.test", "NativeRuntimeEmbeddingsTest"],
     ["updater", "UpdateJournalTest"],
+    ["updater", "UpdateJournalConformanceTest"],
     ["updater", "ProbationWindowTest"],
     ["updater", "QualifiedClockAnchorTest"],
     ["updater", "JobRunRegistryTest"],

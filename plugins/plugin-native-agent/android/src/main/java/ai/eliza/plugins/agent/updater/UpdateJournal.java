@@ -82,24 +82,35 @@ public class UpdateJournal {
     long pendingMillis=0, observedBoot=-1, observedElapsed=-1;
     long revision=0, generation=0; String channel="stable", reason=""; Phase phase=Phase.IDLE;
     Plan plan; int session=-1, attempts=0; Set<String> quarantine=new TreeSet<>();
+    State copy() {
+      State c=new State();c.probation=probation;c.pendingMillis=pendingMillis;c.observedBoot=observedBoot;c.observedElapsed=observedElapsed;
+      c.revision=revision;c.generation=generation;c.channel=channel;c.reason=reason;c.phase=phase;c.plan=plan;c.session=session;c.attempts=attempts;c.quarantine=new TreeSet<>(quarantine);
+      return c;
+    }
   }
   private interface Mutation { void apply(State state) throws IOException; }
-  private final Path directory;
-  private final Durability durability;
-  private final Faults faults;
+  private interface Locked<T> { T apply(State current) throws IOException; }
+  /** Holds the encoded journal. The file store is the only production store. */
+  interface Store {
+    /** Runs body exclusively against every other instance on the same storage. */
+    <T> T exclusive(Exclusive<T> body) throws IOException;
+    /** The published envelope, or null on a device that never published one. */
+    byte[] read() throws IOException;
+    /** Atomically replaces the published envelope. */
+    void publish(byte[] envelope) throws IOException;
+  }
+  interface Exclusive<T> { T run() throws IOException; }
+  private final Store store;
   private static final int MAX_BYTES=1024*1024, MAGIC=0x53434f54;
   public UpdateJournal(Path directory, Durability durability) throws IOException { this(directory,durability,name->{}); }
-  public UpdateJournal(Path directory, Durability durability, Faults faults) throws IOException {
-    this.directory=directory.toAbsolutePath().normalize(); this.durability=durability; this.faults=faults;
-    if (!Files.exists(this.directory,LinkOption.NOFOLLOW_LINKS)) Files.createDirectory(this.directory);
-    if (!Files.isDirectory(this.directory,LinkOption.NOFOLLOW_LINKS)) throw new IOException("Invalid updater storage");
-  }
-  public Snapshot read() throws IOException { return transact(null); }
+  public UpdateJournal(Path directory, Durability durability, Faults faults) throws IOException { this(new FileStore(directory,durability,faults)); }
+  UpdateJournal(Store store) { this.store=Objects.requireNonNull(store); }
+  public Snapshot read() throws IOException { return locked(Snapshot::new); }
   public interface SnapshotAction { void run(Snapshot snapshot) throws IOException; }
   /** Short private-storage operations only; never perform network I/O here. */
   public void withLockedSnapshot(SnapshotAction action)throws IOException {
     Objects.requireNonNull(action);
-    transact(s->action.run(new Snapshot(s)),null,false);
+    locked(s->{action.run(new Snapshot(s));return null;});
   }
   public Snapshot setChannel(String channel) throws IOException {
     if (!"stable".equals(channel) && !"beta".equals(channel)) throw new IllegalArgumentException("Unknown update channel");
@@ -268,29 +279,23 @@ public class UpdateJournal {
   private static void requirePlan(State s,String id) throws IOException { require(s.plan!=null && s.plan.id.equals(id),"Wrong update transaction"); }
   private static void require(boolean value,String message) throws IOException { if(!value)throw new IOException(message); }
   private static long increment(long value) throws IOException { require(value<Long.MAX_VALUE,"Journal counter exhausted");return value+1; }
-  private Snapshot transact(Mutation mutation) throws IOException { return transact(mutation,null); }
-  private Snapshot transact(Mutation mutation,CommitAction commit) throws IOException { return transact(mutation,commit,true); }
-  private Snapshot transact(Mutation mutation,CommitAction commit,boolean persistMutation) throws IOException {
-    // Multiple Android components can open distinct instances in one process.
-    // FileLock alone throws on overlapping JVM locks instead of waiting.
-    synchronized(UpdateJournal.class) {
-    try(FileChannel lockChannel=FileChannel.open(directory.resolve("lock"),StandardOpenOption.CREATE,StandardOpenOption.WRITE,LinkOption.NOFOLLOW_LINKS);
-        FileLock lock=lockChannel.lock()) {
-      require(lock.isValid(),"Updater storage lock unavailable"); State state=load();
-      if(mutation!=null) { Phase previousPhase=state.phase;mutation.apply(state);if(previousPhase!=state.phase)state.probation=null; if(persistMutation){state.revision=increment(state.revision); persist(state);} }
-      if(commit!=null)commit.commit();
-      return new Snapshot(state);
-    }
-    }
+  /** The transition alone: a new state from the loaded one, with no storage I/O.
+   * A refused mutation throws and leaves the loaded state untouched. The only
+   * callback a mutation may run is the caller's admission check. */
+  private static State step(State current,Mutation mutation) throws IOException {
+    State next=current.copy();mutation.apply(next);
+    if(next.phase!=current.phase)next.probation=null;
+    next.revision=increment(next.revision);return next;
   }
-  private State load() throws IOException {
-    Path file=directory.resolve("journal");
-    if(!Files.exists(file,LinkOption.NOFOLLOW_LINKS)) {
-      require(!Files.exists(directory.resolve("initialized"),LinkOption.NOFOLLOW_LINKS),"Previously initialized updater journal is missing");
-      return new State();
-    }
-    require(Files.isRegularFile(file,LinkOption.NOFOLLOW_LINKS) && Files.size(file)<=MAX_BYTES,"Invalid updater journal");
-    byte[] envelope=Files.readAllBytes(file); require(envelope.length>32,"Truncated updater journal");
+  private Snapshot transact(Mutation mutation) throws IOException { return transact(mutation,null); }
+  /** Persists the step, then runs the platform handoff under the same lock. */
+  private Snapshot transact(Mutation mutation,CommitAction commit) throws IOException {
+    return locked(current->{State next=step(current,mutation);store.publish(encode(next));if(commit!=null)commit.commit();return new Snapshot(next);});
+  }
+  private <T> T locked(Locked<T> body) throws IOException { return store.exclusive(()->body.apply(decode(store.read()))); }
+  private static State decode(byte[] envelope) throws IOException {
+    if(envelope==null)return new State();
+    require(envelope.length>32 && envelope.length<=MAX_BYTES,"Truncated updater journal");
     byte[] body=Arrays.copyOf(envelope,envelope.length-32);
     require(MessageDigest.isEqual(hash(body),Arrays.copyOfRange(envelope,body.length,envelope.length)),"Corrupt updater journal");
     try(DataInputStream in=new DataInputStream(new ByteArrayInputStream(body))) {
@@ -316,21 +321,10 @@ public class UpdateJournal {
         s.probation=new ProbationWindow(policy,sample,ready,failure);
       }
       require(in.available()==0 && (s.phase==Phase.IDLE || s.plan!=null),"Invalid journal structure");
-      markInitialized();return s;
+      return s;
     } catch(IllegalArgumentException e) { throw new IOException("Invalid updater journal value",e); }
   }
-  private void markInitialized() throws IOException {
-    Path marker=directory.resolve("initialized");
-    if(Files.exists(marker,LinkOption.NOFOLLOW_LINKS)) {
-      require(Files.isRegularFile(marker,LinkOption.NOFOLLOW_LINKS)&&Files.size(marker)==1&&Files.readAllBytes(marker)[0]==1,"Invalid journal initialization marker");return;
-    }
-    try(FileChannel file=FileChannel.open(marker,StandardOpenOption.CREATE_NEW,StandardOpenOption.WRITE,LinkOption.NOFOLLOW_LINKS)) {
-      java.nio.ByteBuffer value=java.nio.ByteBuffer.wrap(new byte[]{1});while(value.hasRemaining())file.write(value);file.force(true);
-    }
-    durability.syncDirectory(directory);
-  }
-  private void persist(State s) throws IOException {
-    markInitialized();
+  private static byte[] encode(State s) throws IOException {
     ByteArrayOutputStream bytes=new ByteArrayOutputStream();
     try(DataOutputStream out=new DataOutputStream(bytes)) {
       out.writeInt(MAGIC);out.writeInt(4);out.writeLong(s.revision);out.writeLong(s.generation);out.writeUTF(s.channel);out.writeUTF(s.phase.name());out.writeUTF(s.reason);out.writeInt(s.session);out.writeInt(s.attempts);
@@ -340,17 +334,60 @@ public class UpdateJournal {
       out.writeLong(s.pendingMillis);out.writeLong(s.observedBoot);out.writeLong(s.observedElapsed);
       out.writeBoolean(s.probation!=null);
       if(s.probation!=null){ProbationWindow w=s.probation;out.writeUTF(w.policy.id);out.writeLong(w.policy.readyMillis);out.writeLong(w.policy.failureMillis);out.writeLong(w.policy.maxGapMillis);out.writeLong(w.last.boot);out.writeLong(w.last.elapsed);out.writeUTF(w.last.process);out.writeUTF(w.last.runtime);out.writeUTF(w.last.kind.name());out.writeLong(w.readyMillis);out.writeLong(w.failureMillis);}
-
     }
     byte[] body=bytes.toByteArray();require(body.length+32<=MAX_BYTES,"Journal exceeds limit");
-    Path temporary=directory.resolve("journal.next");
-    try(FileChannel file=FileChannel.open(temporary,StandardOpenOption.CREATE,StandardOpenOption.TRUNCATE_EXISTING,StandardOpenOption.WRITE,LinkOption.NOFOLLOW_LINKS)) {
-      java.nio.ByteBuffer buffer=java.nio.ByteBuffer.wrap(body);while(buffer.hasRemaining())file.write(buffer);
-      buffer=java.nio.ByteBuffer.wrap(hash(body));while(buffer.hasRemaining())file.write(buffer);
-      faults.boundary("before-sync");file.force(true);
+    byte[] envelope=Arrays.copyOf(body,body.length+32);System.arraycopy(hash(body),0,envelope,body.length,32);return envelope;
+  }
+  /** Fsync, then same-filesystem rename, under an OS file lock. */
+  private static final class FileStore implements Store {
+    private final Path directory;
+    private final Durability durability;
+    private final Faults faults;
+    FileStore(Path directory,Durability durability,Faults faults) throws IOException {
+      this.directory=directory.toAbsolutePath().normalize(); this.durability=durability; this.faults=faults;
+      if (!Files.exists(this.directory,LinkOption.NOFOLLOW_LINKS)) Files.createDirectory(this.directory);
+      if (!Files.isDirectory(this.directory,LinkOption.NOFOLLOW_LINKS)) throw new IOException("Invalid updater storage");
     }
-    faults.boundary("before-rename");Files.move(temporary,directory.resolve("journal"),StandardCopyOption.ATOMIC_MOVE,StandardCopyOption.REPLACE_EXISTING);
-    durability.syncDirectory(directory);faults.boundary("published");
+    @Override public <T> T exclusive(Exclusive<T> body) throws IOException {
+      // Multiple Android components can open distinct instances in one process.
+      // FileLock alone throws on overlapping JVM locks instead of waiting.
+      synchronized(UpdateJournal.class) {
+      try(FileChannel lockChannel=FileChannel.open(directory.resolve("lock"),StandardOpenOption.CREATE,StandardOpenOption.WRITE,LinkOption.NOFOLLOW_LINKS);
+          FileLock lock=lockChannel.lock()) {
+        require(lock.isValid(),"Updater storage lock unavailable");
+        return body.run();
+      }
+      }
+    }
+    @Override public byte[] read() throws IOException {
+      Path file=directory.resolve("journal");
+      if(!Files.exists(file,LinkOption.NOFOLLOW_LINKS)) {
+        require(!Files.exists(directory.resolve("initialized"),LinkOption.NOFOLLOW_LINKS),"Previously initialized updater journal is missing");
+        return null;
+      }
+      require(Files.isRegularFile(file,LinkOption.NOFOLLOW_LINKS) && Files.size(file)<=MAX_BYTES,"Invalid updater journal");
+      byte[] envelope=Files.readAllBytes(file);markInitialized();return envelope;
+    }
+    @Override public void publish(byte[] envelope) throws IOException {
+      markInitialized();
+      Path temporary=directory.resolve("journal.next");
+      try(FileChannel file=FileChannel.open(temporary,StandardOpenOption.CREATE,StandardOpenOption.TRUNCATE_EXISTING,StandardOpenOption.WRITE,LinkOption.NOFOLLOW_LINKS)) {
+        java.nio.ByteBuffer buffer=java.nio.ByteBuffer.wrap(envelope);while(buffer.hasRemaining())file.write(buffer);
+        faults.boundary("before-sync");file.force(true);
+      }
+      faults.boundary("before-rename");Files.move(temporary,directory.resolve("journal"),StandardCopyOption.ATOMIC_MOVE,StandardCopyOption.REPLACE_EXISTING);
+      durability.syncDirectory(directory);faults.boundary("published");
+    }
+    private void markInitialized() throws IOException {
+      Path marker=directory.resolve("initialized");
+      if(Files.exists(marker,LinkOption.NOFOLLOW_LINKS)) {
+        require(Files.isRegularFile(marker,LinkOption.NOFOLLOW_LINKS)&&Files.size(marker)==1&&Files.readAllBytes(marker)[0]==1,"Invalid journal initialization marker");return;
+      }
+      try(FileChannel file=FileChannel.open(marker,StandardOpenOption.CREATE_NEW,StandardOpenOption.WRITE,LinkOption.NOFOLLOW_LINKS)) {
+        java.nio.ByteBuffer value=java.nio.ByteBuffer.wrap(new byte[]{1});while(value.hasRemaining())file.write(value);file.force(true);
+      }
+      durability.syncDirectory(directory);
+    }
   }
   private static byte[] hash(byte[] bytes) { try{return MessageDigest.getInstance("SHA-256").digest(bytes);}catch(Exception e){throw new IllegalStateException(e);} }
   private static Identity identity(DataInputStream in)throws IOException{return new Identity(in.readLong(),in.readUTF());}
