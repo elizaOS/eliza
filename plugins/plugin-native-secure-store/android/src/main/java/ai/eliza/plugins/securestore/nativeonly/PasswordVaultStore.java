@@ -124,14 +124,19 @@ public class PasswordVaultStore {
    */
   public static final class KeyLost extends IOException { KeyLost() { super("Password encryption key unavailable"); } }
 
+  /** True when records are stored, readable or not. Needs no key and no user authentication. */
+  public boolean exists() {
+    File base = file.getBaseFile();
+    return base.exists() || new File(base.getPath() + ".bak").exists();
+  }
+
   /**
    * True only when stored records exist and can never be decrypted on this device: the key is
    * missing or permanently invalidated. A key that merely needs user authentication is not.
    */
   public synchronized boolean unrecoverable() throws Exception {
     checkDevice();
-    File base = file.getBaseFile(), backup = new File(base.getPath() + ".bak");
-    if (!base.exists() && !backup.exists()) return false;
+    if (!exists()) return false;
     KeyStore keys = KeyStore.getInstance("AndroidKeyStore"); keys.load(null);
     if (!keys.containsAlias(alias)) return true;
     SecretKey key = (SecretKey) keys.getKey(alias, null);
@@ -182,8 +187,8 @@ public class PasswordVaultStore {
   }
   private JSONArray load() throws Exception {
     checkDevice();
+    if (!exists()) return new JSONArray();
     File base=file.getBaseFile(), backup=new File(base.getPath()+".bak");
-    if (!base.exists() && !backup.exists()) return new JSONArray();
     // AtomicFile must recover a committed legacy backup before a missing base
     // can be treated as an empty vault. Never overwrite recoverable records.
     for (File candidate : new File[]{base,backup}) {
@@ -220,8 +225,7 @@ public class PasswordVaultStore {
     JSONArray snapshot = load(); // The old Keystore key still enforces its original authentication.
     synchronized (target) {
       target.checkDevice();
-      File base = target.file.getBaseFile();
-      if (base.exists() || new File(base.getPath() + ".bak").exists()) {
+      if (target.exists()) {
         if (!snapshot.toString().equals(target.load().toString())) throw new IOException("Password migration target already contains different records");
       } else {
         target.persist(snapshot);

@@ -1,5 +1,6 @@
 package example.passwords.host;
 
+import ai.eliza.plugins.passwords.PasswordSurfaces;
 import ai.eliza.plugins.passwords.PasswordVaultAccess;
 import android.accessibilityservice.AccessibilityServiceInfo;
 import android.app.KeyguardManager;
@@ -75,7 +76,8 @@ public final class PasswordTransferTest {
   assertTrue("OS lock-screen control accepts one input: " + id,
     node.performAction(android.view.accessibility.AccessibilityNodeInfo.ACTION_CLICK));
  }
- /** A readable, authentication-bound vault is destroyed with no prompt and no grant, and page script cannot do it. */
+ /** A readable, authentication-bound vault is destroyed with no prompt and no grant, and page script cannot do it.
+  * The same vault checks the host's admission rule and the secret-surface signal. */
  @Test public void hostDestroysReadableVaultWithoutPromptOrBridge() throws Exception {
   assertEquals("1", InstrumentationRegistry.getArguments().getString("disposablePasswordFixture"));
   assertTrue(ui.shell("getprop ro.hardware").matches("ranchu|goldfish|cutf_cvm"));
@@ -87,6 +89,13 @@ public final class PasswordTransferTest {
   String pin = "7" + (100000 + new java.security.SecureRandom().nextInt(800000));
   String token = UUID.randomUUID().toString().substring(0, 8);
   boolean ownPin = false;
+  java.util.List<String> surfaces = new java.util.concurrent.CopyOnWriteArrayList<>();
+  // Records whether the editor had drawn when the signal changed. It must not have.
+  PasswordSurfaces.Listener listener = visible -> {
+   boolean drawn = false;
+   for (android.view.View root : android.view.inspector.WindowInspector.getGlobalWindowViews()) drawn |= root.isShown() && PasswordConsumerTest.containsText(root, "Add a password");
+   surfaces.add(visible + (drawn ? " drawn" : ""));
+  };
   try {
    ui.shell("locksettings set-pin --user " + user + " " + pin); ownPin = true;
    ui.await(keyguard::isDeviceSecure, "Synthetic screen lock ready");
@@ -108,14 +117,26 @@ public final class PasswordTransferTest {
    ui.await(() -> "true".equals(js("results.reset?.error==='invalid'")), "Readable vault refuses JavaScript reset");
    assertEquals("Unknown bridge method returned nothing", "true", js("results.script.value===undefined"));
    assertTrue("Readable vault survives both", frame.isFile() && keys.containsAlias(access.config.alias));
+   assertTrue("Host reads that records exist without a prompt", access.exists() && !access.unrecoverable());
 
-   // An open draft closes, and no grant is needed.
+   // The host's admission rule refuses a vault entry with one fixed code.
+   PasswordVaultAccess.setAdmission(refused -> false);
+   invoke("refused", "ElizaPasswords", "list", new JSONObject());
+   ui.await(() -> "true".equals(js("results.refused?.error==='not-admitted'")), "Host admission refuses the bridge");
+   PasswordVaultAccess.setAdmission(admitted -> true);
+
+   // An open draft closes, and no grant is needed. The surface signal rises before the editor draws and falls when it closes.
+   PasswordSurfaces.addListener(listener);
    invoke("draft", "ElizaPasswords", "openEditor", new JSONObject());
    ui.await(() -> ui.find(node -> "Add a password".contentEquals(node.getText() == null ? "" : node.getText())) != null, "Draft open");
+   assertEquals(java.util.List.of("true"), surfaces);
+   assertTrue(PasswordSurfaces.visible());
    access.lock();
    ui.await(() -> !access.unlocked(), "No grant remains");
    access.destroyVault();
    value("draft", "results.draft.value.status==='cancelled'");
+   assertEquals(java.util.List.of("true", "false"), surfaces);
+   assertFalse(PasswordSurfaces.visible() || access.exists());
    assertNull("No device prompt opened", ui.find(node -> node.isPassword() && node.isEditable()));
    for (String name : new String[]{"vault.enc", "vault.enc.bak", "vault.enc.new"}) assertFalse(name, new java.io.File(access.config.directory, name).exists());
    keys.load(null);
@@ -128,7 +149,16 @@ public final class PasswordTransferTest {
    invoke("fresh", "ElizaPasswords", "save", new JSONObject().put("label", "Fresh").put("username", "fresh-" + token)
      .put("websites", new org.json.JSONArray().put("https://destroy.example")).put("password", "Synthetic-fresh-" + token));
    value("fresh", "true");
+
+   // A host lock also closes an open draft.
+   invoke("closed", "ElizaPasswords", "openEditor", new JSONObject());
+   ui.await(() -> ui.find(node -> "Add a password".contentEquals(node.getText() == null ? "" : node.getText())) != null, "Second draft open");
+   access.lockAndClose();
+   value("closed", "results.closed.value.status==='cancelled'");
+   assertFalse(access.unlocked() || PasswordSurfaces.visible());
   } finally {
+   PasswordSurfaces.removeListener(listener);
+   PasswordVaultAccess.setAdmission(admitted -> true);
    if (scenario != null) scenario.close();
    if (ownPin) { PasswordConsumerTest.clearSyntheticVault(context); ui.shell("locksettings clear --user " + user + " --old " + pin); }
   }

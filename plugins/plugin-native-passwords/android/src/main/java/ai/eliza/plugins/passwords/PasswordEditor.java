@@ -40,6 +40,7 @@ final class PasswordEditor {
   private final NativeDeadlineTimer deadline = new NativeDeadlineTimer();
   private final Result result;
   private final String entryId;
+  private final PasswordSurfaces.Hold surface;
   private long revision;
   private String storedUsername = "";
   private List<String> storedBindings = Collections.emptyList();
@@ -59,8 +60,8 @@ final class PasswordEditor {
       if (entry == null) throw new IOException("Password no longer exists");
       if (entry.optLong("revision", 0) != request.expectedRevision) throw new PasswordVaultStore.RevisionConflict();
     }
-    SecretSurfaces.dismiss();
     PasswordEditor editor = new PasswordEditor(activity, access, ticket, request.entryId, result);
+    SecretSurfaces.dismiss();
     current = editor;
     try {
       if (entry != null) editor.show(entry);
@@ -115,6 +116,7 @@ final class PasswordEditor {
       Button save = dialog.getButton(AlertDialog.BUTTON_POSITIVE); protectAction(save);
       save.setOnClickListener(view -> submit());
     });
+    surface = PasswordSurfaces.open(); // Its questions and Reload belong to this same surface.
   }
 
   /** Loads one record's metadata as the base of this edit. Discards any typed password. */
@@ -253,6 +255,7 @@ final class PasswordEditor {
     label.setText(""); website.setText(""); username.setText(""); password.setText("");
     if (sameLogin != null && sameLogin.isShowing()) sameLogin.dismiss();
     if (dialog.isShowing()) dialog.dismiss();
+    surface.close();
     return true;
   }
 

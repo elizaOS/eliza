@@ -148,6 +148,7 @@ const CODES: readonly PasswordsErrorCode[] = [
   "key-invalidated",
   "busy",
   "conflict",
+  "not-admitted",
   "unavailable",
 ];
 
@@ -167,6 +168,7 @@ export function passwordsError(error: unknown): PasswordsClientError {
       "Saved passwords can no longer be decrypted on this device.",
     busy: "Finish the current unlock first.",
     conflict: "This password changed. Reload it and try again.",
+    "not-admitted": "Saved passwords are not available here.",
     unavailable: "Saved passwords are unavailable.",
   };
   // Native validation messages are fixed strings; still only pass through known-safe ones.

@@ -11,7 +11,7 @@ On-device password manager for Eliza Android hosts:
   (whoever can enroll already knows the credential), while removing the screen lock does. A
   vault whose key is lost or invalidated can only be deleted (`reset`) after a fresh unlock.
   `PasswordVaultAccess#destroyVault` is the host's native way to destroy a readable vault
-  ([Host-native destroy](#host-native-destroy)).
+  ([Host-native vault access](#host-native-vault-access)).
 - **Autofill provider** – `ElizaPasswordAutofillService` supports native app fields through Android Autofill, with save capture. Browser
   fields require explicit native per-field origins; ordinary WebView metadata is refused.
 - **Vault client** – a Capacitor plugin (`ElizaPasswords`) and a validating TypeScript client for
@@ -103,12 +103,15 @@ edits are rejected as a whole with a visible error, never truncated.
   username on that binding, it asks **Update existing** (creating: replaces only that entry's
   password, at the revision it read) or **Keep separate**. It never merges or overwrites silently.
 
-Device-unlocked custody migration and host microphone/capture coordination are separate work; this
-method does not change the vault authentication policy. Hosts must stop capture and speech before
-opening any secret surface.
+Device-unlocked custody migration is separate work; this method does not change the vault
+authentication policy. Hosts stop capture and speech while a secret surface is up
+(`PasswordSurfaces`, see [Host-native vault access](#host-native-vault-access)).
 
 No `ElizaPasswords` method resolves with a secret. `save` accepts a password typed by the user
-(write-only) or generates one natively (`generate`). `reveal` shows a FLAG_SECURE native dialog
+(write-only) or generates one natively (`generate`). A host that sets
+`eliza_passwords_bridge_accepts_secrets` to `false` keeps passwords out of the bridge: `save` then
+rejects `password`, `generate` and a missing `id` with `invalid`, so a password reaches the vault
+only through `openEditor` or Android's save confirmation. `reveal` shows a FLAG_SECURE native dialog
 that hides after 30 s or when the host stops; `copy` marks the clip sensitive and schedules
 clearing after 45 s. If Android hides clipboard ownership, clearing waits until the host
 resumes. A replaced or unidentifiable clip is never deleted. Hosts must describe this as
@@ -130,15 +133,33 @@ One transfer owns its picker, grant and I/O; overlapping calls return `busy`. Ba
 review/I/O or destroying its Activity cancels that owner. An interrupted export may leave
 a partial plaintext file and says so. These APIs do not upload or sync the vault.
 
-## Host-native destroy
+## Host-native vault access
+
+These are Java APIs only, with no `ElizaPasswords` method, so page script cannot reach them.
+
+- **Admission.** `PasswordVaultAccess.setAdmission(context -> ...)`, registered once from
+  `Application#onCreate`, is the host's own rule (for example its account owner). Every bridge and
+  transfer method that reaches the vault rejects with `not-admitted` when it refuses; `status`,
+  `lock` and `openAutofillSettings` do not ask. Autofill fill and save requests get no dataset and
+  no prompt, and the fill and save screens close. The rule may run on the main thread (Autofill,
+  fill and save screens) or the bridge thread, so it must be fast, must not show UI and must
+  return false when it cannot decide. The default admits.
+- **Secret surfaces.** `PasswordSurfaces.addListener` reports on the main thread when the first
+  secret surface opens, before it draws, and when the last one closes: the unlock prompt, the
+  editor and its questions, a revealed password, and the fill and save screens. `visible()` reads
+  the current state from any thread. Listeners run inside the open or close, so they must be
+  quick, must not throw and must not open a surface.
+- **Lock and state.** `lockAndClose()` locks, drops pending fill and save requests and closes the
+  editor and a revealed password; open fill and save screens and a pending unlock fail on their
+  next step. `exists()` and `unrecoverable()` read the stored state. None of
+  them needs a grant or shows a prompt.
 
 `PasswordVaultAccess.get(context).destroyVault()` destroys the vault, readable or not, for host
 lifecycle events such as an account-owner revoke. It shows no prompt and needs no grant, because
 its caller may have no user present. It deletes the Keystore key first, then the records, revokes
 the grant and pending requests, and closes open native surfaces. It throws if deletion failed;
-calling it again finishes the job. It is a Java API only and has no `ElizaPasswords` method, so page
-script cannot reach it: the host must verify its own authority first and must never bridge it. The
-JavaScript `reset` still refuses a readable vault. A copied clip keeps its normal expiry, and a save
+calling it again finishes the job. The host must verify its own authority first and must never
+bridge it. The JavaScript `reset` still refuses a readable vault. A copied clip keeps its normal expiry, and a save
 that a person confirms and unlocks afterward creates a new vault. A host that migrated custody
 destroys each store it opened.
 

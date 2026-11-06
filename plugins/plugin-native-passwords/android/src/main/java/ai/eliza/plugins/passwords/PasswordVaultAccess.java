@@ -23,6 +23,19 @@ public final class PasswordVaultAccess {
   public static final class Locked extends Exception { Locked() { super("Saved passwords are locked", null, false, false); } }
   public static final class KeyInvalidated extends Exception { KeyInvalidated() { super("Saved passwords can no longer be decrypted on this device", null, false, false); } }
   public interface Operation<T> { T run(PasswordVaultStore store) throws Exception; }
+  /** The host's own rule for whether the vault may be reached now, for example its account owner. */
+  public interface Admission { boolean admit(Context context); }
+
+  private static volatile Admission admission = context -> true;
+  /**
+   * Registers the host's admission rule, once, from {@code Application#onCreate} (Android runs it
+   * before it binds the Autofill service). Every bridge, Autofill and transfer entry to the vault
+   * asks it first and refuses with {@code not-admitted}. It may run on the main thread (Autofill and
+   * the fill and save screens) or the bridge thread, so it must be fast, must not show UI and
+   * returns false when it cannot decide. The default admits.
+   */
+  public static void setAdmission(Admission rule) { admission = rule; }
+  static boolean admitted(Context context) { return admission.admit(context); }
 
   private static PasswordVaultAccess instance;
   public static synchronized PasswordVaultAccess get(Context context) throws Exception {
@@ -52,6 +65,25 @@ public final class PasswordVaultAccess {
   public synchronized boolean pending() { return grant.pending(); }
   public synchronized void lock() { grant.lock(); }
   public synchronized void lock(long ticket) { grant.lock(ticket); }
+
+  /**
+   * For the host's native lifecycle (for example a sign-out): locks, drops pending fill and save
+   * requests and closes the editor and a revealed password. Open fill and save screens and a
+   * pending unlock fail on their next step. Needs no grant and shows no prompt. Not bridged.
+   */
+  public void lockAndClose() {
+    synchronized (this) { grant.lock(); requests.clear(); }
+    closeSurfaces();
+  }
+
+  /** Whether records are stored. Needs no grant and shows no prompt. */
+  public boolean exists() { return store.exists(); }
+  /** Whether stored records can never be decrypted again (see {@link #resetUnrecoverable}). Needs no grant. */
+  public boolean unrecoverable() throws Exception { return store.unrecoverable(); }
+
+  static void closeSurfaces() {
+    new Handler(Looper.getMainLooper()).post(() -> { PasswordEditor.dismiss(); SecretSurfaces.dismiss(); });
+  }
 
   public synchronized <T> T use(Operation<T> operation) throws Exception {
     return use(grant.currentTicket(), operation);
@@ -91,9 +123,7 @@ public final class PasswordVaultAccess {
   public void destroyVault() throws Exception {
     try {
       synchronized (this) { grant.lock(); requests.clear(); store.destroy(); }
-    } finally {
-      new Handler(Looper.getMainLooper()).post(() -> { PasswordEditor.dismiss(); SecretSurfaces.dismiss(); });
-    }
+    } finally { closeSurfaces(); }
   }
 
   /** Current signer digest for a newly captured app binding; null when ambiguous or unavailable. */

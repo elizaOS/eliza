@@ -39,6 +39,12 @@ public class PasswordsPlugin extends Plugin {
     catch (Exception unavailable) { call.reject("Saved passwords are unavailable", "unavailable"); return null; }
   }
 
+  /** {@link #access} for a method that reaches the vault: the host's admission rule decides first. */
+  private PasswordVaultAccess vault(PluginCall call) {
+    if (!PasswordVaultAccess.admitted(getContext())) { call.reject("Saved passwords are not available here", "not-admitted"); return null; }
+    return access(call);
+  }
+
   private void fail(PluginCall call, Exception failure) {
     if (failure instanceof PasswordVaultStore.RevisionConflict) call.reject("This password changed. Reload it first", "conflict");
     else if (failure instanceof PasswordVaultAccess.Locked) call.reject("Unlock saved passwords first", "locked");
@@ -80,7 +86,7 @@ public class PasswordsPlugin extends Plugin {
   }
 
   @PluginMethod public void unlock(PluginCall call) {
-    PasswordVaultAccess access = access(call); if (access == null) return;
+    PasswordVaultAccess access = vault(call); if (access == null) return;
     Activity activity = getActivity();
     if (activity == null) { call.reject("Saved passwords are unavailable", "unavailable"); return; }
     activity.runOnUiThread(() -> PasswordUnlock.prompt(activity, new PasswordUnlock.Result() {
@@ -92,12 +98,12 @@ public class PasswordsPlugin extends Plugin {
   @PluginMethod public void lock(PluginCall call) {
     PasswordVaultAccess access = access(call); if (access == null) return;
     access.lock();
-    getActivity().runOnUiThread(() -> { PasswordEditor.dismiss(); SecretSurfaces.dismiss(); });
+    PasswordVaultAccess.closeSurfaces();
     JSObject result = new JSObject(); result.put("locked", true); call.resolve(result);
   }
 
   @PluginMethod public void list(PluginCall call) {
-    PasswordVaultAccess access = access(call); if (access == null) return;
+    PasswordVaultAccess access = vault(call); if (access == null) return;
     try {
       JSONArray entries = access.use(PasswordVaultStore::entries);
       JSArray out = new JSArray();
@@ -127,7 +133,10 @@ public class PasswordsPlugin extends Plugin {
   }
 
   @PluginMethod public void save(PluginCall call) {
-    PasswordVaultAccess access = access(call); if (access == null) return;
+    PasswordVaultAccess access = vault(call); if (access == null) return;
+    if (!access.config.bridgeAcceptsSecrets && !PasswordEditorPolicy.metadataOnly(call.getData().keys(), call.getData().opt("id"))) {
+      call.reject("Passwords are entered only in the protected form", "invalid"); return;
+    }
     try {
       String id = call.getString("id"), label = call.getString("label", ""), username = call.getString("username", "");
       String password = call.getString("password");
@@ -170,7 +179,7 @@ public class PasswordsPlugin extends Plugin {
     PasswordEditorPolicy.Request request;
     try { request = PasswordEditorPolicy.admit(call.getData().keys(), call.getData().opt("entryId"), call.getData().opt("expectedRevision")); }
     catch (IllegalArgumentException invalid) { call.reject("Editor does not accept draft fields", "invalid"); return; }
-    PasswordVaultAccess access = access(call); if (access == null) return;
+    PasswordVaultAccess access = vault(call); if (access == null) return;
     Activity activity = getActivity();
     if (activity == null) { call.reject("Saved passwords are unavailable", "unavailable"); return; }
     long ticket = access.ticket();
@@ -186,7 +195,7 @@ public class PasswordsPlugin extends Plugin {
   }
 
   @PluginMethod public void remove(PluginCall call) {
-    PasswordVaultAccess access = access(call); if (access == null) return;
+    PasswordVaultAccess access = vault(call); if (access == null) return;
     String id = call.getString("id");
     if (id == null) { call.reject("Choose a saved password", "invalid"); return; }
     try {
@@ -197,7 +206,7 @@ public class PasswordsPlugin extends Plugin {
 
   /** Deletes the vault only when its key is lost or invalidated (see PasswordVaultStore). */
   @PluginMethod public void reset(PluginCall call) {
-    PasswordVaultAccess access = access(call); if (access == null) return;
+    PasswordVaultAccess access = vault(call); if (access == null) return;
     try {
       access.resetUnrecoverable();
       JSObject result = new JSObject(); result.put("reset", true); call.resolve(result);
@@ -208,7 +217,7 @@ public class PasswordsPlugin extends Plugin {
   @PluginMethod public void copy(PluginCall call) { secret(call, false); }
 
   private void secret(PluginCall call, boolean reveal) {
-    PasswordVaultAccess access = access(call); if (access == null) return;
+    PasswordVaultAccess access = vault(call); if (access == null) return;
     String id = call.getString("id");
     Activity activity = getActivity();
     if (id == null || activity == null) { call.reject("Choose a saved password", "invalid"); return; }

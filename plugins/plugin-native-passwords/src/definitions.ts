@@ -87,6 +87,8 @@ export type PasswordsErrorCode =
   | "key-invalidated"
   | "busy"
   | "conflict"
+  /** The host's admission rule refused this vault entry (see the README). */
+  | "not-admitted"
   | "unavailable";
 
 export interface ElizaPasswordsPlugin {

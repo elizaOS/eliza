@@ -296,6 +296,10 @@ test("client rejects leaking native responses and maps errors without echoing in
     passwordsError({ code: "locked", message: SYNTHETIC }).message,
     "Unlock saved passwords first.",
   );
+  assert.equal(
+    passwordsError({ code: "not-admitted", message: SYNTHETIC }).code,
+    "not-admitted",
+  );
 });
 
 test("vault binding metadata is complete or explicitly rejected", () => {

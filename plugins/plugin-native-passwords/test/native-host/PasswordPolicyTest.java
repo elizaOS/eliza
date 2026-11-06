@@ -197,6 +197,11 @@ public final class PasswordPolicyTest {
     rejects(null, () -> PasswordEditorPolicy.admit(List.of("entryId", "expectedRevision").iterator(), "id-1", -1));
     rejects(null, () -> PasswordEditorPolicy.admit(List.of("entryId", "expectedRevision").iterator(), "id-1", "3"));
     rejects(null, () -> PasswordEditorPolicy.admit(List.of("entryId", "expectedRevision").iterator(), "id-1", 1.5));
+    // With bridge secrets off, a save only edits an existing entry's metadata.
+    check(PasswordEditorPolicy.metadataOnly(List.of("id", "label", "username", "websites", "keepBindings").iterator(), "id-1"));
+    check(!PasswordEditorPolicy.metadataOnly(List.of("id", "password").iterator(), "id-1"));
+    check(!PasswordEditorPolicy.metadataOnly(List.of("id", "generate").iterator(), "id-1"));
+    check(!PasswordEditorPolicy.metadataOnly(List.of("label").iterator(), null));
     // The editor's one website field changes one web binding and never drops an app binding.
     String appBinding = PasswordFacets.android(APP, "ab".repeat(32));
     List<String> stored = List.of(appBinding, "https://a.example", "https://b.example");
