@@ -377,6 +377,8 @@ class ElizaSurfaceManagerPlugin : Plugin() {
         /** Set for a persistent keyed profile, which outlives the surface. */
         val profileKey: String? = null,
         val layer: SurfaceLayer = SurfaceLayer.ABOVE_HOST,
+        /** Set by pauseSurface: WebView.onPause() was called and onResume() not yet. */
+        var paused: Boolean = false,
     )
 
     private data class HistoryObservation(
@@ -395,7 +397,7 @@ class ElizaSurfaceManagerPlugin : Plugin() {
     }
 
     private fun historyReady(surface: Surface): Boolean =
-        !surface.disposed && surface.foregrounded && surface.pageError == null &&
+        !surface.disposed && surface.foregrounded && !surface.paused && surface.pageError == null &&
         surface.webView.progress == 100 &&
         activity.lifecycle.currentState.isAtLeast(Lifecycle.State.RESUMED)
 
@@ -1598,7 +1600,7 @@ class ElizaSurfaceManagerPlugin : Plugin() {
             val identity = requireActiveIdentity(call, "captureSurface") ?: return@runOnUiThread
             val surface = ownedSurface(call, id, identity, "captureSurface") ?: return@runOnUiThread
             if (!activity.lifecycle.currentState.isAtLeast(Lifecycle.State.RESUMED) || !surface.foregrounded ||
-                surface.webView.progress < 100 || surface.pageError != null ||
+                surface.paused || surface.webView.progress < 100 || surface.pageError != null ||
                 surface.container.width <= 0 || surface.container.height <= 0) {
                 call.reject(surface.pageError ?: "The native page is hidden or still loading", "CAPTURE_UNAVAILABLE")
                 return@runOnUiThread
@@ -1608,7 +1610,7 @@ class ElizaSurfaceManagerPlugin : Plugin() {
             val url = webView.url
             val token = UUID.randomUUID().toString()
             val unchanged = {
-                isLive(surface) && surfaces[id] === surface && surface.foregrounded &&
+                isLive(surface) && surfaces[id] === surface && surface.foregrounded && !surface.paused &&
                     surface.pageRevision == revision && webView.url == url
             }
             var settled = false
@@ -1788,7 +1790,8 @@ class ElizaSurfaceManagerPlugin : Plugin() {
             control.execute(call, command, call.getString("documentId")) {
                 activeOwners.isActive(identity) && surfaces[id] === surface && !surface.disposed &&
                     (cleanup || (activity.lifecycle.currentState.isAtLeast(Lifecycle.State.RESUMED) &&
-                    surface.foregrounded && surface.webView.progress == 100 && surface.pageError == null)) &&
+                    surface.foregrounded && !surface.paused && surface.webView.progress == 100 &&
+                    surface.pageError == null)) &&
                     surface.pageRevision == revision && surface.webView.url == url
             }
         }
@@ -1821,6 +1824,43 @@ class ElizaSurfaceManagerPlugin : Plugin() {
                 }
                 surface.container.visibility = View.VISIBLE
                 surface.foregrounded = true
+            }
+            call.resolve()
+        }
+    }
+
+    /**
+     * Calls WebView.onPause() on one surface: Chromium treats the page as hidden, so it
+     * stops drawing, requestAnimationFrame and CSS animations, and throttles timers, even
+     * while the view is shown. JavaScript, history and page state stay. Visibility is
+     * unchanged: presentSurface does not resume a paused page. WebView.pauseTimers() is
+     * not used, because it is process-wide and would also freeze the host WebView.
+     */
+    @PluginMethod
+    fun pauseSurface(call: PluginCall) = setSurfacePaused(call, true)
+
+    /** Calls WebView.onResume() on a surface that pauseSurface paused. */
+    @PluginMethod
+    fun resumeSurface(call: PluginCall) = setSurfacePaused(call, false)
+
+    private fun setSurfacePaused(call: PluginCall, paused: Boolean) {
+        val operation = if (paused) "pauseSurface" else "resumeSurface"
+        val id = call.getString("id") ?: run {
+            call.reject("$operation requires an id")
+            return
+        }
+        activity.runOnUiThread {
+            val identity = requireActiveIdentity(call, operation) ?: return@runOnUiThread
+            val surface = ownedSurface(call, id, identity, operation) ?: return@runOnUiThread
+            if (surface.paused != paused) {
+                surface.paused = paused
+                if (paused) {
+                    surface.historyObservation = null
+                    surface.control?.interrupt("The native page was paused")
+                    surface.webView.onPause()
+                } else {
+                    surface.webView.onResume()
+                }
             }
             call.resolve()
         }
@@ -1875,6 +1915,7 @@ class ElizaSurfaceManagerPlugin : Plugin() {
             ) {
                 result.put("exists", false)
                 result.put("foregrounded", false)
+                result.put("paused", false)
                 result.put("currentUrl", JSObject.NULL)
                 result.put("process", JSObject.NULL)
                 result.put("storage", JSObject.NULL)
@@ -1973,6 +2014,7 @@ class ElizaSurfaceManagerPlugin : Plugin() {
         put("id", id)
         put("exists", true)
         put("foregrounded", surface.foregrounded)
+        put("paused", surface.paused)
         put("currentUrl", surface.webView.url ?: JSObject.NULL)
         put("process", surface.process)
         put("storage", surface.storage)

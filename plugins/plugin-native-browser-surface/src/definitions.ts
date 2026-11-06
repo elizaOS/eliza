@@ -313,6 +313,8 @@ export interface ReconcileOwnerOptions extends SurfaceOwnerOptions {
 export interface SurfaceState {
   exists: boolean;
   foregrounded: boolean;
+  /** Android: `pauseSurface` paused the page and `resumeSurface` has not run since. */
+  paused?: boolean;
   currentUrl: string | null;
   process: SurfaceProcessSharing | null;
   storage: SurfaceStorageSharing | null;
@@ -596,6 +598,21 @@ export interface ElizaSurfaceManagerPlugin {
   ): Promise<PluginListenerHandle>;
   /** Atomically hide all siblings, then present the requested surface or host. */
   presentSurface(options: PresentSurfaceOptions): Promise<void>;
+  /**
+   * Android: call `WebView.onPause()` on one surface. Chromium then treats the page as
+   * hidden: it stops drawing, `requestAnimationFrame` and CSS animations, and runs
+   * timers about once a second. JavaScript still runs, and history and page state stay.
+   * A surface that `presentSurface` hid is already treated as hidden, so this matters
+   * for a page that stays shown but is covered, for example a `below-host` page under
+   * an opaque host screen. It frees no memory. The surface keeps its visibility, and
+   * `presentSurface` does not resume it; call `resumeSurface` before the person sees it
+   * again. Captures, page control and history steps reject while it is paused.
+   * Repeating the call does nothing. iOS rejects with `UNSUPPORTED`. The process-wide
+   * `WebView.pauseTimers()` is never called, as it would also stop the host WebView.
+   */
+  pauseSurface(options: SurfaceIdOptions): Promise<void>;
+  /** Android: call `WebView.onResume()` on a paused surface. iOS rejects with `UNSUPPORTED`. */
+  resumeSurface(options: SurfaceIdOptions): Promise<void>;
   /** Tear a surface down and release its native renderer and storage resources. */
   destroySurface(options: SurfaceIdOptions): Promise<void>;
   /** Introspect a surface's live state — for debugging and instrumented tests. */
