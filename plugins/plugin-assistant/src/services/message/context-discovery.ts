@@ -12,6 +12,12 @@ import type {
 } from "@elizaos/core";
 import { ElizaError } from "@elizaos/core";
 import { ACKNOWLEDGMENT_RULE } from "../../prompts/acknowledgment.ts";
+import {
+  decodeNativeContextReads,
+  type NativeContextReadContract,
+  nativeContextReadsSchema,
+  supportsNativeContextReads,
+} from "./native-context-read.ts";
 import { parseToolArguments } from "./tool-arguments.ts";
 
 export const READ_CONTEXT_TOOL_NAME = "READ_CONTEXT";
@@ -20,6 +26,7 @@ export const READ_CONTEXT_TOOL_NAME = "READ_CONTEXT";
 export function createContextReadTool(
   schema: JSONSchema,
   includeAcknowledgment = false,
+  contract?: NativeContextReadContract,
 ): ToolDefinition | undefined {
   const requests = schema.properties?.contextRequests;
   const items = requests?.items;
@@ -32,12 +39,16 @@ export function createContextReadTool(
     requests.maxItems === 0
   )
     return undefined;
+  if (contract && !supportsNativeContextReads(requests)) return undefined;
+  const reads = contract ? nativeContextReadsSchema(contract) : undefined;
+  if (contract && !reads) return undefined;
   return {
     type: "function",
     name: READ_CONTEXT_TOOL_NAME,
     strict: true,
-    description:
-      "Read needed authorized provider references or conversation originals before deciding. Use explicitly advertised provider reference IDs; a routing-context or tool name is not readable unless advertised as a provider reference. Select contexts in HANDLE_RESPONSE; inspect actions via DISCOVER_ACTIONS. For a specific saved-fact lookup, first use an advertised stored-memory reference, a known history:hN, or an advertised literal-search scope for the fact's subject; inspect matched originals and their corrections. Use history:all when targeted reads leave dependencies unresolved, for exhaustive coverage, or before claiming something was never discussed. Do not enumerate the history index. Returns complete originals; no reply or effects execute. When current records, status or timestamps are not supplied by an advertised provider, use HANDLE_RESPONSE to route their read to planner actions. Do not use history:all to repair an unknown routing-context or tool name. Historical messages do not establish current record timestamps or state.",
+    description: contract
+      ? "Read only offered references before deciding. Use reads with provider references, or source-set-bound history selectors. A source ordinal N selects exactly the offered history:hN original, not a database ID. History search keeps the complete literal query and selected speaker. Choose HANDLE_RESPONSE directly when no read is needed. Reads do not execute actions or authorize a final reply."
+      : "Read needed authorized provider references or conversation originals before deciding. Use explicitly advertised provider reference IDs; a routing-context or tool name is not readable unless advertised as a provider reference. Select contexts in HANDLE_RESPONSE; inspect actions via DISCOVER_ACTIONS. For a specific saved-fact lookup, first use an advertised stored-memory reference, a known history:hN, or an advertised literal-search scope for the fact's subject; inspect matched originals and their corrections. Use history:all when targeted reads leave dependencies unresolved, for exhaustive coverage, or before claiming something was never discussed. Do not enumerate the history index. Returns complete originals; no reply or effects execute. When current records, status or timestamps are not supplied by an advertised provider, use HANDLE_RESPONSE to route their read to planner actions. Do not use history:all to repair an unknown routing-context or tool name. Historical messages do not establish current record timestamps or state.",
     parameters: {
       type: "object",
       additionalProperties: false,
@@ -53,11 +64,11 @@ export function createContextReadTool(
             }
           : {}),
         // extractContextRead enforces nonempty reads before any provider access.
-        contextRequests: { ...requests },
+        ...(reads ? { reads } : { contextRequests: { ...requests } }),
       },
       required: includeAcknowledgment
-        ? ["contextRequests", "acknowledgment"]
-        : ["contextRequests"],
+        ? [reads ? "reads" : "contextRequests", "acknowledgment"]
+        : [reads ? "reads" : "contextRequests"],
     },
   };
 }
@@ -81,6 +92,7 @@ export function hasContextReadToolCall(
 export function extractContextRead(
   raw: string | GenerateTextResult,
   enabled: boolean,
+  contract?: NativeContextReadContract,
 ): { contextRequests: string[]; acknowledgment?: string } | undefined {
   if (!raw || typeof raw !== "object" || !Array.isArray(raw.toolCalls))
     return undefined;
@@ -92,6 +104,31 @@ export function extractContextRead(
       { code: "CONTEXT_DISCOVERY_INVALID_READ" },
     );
   const args = parseToolArguments(entry.arguments);
+  if (args && "reads" in args) {
+    if (
+      !contract ||
+      Object.keys(args).some(
+        (key) => key !== "reads" && key !== "acknowledgment",
+      ) ||
+      (args.acknowledgment !== undefined &&
+        typeof args.acknowledgment !== "string")
+    ) {
+      throw new ElizaError(
+        "A native context read needs one offered read contract.",
+        { code: "CONTEXT_DISCOVERY_INVALID_READ" },
+      );
+    }
+    return {
+      contextRequests: decodeNativeContextReads(args.reads, contract),
+      ...(typeof args.acknowledgment === "string"
+        ? { acknowledgment: args.acknowledgment }
+        : {}),
+    };
+  }
+  // Compatibility input only: old adapters and recorded READ_CONTEXT calls
+  // may still use contextRequests. The new native tool never advertises this
+  // shape; it still crosses the same authoritative readHistoryContextRequests
+  // validator, with no numeric-string alias or source/role bypass.
   if (
     !args ||
     Object.keys(args).some(
@@ -189,10 +226,11 @@ export function projectDiscoverableContext(
       !result.discoveryText.trim() ||
       typeof result.text !== "string" ||
       result.text.trim() !== event.text.trim() ||
-      result.discoveryText.length >= result.text.length
+      (result.referenceBodyDeferred !== true &&
+        result.discoveryText.length >= result.text.length)
     )
       return [event];
-    if (loaded.has(event.name)) {
+    if (loaded.has(event.name) && result.referenceBodyDeferred !== true) {
       if (!("cacheStable" in event) || event.cacheStable !== true)
         return [event];
       // Preserve the original stable notice and append the complete read to

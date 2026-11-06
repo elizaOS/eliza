@@ -982,6 +982,13 @@ export interface IAgentRuntime extends RuntimeDatabaseAdapterSurface {
 		 * rendered text/order. An empty array means maximum reuse.
 		 */
 		refreshProviders?: string[] | null,
+		/**
+		 * `deferredReferenceProviders`: providers whose `discoveryText` this
+		 * caller shows the model in place of `text`. Each named owner-exclusive
+		 * provider receives `referenceBodyDeferred`; restoration composes again
+		 * without this option.
+		 */
+		options?: { deferredReferenceProviders?: readonly string[] },
 	): Promise<State>;
 
 	/**
