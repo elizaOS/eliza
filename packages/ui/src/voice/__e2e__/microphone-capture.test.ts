@@ -105,7 +105,7 @@ describe("startCumulativeMicrophoneCapture", () => {
   });
 
   it("captures on a shared context, reports block levels and leaves it open", async () => {
-    const context = new FakeContext(48000);
+    const context = new FakeContext(16000);
     const levels: [number, number, number][] = [];
     const receive = vi.fn(async () => {});
     const close = await startCumulativeMicrophoneCapture(
@@ -120,19 +120,55 @@ describe("startCumulativeMicrophoneCapture", () => {
       },
     );
     expect(created).toHaveLength(0);
-    worklets[0].post(0.5, 48000);
+    worklets[0].post(0.5, 16000);
     // Past maximumSeconds: not stored, but the level is still reported for endpointing.
-    worklets[0].post(0.25, 4800);
+    worklets[0].post(0.25, 1600);
     expect(levels).toEqual([
-      [0.5, 48000, 48000],
-      [0.25, 52800, 48000],
+      [0.5, 16000, 16000],
+      [0.25, 17600, 16000],
     ]);
     await vi.advanceTimersByTimeAsync(1000);
-    expect(receive).toHaveBeenCalledWith([expect.any(Float32Array)], 48000);
+    expect(receive).toHaveBeenCalledWith([expect.any(Float32Array)], 16000);
     close?.();
     expect(context.closes).toBe(0);
     expect(context.sources[0].disconnected).toBe(true);
     expect(worklets[0].disconnected).toBe(true);
+  });
+
+  it("refuses a shared context at another sample rate", async () => {
+    const context = new FakeContext(48000);
+    await expect(
+      startCumulativeMicrophoneCapture(stream, async () => {}, () => true, {
+        ...policy,
+        context: context as unknown as AudioContext,
+      }),
+    ).rejects.toThrow(RangeError);
+    expect(context.sources).toHaveLength(0);
+  });
+
+  it("keeps sending after receive throws synchronously", async () => {
+    let calls = 0;
+    const capture = await startCumulativeMicrophoneCapture(
+      stream,
+      // Not async: the throw happens before any promise is returned.
+      ((): Promise<void> => {
+        calls++;
+        throw new Error("preview failed");
+      }) as () => Promise<void>,
+      () => true,
+      { ...policy, maximumSeconds: 2 },
+    );
+    if (!capture) throw new Error("capture did not start");
+    worklets[0].post(0.5, 8000);
+    await vi.advanceTimersByTimeAsync(1000);
+    expect(calls).toBe(1);
+    worklets[0].post(0.5, 8000);
+    await vi.advanceTimersByTimeAsync(1000);
+    expect(calls).toBe(2);
+    worklets[0].post(0.5);
+    expect(await capture.snapshot()).toBe(false);
+    expect(calls).toBe(3);
+    capture();
   });
 
   it("sends a snapshot on demand without waiting for the tick", async () => {
