@@ -14,6 +14,10 @@ public class UpdateJournal {
   public interface Durability { void syncDirectory(Path path) throws IOException; }
   public interface Faults { void boundary(String name) throws IOException; }
   public interface CommitAction { void commit() throws IOException; }
+  /** Refuses, by throwing, a plan that may no longer install: admission is not
+   * a lasting permission. It runs under the journal lock, before the install
+   * intent is written, so a refusal leaves the plan VERIFIED. */
+  public interface FreshnessCheck { void require(Plan plan,long channelGeneration) throws IOException; }
   /** What a finished install session reported. CANDIDATE_REJECTED is evidence
    * that the candidate itself cannot install here; RETRYABLE is a fault of the
    * moment, such as low storage. Hosts map platform statuses to these. */
@@ -184,19 +188,26 @@ public class UpdateJournal {
   public Snapshot discardStaging(String planId,long generation)throws IOException {
     return transact(s->{requirePlan(s,planId);require(s.phase==Phase.STAGING&&s.generation==generation,"Stale staging discard");s.plan=null;s.phase=Phase.IDLE;s.session=-1;s.reason="staging_invalidated";resetPending(s);});
   }
-  /** Call only after final idle/lease/admission checks and before Session.commit. */
-  public Snapshot committing(String planId, int sessionId, long channelGeneration) throws IOException {
-    return transact(s->{
-      requirePlan(s,planId); require(s.phase==Phase.VERIFIED,"Candidate is not ready");
-      require(s.generation==channelGeneration,"Channel changed before commit"); require(sessionId>=0,"Invalid install session");
-      s.session=sessionId; s.phase=Phase.COMMITTING;
-    });
+  /** Serialize the freshness check, the durable intent and the platform handoff
+   * with channel changes. This is the only way into COMMITTING. */
+  public Snapshot committingWithAction(String planId,int sessionId,long channelGeneration,FreshnessCheck fresh,CommitAction action)throws IOException {
+    Objects.requireNonNull(fresh);Objects.requireNonNull(action);
+    return transact(s->{requirePlan(s,planId);require(s.phase==Phase.VERIFIED,"Candidate is not ready");require(s.generation==channelGeneration,"Channel changed before commit");require(sessionId>=0,"Invalid install session");fresh.require(s.plan,s.generation);s.session=sessionId;s.phase=Phase.COMMITTING;},action);
   }
-  /** Serialize the durable intent and platform handoff with channel changes. */
-  public Snapshot committingWithAction(String planId,int sessionId,long channelGeneration,CommitAction action)throws IOException {
-    Objects.requireNonNull(action);
-    return transact(s->{requirePlan(s,planId);require(s.phase==Phase.VERIFIED,"Candidate is not ready");require(s.generation==channelGeneration,"Channel changed before commit");require(sessionId>=0,"Invalid install session");s.session=sessionId;s.phase=Phase.COMMITTING;},action);
+  /** Drops a VERIFIED plan that a metadata refresh shows can no longer install.
+   * Quarantine, floors and the channel generation stay. */
+  public Snapshot discardVerified(String planId,long channelGeneration,String reason)throws IOException {
+    requireReason(reason);
+    return transact(s->{requirePlan(s,planId);require(s.phase==Phase.VERIFIED&&s.generation==channelGeneration,"Stale verified discard");s.plan=null;s.phase=Phase.IDLE;s.session=-1;s.reason="verified_invalidated:"+reason;resetPending(s);});
   }
+  /** Ends a RECOVERY_READY wait for a recovery that revocations or floors have
+   * made permanently unloadable. Both artifacts are quarantined, and the failed
+   * candidate stays installed until a newer release fixes forward. */
+  public Snapshot recoveryUnavailable(String planId,String reason)throws IOException {
+    requireReason(reason);
+    return transact(s->{requirePlan(s,planId);require(s.phase==Phase.RECOVERY_READY&&s.attempts==0,"Recovery already attempted or not ready");quarantine(s,true);s.phase=Phase.QUARANTINED;s.reason="recovery_unavailable:"+reason;});
+  }
+  private static void requireReason(String reason){if(reason==null||!reason.matches("[a-z][a-z-]{0,47}"))throw new IllegalArgumentException("Invalid journal reason");}
   public Snapshot recoveringWithAction(String planId,int sessionId,CommitAction action)throws IOException {
     Objects.requireNonNull(action);
     return transact(s->{requirePlan(s,planId);require(s.phase==Phase.RECOVERY_READY&&s.attempts==0,"Recovery already attempted or not ready");require(sessionId>=0,"Invalid recovery session");resetPending(s);s.session=sessionId;s.attempts=1;s.phase=Phase.RECOVERING;},action);
