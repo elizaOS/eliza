@@ -93,7 +93,8 @@ public abstract class PackageInstallCoordinator {
       // A throw from Session.commit does not prove the platform refused it, and
       // abandoning could race an install already under way. A session never
       // handed off is abandoned here; after a handoff, readback abandons it only
-      // if the platform reports it uncommitted, and decides the rest.
+      // once the platform has reported it uncommitted for long enough, since a
+      // sealed session reads uncommitted while the platform verifies it.
       if(!(failure instanceof UpdateJournal.HandoffFailed))try{installer.abandonSession(id);}catch(Exception ignored){}
       try{reconcilePending(context,target,journal,observationBudgetMs);}catch(Exception reconciliation){failure.addSuppressed(reconciliation);}
       throw failure;

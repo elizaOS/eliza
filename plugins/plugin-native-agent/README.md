@@ -157,8 +157,13 @@ session with no report waits `UpdateJournal.OUTCOME_UNKNOWN_WAIT_MS` of observed
 uptime for a late callback, then releases the plan for a later attempt; after
 `MAX_INSTALL_ATTEMPTS_PER_CANDIDATE` releases in a row the candidate is
 quarantined. `InstallReadback` abandons our own session only when the platform
-reports it uncommitted (API 29 and later); a committed or unknown session is
-never abandoned and is left to install or to expire on the platform. The Android
+reports it uncommitted (API 29 and later) and the journal has waited long enough:
+on API 31 and later a sealed session reads uncommitted until the platform has
+verified the APK, so a candidate session must stay uncommitted for
+`InstallReadback.UNCOMMITTED_ABANDON_WAIT_MS` of observed uptime, and a recovery
+session, attempted only once, is kept until the host's install timeout. A
+committed or unknown session is never abandoned and is left to install or to
+expire on the platform. The Android
 contract uses real PackageInstaller sessions; hosts must also qualify actual installation,
 callback delivery, process death and cached recovery with their signed fixtures.
 

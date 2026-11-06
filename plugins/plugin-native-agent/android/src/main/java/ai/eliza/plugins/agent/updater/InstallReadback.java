@@ -16,11 +16,19 @@ public final class InstallReadback {
     long bootCount() throws Exception;
     long elapsedRealtime();
   }
+  /** Owner-overridable default: the observed uptime a candidate session must
+   * stay listed and uncommitted before it is abandoned. On API 31 and later
+   * Session.commit returns once the session is sealed, and SessionInfo
+   * reports it committed only after the platform has streamed and verified the
+   * APK, which can take seconds; an uncommitted reading alone does not prove
+   * the handoff failed. One periodic reconciliation job interval. */
+  public static final long UNCOMMITTED_ABANDON_WAIT_MS=UpdateJournal.OUTCOME_UNKNOWN_WAIT_MS;
   private InstallReadback() {}
 
   /** Safe after process death, a throw from Session.commit or a missing
-   * callback. Only a session the platform reports as never committed is
-   * abandoned; a committed or unknown one is left to install or expire. */
+   * callback. Only a session the platform has reported uncommitted for long
+   * enough is abandoned; a committed or unknown one is left to install or
+   * expire. */
   public static UpdateJournal.Snapshot reconcile(UpdateJournal journal,Platform platform,long observationBudgetMs)throws Exception {
     UpdateJournal.Snapshot state=journal.read();
     if(!UpdateJournal.awaitingInstaller(state))return state;
@@ -36,13 +44,28 @@ public final class InstallReadback {
     return reconciled;
   }
 
-  /** The coordinator persists COMMITTING and calls Session.commit under one
-   * journal lock, so a session still uncommitted while this lock is held was
-   * refused or never handed off, and nothing will commit it later. */
+  /** Whether the journal has waited long enough that an uncommitted reading
+   * means the session was refused or never handed off. A sealed session can
+   * read uncommitted right after Session.commit returns, so a candidate waits
+   * UNCOMMITTED_ABANDON_WAIT_MS of observed uptime, and a recovery, attempted
+   * only once, is never abandoned before the host's install timeout. A session
+   * in support has hit that timeout or had a platform callback; a clock fault
+   * proves no elapsed time, so it is kept. */
+  static boolean mayAbandon(UpdateJournal.Snapshot state) {
+    switch(state.phase) {
+      case COMMITTING: return state.pendingMillis>=UNCOMMITTED_ABANDON_WAIT_MS;
+      case SUPPORT: return !"install_clock_invalid".equals(state.reason);
+      default: return false;
+    }
+  }
+
+  /** The decision and the abandon run under one journal lock, which the
+   * coordinator also holds while it persists the handoff and calls commit. */
   static boolean abandonUncommitted(UpdateJournal journal,Platform platform,String plan,int session)throws IOException {
     boolean[] abandoned={false};
     journal.withLockedSnapshot(state->{
       if(!UpdateJournal.awaitingInstaller(state)||state.plan==null||!state.plan.id.equals(plan)||state.sessionId!=session)return;
+      if(!mayAbandon(state))return;
       try {
         if(platform.session(session)!=Session.UNCOMMITTED)return;
         platform.abandon(session);

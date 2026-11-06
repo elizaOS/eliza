@@ -55,8 +55,10 @@ public final class InstallerResultContract {
   } finally {try{installer.abandonSession(session);}catch(Exception ignored){}}
  }
  /** A durable COMMITTING record whose session was never committed (process
-  * death before Session.commit, or a refused commit) is abandoned and
-  * released, so a later release can install. Needs API 29 or later. */
+  * death before Session.commit, or a refused commit) is kept at first, since a
+  * sealed session also reads uncommitted while the platform verifies it, then
+  * abandoned and released once the install timeout has passed, so a later
+  * release can install. Needs API 29 or later. */
  public static void runUncommittedSession(Context app,UpdateJournal journal,UpdateJournal.Plan plan,String target)throws Exception {
   journal.begin(plan,plan.baseline,0);
   android.content.pm.PackageInstaller installer=app.getPackageManager().getPackageInstaller();
@@ -66,7 +68,11 @@ public final class InstallerResultContract {
   try {
    journal.committing(plan.id,session,0);
    check(PackageInstallCoordinator.sessionState(app,target,session)==InstallReadback.Session.UNCOMMITTED,"Fresh session not reported uncommitted");
-   UpdateJournal.Snapshot after=PackageInstallCoordinator.reconcilePending(app,target,journal,60000);
+   UpdateJournal.Snapshot kept=PackageInstallCoordinator.reconcilePending(app,target,journal,60000);
+   check(kept.phase==UpdateJournal.Phase.COMMITTING&&PackageInstallCoordinator.hasPendingSession(app,target,session),"Uncommitted session was abandoned at once");
+   Thread.sleep(20);
+   check(PackageInstallCoordinator.reconcilePending(app,target,journal,1).reason.equals("install_timeout"),"Uncommitted session did not time out");
+   UpdateJournal.Snapshot after=PackageInstallCoordinator.reconcilePending(app,target,journal,1);
    check(!PackageInstallCoordinator.hasPendingSession(app,target,session),"Uncommitted session was kept");
    check(after.phase==UpdateJournal.Phase.IDLE&&UpdateJournal.INSTALL_RELEASED.equals(after.reason)&&after.quarantine.isEmpty(),"Uncommitted session was not released");
    journal.begin(plan,plan.baseline,0);check(journal.read().phase==UpdateJournal.Phase.VERIFIED,"Released plan was not admitted again");

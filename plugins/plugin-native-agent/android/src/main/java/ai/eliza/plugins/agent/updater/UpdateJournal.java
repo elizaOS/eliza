@@ -36,8 +36,9 @@ public class UpdateJournal {
   public static final int MAX_INSTALL_ATTEMPTS_PER_CANDIDATE=3;
   /** The platform handoff threw after the install intent was durable. The
    * platform may still install, so callers must not abandon the session
-   * blindly; InstallReadback abandons it only if the platform reports it
-   * uncommitted, and installed and session readback decide the outcome. */
+   * blindly; InstallReadback abandons it only once the platform has reported
+   * it uncommitted for long enough, and installed and session readback decide
+   * the outcome. */
   public static final class HandoffFailed extends IOException {
     HandoffFailed(Exception cause) { super("Platform handoff outcome unknown",cause); }
   }
