@@ -1564,3 +1564,42 @@ test("complete STT drain charges exact PCM once and zero for the unused renewed 
     f.socket.close();
   }
 });
+
+test("a consent warm instantiates the session object without a ledger, and one mint owns it", async () => {
+  const session = "44444444-4444-8444-8444-444444444444";
+  const at = (path: string, body?: unknown) =>
+    worker.dispatchFetch(`https://speech-relay.internal${path}`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "x-test-session": session,
+      },
+      ...(body === undefined ? {} : { body: JSON.stringify(body) }),
+    });
+  const warmed = await at("/warm");
+  expect(warmed.status).toBe(200);
+  // The warm stored nothing: the object still has no session to revoke.
+  expect(
+    (
+      await at("/revoke", {
+        userId: account.id,
+        organizationId: account.organization_id,
+      })
+    ).status,
+  ).toBe(404);
+  const mint = (token: string) =>
+    at("/initialize", {
+      sessionId: session,
+      tokenDigest: new Bun.CryptoHasher("sha256").update(token).digest("hex"),
+      expiresAt: Date.now() + 60000,
+      caller: {
+        user: account,
+        apiKeyId: null,
+        authSource: "combined_cache",
+        appScopeId: null,
+      },
+    });
+  expect((await mint("first-capability")).status).toBe(200);
+  // A replayed consent derives the same name; its new capability is refused.
+  expect((await mint("replayed-capability")).status).toBe(409);
+});

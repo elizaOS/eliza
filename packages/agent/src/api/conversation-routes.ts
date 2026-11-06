@@ -165,7 +165,11 @@ import {
   writeSse,
   writeSseJson,
 } from "./chat-stream-writer.ts";
-import { resolveClientChatAdminEntityId } from "./client-chat-admin.ts";
+import {
+  productUserChatEntityId,
+  resolveClientChatAdminEntityId,
+  resolveOwnerChatCallerRole,
+} from "./client-chat-admin.ts";
 import {
   assertConversationConnectionRuntime,
   type ConversationConnectionDescriptor,
@@ -992,6 +996,14 @@ export function resolveConversationCaller(
     principal.kind === "owner_session" ||
     principal.kind === "owner_api_token"
   ) {
+    if (resolveOwnerChatCallerRole() === "USER") {
+      return {
+        entityId: productUserChatEntityId(),
+        role: "USER",
+        userName: resolveAppUserName(state.config),
+        grantSource: "session",
+      };
+    }
     return {
       entityId: ensureAdminEntityIdForRuntime(state, runtime),
       role: "OWNER",

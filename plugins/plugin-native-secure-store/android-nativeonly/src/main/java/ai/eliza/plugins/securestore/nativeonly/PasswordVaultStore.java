@@ -124,14 +124,19 @@ public class PasswordVaultStore {
    */
   public static final class KeyLost extends IOException { KeyLost() { super("Password encryption key unavailable"); } }
 
+  /** True when records are stored, readable or not. Needs no key and no user authentication. */
+  public boolean exists() {
+    File base = file.getBaseFile();
+    return base.exists() || new File(base.getPath() + ".bak").exists();
+  }
+
   /**
    * True only when stored records exist and can never be decrypted on this device: the key is
    * missing or permanently invalidated. A key that merely needs user authentication is not.
    */
   public synchronized boolean unrecoverable() throws Exception {
     checkDevice();
-    File base = file.getBaseFile(), backup = new File(base.getPath() + ".bak");
-    if (!base.exists() && !backup.exists()) return false;
+    if (!exists()) return false;
     KeyStore keys = KeyStore.getInstance("AndroidKeyStore"); keys.load(null);
     if (!keys.containsAlias(alias)) return true;
     SecretKey key = (SecretKey) keys.getKey(alias, null);
@@ -153,14 +158,37 @@ public class PasswordVaultStore {
     if (devicePolicyFile != null) devicePolicyFile.delete();
   }
 
+  /**
+   * Destroys this vault and its key, readable or not, with no user authentication and no unlocked
+   * device. Native host lifecycle only (for example a revoke the host has verified): this class
+   * trusts its caller, so never expose it through a bridge. The key goes first, so the records are
+   * unreadable from that point even if a crash leaves the files behind. Repeating the call finishes
+   * the job, and an absent vault is a success. A failure leaves an exception, never a false success.
+   */
+  public synchronized void destroy() throws Exception {
+    synchronized (PasswordVaultStore.class) {
+      KeyStore keys = KeyStore.getInstance("AndroidKeyStore"); keys.load(null);
+      if (keys.containsAlias(alias)) keys.deleteEntry(alias);
+      if (keys.containsAlias(alias)) throw new IOException("Password encryption key was not deleted");
+    }
+    deleteAtomic(file);
+    if (devicePolicyFile != null) deleteAtomic(devicePolicyFile);
+  }
+  private static void deleteAtomic(AtomicFile target) throws IOException {
+    target.delete();
+    String base = target.getBaseFile().getPath();
+    for (File left : new File[]{new File(base), new File(base + ".bak"), new File(base + ".new")})
+      if (left.exists() && !left.delete()) throw new IOException("Password storage was not deleted");
+  }
+
   public android.security.keystore.KeyInfo keyProtection() throws Exception {
     SecretKey key=key(false);
     return (android.security.keystore.KeyInfo)SecretKeyFactory.getInstance(key.getAlgorithm(),"AndroidKeyStore").getKeySpec(key,android.security.keystore.KeyInfo.class);
   }
   private JSONArray load() throws Exception {
     checkDevice();
+    if (!exists()) return new JSONArray();
     File base=file.getBaseFile(), backup=new File(base.getPath()+".bak");
-    if (!base.exists() && !backup.exists()) return new JSONArray();
     // AtomicFile must recover a committed legacy backup before a missing base
     // can be treated as an empty vault. Never overwrite recoverable records.
     for (File candidate : new File[]{base,backup}) {
@@ -197,8 +225,7 @@ public class PasswordVaultStore {
     JSONArray snapshot = load(); // The old Keystore key still enforces its original authentication.
     synchronized (target) {
       target.checkDevice();
-      File base = target.file.getBaseFile();
-      if (base.exists() || new File(base.getPath() + ".bak").exists()) {
+      if (target.exists()) {
         if (!snapshot.toString().equals(target.load().toString())) throw new IOException("Password migration target already contains different records");
       } else {
         target.persist(snapshot);
@@ -238,7 +265,8 @@ public class PasswordVaultStore {
       List<String> facets = bindings(item);
       String label = entryLabel(item, facets);
       summaries.put(new JSONObject().put("id", item.getString("id")).put("label", label).put("username", item.getString("username"))
-        .put("bindings", new JSONArray(facets)).put("updatedAt", item.optLong("updatedAt", 0)).put("createdAt", item.optLong("createdAt", item.optLong("updatedAt", 0))));
+        .put("bindings", new JSONArray(facets)).put("updatedAt", item.optLong("updatedAt", 0)).put("createdAt", item.optLong("createdAt", item.optLong("updatedAt", 0)))
+        .put("revision", item.optLong("revision", 0)));
     }
     checkDevice(); return summaries;
   }
@@ -265,6 +293,29 @@ public class PasswordVaultStore {
     String saved = putEntry(records, id, label, username, facets, password);
     persist(records);
     return saved;
+  }
+
+  /** The record changed or was deleted after the caller read it. Nothing was written. */
+  public static final class RevisionConflict extends IOException { public RevisionConflict() { super("Password changed since it was read"); } }
+
+  /**
+   * {@link #saveEntry} with compare-and-swap: a non-null id commits only while the record is still
+   * at {@code expectedRevision}, in the same locked read and write. Records written before
+   * revisions existed are at revision 0. Returns only {@code {id, revision}}.
+   */
+  public synchronized JSONObject commitEntry(String id, long expectedRevision, String label, String username, List<String> facets, String password) throws Exception {
+    JSONArray records = load();
+    if (id != null) {
+      boolean current = false;
+      for (int i = 0; i < records.length(); i++) {
+        JSONObject item = records.getJSONObject(i);
+        if (item.getString("id").equals(id)) current = item.optLong("revision", 0) == expectedRevision;
+      }
+      if (!current) throw new RevisionConflict();
+    }
+    String saved = putEntry(records, id, label, username, facets, password);
+    persist(records);
+    return new JSONObject().put("id", saved).put("revision", id == null ? 1 : expectedRevision + 1);
   }
 
   /** Add reviewed web entries in one commit. Recheck duplicates against current storage.
@@ -312,7 +363,8 @@ public class PasswordVaultStore {
     JSONObject value = new JSONObject().put("id", id).put("origin", origin).put("username", username)
       .put("password", password != null ? password : previous.getString("password")).put("updatedAt", now)
       .put("createdAt", previous == null ? now : previous.optLong("createdAt", previous.optLong("updatedAt", now)))
-      .put("label", name).put("bindings", new JSONArray(new ArrayList<>(normalized)));
+      .put("label", name).put("bindings", new JSONArray(new ArrayList<>(normalized)))
+      .put("revision", previous == null ? 1 : previous.optLong("revision", 0) + 1);
     if (found >= 0) records.put(found, value); else records.put(value);
     return id;
   }
@@ -326,7 +378,8 @@ public class PasswordVaultStore {
     if(id != null) for(int i=0;i<records.length();i++) if(records.getJSONObject(i).getString("id").equals(id)) found=i;
     if(id != null && found<0) throw new IOException("Password no longer exists");
     if(id == null) { if(records.length()>=1000) throw new IOException("Password vault is full"); id=UUID.randomUUID().toString(); }
-    JSONObject value=new JSONObject().put("id",id).put("origin",normalized).put("username",username).put("password",password).put("updatedAt",System.currentTimeMillis());
+    JSONObject value=new JSONObject().put("id",id).put("origin",normalized).put("username",username).put("password",password).put("updatedAt",System.currentTimeMillis())
+      .put("revision",found>=0?records.getJSONObject(found).optLong("revision",0)+1:1);
     if(found>=0) records.put(found,value); else records.put(value); persist(records); return id;
   }
   public synchronized void delete(String id) throws Exception {
