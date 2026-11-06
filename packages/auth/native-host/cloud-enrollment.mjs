@@ -4,6 +4,20 @@ import { createNativeAccountMethods } from "./account-methods.mjs";
 const fail = (message, status = 400, code) =>
   Object.assign(new Error(message), { status, ...(code ? { code } : {}) });
 /**
+ * Stable codes for the 409s a caller must tell apart, whatever the message
+ * text: the host is busy or cancelling, so the same step can be tried again
+ * soon; the sign-in was cancelled; or an account, a saved sign-in or an
+ * unfinished disconnect holds the host, so that must be finished first.
+ */
+export const SIGN_IN_CONFLICT = Object.freeze({
+  busy: "sign_in_busy",
+  cancelling: "sign_in_cancelling",
+  cancelled: "sign_in_cancelled",
+  connected: "sign_in_account_connected",
+  saved: "sign_in_saved_pending",
+  disconnecting: "sign_in_disconnect_pending",
+});
+/**
  * A 429 with the wait in whole seconds, when it is known: the service's
  * `Retry-After` delta-seconds, or this host's own resend gate. An HTTP-date or
  * a malformed value is left out, so a caller never shows an invented time.
@@ -173,7 +187,11 @@ export function createNativeCloudAuth({
     settle;
   const check = (ticket) => {
     if (ticket !== epoch)
-      throw fail(message("error1", "Sign-in cancelled. Start again."), 409);
+      throw fail(
+        message("error1", "Sign-in cancelled. Start again."),
+        409,
+        SIGN_IN_CONFLICT.cancelled,
+      );
   };
   async function call(base, path, input, token, ticket, method) {
     check(ticket);
@@ -966,6 +984,7 @@ export function createNativeCloudAuth({
         throw fail(
           message("error15", "Cancellation is already in progress."),
           409,
+          SIGN_IN_CONFLICT.cancelling,
         );
       cancelling = true;
       epoch++;
@@ -1096,6 +1115,7 @@ export function createNativeCloudAuth({
         throw fail(
           message("error19", "A sign-in request is already in progress."),
           409,
+          SIGN_IN_CONFLICT.busy,
         );
       busy = true;
       settled = new Promise((resolve) => {
@@ -1129,6 +1149,7 @@ export function createNativeCloudAuth({
                 "Disconnect is not confirmed. Select Cancel to retry disconnecting.",
               ),
               409,
+              SIGN_IN_CONFLICT.disconnecting,
             );
           if (
             pending?.version !== 1 ||
@@ -1153,6 +1174,7 @@ export function createNativeCloudAuth({
                 "Disconnect the current account before signing in again.",
               ),
               409,
+              SIGN_IN_CONFLICT.connected,
             );
           if (await pendingStore.read())
             throw fail(
@@ -1161,6 +1183,7 @@ export function createNativeCloudAuth({
                 "A saved sign-in needs to be finished or cancelled first.",
               ),
               409,
+              SIGN_IN_CONFLICT.saved,
             );
           check(ticket);
           const method = input.method ?? "email";
