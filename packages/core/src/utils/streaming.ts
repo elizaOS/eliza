@@ -600,6 +600,13 @@ export class ResponseSkeletonStreamExtractor implements IStreamExtractor {
 	private streamRevision = allocateStreamRevision();
 	private readonly streamFieldSet: Set<string>;
 	private readonly maxKeyPatternLength: number;
+	/**
+	 * JSON structure state at the start of `buffer` in unordered mode:
+	 * how deep the buffer start sits inside the envelope, and whether it
+	 * sits inside a string value. A stream-field key only starts a field
+	 * when it is a member of the root object.
+	 */
+	private unorderedScan = { braceDepth: 0, inString: false, escaped: false };
 
 	constructor(
 		private readonly config: {
@@ -676,6 +683,7 @@ export class ResponseSkeletonStreamExtractor implements IStreamExtractor {
 		this.activeStringField = null;
 		this.pendingEscape = "";
 		this.buffer = "";
+		this.resetUnorderedScan();
 		this.state = "complete";
 		this.emitEvent({ eventType: "complete", timestamp: Date.now() });
 		return "";
@@ -684,6 +692,7 @@ export class ResponseSkeletonStreamExtractor implements IStreamExtractor {
 	reset(): void {
 		this.streamRevision = allocateStreamRevision();
 		this.buffer = "";
+		this.resetUnorderedScan();
 		this.spanIndex = 0;
 		this.activeStringField = null;
 		this.pendingEscape = "";
@@ -841,6 +850,10 @@ export class ResponseSkeletonStreamExtractor implements IStreamExtractor {
 				if (!this.processActiveString(final, false)) {
 					return;
 				}
+				// The closed string holds no structure, so only the
+				// in-string flag changes at the new buffer start.
+				this.unorderedScan.inString = false;
+				this.unorderedScan.escaped = false;
 				continue;
 			}
 
@@ -849,9 +862,70 @@ export class ResponseSkeletonStreamExtractor implements IStreamExtractor {
 				return;
 			}
 
-			this.buffer = this.buffer.slice(match.valueStart);
+			this.consumeUnorderedPrefix(match.valueStart);
 			this.activeStringField = match.field;
 		}
+	}
+
+	/**
+	 * Move the unordered scan state over consumed text. The state tracks the
+	 * JSON structure at the current buffer start, with string and escape
+	 * awareness, so braces inside string values do not change the depth.
+	 */
+	private advanceUnorderedScan(text: string): void {
+		for (let index = 0; index < text.length; index++) {
+			const char = text[index] ?? "";
+			if (this.unorderedScan.inString) {
+				if (this.unorderedScan.escaped) {
+					this.unorderedScan.escaped = false;
+					continue;
+				}
+				if (char === "\\") {
+					this.unorderedScan.escaped = true;
+					continue;
+				}
+				if (char === '"') {
+					this.unorderedScan.inString = false;
+				}
+				continue;
+			}
+			if (char === '"') {
+				this.unorderedScan.inString = true;
+				continue;
+			}
+			if (char === "{" || char === "[") {
+				this.unorderedScan.braceDepth++;
+				continue;
+			}
+			if (char === "}" || char === "]") {
+				this.unorderedScan.braceDepth--;
+			}
+		}
+	}
+
+	/** Depth and string state of a key that starts at `keyStart` in the buffer. */
+	private unorderedKeyState(keyStart: number): {
+		braceDepth: number;
+		inString: boolean;
+	} {
+		const saved = { ...this.unorderedScan };
+		this.advanceUnorderedScan(this.buffer.slice(0, keyStart));
+		const state = {
+			braceDepth: this.unorderedScan.braceDepth,
+			inString: this.unorderedScan.inString,
+		};
+		this.unorderedScan = saved;
+		return state;
+	}
+
+	/** Drop the buffer prefix before `index` and move the scan state with it. */
+	private consumeUnorderedPrefix(index: number): void {
+		this.advanceUnorderedScan(this.buffer.slice(0, index));
+		this.buffer = this.buffer.slice(index);
+	}
+
+	private resetUnorderedScan(): void {
+		this.unorderedScan = { braceDepth: 0, inString: false, escaped: false };
 	}
 
 	private findNextStreamFieldStart(
@@ -873,6 +947,7 @@ export class ResponseSkeletonStreamExtractor implements IStreamExtractor {
 			if (!earliest) {
 				if (final) {
 					this.buffer = "";
+					this.resetUnorderedScan();
 					this.state = "complete";
 					this.emitEvent({ eventType: "complete", timestamp: Date.now() });
 					return null;
@@ -881,8 +956,19 @@ export class ResponseSkeletonStreamExtractor implements IStreamExtractor {
 					this.buffer.length,
 					Math.max(this.maxKeyPatternLength - 1, 0),
 				);
-				this.buffer = this.buffer.slice(this.buffer.length - keep);
+				this.consumeUnorderedPrefix(this.buffer.length - keep);
 				return null;
+			}
+
+			// Only a key that belongs to the root object starts a streamed
+			// field. A key with the same name inside a nested object or
+			// array (an action parameter, for example) or inside a string
+			// value must not start a field, or the nested value leaks into
+			// the reply text. Skip the occurrence and keep searching.
+			const keyState = this.unorderedKeyState(earliest.keyStart);
+			if (keyState.inString || keyState.braceDepth !== 1) {
+				this.consumeUnorderedPrefix(earliest.keyEnd);
+				continue;
 			}
 
 			let cursor = earliest.keyEnd;
@@ -895,13 +981,14 @@ export class ResponseSkeletonStreamExtractor implements IStreamExtractor {
 			if (cursor >= this.buffer.length) {
 				if (final) {
 					this.buffer = "";
+					this.resetUnorderedScan();
 				} else {
-					this.buffer = this.buffer.slice(earliest.keyStart);
+					this.consumeUnorderedPrefix(earliest.keyStart);
 				}
 				return null;
 			}
 			if (this.buffer[cursor] !== ":") {
-				this.buffer = this.buffer.slice(earliest.keyEnd);
+				this.consumeUnorderedPrefix(earliest.keyEnd);
 				continue;
 			}
 			cursor++;
@@ -914,13 +1001,14 @@ export class ResponseSkeletonStreamExtractor implements IStreamExtractor {
 			if (cursor >= this.buffer.length) {
 				if (final) {
 					this.buffer = "";
+					this.resetUnorderedScan();
 				} else {
-					this.buffer = this.buffer.slice(earliest.keyStart);
+					this.consumeUnorderedPrefix(earliest.keyStart);
 				}
 				return null;
 			}
 			if (this.buffer[cursor] !== '"') {
-				this.buffer = this.buffer.slice(cursor);
+				this.consumeUnorderedPrefix(cursor);
 				continue;
 			}
 
