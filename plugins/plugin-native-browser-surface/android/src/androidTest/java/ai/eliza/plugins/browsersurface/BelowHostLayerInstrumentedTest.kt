@@ -41,7 +41,8 @@ class BelowHostLayerInstrumentedTest {
     private val hostWebView = Recorder(context)
     private val website = Recorder(context)
     private val page = OccludingSurfaceLayout(context, SurfaceLayer.BELOW_HOST)
-    private val router = BelowHostInputRouter(context) { listOf(page) }
+    private val live = mutableListOf(page)
+    private val router = BelowHostInputRouter(context) { live.toList() }
 
     init {
         host.addView(hostWebView, FrameLayout.LayoutParams(300, 300))
@@ -58,6 +59,7 @@ class BelowHostLayerInstrumentedTest {
         // Page rect (50,50)-(150,150) in host pixels; the host owns (110,50)-(150,90).
         page.setOuterClip(RoundedOuterClip(0f, 0f, 100f, 100f, 20f, 20f, 20f, 20f))
         page.setOcclusions(listOf(RoundedOcclusionRect(60f, 0f, 100f, 40f, 0f)))
+        page.hostRectsReceived = true
         val exact = View.MeasureSpec.makeMeasureSpec(300, View.MeasureSpec.EXACTLY)
         host.measure(exact, exact)
         host.layout(0, 0, 300, 300)
@@ -159,6 +161,53 @@ class BelowHostLayerInstrumentedTest {
     }
 
     @Test
+    fun aPageTakesNoInputUntilTheHostSendsItsRects() {
+        page.hostRectsReceived = false
+        touch(MotionEvent.ACTION_DOWN, 70f, 70f, downTime = 1)
+        touch(MotionEvent.ACTION_UP, 70f, 70f, downTime = 1)
+        mouse(MotionEvent.ACTION_HOVER_MOVE, 70f, 70f)
+        assertEquals(emptyList<String>(), website.events)
+        assertEquals(
+            listOf("ACTION_DOWN@70,70", "ACTION_UP@70,70", "ACTION_HOVER_ENTER@70,70", "ACTION_HOVER_MOVE@70,70"),
+            hostWebView.events,
+        )
+        page.hostRectsReceived = true
+        touch(MotionEvent.ACTION_DOWN, 70f, 70f, downTime = 2)
+        assertEquals(listOf("ACTION_DOWN@20,20"), website.events)
+    }
+
+    @Test
+    fun aPageHiddenMidGestureIsCancelledAndGetsNoClick() {
+        touch(MotionEvent.ACTION_DOWN, 70f, 70f, downTime = 1)
+        page.visibility = View.GONE
+        touch(MotionEvent.ACTION_MOVE, 72f, 72f, downTime = 1)
+        touch(MotionEvent.ACTION_UP, 72f, 72f, downTime = 1)
+        assertEquals(listOf("ACTION_DOWN@20,20", "ACTION_CANCEL@22,22"), website.events)
+        // The rest of the gesture is swallowed: the host never sees half a gesture.
+        assertEquals(emptyList<String>(), hostWebView.events)
+        // The next gesture is the host's.
+        touch(MotionEvent.ACTION_DOWN, 70f, 70f, downTime = 2)
+        assertEquals(listOf("ACTION_DOWN@70,70"), hostWebView.events)
+    }
+
+    @Test
+    fun aPageNoLongerForegroundedMidGestureIsCancelled() {
+        touch(MotionEvent.ACTION_DOWN, 70f, 70f, downTime = 1)
+        live.clear()
+        touch(MotionEvent.ACTION_UP, 70f, 70f, downTime = 1)
+        assertEquals(listOf("ACTION_DOWN@20,20", "ACTION_CANCEL@20,20"), website.events)
+        assertEquals(emptyList<String>(), hostWebView.events)
+    }
+
+    @Test
+    fun aHoveredPageThatIsHiddenGetsAnExit() {
+        mouse(MotionEvent.ACTION_HOVER_MOVE, 70f, 70f)
+        page.visibility = View.GONE
+        mouse(MotionEvent.ACTION_HOVER_MOVE, 72f, 72f)
+        assertEquals(listOf("ACTION_HOVER_ENTER@20,20", "ACTION_HOVER_MOVE@20,20", "ACTION_HOVER_EXIT@22,22"), website.events)
+    }
+
+    @Test
     fun hoverAndMouseWheelFollowThePointer() {
         mouse(MotionEvent.ACTION_HOVER_ENTER, 70f, 70f)
         mouse(MotionEvent.ACTION_HOVER_MOVE, 80f, 80f)
@@ -194,5 +243,44 @@ class BelowHostLayerInstrumentedTest {
         assertTrue(capture.getPixel(50, 50) != Color.TRANSPARENT)
         assertTrue(capture.getPixel(0, 0) != Color.TRANSPARENT)
         assertEquals(Color.TRANSPARENT, capture.getPixel(10, 50))
+    }
+
+    /** A surface as the plugin would add it: appended when above-host, at the branch's index when below-host. */
+    private fun add(into: FrameLayout, branch: View, layer: SurfaceLayer): OccludingSurfaceLayout =
+        OccludingSurfaceLayout(context, layer).also {
+            into.addView(it, surfaceInsertIndex(layer, into.indexOfChild(branch)), FrameLayout.LayoutParams(10, 10))
+        }
+
+    @Test
+    fun mixedLayersKeepTheRouterDirectlyAboveTheHostAndAboveHostPagesOnTop() {
+        val root = FrameLayout(context)
+        val branch = View(context)
+        val other = BelowHostInputRouter(context) { emptyList() }
+        root.addView(branch)
+        fun order() = (0 until root.childCount).map(root::getChildAt)
+
+        val a = add(root, branch, SurfaceLayer.BELOW_HOST)
+        placeRouter(root, branch, other)
+        assertEquals(listOf<View>(a, branch, other), order())
+        val b = add(root, branch, SurfaceLayer.ABOVE_HOST)
+        assertEquals(listOf<View>(a, branch, other, b), order())
+        val c = add(root, branch, SurfaceLayer.BELOW_HOST)
+        placeRouter(root, branch, other)
+        assertEquals(listOf<View>(a, c, branch, other, b), order())
+
+        raiseSurface(root, a, branch) { other }
+        assertEquals(listOf<View>(a, c, branch, other, b), order())
+        val d = add(root, branch, SurfaceLayer.ABOVE_HOST)
+        raiseSurface(root, b, branch) { other }
+        assertEquals(listOf<View>(a, c, branch, other, d, b), order())
+        // An above-host page is still brought to the front over the router.
+        raiseSurface(root, d, branch) { other }
+        assertEquals(listOf<View>(a, c, branch, other, b, d), order())
+
+        // A router that drifted (another view added above the host) is put back.
+        val stray = View(context)
+        root.addView(stray, root.indexOfChild(branch) + 1)
+        raiseSurface(root, c, branch) { other }
+        assertEquals(listOf<View>(a, c, branch, other, stray, b, d), order())
     }
 }

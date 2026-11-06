@@ -684,6 +684,7 @@ class ElizaSurfaceManagerPlugin : Plugin() {
             surface.container.removeView(surface.webView)
             surface.webView.destroy()
             surface.disposed = true
+            if (surface.layer == SurfaceLayer.BELOW_HOST) releaseUnusedRouter()
         }
         releaseProfile(surface)
     }
@@ -711,7 +712,7 @@ class ElizaSurfaceManagerPlugin : Plugin() {
             call.reject("createSurface profileKey needs isolated storage and 1 to 128 plain characters")
             return
         }
-        val layer = SurfaceLayer.parse(call.getString("layer")) ?: run {
+        val layer = SurfaceLayer.parse(call.data.opt("layer").takeUnless { it == JSONObject.NULL }) ?: run {
             call.reject("createSurface layer must be above-host or below-host")
             return
         }
@@ -1175,6 +1176,8 @@ class ElizaSurfaceManagerPlugin : Plugin() {
                 ?: return@runOnUiThread
             surface.occlusions = rects
             applyOcclusions(surface, density())
+            // A below-host page takes input only once the host has said where its chrome is.
+            surface.container.hostRectsReceived = true
             call.resolve()
         }
     }
@@ -1537,6 +1540,7 @@ class ElizaSurfaceManagerPlugin : Plugin() {
                     surface.webView.destroy()
                     surface.disposed = true
                     surfaces.remove(id)
+                    if (surface.layer == SurfaceLayer.BELOW_HOST) releaseUnusedRouter()
                     if (live) notifyListeners("surfaceClosed", surfaceEvent(id, surface).apply { put("reason", "profile-purged") })
                 }
                 if (ProfileStore.getInstance().allProfileNames.contains(name)) {
@@ -1624,8 +1628,47 @@ class ElizaSurfaceManagerPlugin : Plugin() {
             }
             timeout = Runnable { fail("The page capture timed out", "CAPTURE_TIMEOUT") }
             webView.postDelayed(timeout, 5000)
+            /** Masks, scales and returns a copied page; [bitmap] is the container's size. */
+            val finish = finish@{ bitmap: Bitmap ->
+                if (!unchanged()) {
+                    bitmap.recycle()
+                    return@finish fail("The page changed while capturing; capture again", "CAPTURE_STALE")
+                }
+                val width = bitmap.width
+                val height = bitmap.height
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) surface.container.maskHostRegions(Canvas(bitmap))
+                val (scaledWidth, scaledHeight) = BrowserCapturePolicy.scaled(width, height, maxEdge).let { it[0] to it[1] }
+                val image = if (scaledWidth == width) bitmap else Bitmap.createScaledBitmap(bitmap, scaledWidth, scaledHeight, true)
+                val bytes = java.io.ByteArrayOutputStream()
+                image.compress(Bitmap.CompressFormat.JPEG, quality, bytes)
+                if (image !== bitmap) image.recycle()
+                bitmap.recycle()
+                settled = true
+                webView.removeCallbacks(timeout)
+                call.resolve(JSObject().apply {
+                    put("mimeType", "image/jpeg")
+                    put("data", Base64.encodeToString(bytes.toByteArray(), Base64.NO_WRAP))
+                    put("width", scaledWidth)
+                    put("height", scaledHeight)
+                    put("maskedFields", masked?.optInt("fields") ?: 0)
+                    put("maskedFrames", masked?.optInt("frames") ?: 0)
+                    put("url", url ?: JSObject.NULL)
+                })
+            }
             val copy = copy@{
                 if (Build.VERSION.SDK_INT < Build.VERSION_CODES.O) return@copy
+                if (surface.layer == SurfaceLayer.BELOW_HOST) {
+                    // The host draws over a below-host page, so a window copy would include
+                    // host pixels (a shadow, a toast, a fading tab); draw the page alone.
+                    val page = try {
+                        drawPageForCapture(surface.container)
+                    } catch (error: RuntimeException) {
+                        restore()
+                        return@copy fail("The page could not be captured", "CAPTURE_FAILED")
+                    }
+                    restore()
+                    return@copy finish(page)
+                }
                 val origin = IntArray(2)
                 surface.container.getLocationInWindow(origin)
                 val width = surface.container.width
@@ -1636,25 +1679,7 @@ class ElizaSurfaceManagerPlugin : Plugin() {
                     restore()
                     if (settled) return@request
                     if (status != PixelCopy.SUCCESS) return@request fail("The page could not be captured", "CAPTURE_FAILED")
-                    if (!unchanged()) return@request fail("The page changed while capturing; capture again", "CAPTURE_STALE")
-                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) surface.container.maskHostRegions(Canvas(bitmap))
-                    val (scaledWidth, scaledHeight) = BrowserCapturePolicy.scaled(width, height, maxEdge).let { it[0] to it[1] }
-                    val image = if (scaledWidth == width) bitmap else Bitmap.createScaledBitmap(bitmap, scaledWidth, scaledHeight, true)
-                    val bytes = java.io.ByteArrayOutputStream()
-                    image.compress(Bitmap.CompressFormat.JPEG, quality, bytes)
-                    if (image !== bitmap) image.recycle()
-                    bitmap.recycle()
-                    settled = true
-                    webView.removeCallbacks(timeout)
-                    call.resolve(JSObject().apply {
-                        put("mimeType", "image/jpeg")
-                        put("data", Base64.encodeToString(bytes.toByteArray(), Base64.NO_WRAP))
-                        put("width", scaledWidth)
-                        put("height", scaledHeight)
-                        put("maskedFields", masked?.optInt("fields") ?: 0)
-                        put("maskedFrames", masked?.optInt("frames") ?: 0)
-                        put("url", url ?: JSObject.NULL)
-                    })
+                    finish(bitmap)
                 }, mainHandler)
             }
             val command = JSONObject().put("action", "mask").put("token", token)
@@ -1791,12 +1816,8 @@ class ElizaSurfaceManagerPlugin : Plugin() {
                 }
             }
             selected?.let { surface ->
-                if (surface.layer == SurfaceLayer.ABOVE_HOST) {
-                    surface.container.bringToFront()
-                } else {
-                    (surface.container.parent as? ViewGroup)?.let { host ->
-                        hostBranch(host, bridge.webView)?.let { placeInputRouter(host, it) }
-                    }
+                (surface.container.parent as? ViewGroup)?.let { host ->
+                    raiseSurface(host, surface.container, hostBranch(host, bridge.webView), ::ensureInputRouter)
                 }
                 surface.container.visibility = View.VISIBLE
                 surface.foregrounded = true
@@ -1973,20 +1994,23 @@ class ElizaSurfaceManagerPlugin : Plugin() {
             width >= 0.0 && height >= 0.0 && topLeftRadius >= 0.0 &&
             topRightRadius >= 0.0 && bottomRightRadius >= 0.0 && bottomLeftRadius >= 0.0
 
+    /** The below-host input router, made on first use. */
+    private fun ensureInputRouter(): BelowHostInputRouter = inputRouter ?: BelowHostInputRouter(activity) {
+        if (surfaces.values.none { it.layer == SurfaceLayer.BELOW_HOST && it.foregrounded && !it.disposed }) {
+            emptyList()
+        } else {
+            surfaces.values.filter { it.layer == SurfaceLayer.BELOW_HOST && it.foregrounded && !it.disposed }.map { it.container }
+        }
+    }.also { inputRouter = it }
+
     /** Keeps the below-host input router directly above the host WebView's branch. */
-    private fun placeInputRouter(host: ViewGroup, branch: View) {
-        val router = inputRouter ?: BelowHostInputRouter(activity) {
-            surfaces.values.filter { it.layer == SurfaceLayer.BELOW_HOST && !it.disposed && it.foregrounded }
-                .map { it.container }
-        }.also { inputRouter = it }
-        val index = host.indexOfChild(branch) + 1
-        if (router.parent === host && host.indexOfChild(router) == index) return
-        (router.parent as? ViewGroup)?.removeView(router)
-        host.addView(
-            router,
-            host.indexOfChild(branch) + 1,
-            FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT),
-        )
+    private fun placeInputRouter(host: ViewGroup, branch: View) = placeRouter(host, branch, ensureInputRouter())
+
+    /** Removes the input router once no below-host surface is left. */
+    private fun releaseUnusedRouter() {
+        if (surfaces.values.any { it.layer == SurfaceLayer.BELOW_HOST && !it.disposed }) return
+        inputRouter?.let { (it.parent as? ViewGroup)?.removeView(it) }
+        inputRouter = null
     }
 
     private fun applyGeometry(surface: Surface, density: Float) {
@@ -2149,8 +2173,15 @@ internal class OccludingSurfaceLayout(
         invalidate()
     }
 
+    /**
+     * Set once the host has sent its rects with setOcclusionRects. Until then a below-host
+     * page takes no input, so chrome the host draws first cannot pass a tap to the website.
+     */
+    var hostRectsReceived = false
+
     /** Whether a point in this layout's pixels is the website's, not host chrome's. */
-    fun pageOwns(x: Float, y: Float): Boolean = pageOwnsPoint(x, y, width, height, outerClip, occlusions)
+    fun pageOwns(x: Float, y: Float): Boolean =
+        hostRectsReceived && pageOwnsPoint(x, y, width, height, outerClip, occlusions)
 
     override fun dispatchDraw(canvas: Canvas) {
         if (layer == SurfaceLayer.BELOW_HOST) {

@@ -69,18 +69,30 @@ export type NativePageGuidance =
  *
  * - `above-host` (default): the page is drawn over the host. Host chrome over the
  *   page shows through holes cut with `setOcclusionRects`.
- * - `below-host` (Android only; iOS rejects it): the page is drawn under the host,
- *   so the host draws its own chrome, corners and shadows over it with no holes.
+ * - `below-host` (Android only; iOS rejects it with `UNSUPPORTED`): the page is drawn
+ *   under the host, so the host draws its own chrome, corners and shadows over it with
+ *   no holes. This is a drawing-quality change, not a memory or CPU saving: both
+ *   WebViews stay live, and the transparent host is blended over the page every frame
+ *   the page draws. Measure frame time before adopting it on a device.
+ *
  *   The host must be transparent where the page shows: its WebView background
  *   (`WebView.setBackgroundColor(Color.TRANSPARENT)`), every view between the
  *   WebView and its nearest `FrameLayout` ancestor, and its page CSS over the page
  *   rect. The page is clipped only to the outer clip's rectangle, so the host paints
- *   the rounded corners. `setOcclusionRects` then names the host-owned rects: a touch,
- *   hover or mouse event that starts on the page outside them goes to the website for
- *   the whole gesture; any other stays with the host. Captures paint over them and
- *   over everything outside the outer clip, so host pixels drawn over the page outside
- *   those rects (a shadow, for example) appear in captures. Put host nodes over the
- *   page in `aria-hidden` so TalkBack reaches the website's own nodes there.
+ *   the rounded corners.
+ *
+ *   `setOcclusionRects` names the host-owned rects. A touch, hover, mouse or drag
+ *   event that starts on the page outside them goes to the website for the whole
+ *   gesture; any other stays with the host. The page takes no input until the first
+ *   `setOcclusionRects` call after `createSurface` (an empty list is fine), and the
+ *   host must await `setOcclusionRects` before it shows new interactive chrome over
+ *   the page, or a tap there can reach the website. A gesture on a page that is hidden
+ *   mid-gesture is cancelled. A drag carried to the page has no local state.
+ *
+ *   Captures draw the page alone, so host pixels over it never appear; host-owned
+ *   rects and everything outside the outer clip are masked as in the default layer.
+ *   Put host nodes over the page in `aria-hidden` so TalkBack reaches the website's
+ *   own nodes there.
  */
 export type SurfaceLayer = "above-host" | "below-host";
 
@@ -396,7 +408,8 @@ export interface ElizaSurfaceManagerPlugin {
    * Punch rounded regions out of the native layer so host-rendered overlays can
    * paint and receive input without hiding or resizing the underlying page.
    * For a `below-host` surface nothing is cut out: the rects are where the host
-   * receives input and where captures are masked.
+   * receives input and where captures are masked, and the page takes no input until
+   * the first call.
    */
   setOcclusionRects(options: SetOcclusionRectsOptions): Promise<void>;
   /** Load a URL in an existing surface. */

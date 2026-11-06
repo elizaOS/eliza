@@ -52,4 +52,12 @@ class BelowHostLayerTest {
         assertEquals(SurfaceLayer.BELOW_HOST, SurfaceLayer.parse("below-host"))
         assertNull(SurfaceLayer.parse("below"))
     }
+
+    @Test
+    fun aLayerThatIsNotAStringIsRejectedNotDefaulted() {
+        assertNull(SurfaceLayer.parse(true))
+        assertNull(SurfaceLayer.parse(1))
+        assertNull(SurfaceLayer.parse(mapOf("layer" to "below-host")))
+        assertNull(SurfaceLayer.parse(""))
+    }
 }

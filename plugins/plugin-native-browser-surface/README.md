@@ -82,17 +82,22 @@ for that long. `clearSurfaceStorage` signs one isolated surface out of every web
 
 Android `createSurface({ ..., layer: "below-host" })` draws the page under the host
 WebView instead of over it, so the host draws its own chrome, rounded corners and
-shadows over the page and nothing is cut out of the website. The host makes its
+shadows over the page and nothing is cut out of the website. It improves edges and
+shadows; it saves no memory or CPU, and the transparent host is blended over the page
+each frame, so measure frame time on the device before adopting it. The host makes its
 WebView background, every view between that WebView and its nearest `FrameLayout`
 ancestor, and its page CSS over the page rect transparent. The page is clipped only to
 its outer clip's rectangle. `setOcclusionRects` then lists the host-owned rects: a
-gesture, hover or mouse event that starts on the page outside them goes to the website
-until it ends; any other stays with the host. A finger added during a gesture follows
-the first finger. The website gets the whole gesture, so its own long-press, text
-selection and focus (and so the keyboard) work as in the default layer. TalkBack reads host chrome first, then the website; host nodes over the
-page must be `aria-hidden`. Captures paint over the host-owned rects and outside the
-outer clip, so host pixels drawn outside those rects (a shadow) can appear in them.
-iOS rejects this layer.
+gesture, hover, mouse or drag event that starts on the page outside them goes to the
+website until it ends; any other stays with the host. A finger added during a gesture
+follows the first finger, and a gesture on a page hidden mid-gesture is cancelled. The
+page takes no input until the first `setOcclusionRects` call, and the host awaits that
+call before it shows new interactive chrome over the page. The website gets the whole
+gesture, so its own long-press, text selection and focus (and so the keyboard) work as
+in the default layer. TalkBack reads host chrome first, then the website; host nodes
+over the page must be `aria-hidden`. Captures draw the page alone, so no host pixel is
+in them, and mask the host-owned rects and the area outside the outer clip. iOS rejects
+this layer with `UNSUPPORTED`.
 
 `captureSurface` returns a JPEG of the visible page, about 1024 px on the long edge, for
 a vision fallback. Before the copy it covers password, `cc-*`, `one-time-code` and other

@@ -5,6 +5,7 @@
  */
 package ai.eliza.plugins.browsersurface
 
+import android.content.ClipData
 import android.graphics.Color
 import android.graphics.PixelFormat
 import android.os.SystemClock
@@ -33,6 +34,7 @@ class BelowHostWebViewInstrumentedTest {
     private lateinit var root: FrameLayout
     private lateinit var site: WebView
     private lateinit var host: WebView
+    private lateinit var page: OccludingSurfaceLayout
 
     @After
     fun close() {
@@ -91,7 +93,7 @@ class BelowHostWebViewInstrumentedTest {
                 setBackgroundColor(Color.TRANSPARENT)
             }
             root.addView(host, FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT))
-            val page = OccludingSurfaceLayout(context, SurfaceLayer.BELOW_HOST)
+            page = OccludingSurfaceLayout(context, SurfaceLayer.BELOW_HOST)
             site = WebView(context).apply { settings.javaScriptEnabled = true }
             page.addView(site, FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT))
             root.addView(
@@ -109,7 +111,26 @@ class BelowHostWebViewInstrumentedTest {
             )
             page.setOuterClip(RoundedOuterClip(0f, 0f, 400f, 400f, 0f, 0f, 0f, 0f))
             page.setOcclusions(listOf(RoundedOcclusionRect(300f, 0f, 400f, 100f, 0f)))
-            val counter = "<script>window.taps=0;window.moves=0;addEventListener('pointerdown',()=>taps++);addEventListener('pointermove',()=>moves++)</script>"
+            page.hostRectsReceived = true
+            // A drag source outside the page: a press on it starts a text drag.
+            root.addView(
+                android.view.View(context).apply {
+                    setBackgroundColor(Color.YELLOW)
+                    setOnTouchListener { view, event ->
+                        if (event.actionMasked == MotionEvent.ACTION_DOWN) {
+                            view.startDragAndDrop(ClipData.newPlainText("text", "dropped"), android.view.View.DragShadowBuilder(view), null, 0)
+                        }
+                        true
+                    }
+                },
+                FrameLayout.LayoutParams(80, 80).apply {
+                    leftMargin = 0
+                    topMargin = 520
+                },
+            )
+            val counter = "<script>window.taps=0;window.moves=0;window.drops=0;addEventListener('pointerdown',()=>taps++);" +
+                "addEventListener('pointermove',()=>moves++);addEventListener('dragover',e=>e.preventDefault());" +
+                "addEventListener('drop',()=>drops++)</script>"
             site.loadDataWithBaseURL(
                 "https://site.test/",
                 "<body style='margin:0;background:#f00'><input id='field' style='width:100%;height:50vh'>$counter</body>",
@@ -119,7 +140,9 @@ class BelowHostWebViewInstrumentedTest {
             host.loadDataWithBaseURL(
                 "https://host.test/",
                 "<body style='margin:0;background:transparent'><div style='position:absolute;" +
-                    "left:${cssPx(400)}px;top:${cssPx(100)}px;width:${cssPx(100)}px;height:${cssPx(100)}px;background:#00f'></div>$counter</body>",
+                    "left:${cssPx(400)}px;top:${cssPx(100)}px;width:${cssPx(100)}px;height:${cssPx(100)}px;background:#00f'></div>" +
+                    "<div style='position:absolute;left:${cssPx(120)}px;top:${cssPx(420)}px;width:${cssPx(50)}px;" +
+                    "height:${cssPx(50)}px;background:#0f0'></div>$counter</body>",
                 "text/html", "utf-8", null,
             )
             windows.addView(
@@ -139,10 +162,28 @@ class BelowHostWebViewInstrumentedTest {
         // The page shows through the transparent host, and host chrome draws over it.
         val origin = IntArray(2)
         instrumentation.runOnMainSync { root.getLocationOnScreen(origin) }
-        val screen = instrumentation.uiAutomation.takeScreenshot()
-        assertEquals(Color.RED, screen.getPixel(origin[0] + 300, origin[1] + 450) or 0xFF000000.toInt())
-        assertEquals(Color.BLUE, screen.getPixel(origin[0] + 450, origin[1] + 150) or 0xFF000000.toInt())
-        screen.recycle()
+        // Both WebViews draw a few frames after load, so wait for the expected screen.
+        val expected = listOf(Triple(300, 450, Color.RED), Triple(450, 150, Color.BLUE), Triple(145, 445, Color.GREEN))
+        var seen = emptyList<Int>()
+        val end = SystemClock.uptimeMillis() + 10_000
+        while (seen != expected.map { it.third }) {
+            check(SystemClock.uptimeMillis() < end) { "screen pixels were $seen" }
+            val screen = instrumentation.uiAutomation.takeScreenshot()
+            seen = expected.map { (x, y) -> screen.getPixel(origin[0] + x, origin[1] + y) or 0xFF000000.toInt() }
+            screen.recycle()
+            if (seen != expected.map { it.third }) SystemClock.sleep(200)
+        }
+
+        // A capture draws the page alone: the host overlay is not in it, and host rects are masked.
+        var capture: android.graphics.Bitmap? = null
+        instrumentation.runOnMainSync {
+            capture = drawPageForCapture(page).also { page.maskHostRegions(android.graphics.Canvas(it)) }
+        }
+        val image = capture!!
+        assertEquals(Color.RED, image.getPixel(45, 345))
+        assertEquals(Color.RED, image.getPixel(200, 350))
+        assertEquals(0xFF5F6368.toInt(), image.getPixel(350, 50))
+        image.recycle()
 
         tap(200, 150)
         assertEquals("1", js(site, "taps"))
@@ -162,6 +203,39 @@ class BelowHostWebViewInstrumentedTest {
         hover(260, 410)
         assertTrue(js(site, "moves").toInt() > 0)
         assertEquals("0", js(host, "moves"))
+
+        // A text drag dropped on the page's input lands in the website, not the host.
+        drag(to = 200 to 150)
+        assertEquals("\"dropped\"", js(site, "document.getElementById('field').value"))
+        assertEquals("1", js(site, "drops"))
+        assertEquals("0", js(host, "drops"))
+        // One dropped on a host-owned rect over the page lands in the host.
+        drag(to = 450 to 150)
+        assertEquals("1", js(site, "drops"))
+        assertEquals("1", js(host, "drops"))
+    }
+
+    /** Presses the drag source, moves to [to] in window pixels and lifts. */
+    private fun drag(to: Pair<Int, Int>) {
+        val origin = IntArray(2)
+        instrumentation.runOnMainSync { root.getLocationOnScreen(origin) }
+        val down = SystemClock.uptimeMillis()
+        fun send(action: Int, x: Int, y: Int) {
+            val event = MotionEvent.obtain(down, SystemClock.uptimeMillis(), action, (origin[0] + x).toFloat(), (origin[1] + y).toFloat(), 0)
+            event.source = InputDevice.SOURCE_TOUCHSCREEN
+            assertTrue(instrumentation.uiAutomation.injectInputEvent(event, true))
+            event.recycle()
+        }
+        send(MotionEvent.ACTION_DOWN, 40, 560)
+        SystemClock.sleep(500)
+        for (step in 1..10) {
+            send(MotionEvent.ACTION_MOVE, 40 + (to.first - 40) * step / 10, 560 + (to.second - 560) * step / 10)
+            SystemClock.sleep(50)
+        }
+        SystemClock.sleep(300)
+        send(MotionEvent.ACTION_UP, to.first, to.second)
+        instrumentation.waitForIdleSync()
+        SystemClock.sleep(800)
     }
 
     private fun hover(x: Int, y: Int) {
