@@ -115,8 +115,16 @@ _binDebugLog(
 // eval, before the runtime boots or any fetch fires.
 configureMobileDnsIfNeeded();
 async function bootstrapMobileEntrypoint(): Promise<void> {
+  if (isAndroidMobile()) {
+    // Config can set ELIZA_LOCAL_LLAMA after this point, so register the app
+    // plugins lazily on every Android boot; the collector loads them on demand.
+    const { registerAndroidAppPluginLoaders } = await import(
+      "./runtime/android-app-plugin-loaders.ts"
+    );
+    registerAndroidAppPluginLoaders();
+  }
   // ElizaOS Android only: other Android hosts never load these plugins, so
-  // they stay bundled but are not evaluated.
+  // they stay bundled but are not evaluated at boot.
   if (isElizaOsAndroidRuntime()) {
     _binDebugLog("[bin.ts] entering android block");
     try {
@@ -136,8 +144,8 @@ async function bootstrapMobileEntrypoint(): Promise<void> {
       await import("./runtime/android-app-plugins.ts");
       _binDebugLog("[bin.ts] android-app-plugins loaded ok");
     } catch (e) {
-      // Android-only app plugins not bundled in this build; plugin-resolver.ts
-      // returns null for these IDs and the rest of the runtime is unaffected.
+      // Android-only app plugins not bundled in this build; the lazy loaders
+      // fail the same way and the rest of the runtime is unaffected.
       _binDebugLog(
         `[bin.ts] android-app-plugins init error (ok): ${e instanceof Error ? e.message : String(e)}`,
       );
