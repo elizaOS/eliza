@@ -5,6 +5,7 @@ import http from "node:http";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
+import { createNativeCloudAuth as createEnrollment } from "../../../auth/native-host/cloud-enrollment.mjs";
 import {
   createCloudRoutes,
   createFileCredentialStore,
@@ -478,7 +479,13 @@ for (const [checkoutPath, requestBody] of [
         await started;
         const disconnected = await post(disconnectPath, {});
         assert.equal(disconnected.status, 200);
-        assert.deepEqual(cancellations, [{ disconnect: true }]);
+        // Logout disconnects; a sign-in cancel drops only the pending sign-in.
+        assert.deepEqual(
+          cancellations,
+          disconnectPath === "/cloud/logout"
+            ? [{ disconnect: true }]
+            : [undefined],
+        );
         releaseAuthority();
         const result = await pending;
         assert.equal(result.status, 409);
@@ -2383,6 +2390,155 @@ test("the owner mail writer relays Cloud's reviewed two-step operation for the c
     writer.prepare({ requestId: OPERATION, proposal: archive }),
     { code: "insufficient_scope" },
   );
+});
+
+/** The routes over the real native enrollment and a fake Cloud. */
+async function enrollmentRoutes(t, { hold } = {}) {
+  const binding = {
+    clientId: "org.example.native",
+    environment: "test",
+    redirectUri: "https://example.org/native/callback",
+  };
+  const later = () => new Date(Date.now() + 300000).toISOString();
+  const revoked = [];
+  let pending = null;
+  const routes = createCloudRoutes({
+    hostPolicy: {
+      ...policy,
+      createNativeCloudAuth: (options) =>
+        createEnrollment({
+          ...options,
+          auth: "https://auth.example.test",
+          binding,
+          appName: "Example Native",
+        }),
+    },
+    pendingCredentialStore: {
+      read: async () => pending,
+      write: async (value) => {
+        pending = value;
+      },
+      clear: async () => {
+        pending = null;
+      },
+    },
+    speechVoice: { voiceId: "voice", modelId: "model" },
+    fetchImpl: async (url, init) => {
+      const path = new URL(url).pathname;
+      await hold?.(path);
+      if (path.endsWith("/config"))
+        return Response.json({
+          ...binding,
+          codeChallengeMethod: "S256",
+          scopes: ["cloud:user"],
+          app: { name: "Example Native" },
+        });
+      if (path === "/auth/email/send")
+        return Response.json({ ok: true, data: { expiresAt: later() } });
+      if (path === "/auth/email/code/verify")
+        return Response.json({ ok: true, token: "synthetic-session-token" });
+      if (path.endsWith("/connect"))
+        return Response.json({
+          codeType: "mobile_app_auth_code",
+          code: "synthetic-grant",
+          expiresAt: later(),
+        });
+      if (path.endsWith("/token"))
+        return Response.json({
+          credentialId: "22222222-2222-4222-8222-222222222222",
+          secret: `eliza_mobile_${"a".repeat(64)}`,
+          tokenType: "Bearer",
+          acknowledgementRequired: true,
+          acknowledgeBy: later(),
+        });
+      if (path.endsWith("/ack"))
+        return Response.json({
+          status: "acknowledged",
+          credentialId: "22222222-2222-4222-8222-222222222222",
+          expiresAt: later(),
+        });
+      if (path === "/api/v1/api-keys/current" && init.method === "DELETE") {
+        revoked.push(init.headers.Authorization);
+        return Response.json({
+          success: true,
+          status: "revoked",
+          credentialId: "22222222-2222-4222-8222-222222222222",
+          revokedAt: new Date().toISOString(),
+        });
+      }
+      throw Error(`Unexpected provider request ${path}`);
+    },
+  });
+  const server = http.createServer((req, res) =>
+    routes(req, res, new URL(req.url, "http://localhost")),
+  );
+  server.listen(0, "127.0.0.1");
+  await once(server, "listening");
+  t.after(() => {
+    server.closeAllConnections();
+    server.close();
+  });
+  const post = (path, input = {}) =>
+    fetch(`http://127.0.0.1:${server.address().port}${path}`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(input),
+    });
+  const status = async () =>
+    (
+      await fetch(`http://127.0.0.1:${server.address().port}/cloud/status`)
+    ).json();
+  return { post, status, revoked };
+}
+
+test("a sign-in cancel never disconnects the account a finished sign-in reported", async (t) => {
+  const { post, status, revoked } = await enrollmentRoutes(t);
+  const begun = await (
+    await post("/cloud/native/start", { email: "synthetic@example.com" })
+  ).json();
+  const verified = await post("/cloud/native/verify", {
+    sessionId: begun.sessionId,
+    code: "123456",
+  });
+  assert.equal((await verified.json()).connected, true);
+  // A late Stop, park or Close of the set-up screen.
+  const cancelled = await post("/cloud/native/cancel");
+  assert.equal(cancelled.status, 200);
+  assert.deepEqual(revoked, []);
+  assert.equal((await status()).connected, true);
+  // Disconnecting stays its own route.
+  assert.equal((await post("/cloud/logout")).status, 200);
+  assert.equal(revoked.length, 1);
+  assert.equal((await status()).connected, false);
+});
+
+test("a sign-in request refused while the host is busy names the conflict", async (t) => {
+  let release, entered;
+  const reached = new Promise((resolve) => {
+    entered = resolve;
+  });
+  const gate = new Promise((resolve) => {
+    release = resolve;
+  });
+  const { post } = await enrollmentRoutes(t, {
+    hold: async (path) => {
+      if (path === "/auth/email/send") {
+        entered();
+        await gate;
+      }
+    },
+  });
+  const starting = post("/cloud/native/start", {
+    email: "synthetic@example.com",
+  });
+  await reached;
+  const busy = await post("/cloud/native/start", {
+    email: "synthetic@example.com",
+  });
+  assert.equal(busy.status, 409);
+  assert.equal((await busy.json()).code, "sign_in_busy");
+  release();
+  assert.equal((await starting).status, 200);
 });
 
 test("the owner mail writer refuses a send review it cannot show the owner", async (t) => {

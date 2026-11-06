@@ -1774,7 +1774,10 @@ export function createCloudRoutes({
         if (operation === "cancel") {
           advanceGeneration();
           attempts.clear();
-          send(res, 200, await nativeAuth.cancel({ disconnect: true }));
+          // Drops only the sign-in in progress. A key the host already holds,
+          // or one a finished sign-in just reported, stays: `/cloud/logout`
+          // is the disconnect.
+          send(res, 200, await nativeAuth.cancel());
           return true;
         }
         send(res, 200, await nativeAuth.handle(operation, input));
@@ -2338,7 +2341,10 @@ export function createCloudRoutes({
         else
           send(res, error.status || 502, {
             error: error.status ? error.message : "Cloud service unavailable",
-            ...(error.code === "VERIFIED_ACCOUNT_REQUIRED"
+            // The enrollment's sign-in conflict codes let the app tell a busy
+            // host from an account that must be disconnected first.
+            ...(error.code === "VERIFIED_ACCOUNT_REQUIRED" ||
+            (error.status === 409 && /^sign_in_[a-z_]+$/.test(error.code ?? ""))
               ? { code: error.code }
               : {}),
             // The wait the account service gave, in seconds, so the app can

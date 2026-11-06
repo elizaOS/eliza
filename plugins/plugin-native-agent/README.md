@@ -364,6 +364,14 @@ keys for existing databases must fail, never trigger creation. An interrupted
 mutation may have committed even if its response is refused or lost; do not
 blindly retry destructive operations.
 
+A host that refuses to adopt a launch's key into an account that already has
+its own key can keep that launch's slot apart as a stranded slot. It then
+implements `readStranded` and `completeStranded(expectedKeyId)`. The gateway
+reads the stranded key, merges its rows into the bound database, and only after
+that commit calls `completeStranded`, which erases the slot if it still holds
+that generation. The merge must be idempotent, because a stop can come between
+the commit and the erase. The defaults report no stranded slot.
+
 `createLocalTaskDataKeyStore` is the private native-process client. It validates
 versioned key material and returns `{id, bytes}`; erase the byte array after use.
 It shares the existing loopback bearer transport and redacted errors. Neither the

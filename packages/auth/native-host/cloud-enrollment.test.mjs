@@ -279,6 +279,124 @@ test("lost acknowledgement keeps durable receipt and resumes without email or a 
   });
   assert.equal(f.calls.filter((x) => x.path.endsWith("/connect")).length, 1);
 });
+test("a second accepted code never overwrites the saved sign-in", async () => {
+  let lost = true,
+    minted = 0;
+  const f = fixture({
+    fetch: (path) => {
+      if (path.endsWith("/ack") && lost)
+        return Response.json({}, { status: 503 });
+      if (path.endsWith("/token"))
+        return Response.json({
+          credentialId: `2222222${++minted}-2222-4222-8222-222222222222`,
+          secret: `private-credential-${minted}-not-for-renderer`,
+          tokenType: "Bearer",
+          acknowledgementRequired: true,
+          acknowledgeBy: future(),
+        });
+      return null;
+    },
+  });
+  const begun = await start(f);
+  await assert.rejects(verify(f, begun), { status: 502 });
+  const saved = f.state.pending;
+  // Cloud accepts the code again; the host must not mint a second key.
+  await assert.rejects(verify(f, begun), {
+    status: 409,
+    code: "sign_in_saved_pending",
+  });
+  assert.equal(f.state.pending, saved);
+  assert.equal(minted, 1);
+  lost = false;
+  assert.equal((await f.auth.handle("resume")).connected, true);
+  assert.equal(f.state.active, "private-credential-1-not-for-renderer");
+});
+// Models Cloud's /ack: a landed ack moves the grant's expiry to the key's
+// expiry and is replayed; an ack that never landed is refused with 410 once
+// the code has expired (`requireBoundGrantState`).
+function lateAckCloud({ landsWhileLost }) {
+  const cloud = {
+    lost: true,
+    landed: false,
+    codeExpired: false,
+    grantDeleted: false,
+  };
+  cloud.fetch = (path, body) => {
+    if (!path.endsWith("/ack")) return null;
+    if (cloud.grantDeleted)
+      return Response.json(
+        { error: "invalid_authorization_code" },
+        { status: 400 },
+      );
+    if (cloud.codeExpired && !cloud.landed) {
+      // `cleanupExpired` deletes the expired grant before this 410.
+      cloud.grantDeleted = true;
+      return Response.json(
+        { error: "authorization_code_expired" },
+        { status: 410 },
+      );
+    }
+    if (cloud.lost) {
+      if (landsWhileLost) cloud.landed = true;
+      return Response.json({}, { status: 503 });
+    }
+    cloud.landed = true;
+    return Response.json({
+      success: true,
+      status: "acknowledged",
+      credentialId: body.credentialId,
+      expiresAt: future(),
+    });
+  };
+  return cloud;
+}
+async function expireReceipt(f, cloud) {
+  cloud.codeExpired = true;
+  await f.pendingStore.write(
+    JSON.stringify({
+      ...JSON.parse(f.state.pending),
+      acknowledgeBy: new Date(Date.now() - 1000).toISOString(),
+    }),
+  );
+}
+test("a landed ack whose reply was lost is replayed by Cloud after acknowledgeBy", async () => {
+  const cloud = lateAckCloud({ landsWhileLost: true });
+  const f = fixture({ fetch: cloud.fetch });
+  await assert.rejects(verify(f, await start(f)), { status: 502 });
+  await expireReceipt(f, cloud);
+  cloud.lost = false;
+  assert.equal((await f.auth.handle("resume")).connected, true);
+  assert.equal(f.state.active, "private-credential-not-for-renderer");
+  assert.equal(f.state.pending, null);
+});
+test("an ack that never landed reports an expired sign-in and Cancel still revokes it", async () => {
+  const cloud = lateAckCloud({ landsWhileLost: false });
+  const f = fixture({ fetch: cloud.fetch });
+  await assert.rejects(verify(f, await start(f)), { status: 502 });
+  await expireReceipt(f, cloud);
+  cloud.lost = false;
+  const acks = () => f.calls.filter((x) => x.path.endsWith("/ack")).length;
+  const before = acks();
+  await assert.rejects(f.auth.handle("resume"), {
+    status: 410,
+    message: "Sign-in expired. Start again.",
+  });
+  // The host asked Cloud rather than refusing locally.
+  assert.equal(acks(), before + 1);
+  assert.ok(cloud.grantDeleted);
+  // Cloud has now deleted the grant and answers 400; past acknowledgeBy the
+  // host still reports the same expired sign-in.
+  await assert.rejects(f.auth.handle("resume"), {
+    status: 410,
+    message: "Sign-in expired. Start again.",
+  });
+  assert.equal(acks(), before + 2);
+  assert.ok(f.state.pending);
+  assert.equal(f.state.active, null);
+  await f.auth.cancel();
+  assert.equal(f.state.pending, null);
+  assert.ok(f.calls.some((x) => x.path.endsWith("/current")));
+});
 test("pending credential cancellation revokes before forgetting it; failure stays recoverable", async () => {
   let revokeFails = true;
   const f = fixture({
@@ -502,7 +620,10 @@ test("disconnect rejects malformed receipt and never revokes developer credentia
 test("a new email login cannot silently discard an active app or CLI credential", async () => {
   for (const prefix of ["eliza_mobile_", "eliza_"]) {
     const f = fixture({ active: prefix + "d".repeat(64) });
-    await assert.rejects(start(f), { status: 409 });
+    await assert.rejects(start(f), {
+      status: 409,
+      code: "sign_in_account_connected",
+    });
     assert.equal(f.calls.length, 0);
     assert.ok(f.state.active);
   }
