@@ -84,7 +84,12 @@ const HEADER_SIZE = MAGIC_BYTES.length + 4 + SALT_LEN + IV_LEN + TAG_LEN; // 15 
 // Version 2 requires storage-type preservation and remapped document references.
 // The encrypted envelope remains V1; older readers reject this payload before writes.
 const EXPORT_VERSION = 2;
-const MAX_IMPORT_DECOMPRESSED_BYTES = 16 * 1024 * 1024; // 16 MiB safety cap
+/**
+ * Largest decompressed payload an import accepts (the gzip-bomb bound) and the
+ * largest an export produces, so every bundle export hands out can be
+ * imported again. Equal to the import route's upload limit.
+ */
+export const MAX_IMPORT_DECOMPRESSED_BYTES = 512 * 1024 * 1024;
 
 // ---------------------------------------------------------------------------
 // Types
@@ -1593,7 +1598,13 @@ export async function exportAgent(
   );
   wirePayload.manifest = buildExportManifest(wirePayload);
   const jsonString = JSON.stringify(wirePayload);
-  const compressed = gzipSync(Buffer.from(jsonString, "utf-8"));
+  const payloadBytes = Buffer.from(jsonString, "utf-8");
+  if (payloadBytes.length > MAX_IMPORT_DECOMPRESSED_BYTES) {
+    throw new AgentExportError(
+      `This agent's data is ${payloadBytes.length} bytes, more than the ${MAX_IMPORT_DECOMPRESSED_BYTES}-byte limit an import accepts. Use a full backup instead.`,
+    );
+  }
+  const compressed = gzipSync(payloadBytes);
 
   logger.info(
     `[agent-export] Payload: ${jsonString.length} bytes JSON → ${compressed.length} bytes compressed`,
