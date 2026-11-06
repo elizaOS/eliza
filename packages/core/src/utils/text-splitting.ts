@@ -18,6 +18,10 @@ const ABBREVIATIONS = new Set([
 	"etc",
 	"e.g",
 	"i.e",
+	"u.s",
+	"u.k",
+	"u.s.a",
+	"d.c",
 	...TIME_ABBREVIATIONS,
 ]);
 
