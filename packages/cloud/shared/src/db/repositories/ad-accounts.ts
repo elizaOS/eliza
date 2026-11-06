@@ -9,6 +9,10 @@ import {
   type NewAdAccount,
 } from "../schemas/ad-accounts";
 import { adCampaigns } from "../schemas/ad-campaigns";
+import {
+  parseAdAccountSpendCapCredits,
+  parseAdCampaignsAllocatedTotal,
+} from "./ad-campaigns-spend-cap-numeric";
 
 export type { AdAccount, AdAccountStatus, AdPlatform, NewAdAccount };
 
@@ -104,8 +108,8 @@ export class AdAccountsRepository {
           .select({ total: sum(adCampaigns.credits_allocated) })
           .from(adCampaigns)
           .where(eq(adCampaigns.ad_account_id, id));
-        const allocated = Number(result?.total ?? 0);
-        const cap = Number(spendCapCredits);
+        const allocated = parseAdCampaignsAllocatedTotal(result?.total);
+        const cap = parseAdAccountSpendCapCredits(spendCapCredits);
         if (allocated > cap + 1e-9) {
           return { status: "cap_exceeded", allocated, cap };
         }
