@@ -60,7 +60,7 @@ async function setUpTrigger(
     fallback: {
       displayName,
       instructions: "",
-      triggerType: input.triggerType as "cron" | "once",
+      triggerType: input.triggerType as "cron" | "once" | "event",
       wakeMode: "inject_now",
       enabled: true,
       createdBy: "owner",
@@ -79,14 +79,21 @@ async function setUpTrigger(
     metadata: buildTriggerMetadata({ trigger, nowMs: Date.now() }),
   } as unknown as Task);
 
-  const run = async (iso: string, source: "scheduler" | "manual") => {
+  const run = async (iso: string, source: "scheduler" | "manual" | "event") => {
     vi.setSystemTime(new Date(iso));
     const task = await runtime.getTask(taskId);
     if (!task) throw new Error("trigger task is missing");
     return executeTriggerTask(
       runtime,
       task,
-      source === "manual" ? { source, force: true } : { source },
+      source === "manual"
+        ? { source, force: true }
+        : source === "event"
+          ? {
+              source,
+              event: { kind: "MESSAGE_RECEIVED", payload: { text: iso } },
+            }
+          : { source },
     );
   };
   return { run, executions, stored: () => tasks.has(taskId) };
@@ -137,5 +144,28 @@ it("keeps a one-time trigger's scheduled run after the user runs it manually", a
   expect(executions).toEqual([
     "2026-10-14T08:00:00.000Z",
     "2026-10-16T09:00:05.000Z",
+  ]);
+});
+
+it("runs an event workflow for every event, also when two finish in the same minute", async () => {
+  vi.useFakeTimers({ toFake: ["Date"] });
+  vi.setSystemTime(new Date("2026-10-20T08:00:00.000Z"));
+  const { run, executions } = await setUpTrigger(
+    { triggerType: "event", eventKind: "MESSAGE_RECEIVED" },
+    "Forward messages",
+  );
+  for (const iso of [
+    "2026-10-20T09:00:05.000Z",
+    "2026-10-20T09:00:20.000Z",
+    "2026-10-20T09:00:40.000Z",
+    "2026-10-20T09:05:00.000Z",
+  ]) {
+    expect((await run(iso, "event")).status).toBe("success");
+  }
+  expect(executions).toEqual([
+    "2026-10-20T09:00:05.000Z",
+    "2026-10-20T09:00:20.000Z",
+    "2026-10-20T09:00:40.000Z",
+    "2026-10-20T09:05:00.000Z",
   ]);
 });
