@@ -101,7 +101,7 @@ function fail(message) {
   process.exit(1);
 }
 
-function parseArgs(argv) {
+export function parseArgs(argv) {
   const args = {
     workspace: "",
     out: path.join(moduleDir, "native"),
@@ -415,22 +415,25 @@ export async function buildModels(args, pins, bundle, withSpanish = false) {
   }
 }
 
+/** stage-elizavoice-lib.ts arguments for one ABI. */
+export function stageLibArgs(args, abi, espeakDir) {
+  return [
+    path.join(repoRoot, "packages/app/scripts/stage-elizavoice-lib.ts"),
+    "--abi",
+    abi,
+    "--out",
+    path.join(args.out, "jniLibs", abi),
+    "--espeak-dir",
+    espeakDir,
+    ...(args.ffiExportsOnly ? ["--ffi-exports-only"] : []),
+  ];
+}
+
 function buildInference(args, espeakDir) {
   for (const abi of args.abis) {
-    run(
-      "node",
-      [
-        path.join(repoRoot, "packages/app/scripts/stage-elizavoice-lib.ts"),
-        "--abi",
-        abi,
-        "--out",
-        path.join(args.out, "jniLibs", abi),
-        "--espeak-dir",
-        espeakDir,
-        ...(args.ffiExportsOnly ? ["--ffi-exports-only"] : []),
-      ],
-      { env: { ...process.env, ELIZA_NDK_VERSION: NDK_VERSION } },
-    );
+    run("node", stageLibArgs(args, abi, espeakDir), {
+      env: { ...process.env, ELIZA_NDK_VERSION: NDK_VERSION },
+    });
     // The library's own CMake build packages libc++_shared.so from the same
     // NDK; a second copy in jniLibs would collide during APK merge.
     rmSync(path.join(args.out, "jniLibs", abi, "libc++_shared.so"), {

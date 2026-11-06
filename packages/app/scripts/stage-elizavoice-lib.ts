@@ -45,6 +45,11 @@ import { fileURLToPath } from "node:url";
 import { DEFAULT_LLAMA_CPP_CACHE_DIR } from "./aosp/compile-libllama.ts";
 import { androidArm64SimdCmakeFlags } from "./build-helpers/arm64-simd.ts";
 import {
+  elizaVoiceBuildFlags,
+  FFI_EXPORTS_VERSION_SCRIPT,
+  parseStageElizaVoiceArgs,
+} from "./build-helpers/elizavoice-build-flags.ts";
+import {
   assertAndroidVoiceLibrary,
   assertVulkanMaliMitigation,
 } from "./build-helpers/verify-fused-symbols.ts";
@@ -60,33 +65,6 @@ function log(msg) {
 function die(msg) {
   process.stderr.write(`[stage-elizavoice-lib] ERROR: ${msg}\n`);
   process.exit(1);
-}
-
-function parseArgs(argv) {
-  const out = {
-    abi: "arm64-v8a",
-    variant: "cpu",
-    out: "",
-    espeakDir: "",
-    ffiExportsOnly: false,
-  };
-  for (let i = 0; i < argv.length; i++) {
-    if (argv[i] === "--abi") out.abi = argv[++i];
-    else if (argv[i] === "--variant") out.variant = argv[++i];
-    else if (argv[i] === "--out") out.out = path.resolve(argv[++i]);
-    else if (argv[i] === "--espeak-dir")
-      out.espeakDir = path.resolve(argv[++i]);
-    else if (argv[i] === "--ffi-exports-only") out.ffiExportsOnly = true;
-    else die(`unknown argument ${argv[i]}`);
-  }
-  if (out.variant !== "cpu" && out.variant !== "vulkan") {
-    die(`unsupported --variant ${out.variant} (cpu | vulkan)`);
-  }
-  // The Vulkan variant's sibling libraries call into each other's exports.
-  if (out.ffiExportsOnly && out.variant !== "cpu") {
-    die("--ffi-exports-only needs --variant cpu");
-  }
-  return out;
 }
 
 // The vulkan variant cross-compiles ggml's GLSL compute shaders to SPIR-V with
@@ -375,7 +353,13 @@ const {
   out: outDir,
   espeakDir: espeakArg,
   ffiExportsOnly,
-} = parseArgs(process.argv.slice(2));
+} = (() => {
+  try {
+    return parseStageElizaVoiceArgs(process.argv.slice(2));
+  } catch (error) {
+    return die(error.message);
+  }
+})();
 const platform = ABI_TO_PLATFORM[abi];
 if (!platform) die(`unsupported abi ${abi} (arm64-v8a | x86_64)`);
 log(`variant: ${variant}${ffiExportsOnly ? " (FFI exports only)" : ""}`);
@@ -396,38 +380,16 @@ if (!existsSync(path.join(forkSrc, "tools/omnivoice/CMakeLists.txt"))) {
   );
 }
 
-const buildDir = path.join(
-  repoRoot,
-  ".cache",
-  "elizavoice-android",
-  variant === "vulkan"
-    ? `${abi}-vulkan`
-    : ffiExportsOnly
-      ? `${abi}-ffi-exports`
-      : abi,
-);
+const { buildDir, versionScript, configureFlags } = elizaVoiceBuildFlags({
+  abi,
+  variant,
+  ffiExportsOnly,
+  cacheRoot: path.join(repoRoot, ".cache", "elizavoice-android"),
+});
 mkdirSync(buildDir, { recursive: true });
-
-// --ffi-exports-only: one version script keeps eliza_inference_* global and
-// makes every other symbol local, so --gc-sections can drop what the FFI never
-// reaches.
-const sharedLinkerFlags = ["-Wl,-z,max-page-size=16384"];
-const sectionFlags = [];
-if (ffiExportsOnly) {
-  const versionScript = path.join(buildDir, "eliza-inference-exports.map");
-  writeFileSync(
-    versionScript,
-    "{\n  global:\n    eliza_inference_*;\n  local:\n    *;\n};\n",
-  );
-  sharedLinkerFlags.push(
-    "-Wl,--gc-sections",
-    `-Wl,--version-script=${versionScript}`,
-  );
-  sectionFlags.push(
-    "-DCMAKE_C_FLAGS=-ffunction-sections -fdata-sections",
-    "-DCMAKE_CXX_FLAGS=-ffunction-sections -fdata-sections",
-  );
-}
+// --ffi-exports-only: the version script keeps eliza_inference_* global and
+// makes every other symbol local, so --gc-sections can drop the rest.
+if (versionScript) writeFileSync(versionScript, FFI_EXPORTS_VERSION_SCRIPT);
 
 // arm64 SIMD floor: GGML_NATIVE=OFF cross-builds to bare armv8-a, which leaves
 // the LLM + ASR matmul/dot kernels (ggml dotprod/i8mm/fp16) AND the eliza QJL
@@ -490,9 +452,7 @@ const baseConfigure = [
   "-DGGML_NATIVE=OFF",
   "-DGGML_OPENMP=OFF",
   ...arm64SimdFlags,
-  ...sectionFlags,
-  // 16 KiB page alignment for Android 15+ devices.
-  `-DCMAKE_SHARED_LINKER_FLAGS=${sharedLinkerFlags.join(" ")}`,
+  ...configureFlags,
   "-DLLAMA_BUILD_OMNIVOICE=ON",
   "-DLLAMA_BUILD_KOKORO=ON",
   "-DKOKORO_ENABLE_ESPEAK=OFF",
