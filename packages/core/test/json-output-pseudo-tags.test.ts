@@ -46,4 +46,40 @@ describe("parsePseudoTagToolInvocations argument bodies", () => {
 			),
 		).toEqual([]);
 	});
+
+	it("preserves document order across fenced and bare calls", () => {
+		expect(
+			parsePseudoTagToolInvocations(
+				[
+					"<NOTES_CREATE>",
+					"```json",
+					'{"title":"First"}',
+					"```",
+					"</NOTES_CREATE>",
+					'<NOTES_UPDATE>{"title":"Second"}</NOTES_UPDATE>',
+				].join("\n"),
+			),
+		).toEqual([
+			{ name: "NOTES_CREATE", params: { title: "First" } },
+			{ name: "NOTES_UPDATE", params: { title: "Second" } },
+		]);
+	});
+
+	it("does not span two same-name tags with different envelopes", () => {
+		expect(
+			parsePseudoTagToolInvocations(
+				[
+					"<NOTES_CREATE>",
+					"```json",
+					'{"title":"First"}',
+					"```",
+					"</NOTES_CREATE>",
+					'<NOTES_CREATE>{"title":"Second"}</NOTES_CREATE>',
+				].join("\n"),
+			),
+		).toEqual([
+			{ name: "NOTES_CREATE", params: { title: "First" } },
+			{ name: "NOTES_CREATE", params: { title: "Second" } },
+		]);
+	});
 });
