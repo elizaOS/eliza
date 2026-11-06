@@ -5,6 +5,12 @@ import {
   type UUID,
 } from "@elizaos/core";
 import { describe, expect, it } from "vitest";
+import { viewNavigationField } from "../../../../../packages/agent/src/runtime/view-navigation.ts";
+import { calendarReadBindingField } from "../../../../plugin-calendar/src/read-binding.ts";
+import { createNetworkActionFieldEvaluator } from "../../../../plugin-network/src/routing/structured-field.ts";
+import type { NetworkStore } from "../../../../plugin-network/src/types.ts";
+import { notesRequestEffectField } from "../../../../plugin-notes/src/request-effect.ts";
+import { threadOpsFieldEvaluator } from "../../../../plugin-personal-assistant/src/lifeops/work-threads/field-evaluator-thread-ops.ts";
 import { createStage1DirectReplyStreamGate } from "../../services/message/stage1-reply-stream.js";
 import {
   makeMessage,
@@ -31,39 +37,24 @@ type OwnerRoutingField = ResponseHandlerFieldEvaluator & {
   noEffect: unknown;
 };
 
-const isEmptyArray = (value: unknown) =>
-  Array.isArray(value) && value.length === 0;
 const ownerOnly: ResponseHandlerFieldEvaluator["shouldRun"] = ({
   senderRole,
 }) => senderRole === "OWNER";
 
 /**
- * Fakes with the name, priority, owner gate and `directReplyValue` of the
- * plugin routing fields active on an owner's phone turn:
- * plugin-personal-assistant threadOps, plugin-network networkAction,
- * plugin-calendar calendarReadBindings, plugin-notes notesRequestEffect and
- * the agent's visualContinuation (view navigation).
+ * The real plugin routing fields of an owner turn: their name, priority,
+ * schema, `directReplyValue`, parse and handle are the shipped ones. Only
+ * activation is replaced by an owner check, and the prompt context is
+ * dropped: each plugin's own activation needs its stores, actions and
+ * client, and the gate reads only the fields a call activates.
  */
 const OWNER_ROUTING_FIELDS: readonly OwnerRoutingField[] = [
+  { field: threadOpsFieldEvaluator, noEffect: [] },
   {
-    name: "threadOps",
-    description: "Thread operations.",
-    priority: 19,
-    schema: { type: "array", items: { type: "object" } },
-    shouldRun: ownerOnly,
-    directReplyValue: isEmptyArray,
-    noEffect: [],
-  },
-  {
-    name: "networkAction",
-    description: "Network availability change.",
-    priority: 19,
-    schema: { type: "object" },
-    shouldRun: ownerOnly,
-    directReplyValue: (value) =>
-      typeof value === "object" &&
-      value !== null &&
-      (value as { action?: unknown }).action === "NONE",
+    field: createNetworkActionFieldEvaluator({
+      store: {} as NetworkStore,
+      authority: { memberId: "member-1", timeZone: "UTC" },
+    }),
     noEffect: {
       action: "NONE",
       state: null,
@@ -72,45 +63,21 @@ const OWNER_ROUTING_FIELDS: readonly OwnerRoutingField[] = [
       evidence: "",
     },
   },
+  { field: calendarReadBindingField, noEffect: [] },
   {
-    name: "calendarReadBindings",
-    description: "Calendar reads.",
-    priority: 19.25,
-    schema: { type: "array", items: { type: "object" } },
-    shouldRun: ownerOnly,
-    directReplyValue: isEmptyArray,
-    noEffect: [],
-  },
-  {
-    name: "notesRequestEffect",
-    description: "Notes effects.",
-    priority: 19.5,
-    schema: { type: "object" },
-    shouldRun: ownerOnly,
-    directReplyValue: (value) =>
-      value === "unresolved" ||
-      (typeof value === "object" &&
-        value !== null &&
-        (value as { classification?: unknown }).classification ===
-          "unresolved" &&
-        isEmptyArray((value as { operations?: unknown }).operations)),
+    field: notesRequestEffectField,
     noEffect: { classification: "unresolved", operations: [] },
   },
   {
-    name: "visualContinuation",
-    description: "View navigation.",
-    priority: 19.75,
-    schema: { type: "object" },
-    shouldRun: ownerOnly,
-    directReplyValue: (value) =>
-      typeof value === "object" &&
-      value !== null &&
-      ["none", "forbidden", "optional"].includes(
-        String((value as { disposition?: unknown }).disposition),
-      ),
+    field: viewNavigationField,
     noEffect: { disposition: "none", viewId: "", reason: "" },
   },
-];
+].map(({ field, noEffect }) => ({
+  ...(field as ResponseHandlerFieldEvaluator),
+  shouldRun: ownerOnly,
+  getContext: undefined,
+  noEffect,
+}));
 
 async function stage1StreamCall(
   options: {
@@ -198,7 +165,7 @@ describe("Stage 1 reply stream gate", () => {
       const { contextRequests: _read, ...withoutReads } = direct;
       expect(gate?.(withoutReads)).toBe(false);
     }
-    expect(gate?.(undefined)).toBe(false);
+    expect(gate?.(null)).toBe(false);
   });
 
   it("holds when the call's schema includes a field that could reroute or rewrite the reply after it streams", () => {
