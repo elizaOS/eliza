@@ -3,8 +3,13 @@ import { execFileSync } from "node:child_process";
 import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
+import { DatabaseSync } from "node:sqlite";
 import test from "node:test";
-import { createTaskGateway } from "@elizaos/host/native-host";
+import {
+  createTaskGateway,
+  initialOwnerFence,
+  ownerFenceStep,
+} from "@elizaos/host/native-host";
 import { buildTaskRuntime as build } from "../../scripts/build-consumer-task-runtime.mjs";
 
 const sourceRoot = resolve(import.meta.dirname, "../../../..");
@@ -880,4 +885,342 @@ test("a host commit grant reaches the browser only for its exact action, and its
   const foreign = await f.click("foreign", { expectedSelector: "#ordinary" });
   assert.equal(foreign.operations.at(-1).status, "unknown");
   assert.equal(foreign.status, "blocked");
+});
+
+const grant = (id) => ({
+  id,
+  goalRef: "bill",
+  authorization: {
+    decisionId: "grant",
+    policyRevision: "policy",
+    state: "active",
+    decidedAt: new Date().toISOString(),
+    revokedAt: null,
+  },
+  allowedCapabilities: ["fill"],
+  allowedOrigins: ["https://example.org"],
+});
+const observation = () => ({
+  id: `view-${Date.now()}`,
+  pageId: "page",
+  origin: "https://example.org",
+  version: Date.now(),
+  inputRevision: 0,
+  observedAt: Date.now(),
+});
+/** A fill whose reply is lost, so its outcome is unknown. */
+const lostReplyActuator = {
+  capabilities: ["fill"],
+  observe: async () => observation(),
+  execute: async () => {
+    throw new Error("reply lost");
+  },
+  reconcile: async () => ({ status: "unknown" }),
+};
+async function fillWithLostReply(runtime, id) {
+  let task = runtime.get(id);
+  task = await runtime.observe(id, task.revision);
+  return runtime.execute(id, task.revision, {
+    id: "fill-1",
+    taskId: id,
+    epoch: task.epoch,
+    observationId: task.observation.id,
+    observationVersion: task.observation.version,
+    inputRevision: 0,
+    targetRef: "field",
+    capability: "fill",
+    authorizationId: "grant",
+    expiresAt: Date.now() + 60000,
+  });
+}
+const send = (gateway, method, path, value) =>
+  gateway.handle(
+    new Request(`http://localhost${path}`, {
+      method,
+      headers: { "Content-Type": "application/json" },
+      ...(value === undefined ? {} : { body: JSON.stringify(value) }),
+    }),
+  );
+
+test("the owner fence asks to confirm a read that would end the live owner's tasks", () => {
+  const live = ownerFenceStep(initialOwnerFence, {
+    type: "read",
+    sequence: 1,
+    startedEpoch: 0,
+    account: "a",
+    confirming: false,
+  });
+  assert.deepEqual(live, {
+    fence: { epoch: 0, owner: "a", settled: 1, closed: false },
+    decision: "accepted",
+    revoke: false,
+  });
+  const read = (account, confirming, sequence = 2) =>
+    ownerFenceStep(live.fence, {
+      type: "read",
+      sequence,
+      startedEpoch: 0,
+      account,
+      confirming,
+    });
+  // One failed or changed read never revokes on its own.
+  for (const account of [null, "b"])
+    assert.deepEqual(read(account, false), {
+      fence: live.fence,
+      decision: "confirm",
+      revoke: false,
+    });
+  // A confirming read that names the live owner keeps the task.
+  assert.deepEqual(read("a", true).revoke, false);
+  assert.deepEqual(read(null, true), {
+    fence: { epoch: 1, owner: null, settled: 2, closed: false },
+    decision: "signed-out",
+    revoke: true,
+  });
+  assert.deepEqual(read("b", true), {
+    fence: { epoch: 1, owner: "b", settled: 2, closed: false },
+    decision: "accepted",
+    revoke: true,
+  });
+  // A late read, or one from an older epoch, changes nothing.
+  const later = read("b", true, 3).fence;
+  for (const event of [
+    { sequence: 2, startedEpoch: 1, account: "a" },
+    { sequence: 4, startedEpoch: 0, account: "b" },
+  ])
+    assert.equal(
+      ownerFenceStep(later, { type: "read", confirming: true, ...event })
+        .decision,
+      "superseded",
+    );
+  assert.deepEqual(ownerFenceStep(later, { type: "close" }), {
+    fence: { epoch: 2, owner: null, settled: 3, closed: true },
+    decision: "signed-out",
+    revoke: true,
+  });
+});
+
+test("one failed credential read does not revoke the signed-in owner's task", async (t) => {
+  const directory = await mkdtemp(join(tmpdir(), "eliza-task-transient-"));
+  const bundlePath = join(directory, "task-runtime.mjs");
+  buildTaskRuntime(bundlePath);
+  let failNext = false;
+  const gateway = await createTaskGateway({
+    bundlePath,
+    databasePath: join(directory, "journal.sqlite"),
+    credentialGate: async () => {
+      if (!failNext) return "account-a";
+      failNext = false;
+      // A credential write in progress answers 409 for one read.
+      throw Object.assign(new Error("credential changing"), { status: 409 });
+    },
+    actuator: lostReplyActuator,
+    authorizeGoal: async () => grant("task-a"),
+  });
+  t.after(async () => {
+    await gateway.close();
+    await rm(directory, { recursive: true, force: true });
+  });
+  assert.equal(
+    (await send(gateway, "POST", "/tasks", { goalRef: "bill" })).status,
+    201,
+  );
+  failNext = true;
+  const response = await send(gateway, "GET", "/tasks/current");
+  assert.equal(response.status, 200);
+  assert.equal((await response.json()).task.status, "active");
+  const runtime = await gateway.forCurrentOwner();
+  assert.equal(runtime.get("task-a").authorization.state, "active");
+});
+
+test("a revoke reaches every account's task when one runtime fails", async (t) => {
+  const directory = await mkdtemp(join(tmpdir(), "eliza-task-revoke-all-"));
+  const bundlePath = join(directory, "task-runtime.mjs");
+  buildTaskRuntime(bundlePath);
+  let account = "account-a";
+  const gateway = await createTaskGateway({
+    bundlePath,
+    databasePath: join(directory, "journal.sqlite"),
+    credentialGate: async () => account,
+    actuator: lostReplyActuator,
+  });
+  t.after(async () => {
+    await gateway.close().catch(() => undefined);
+    await rm(directory, { recursive: true, force: true });
+  });
+  const a = await gateway.forCurrentOwner();
+  account = "account-b";
+  const b = await gateway.forCurrentOwner();
+  b.create(grant("task-b"));
+  // A runtime whose storage failed cannot even read its current task.
+  a.current = () => {
+    throw new Error("storage failed");
+  };
+  await assert.rejects(async () => gateway.revoke(), /storage failed/);
+  assert.equal(b.get("task-b").authorization.state, "revoked");
+  b.control("task-b", b.get("task-b").revision, "cancel");
+  account = "account-b";
+  const c = await gateway.forCurrentOwner();
+  c.create(grant("task-c"));
+  await assert.rejects(async () => gateway.close(), /storage failed/);
+  assert.equal(c.get("task-c").authorization.state, "revoked");
+});
+
+/**
+ * Conformance of the owner fence: one account change at the k-th credential
+ * read of a request, for every route and every k the request reaches.
+ * - "switch": from read k on the gate names account B.
+ * - "signed-out": from read k on the gate fails.
+ * - "transient": only read k fails, as during a credential write.
+ */
+test("an account change at any credential read of a request is fenced", async (t) => {
+  const directory = await mkdtemp(join(tmpdir(), "eliza-task-owner-flip-"));
+  const bundlePath = join(directory, "task-runtime.mjs");
+  buildTaskRuntime(bundlePath);
+  t.after(() => rm(directory, { recursive: true, force: true }));
+  const routes = [
+    ["active", "GET", "/tasks/current"],
+    ["active", "GET", "/tasks/task-a"],
+    ["active", "GET", "/tasks/task-a/events"],
+    ["active", "GET", "/tasks/note"],
+    ["active", "POST", "/tasks/note", {}],
+    ["empty", "POST", "/tasks", { goalRef: "bill" }],
+    // A stop may be saved before a later read sees the change; the change
+    // revokes the task as well, so either way it does not act again.
+    ["active", "POST", "/tasks/task-a/pause", "revision", "stop"],
+    ["active", "POST", "/tasks/current/pause", {}, "stop"],
+    ["active", "POST", "/tasks/task-a/cancel", "revision", "stop"],
+  ];
+  let run = 0;
+  async function attempt([setup, method, path, body], flip) {
+    let reads = 0;
+    let flipAt = Number.POSITIVE_INFINITY;
+    const gate = async () => {
+      reads++;
+      if (
+        flip &&
+        reads >= flipAt &&
+        (flip.variant !== "transient" || reads === flipAt)
+      ) {
+        if (flip.variant === "switch") return "account-b";
+        throw Object.assign(new Error("credential gate failed"), {
+          status: 409,
+        });
+      }
+      return "account-a";
+    };
+    const gateway = await createTaskGateway({
+      bundlePath,
+      databasePath: join(directory, `journal-${++run}.sqlite`),
+      credentialGate: gate,
+      actuator: lostReplyActuator,
+      authorizeGoal: async () => grant("task-a"),
+      extensionFactory: ({ db }) => {
+        db.exec("CREATE TABLE IF NOT EXISTS notes (owner TEXT NOT NULL)");
+        return async (request, { owner, authenticate, commit }) => {
+          if (new URL(request.url).pathname !== "/tasks/note") return;
+          await authenticate();
+          if (request.method === "POST")
+            await commit(() =>
+              db
+                .prepare("INSERT INTO notes (owner) VALUES (?)")
+                .run(owner.actorId),
+            );
+          return Response.json({
+            notes: db
+              .prepare("SELECT count(*) AS n FROM notes WHERE owner = ?")
+              .get(owner.actorId).n,
+          });
+        };
+      },
+    });
+    try {
+      const runtime = await gateway.forCurrentOwner();
+      if (setup !== "empty") runtime.create(grant("task-a"));
+      if (setup === "unknown") {
+        await fillWithLostReply(runtime, "task-a");
+        await gateway.revoke();
+        await gateway.forCurrentOwner();
+      }
+      const db = new DatabaseSync(join(directory, `journal-${run}.sqlite`));
+      // Rows saved for account A: notes, tasks and acknowledgements.
+      const scopeOfA = () =>
+        JSON.stringify(
+          [
+            "SELECT count(*) AS n FROM notes WHERE owner = 'account-a'",
+            ...[
+              "interactive_task_journal_v1",
+              "interactive_task_unknown_acknowledgements_v1",
+            ].map(
+              (table) =>
+                `SELECT count(*) AS n FROM ${table} WHERE owner_key LIKE '%"account-a"%'`,
+            ),
+          ].map((sql) => db.prepare(sql).get().n),
+        );
+      const before = scopeOfA();
+      const task =
+        runtime.current() ??
+        (setup === "unknown" ? runtime.get("task-a") : null);
+      const input =
+        body === "revision" ? { expectedRevision: task.revision } : body;
+      flipAt = reads + (flip?.k ?? Number.POSITIVE_INFINITY);
+      const start = reads;
+      const response = await send(gateway, method, path, input);
+      const result = {
+        status: response.status,
+        code: response.ok ? undefined : (await response.json()).code,
+        reads: reads - start,
+        wroteForA: scopeOfA() !== before,
+        authorization: task && runtime.get("task-a").authorization.state,
+        ended: task && runtime.get("task-a").status === "cancelled",
+      };
+      db.close();
+      return result;
+    } finally {
+      await gateway.close();
+    }
+  }
+  let cases = 0;
+  const savedThenChanged = new Set();
+  for (const route of routes) {
+    const [setup, method, path, , stop] = route;
+    const baseline = await attempt(route);
+    assert.ok(
+      baseline.status < 300,
+      `${method} ${path} works: ${baseline.status} ${baseline.code}`,
+    );
+    for (const variant of ["switch", "signed-out", "transient"])
+      for (let k = 1; k <= baseline.reads; k++) {
+        cases++;
+        const name = `${variant} at read ${k} of ${method} ${path}`;
+        const result = await attempt(route, { variant, k });
+        if (variant === "transient") {
+          // NoStaleRevoke: one failed read changes nothing.
+          assert.equal(result.status, baseline.status, name);
+          assert.equal(result.authorization, baseline.authorization, name);
+          continue;
+        }
+        // ResponseFenced: no success once the account changed mid-request;
+        // only a switch at the very first read makes the whole request B's.
+        if (result.status < 300)
+          assert.ok(
+            variant === "switch" && k === 1,
+            `${name}: ${result.status}`,
+          );
+        // A 401 means nothing was saved for A; a save is answered 409.
+        if (result.status === 401 && !stop)
+          assert.equal(result.wroteForA, false, name);
+        if (result.wroteForA && !stop)
+          assert.equal(result.code, "TASK_ACCOUNT_CHANGED", name);
+        if (result.code === "TASK_ACCOUNT_CHANGED") savedThenChanged.add(path);
+        if (result.status < 300) assert.equal(result.wroteForA, false, name);
+        // The change revoked A's task, unless the request had already ended it.
+        if (setup === "active")
+          assert.ok(result.authorization === "revoked" || result.ended, name);
+      }
+  }
+  t.diagnostic(`${cases} flip cases`);
+  assert.ok(cases > 60);
+  // The saving route reaches the case where the save landed before the change.
+  assert.deepEqual([...savedThenChanged], ["/tasks/note"]);
 });
