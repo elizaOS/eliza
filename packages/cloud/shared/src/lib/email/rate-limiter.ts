@@ -5,42 +5,36 @@
 import { cache } from "../cache/client";
 import { logger } from "../utils/logger";
 
-/**
- * Checks if a low credits email can be sent (not sent in last 24 hours).
- *
- * @param organizationId - Organization ID.
- * @returns True if email can be sent.
- */
-export async function canSendLowCreditsEmail(organizationId: string): Promise<boolean> {
-  const cacheKey = `low-credits-email-sent:${organizationId}`;
+const LOW_CREDITS_EMAIL_COOLDOWN_MS = 24 * 60 * 60 * 1000;
 
-  const lastSent = await cache.get<{ sentAt: string }>(cacheKey);
-
-  if (lastSent) {
-    logger.info("[EmailRateLimiter] Low credits email recently sent", {
-      organizationId,
-      lastSent: lastSent.sentAt,
-    });
-    return false;
-  }
-
-  return true;
+function lowCreditsEmailKey(organizationId: string): string {
+  return `low-credits-email-sent:${organizationId}`;
 }
 
 /**
- * Marks that a low credits email was sent (24 hour cooldown).
+ * Claims the organization's one low-credits email for the next 24 hours.
  *
- * @param organizationId - Organization ID.
+ * Every debit under the threshold asks, often concurrently, so the claim is
+ * atomic (SET NX). With the cache unavailable no claim can be made and the
+ * email is skipped: a missed warning is better than one email per debit.
  */
-export async function markLowCreditsEmailSent(organizationId: string): Promise<void> {
-  const cacheKey = `low-credits-email-sent:${organizationId}`;
-  const cooldownHours = 24;
-  const cooldownSeconds = cooldownHours * 60 * 60;
+export async function claimLowCreditsEmail(organizationId: string): Promise<boolean> {
+  try {
+    return await cache.setIfNotExists(
+      lowCreditsEmailKey(organizationId),
+      { sentAt: new Date().toISOString() },
+      LOW_CREDITS_EMAIL_COOLDOWN_MS,
+    );
+  } catch (error) {
+    logger.warn("[EmailRateLimiter] Low credits email skipped: cache unavailable", {
+      organizationId,
+      error: error instanceof Error ? error.message : String(error),
+    });
+    return false;
+  }
+}
 
-  await cache.set(cacheKey, { sentAt: new Date().toISOString() }, cooldownSeconds);
-
-  logger.info("[EmailRateLimiter] Marked low credits email sent", {
-    organizationId,
-    cooldownHours,
-  });
+/** Releases a claim whose email was not sent, so a later debit can retry. */
+export async function releaseLowCreditsEmailClaim(organizationId: string): Promise<void> {
+  await cache.del(lowCreditsEmailKey(organizationId));
 }

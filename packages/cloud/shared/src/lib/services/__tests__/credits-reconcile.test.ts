@@ -1758,3 +1758,59 @@ describe("CreditsService.collectAffiliateInferenceFallback fenced settlement (#3
 test("pglite schema applied — never a silent skip", () => {
   expect(pgliteReady).toBe(true);
 });
+
+describe("low-credits email", () => {
+  async function concurrentLowBalanceDebits(
+    claim: (key: string) => Promise<boolean>,
+    outage = false,
+  ): Promise<number> {
+    const { cache } = await import("../../cache/client");
+    const { emailService } = await import("../email");
+    const { organizationsService } = await import("../organizations");
+    const previousThreshold = process.env.LOW_CREDITS_THRESHOLD;
+    process.env.LOW_CREDITS_THRESHOLD = "5";
+    const orgRead = spyOn(organizationsService, "getById").mockResolvedValue({
+      id: ORG_ID,
+      name: "Low balance org",
+      billing_email: "billing@example.test",
+    } as never);
+    const send = spyOn(emailService, "sendLowCreditsEmail").mockResolvedValue(true);
+    const atomicSet = spyOn(cache, "setIfNotExists").mockImplementation(((key: string) =>
+      claim(key)) as never);
+    // An unavailable cache reads nothing and drops writes.
+    const read = outage ? spyOn(cache, "get").mockResolvedValue(null as never) : undefined;
+    const write = outage ? spyOn(cache, "set").mockResolvedValue(undefined as never) : undefined;
+    try {
+      // Five debits under the threshold land at once (streaming inference).
+      await Promise.all(
+        Array.from({ length: 5 }, () => creditsService.notifyBalanceDecrease(ORG_ID, 2)),
+      );
+      return send.mock.calls.length;
+    } finally {
+      orgRead.mockRestore();
+      send.mockRestore();
+      atomicSet.mockRestore();
+      read?.mockRestore();
+      write?.mockRestore();
+      if (previousThreshold === undefined) delete process.env.LOW_CREDITS_THRESHOLD;
+      else process.env.LOW_CREDITS_THRESHOLD = previousThreshold;
+    }
+  }
+
+  test("is sent once for concurrent debits under the threshold", async () => {
+    const claimed = new Set<string>();
+    const sends = await concurrentLowBalanceDebits(async (key) => {
+      if (claimed.has(key)) return false;
+      claimed.add(key);
+      return true;
+    });
+    expect(sends).toBe(1);
+  });
+
+  test("is not sent on every debit while the cache is unavailable", async () => {
+    const sends = await concurrentLowBalanceDebits(async () => {
+      throw new Error("Cache unavailable for atomic set-if-not-exists");
+    }, true);
+    expect(sends).toBe(0);
+  });
+});
