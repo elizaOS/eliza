@@ -10,6 +10,7 @@ import {
   writeFileSync,
 } from "node:fs";
 import { isDeepStrictEqual } from "node:util";
+import { billOwnerKey } from "./bill-owner-key.mjs";
 import { BillHostError } from "./errors.mjs";
 
 /** The identity line codec: each record is its JSON text. */
@@ -148,13 +149,7 @@ export function createBillOutcomeStore(
   const pending = new Map();
   const pendingAttempts = new Map();
   const journal = journalPath ? outcomeJournal(journalPath, codec) : null;
-  const key = (owner) =>
-    JSON.stringify([
-      owner.agentId,
-      owner.actorId,
-      owner.connector.source,
-      owner.connector.accountId,
-    ]);
+  const key = billOwnerKey;
   // The owner a stored key names, to ask the task store whether its task
   // still exists.
   const ownerOf = (ownerKey) => {
@@ -415,21 +410,35 @@ export function createBillOutcomeStore(
       validate(JSON.parse(row.document));
       return { taskId: row.task_id };
     },
-    /** This owner's saved outcomes, newest first: `{ taskId, observedAt, decision }`. */
-    listForOwner(owner) {
-      return db
+    /**
+     * This owner's saved outcomes, newest first: `{ taskId, observedAt, decision }`.
+     * `limit` reads at most that many of the newest rows. A record that fails
+     * validation stops the list, unless `skipInvalid` leaves it out.
+     */
+    listForOwner(owner, { limit, skipInvalid = false } = {}) {
+      if (limit !== undefined && (!Number.isSafeInteger(limit) || limit < 1))
+        throw new BillHostError("Invalid outcome list limit");
+      const rows = db
         .prepare(
-          "SELECT task_id, document FROM bill_outcomes_v1 WHERE owner_key=? ORDER BY rowid DESC",
+          `SELECT task_id, document FROM bill_outcomes_v1 WHERE owner_key=? ORDER BY rowid DESC${limit === undefined ? "" : " LIMIT ?"}`,
         )
-        .all(key(owner))
-        .map((row) => {
-          const record = validate(JSON.parse(row.document));
-          return {
-            taskId: row.task_id,
-            observedAt: record.observedAt,
-            decision: structuredClone(record.decision),
-          };
+        .all(key(owner), ...(limit === undefined ? [] : [limit]));
+      const listed = [];
+      for (const row of rows) {
+        let record;
+        try {
+          record = validate(JSON.parse(row.document));
+        } catch (error) {
+          if (skipInvalid) continue;
+          throw error;
+        }
+        listed.push({
+          taskId: row.task_id,
+          observedAt: record.observedAt,
+          decision: structuredClone(record.decision),
         });
+      }
+      return listed;
     },
     forTask(runtime, taskId) {
       const owner = runtime.owner,
