@@ -1,7 +1,7 @@
 /**
- * A person's Stop against the guided website workflow, over the real task
- * runtime, SQLite store and HTTP pause route. The browser is a stand-in that
- * counts presses; it is not Chromium.
+ * A person's Stop and her yes against the guided website workflow, over the
+ * real task runtime, SQLite store and HTTP pause route. The browser is a
+ * stand-in that counts presses; it is not Chromium.
  */
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -58,8 +58,22 @@ afterEach(() => {
   for (const cleanup of cleanups.splice(0)) cleanup();
 });
 
+type Authorize = (
+  input: unknown,
+  context: { phase: "plan" | "dispatch"; authorize?: () => unknown },
+) => unknown;
+/** The host's consent policy: it asks first; at dispatch it authorizes. */
+const authorizeAtDispatch: Authorize = (_input, context) =>
+  context.phase === "dispatch" ? context.authorize?.() : true;
+
 /** One task on a page with one button the planner always asks to press. */
-function guide() {
+function guide({
+  ask = false,
+  authorizeAction = authorizeAtDispatch,
+}: {
+  ask?: boolean;
+  authorizeAction?: Authorize;
+} = {}) {
   const directory = mkdtempSync(join(tmpdir(), "eliza-guide-stop-"));
   const db = new DatabaseSync(join(directory, "host.sqlite"));
   cleanups.push(() => {
@@ -170,7 +184,12 @@ function guide() {
       step: "Show the news",
       message: "Showing the news",
     }),
-    authorizeAction: () => true,
+    authorizeAction,
+    // The host's question before this step, when it needs her yes.
+    checkStep: async () =>
+      ask
+        ? { key: "ask:show-news", reason: "money", message: "Is that OK?" }
+        : null,
   });
   return {
     runtime,
@@ -289,5 +308,65 @@ describe("a Stop against a guided website step", () => {
     expect(
       g.runtime.events(g.taskId).events.map((event) => event.kind),
     ).not.toContain("pause");
+  });
+});
+
+describe("a yes to a guided step", () => {
+  it("is used up by one press: the same step on the same page asks again", async () => {
+    const g = guide({ ask: true });
+    expect(await g.workflow.refresh()).toMatchObject({
+      kind: "person-check",
+      key: "ask:show-news",
+    });
+    g.workflow.acknowledge("ask:show-news");
+    const offer = await g.workflow.refresh();
+    expect(offer.kind).toBe("agent-action");
+    const after = await g.workflow.executeAction(offer.offerKey);
+    expect(g.browser.clicks).toBe(1);
+    // The page still shows the button: her one yes gave one press.
+    expect(after).toMatchObject({ kind: "person-check", key: "ask:show-news" });
+    expect(g.browser.clicks).toBe(1);
+  });
+
+  it("does not outlive her Stop", async () => {
+    const g = guide({ ask: true });
+    await g.workflow.refresh();
+    g.workflow.acknowledge("ask:show-news");
+    expect((await g.workflow.refresh()).kind).toBe("agent-action");
+    await g.stop();
+    const paused = g.runtime.get(g.taskId);
+    await g.runtime.observe(g.taskId, paused.revision, true);
+    expect(await g.workflow.refresh()).toMatchObject({
+      kind: "person-check",
+      key: "ask:show-news",
+    });
+    expect(g.browser.clicks).toBe(0);
+  });
+
+  it("two presses of the same Yes give one effect", async () => {
+    const g = guide();
+    const offer = await g.workflow.refresh();
+    const results = await Promise.allSettled([
+      g.workflow.executeAction(offer.offerKey),
+      g.workflow.executeAction(offer.offerKey),
+    ]);
+    expect(results.some((result) => result.status === "fulfilled")).toBe(true);
+    expect(g.browser.clicks).toBe(1);
+    expect(
+      g.runtime.get(g.taskId).operations.map((operation) => operation.status),
+    ).toEqual(["succeeded"]);
+  });
+
+  it("a planning answer never authorizes the press", async () => {
+    // A host that answers true in both phases, as before dispatch had its own.
+    const g = guide({ authorizeAction: () => true });
+    const offer = await g.workflow.refresh();
+    expect(offer.kind).toBe("agent-action");
+    expect(await g.workflow.executeAction(offer.offerKey)).toMatchObject({
+      kind: "blocked",
+      reasonCode: "no-target",
+    });
+    expect(g.browser.clicks).toBe(0);
+    expect(g.runtime.get(g.taskId).operations).toEqual([]);
   });
 });
