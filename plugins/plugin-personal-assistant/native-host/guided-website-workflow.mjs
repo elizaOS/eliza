@@ -535,8 +535,9 @@ export class GuidedWebsiteWorkflow {
    * dispatch of that step in the current epoch: the dispatch uses it up,
    * and a Stop, a resume or any other new epoch clears it. Her answer about
    * forms sent on the website holds for the task. A host that passes the
-   * `epoch` the question was asked in has a late or repeated yes to an older
-   * question ignored, so it can never arm the step again.
+   * `epoch` the question was asked in (the `epoch` of the `person-check`
+   * result) has a late or repeated yes to an older question ignored, so it
+   * can never arm the step again.
    */
   acknowledge(key, { epoch } = {}) {
     const current = this.runtime.get(this.taskId).epoch;
@@ -835,6 +836,7 @@ export class GuidedWebsiteWorkflow {
           key,
           reason: "manual-activity",
           message: this.words.manualActivity,
+          epoch: task.epoch,
         };
       }
     }
@@ -936,6 +938,7 @@ export class GuidedWebsiteWorkflow {
         key: check.key,
         reason: check.reason ?? "step",
         message: check.message,
+        epoch: task.epoch,
       };
     }
     const instruction =
