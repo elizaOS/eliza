@@ -163,9 +163,10 @@ export interface NativeTaskBinding extends NativeTaskContext {
 export const COMMIT_GRANT_MAX_MS = 60000;
 /**
  * The longest a fence waits for a cancel-reply peer to confirm that a
- * cancelled request stopped, before it ends the connection instead. It stays
- * well under the 10 s a renderer gives a Pause, so a Pause that the host
- * saved is never shown as failed while the fence still waits.
+ * cancelled request stopped, before it ends the connection instead, which is
+ * then the fence. It stays well under the 10 s a renderer gives a Pause, and
+ * the fence then resolves, so a Pause that the host saved is never shown as
+ * failed.
  */
 export const CANCEL_CONFIRM_MAX_MS = 5000;
 /**
@@ -484,11 +485,12 @@ export class NativeSocketBrowserTarget implements BrowserTarget {
   /**
    * Resolves once no request this target gave up on can still take effect:
    * the peer answered each one after it stopped, or the connection ended.
-   * Rejects when the peer has not answered within the cancel-confirm
-   * deadline (`CANCEL_CONFIRM_MAX_MS`, or the reply deadline when shorter), and then
-   * ends the connection, which stops every request it carried, so a later
-   * call resolves once the close lands. A peer without "cancel-reply"
-   * answers nothing, so this resolves at once.
+   * When the peer has not answered within the cancel-confirm deadline
+   * (`CANCEL_CONFIRM_MAX_MS`, or the reply deadline when shorter), this ends
+   * the connection, which stops every request it carried, and resolves: the
+   * teardown is the fence. Ending the connection also fails every other
+   * request still pending on it, so their callers see an uncertain outcome.
+   * A peer without "cancel-reply" answers nothing, so this resolves at once.
    */
   async settled(): Promise<void> {
     const entries = [...this.unsettled.values()];
@@ -497,17 +499,15 @@ export class NativeSocketBrowserTarget implements BrowserTarget {
     try {
       await Promise.race([
         Promise.all(entries.map((entry) => entry.stopped)),
-        new Promise<never>((_resolve, reject) => {
+        new Promise<void>((resolve) => {
           timer = setTimeout(
             () => {
+              // The peer stops every request of a connection that ended, and
+              // the only connection carries every unsettled request.
               this.socket?.destroy();
-              reject(
-                new BrowserDispatchFailure(
-                  "UNCERTAIN_OUTCOME",
-                  "Chromium did not confirm that a cancelled request stopped.",
-                  { targetId: this.id, reason: "cancel-unconfirmed" },
-                ),
-              );
+              for (const entry of this.unsettled.values()) entry.stop();
+              this.unsettled.clear();
+              resolve();
             },
             Math.max(
               0,

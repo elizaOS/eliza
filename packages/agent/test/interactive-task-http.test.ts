@@ -1,5 +1,6 @@
 /** Real HTTP + SQLite integration. The controlled actuator is not Chromium. */
 import { mkdtempSync, rmSync } from "node:fs";
+import { createConnection, type Socket } from "node:net";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { DatabaseSync } from "node:sqlite";
@@ -21,6 +22,14 @@ import {
 import { SqliteInteractiveTaskStore } from "../src/services/interactive-task-store.ts";
 import { SqliteMessageInteractionSessionStore } from "../src/services/sqlite-message-interaction-session-store.ts";
 import { listenTaskHttp } from "./fixtures/task-http-server.ts";
+
+// The real Chromium transport and task actuator, over a loopback peer.
+const { NativeSocketBrowserTarget } = await import(
+  "../../../plugins/plugin-browser/src/native-socket-target.ts"
+);
+const { NativeTaskActuator } = await import(
+  "../../../plugins/plugin-browser/src/task-actuator.ts"
+);
 
 const owner = {
   actorId: "actor",
@@ -1117,6 +1126,97 @@ describe("shared task lifecycle client", () => {
     } finally {
       await http.close();
       f.close();
+    }
+  });
+
+  it("answers a Pause and then a Cancel when Chromium never confirms a cancelled request", async () => {
+    const storage = setup();
+    const directory = mkdtempSync(join(tmpdir(), "eliza-task-cancel-reply-"));
+    const target = new NativeSocketBrowserTarget(() => {}, {
+      registrationMs: 1000,
+      heartbeatMs: 60000,
+      cancelConfirmMs: 200,
+    });
+    let peer: Socket | undefined;
+    const runtime = new InteractiveTaskRuntime({
+      owner,
+      store: storage.store,
+      actuator: Object.assign(
+        new NativeTaskActuator({
+          target,
+          getTask: (id: string) => runtime.get(id),
+        } as unknown as ConstructorParameters<typeof NativeTaskActuator>[0]),
+        { capabilities: [] },
+      ) as unknown as InteractiveTaskActuator,
+    });
+    const http = await listenTaskHttp(
+      createInteractiveTaskHandler({
+        runtime,
+        authenticate: async () => owner,
+        authorizeGoal: async (ref) => goal(ref),
+      }),
+    );
+    try {
+      await target.start({
+        ELIZA_BROWSER_NATIVE_SOCKET: join(directory, "browser.sock"),
+      });
+      peer = createConnection(join(directory, "browser.sock"));
+      const frames: Array<Record<string, unknown>> = [];
+      let buffer = Buffer.alloc(0);
+      peer.on("data", (chunk: Buffer) => {
+        buffer = Buffer.concat([buffer, chunk]);
+        while (
+          buffer.length >= 4 &&
+          buffer.length >= 4 + buffer.readUInt32LE(0)
+        ) {
+          const length = buffer.readUInt32LE(0);
+          frames.push(JSON.parse(buffer.subarray(4, length + 4).toString()));
+          buffer = buffer.subarray(length + 4);
+        }
+      });
+      const hello = Buffer.from(
+        JSON.stringify({
+          type: "hello",
+          protocol: 2,
+          extensionId: "pmldpcoefklbdbgmggcejkfoinmjfeio",
+          profileId: "cancel-reply-profile",
+          capabilities: ["list", "cancel", "cancel-reply"],
+          nonce: "hello",
+        }),
+      );
+      const prefix = Buffer.alloc(4);
+      prefix.writeUInt32LE(hello.length);
+      peer.write(Buffer.concat([prefix, hello]));
+      await vi.waitFor(() => expect(frames[0]?.type).toBe("hello-ack"));
+      runtime.create(goal("read-page"));
+      // A request is cancelled, and the peer never answers that it stopped.
+      const controller = new AbortController();
+      const running = target
+        .execute({ subaction: "list" }, { signal: controller.signal })
+        .catch((error: unknown) => error);
+      await vi.waitFor(() =>
+        expect(frames.some((frame) => frame.type === "command")).toBe(true),
+      );
+      controller.abort();
+      await running;
+      const paused = await http.call("/tasks/current/pause", {});
+      expect(paused.status).toBe(200);
+      expect(await paused.json()).toMatchObject({
+        task: { id: "task-1", status: "paused" },
+      });
+      // The fence ended the connection; the Cancel right after it answers.
+      expect(await target.available()).toBe(false);
+      const cancelled = await http.call("/tasks/task-1/cancel", {
+        expectedRevision: runtime.get("task-1").revision,
+      });
+      expect(cancelled.status).toBe(200);
+      expect(runtime.get("task-1").status).toBe("cancelled");
+    } finally {
+      peer?.destroy();
+      await target.stop();
+      await http.close();
+      storage.close();
+      rmSync(directory, { recursive: true, force: true });
     }
   });
 });
