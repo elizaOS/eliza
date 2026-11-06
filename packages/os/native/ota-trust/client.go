@@ -21,8 +21,11 @@ import (
 
 const maxBytes int64 = 1024 * 1024
 
-// errTrustCache marks a trust cache that cannot be read or synced. Retrying the
-// network cannot repair it, so discovery reports it apart from a fetch failure.
+// errTrustCache marks a trust cache whose contents are refused: an unsafe,
+// oversized or unparsable entry, or a corrupt or missing clock floor or root.
+// Retrying cannot repair it, so discovery reports it apart from a fetch
+// failure. An I/O error (a full disk, a failed fsync) is not one of these: it
+// may pass, and reports as an ordinary failure.
 var errTrustCache = errors.New("OTA trust cache unusable")
 
 func trustCacheError(err error) error {
@@ -58,7 +61,7 @@ func (f *boundedFetcher) DownloadFile(address string, limit int64, _ time.Durati
 		return nil, errors.New("TUF fetch budget exceeded")
 	}
 	if f.directory != "" {
-		if err := syncCache(f.directory); err != nil {
+		if err := syncCache(f.directory, false); err != nil {
 			return nil, err
 		}
 	}
@@ -122,7 +125,7 @@ func FetchDescriptorInterval(privateDirectory string, pinnedRoot []byte, metadat
 		return nil, e
 	}
 	// Refuse unsafe cached entries before the library reads any of them.
-	if e = syncCache(privateDirectory); e != nil {
+	if e = syncCache(privateDirectory, true); e != nil {
 		return nil, e
 	}
 	clockBytes, clockErr := os.ReadFile(filepath.Join(privateDirectory, ".clock"))
@@ -136,7 +139,7 @@ func FetchDescriptorInterval(privateDirectory string, pinnedRoot []byte, metadat
 		}
 		trustedLowerMillis = max(trustedLowerMillis, floor)
 	} else if !os.IsNotExist(clockErr) {
-		return nil, trustCacheError(clockErr)
+		return nil, clockErr
 	}
 	root := pinnedRoot
 	cached, e := os.ReadFile(filepath.Join(privateDirectory, "root.json"))
@@ -146,7 +149,7 @@ func FetchDescriptorInterval(privateDirectory string, pinnedRoot []byte, metadat
 		}
 		root = cached
 	} else if !os.IsNotExist(e) {
-		return nil, trustCacheError(e)
+		return nil, e
 	} else {
 		entries, _ := os.ReadDir(privateDirectory)
 		for _, entry := range entries {
@@ -187,7 +190,7 @@ func FetchDescriptorInterval(privateDirectory string, pinnedRoot []byte, metadat
 	// go-tuf atomically renames metadata but does not fsync it. Sync every file
 	// and the directory before returning even on refresh failure/root rotation.
 	defer func() {
-		if syncErr := syncCache(privateDirectory); syncErr != nil {
+		if syncErr := syncCache(privateDirectory, false); syncErr != nil {
 			result = nil
 			err = errors.Join(err, syncErr)
 		}
@@ -226,7 +229,7 @@ func FetchDescriptorInterval(privateDirectory string, pinnedRoot []byte, metadat
 func discardScratch(directory string) error {
 	entries, err := os.ReadDir(directory)
 	if err != nil {
-		return trustCacheError(err)
+		return err
 	}
 	for _, entry := range entries {
 		name := entry.Name()
@@ -237,24 +240,30 @@ func discardScratch(directory string) error {
 			continue
 		}
 		if err = os.Remove(filepath.Join(directory, name)); err != nil && !os.IsNotExist(err) {
-			return trustCacheError(err)
+			return err
 		}
 	}
 	return nil
 }
 
 // syncCache refuses unsafe or unparsable cache entries, then fsyncs every file
-// and the directory.
-func syncCache(directory string) error {
-	return trustCacheError(syncCacheEntries(directory))
-}
-func syncCacheEntries(directory string) error {
+// and the directory. Only the check before a session reads the cache reports a
+// refusal as errTrustCache (validate): during a session go-tuf is writing the
+// cache, and the next session's check decides whether what it left is usable.
+// I/O errors are never errTrustCache.
+func syncCache(directory string, validate bool) error {
+	refuse := func(err error) error {
+		if validate {
+			return trustCacheError(err)
+		}
+		return err
+	}
 	entries, err := os.ReadDir(directory)
 	if err != nil {
 		return err
 	}
 	if len(entries) > 256 {
-		return errors.New("TUF cache entry budget exceeded")
+		return refuse(errors.New("TUF cache entry budget exceeded"))
 	}
 	for _, entry := range entries {
 		info, err := entry.Info()
@@ -262,7 +271,7 @@ func syncCacheEntries(directory string) error {
 			return err
 		}
 		if !info.Mode().IsRegular() || info.Size() > maxBytes {
-			return errors.New("unsafe TUF cache entry")
+			return refuse(errors.New("unsafe TUF cache entry"))
 		}
 		if strings.HasSuffix(entry.Name(), ".json") {
 			data, readErr := os.ReadFile(filepath.Join(directory, entry.Name()))
@@ -270,7 +279,7 @@ func syncCacheEntries(directory string) error {
 				return readErr
 			}
 			if parseErr := checkJSON(data); parseErr != nil {
-				return parseErr
+				return refuse(parseErr)
 			}
 		}
 		file, err := os.Open(filepath.Join(directory, entry.Name()))
@@ -311,5 +320,5 @@ func persistClock(directory string, millis int64) error {
 	if err = os.Rename(name, filepath.Join(directory, ".clock")); err != nil {
 		return err
 	}
-	return syncCache(directory)
+	return syncCache(directory, false)
 }
