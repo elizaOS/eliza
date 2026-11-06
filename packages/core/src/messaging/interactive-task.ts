@@ -462,12 +462,14 @@ export function validateInteractiveTask(value: InteractiveTask): void {
 		reject("Blocked task is missing its unknown operation");
 	if (auth.state === "revoked" && ["active", "waiting"].includes(value.status))
 		reject("Revoked task cannot be active");
-	// The fence: a prepared or dispatched operation was planned against this
-	// epoch, this observation and this authorization, so a stale or tampered
-	// record is refused here and not only by the recheck at dispatch.
+	// The fence: a prepared operation was planned against this epoch, this
+	// observation and this authorization, so a stale or tampered record is
+	// refused here and not only by the recheck at dispatch. A dispatched
+	// operation is not fenced: its effect may already have happened, so the
+	// record must still load and recover to unknown for a readback, and a
+	// refusal here would also hold the owner's unfinished-task slot forever.
 	if (
-		(unresolved?.status === "prepared" ||
-			unresolved?.status === "dispatched") &&
+		unresolved?.status === "prepared" &&
 		!matchesTask(value, unresolved.proposal)
 	)
 		reject("Pending operation no longer matches its task");

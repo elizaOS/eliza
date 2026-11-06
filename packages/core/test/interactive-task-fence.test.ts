@@ -82,7 +82,9 @@ function invariant(doc: Doc): boolean {
 	return OPS.every((id) => {
 		const op = doc.ops[id];
 		if (op.epoch > doc.epoch) return false;
-		if (op.state !== "prepared" && op.state !== "dispatched") return true;
+		// Only a prepared operation is fenced; a dispatched one may already have
+		// had its effect, so it must load and recover to unknown.
+		if (op.state !== "prepared") return true;
 		return (
 			doc.obs !== 0 &&
 			op.epoch === doc.epoch &&
@@ -414,14 +416,14 @@ describe("interactive task fence at the storage boundary", () => {
 		// the fence check in validation, 7,746 of these documents validate.
 		expect({ documentCount, valid, accepted }).toEqual({
 			documentCount: 45_000,
-			valid: 7_114,
-			accepted: 43_676,
+			valid: 7_430,
+			accepted: 46_204,
 		});
 		// About 10 s under bun on an idle machine and 30 s at a load average of 30;
 		// the generous limit keeps a loaded CI host from failing it on time alone.
 	}, 180_000);
 
-	it("refuses a stored pending action planned against an older view", () => {
+	it("refuses a stored prepared action planned against an older view", () => {
 		const fresh: Doc = {
 			status: "waiting",
 			auth: "active",
@@ -433,31 +435,45 @@ describe("interactive task fence at the storage boundary", () => {
 			},
 		};
 		expect(accepts(concrete(fresh))).toBe(true);
-		for (const stale of [
-			{ epoch: 0, version: 2 },
-			{ epoch: 1, version: 1 },
-		]) {
-			const task = concrete({
-				...fresh,
-				ops: { ...fresh.ops, a: { ...fresh.ops.a, ...stale } },
-			});
-			expect(() => validateInteractiveTask(task)).toThrow(
-				"Pending operation no longer matches its task",
-			);
-		}
 		const prepared = concrete({
 			...fresh,
 			status: "active",
 			ops: { ...fresh.ops, a: { state: "prepared", epoch: 1, version: 2 } },
 		});
 		expect(accepts(prepared)).toBe(true);
+		for (const stale of [
+			{ epoch: 0, version: 2 },
+			{ epoch: 1, version: 1 },
+		]) {
+			const task = concrete({
+				...fresh,
+				status: "active",
+				ops: { ...fresh.ops, a: { state: "prepared", ...stale } },
+			});
+			expect(() => validateInteractiveTask(task)).toThrow(
+				"Pending operation no longer matches its task",
+			);
+			// A dispatched operation may already have had its effect, so the
+			// same stale record still loads and recovers to unknown.
+			const dispatched = concrete({
+				...fresh,
+				ops: { ...fresh.ops, a: { ...fresh.ops.a, ...stale } },
+			});
+			expect(accepts(dispatched)).toBe(true);
+			const { task: recovered } = transitionInteractiveTask(
+				dispatched,
+				{ owner, expectedRevision: 7, now: 1000 },
+				{ type: "recover" },
+			);
+			expect(recovered.operations[0].status).toBe("unknown");
+		}
 		const withoutView = structuredClone(prepared);
 		withoutView.observation = null;
 		expect(() => validateInteractiveTask(withoutView)).toThrow(
 			"Pending operation no longer matches its task",
 		);
-		// The domain above keeps these fields fixed, so each is checked here, on
-		// a prepared and on a dispatched operation.
+		// The domain above keeps these fields fixed, so each is checked here: a
+		// prepared operation is refused, a dispatched one still loads.
 		const tampered: [string, (task: InteractiveTask) => void][] = [
 			[
 				"observationId",
@@ -487,15 +503,16 @@ describe("interactive task fence at the storage boundary", () => {
 			],
 			["task capabilities", (task) => (task.allowedCapabilities = ["type"])],
 		];
-		for (const base of [prepared, concrete(fresh)])
-			for (const [field, tamper] of tampered) {
-				const task = structuredClone(base);
-				tamper(task);
-				expect(
-					() => validateInteractiveTask(task),
-					`${base.operations[0].status} ${field}`,
-				).toThrow("Pending operation no longer matches its task");
-			}
+		for (const [field, tamper] of tampered) {
+			const task = structuredClone(prepared);
+			tamper(task);
+			expect(() => validateInteractiveTask(task), field).toThrow(
+				"Pending operation no longer matches its task",
+			);
+			const dispatched = concrete(fresh);
+			tamper(dispatched);
+			expect(accepts(dispatched), `dispatched ${field}`).toBe(true);
+		}
 	});
 
 	it("keeps evidence only on an operation that ran", () => {
