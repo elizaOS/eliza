@@ -202,6 +202,14 @@ const ianaPattern =
 const legacyZoned =
   /\b(?:UTC|GMT|[ECMP](?:[DS])?T|AK[DS]T|HST|CET|CEST|BST|IST|JST|KST|MSK|(?:Africa|America|Antarctica|Arctic|Asia|Atlantic|Australia|Europe|Indian|Pacific|Etc|US|Canada)\/[A-Za-z_/-]+)\b|\btime\s*zone\s*:/i;
 const isoZoned = /\d{2}:\d{2}(?::\d{2})?(?:Z|[+-]\d{2}:?\d{2})\b/i;
+/**
+ * A printed start–end clock range, e.g. "18:00-20:00". Its dash separates two
+ * clocks; it is not a UTC offset. An ISO stamp keeps its offset because the time
+ * follows "T" or a printed date.
+ */
+const clockRange =
+  /(?<![T\d])(?<!\d{4}-\d{2}-\d{2} )\d{1,2}:\d{2}\s*[-–—]\s*\d{1,2}:\d{2}(?::\d{2})?\b/g;
+const hasClockRange = new RegExp(clockRange.source);
 /** Trailing zone written after a time on its line, e.g. "6 PM UTC+2", "18:30Z", "7 PM (America/New_York)". */
 const trailingZone =
   /\s*(\(?\s*(?:Z|(?:UTC|GMT)(?:\s*[+-]\s*\d{1,2}(?::?\d{2})?)?|[+-]\d{2}:?\d{2}|(?:Africa|America|Antarctica|Arctic|Asia|Atlantic|Australia|Europe|Indian|Pacific|Etc|US|Canada)\/[A-Za-z_]+(?:\/[A-Za-z_]+)?)\s*\)?)$/i;
@@ -209,8 +217,9 @@ type ZoneEvidence = { explicit: SourceZone[]; ambiguous: string[] };
 function zoneEvidence(text: string, lines: string[]): ZoneEvidence {
   const explicit: SourceZone[] = [],
     ambiguous: string[] = [];
-  for (const line of lines) {
-    const label = /^time\s*zone\s*:\s*(.+)$/i.exec(line);
+  for (const raw of lines) {
+    const line = raw.replace(clockRange, " ");
+    const label = /^time\s*zone\s*:\s*(.+)$/i.exec(raw);
     if (label) {
       const zone = parseZone(label[1]);
       if (zone) explicit.push(zone);
@@ -512,24 +521,24 @@ function analyze(
   const zones = context
     ? zoneEvidence(text, lines)
     : { explicit: [], ambiguous: [] };
-  const zoned = legacyZoned.test(text) || isoZoned.test(text);
+  // A printed range has no zone: its dash separates two clocks, not an offset.
+  const unzoned = text.replace(clockRange, " ");
+  const zoned = legacyZoned.test(unzoned) || isoZoned.test(unzoned);
   const timeLines = lines
-    .map((line) =>
-      line.replace(
+    .map((raw) => {
+      const line = raw.replace(
         /^(?:\d{4}-\d{2}-\d{2}[T ]+)?(?:at\s+|time:\s*|starts?:\s*)?/i,
         "",
-      ),
-    )
-    .map((line) =>
-      context
-        ? line
-            .replace(trailingZone, "")
-            .replace(
-              new RegExp(`\\s*\\(?\\s*${abbreviation.source}\\s*\\)?$`, "i"),
-              "",
-            )
-        : line,
-    )
+      );
+      // A printed range keeps its dash: the zone is not written after a range.
+      if (!context || hasClockRange.test(raw)) return line;
+      return line
+        .replace(trailingZone, "")
+        .replace(
+          new RegExp(`\\s*\\(?\\s*${abbreviation.source}\\s*\\)?$`, "i"),
+          "",
+        );
+    })
     .filter((line) => /^\d{1,2}(?::|\s*[ap]\.?m)/i.test(line));
   const windows = timeLines.map(timeWindow);
   const times = windows.map((value) => value?.time),

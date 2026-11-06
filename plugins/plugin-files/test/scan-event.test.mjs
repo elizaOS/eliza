@@ -168,6 +168,7 @@ test("explicit same-day poster time ranges suggest duration without inventing me
     "6PM-8PM",
     "6 p.m. – 8 p.m.",
     "18:00—20:00",
+    "18:00-20:00",
     "18:00 to 20:00",
   ]) {
     const fields = suggestScanEvent(`Studio\nOctober 10, 2026\nTime: ${range}`);
@@ -194,6 +195,26 @@ const now = new Date("2026-10-03T15:00:00Z"),
   ny = { now, timeZone: "America/New_York" },
   london = { now, timeZone: "Europe/London" };
 const details = (text, context = ny) => suggestScanEventDetails(text, context);
+test("a same-day clock range is not converted through a UTC offset read from its dash", () => {
+  let r = details("Studio\nOctober 10, 2026\n09:00-11:00");
+  assert.equal(r.fields.time, "09:00");
+  assert.equal(r.fields.minutes, 120);
+  assert.equal(
+    r.disclosures.some((d) => /Converted|Time zone/.test(d)),
+    false,
+  );
+  // Before the fix this read 13:00 start as "-15:00" and left the time blank.
+  r = details("Studio\nOctober 10, 2026\n13:00-15:00");
+  assert.equal(r.fields.time, "13:00");
+  assert.equal(r.fields.minutes, 120);
+  // An ISO stamp keeps its printed offset.
+  r = suggestScanEventDetails("Studio\n2026-10-10T18:00-05:00", {
+    now,
+    timeZone: "UTC",
+  });
+  assert.equal(r.fields.time, "23:00");
+  assert.match(r.disclosures.join("\n"), /Converted from 18:00 -05:00/);
+});
 test("year-less dates suggest their next occurrence with a year-inferred disclosure", () => {
   let r = details("Open studio\nOctober 10\n7 PM");
   assert.equal(r.fields.date, "2026-10-10");
