@@ -14,6 +14,12 @@ Notice consumers use `scripts/mobile-bundle-dependencies.ts` to validate this
 inventory against the bundle and prepared source before reading license files.
 Missing or changed inputs fail validation; source comments are not an inventory.
 
+A host that never loads a package can set `ELIZA_MOBILE_STUB_PLUGINS` to a
+comma-separated list of package names (for example `googleapis,three`). The
+build resolves each one, and its subpaths, to the throw-on-call stub, and lists
+them as `hostStubs` in the manifest. The load smoke still runs; check the boot
+too, because a named import from a stub is `undefined`.
+
 Import public runtime, service, role, and operation APIs from `@elizaos/agent`.
 Agent code imports core APIs and catalog maps through `@elizaos/core`.
 `RegistryClientPluginInfo` and `RegistryClientSearchResult` expose the underlying

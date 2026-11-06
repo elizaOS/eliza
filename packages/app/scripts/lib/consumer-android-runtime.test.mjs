@@ -26,7 +26,7 @@ for (const [targetAbi, bunTarget] of [
       put(".gitignore", "packages/agent/dist-mobile/\n");
       put(
         "packages/agent/scripts/build-mobile-bundle.ts",
-        `import fs from 'node:fs';fs.mkdirSync('packages/agent/dist-mobile',{recursive:true});fs.writeFileSync('packages/agent/dist-mobile/agent-bundle.js','fixture bundle');`,
+        `import fs from 'node:fs';fs.mkdirSync('packages/agent/dist-mobile',{recursive:true});fs.writeFileSync('packages/agent/dist-mobile/agent-bundle.js','fixture bundle');fs.writeFileSync('packages/agent/dist-mobile/stubs.txt',process.env.ELIZA_MOBILE_STUB_PLUGINS ?? '');`,
       );
       put(
         "packages/app/scripts/lib/stage-android-agent.ts",
@@ -58,6 +58,7 @@ for (const [targetAbi, bunTarget] of [
         skillsDirectory,
         targetAbi,
         bunTarget,
+        stubPlugins: ["googleapis", "@elizaos/plugin-discord", "googleapis"],
       };
       const link = path.join(root, "output-link");
       fs.symlinkSync(root, link, "dir");
@@ -72,6 +73,17 @@ for (const [targetAbi, bunTarget] of [
       assert.equal(provenance.commit, expectedCommit);
       assert.deepEqual(provenance.gatewayHashes, { host: "fixture" });
       assert.equal(provenance.target, targetAbi);
+      assert.deepEqual(provenance.stubPlugins, [
+        "@elizaos/plugin-discord",
+        "googleapis",
+      ]);
+      assert.equal(
+        fs.readFileSync(
+          path.join(source, "packages/agent/dist-mobile/stubs.txt"),
+          "utf8",
+        ),
+        "@elizaos/plugin-discord,googleapis",
+      );
       assert.throws(
         () =>
           buildConsumerAndroidRuntime({
@@ -158,6 +170,13 @@ for (const [targetAbi, bunTarget] of [
       fs.rmSync(root, { recursive: true, force: true });
     }
   });
+
+test("stub plugins must be package names", () => {
+  assert.throws(
+    () => buildConsumerAndroidRuntime({ stubPlugins: "googleapis" }),
+    /stub plugins must be a list/,
+  );
+});
 
 test("unsupported runtime ABI fails before reading source or creating output", () => {
   assert.throws(
