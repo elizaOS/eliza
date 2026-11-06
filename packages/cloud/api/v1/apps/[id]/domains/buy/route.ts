@@ -27,6 +27,7 @@ import {
 } from "@elizaos/cloud-shared/lib/services/cloudflare-dns";
 import {
   cloudflareRegistrarService,
+  isRegistrationNotFound,
   type RegisteredDomain,
 } from "@elizaos/cloud-shared/lib/services/cloudflare-registrar";
 import { creditsService } from "@elizaos/cloud-shared/lib/services/credits";
@@ -706,6 +707,27 @@ async function reconcileDomainPurchaseAttempt(
       nextReconcileAt: nextDomainReconcileAt(claimed.attempt_count),
     });
   } catch (error) {
+    // The registrar has no registration for this domain, on a second lookup
+    // after the backoff: the start never took effect, so the debit is
+    // refunded. Without this the attempt reconciles forever with the credits
+    // held. One answer alone waits for the next lookup.
+    if (isRegistrationNotFound(error)) {
+      if (attempt.error_code === "registration_not_found") {
+        return domainPurchaseAttemptsRepository.markRefundPending({
+          key: attempt.key,
+          organizationId: attempt.organization_id,
+          leaseToken,
+          errorCode: "registration_not_found",
+        });
+      }
+      return domainPurchaseAttemptsRepository.markProviderAmbiguous({
+        key: attempt.key,
+        organizationId: attempt.organization_id,
+        leaseToken,
+        errorCode: "registration_not_found",
+        nextReconcileAt: nextDomainReconcileAt(claimed.attempt_count),
+      });
+    }
     // error-policy:J4 Provider lookup failure stays pending for a bounded-backoff retry.
     logger.warn("[Domains Buy] registration reconciliation failed", {
       domain: attempt.domain,

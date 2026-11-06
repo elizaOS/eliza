@@ -337,6 +337,64 @@ test.describe("domain purchase harness logic (mock registrar stub)", () => {
     }
   });
 
+  test("a registration the registrar never started is refunded after a second not-found lookup", async ({
+    stack,
+    seededUser,
+  }) => {
+    const authed = authedClient(stack.urls.api, seededUser.apiKey);
+    const balanceBefore = await getBalanceUsd(authed);
+    // Stub `reject-`: the start answers 400 and every status lookup 404.
+    const domain = `reject-${newRunId()}.xyz`;
+    let appId: string | undefined;
+    try {
+      appId = await createApp(authed, `Harness rejected ${newRunId()}`);
+      const pending = await buyDomain(authed, appId, domain);
+      expect(pending.status, JSON.stringify(pending.json)).toBe(409);
+      expect(await getBalanceUsd(authed)).toBeLessThan(balanceBefore);
+
+      const { dbWrite } = await import("@elizaos/cloud-shared/db/client");
+      const { domainPurchaseIdempotency } = await import(
+        "@elizaos/cloud-shared/db/schemas/domain-purchase-idempotency"
+      );
+      const { and, eq } = await import("drizzle-orm");
+      const advanceLease = async () => {
+        const past = new Date(Date.now() - 1_000);
+        const advanced = await dbWrite
+          .update(domainPurchaseIdempotency)
+          .set({ expires_at: past, next_reconcile_at: past })
+          .where(
+            and(
+              eq(
+                domainPurchaseIdempotency.organization_id,
+                seededUser.organizationId,
+              ),
+              eq(domainPurchaseIdempotency.app_id, appId as string),
+              eq(domainPurchaseIdempotency.domain, domain),
+              eq(domainPurchaseIdempotency.status, "provider_ambiguous"),
+            ),
+          )
+          .returning();
+        expect(advanced).toHaveLength(1);
+      };
+
+      // First lookup: not found. One answer alone keeps the purchase pending.
+      await advanceLease();
+      const stillPending = await buyDomain(authed, appId, domain);
+      expect(stillPending.status, JSON.stringify(stillPending.json)).toBe(409);
+
+      // Second lookup after the backoff: still not found, so it is refunded.
+      await advanceLease();
+      const refunded = await buyDomain(authed, appId, domain);
+      expect(refunded.status, JSON.stringify(refunded.json)).toBe(502);
+      expect(refunded.json.code).toBe("registration_not_found");
+      expect(
+        Math.abs((await getBalanceUsd(authed)) - balanceBefore),
+      ).toBeLessThan(0.005);
+    } finally {
+      if (appId) await deleteApp(authed, appId);
+    }
+  });
+
   test("insufficient credits → 402, fail-closed before registration", async ({
     stack,
   }) => {

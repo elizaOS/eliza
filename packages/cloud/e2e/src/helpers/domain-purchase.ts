@@ -359,13 +359,27 @@ export async function buyDomain(
   appId: string,
   domain: string,
 ): Promise<{ status: number; json: BuyDomainResponse }> {
-  return authed<BuyDomainResponse>(
-    "POST",
-    `/api/v1/apps/${appId}/domains/buy`,
-    {
-      domain,
-    },
-  );
+  // A paid route answers 503 auth_cache_warming with retryAfterSeconds while
+  // the authorization cache fills (#38523); a client retries as told.
+  for (let attempt = 1; ; attempt += 1) {
+    const res = await authed<BuyDomainResponse>(
+      "POST",
+      `/api/v1/apps/${appId}/domains/buy`,
+      {
+        domain,
+      },
+    );
+    const warming = res.json as { code?: string; retryAfterSeconds?: number };
+    if (
+      res.status !== 503 ||
+      warming.code !== "auth_cache_warming" ||
+      attempt >= 10
+    )
+      return res;
+    await new Promise((resolve) =>
+      setTimeout(resolve, (warming.retryAfterSeconds ?? 1) * 1000),
+    );
+  }
 }
 
 /** Poll domains/status until status=active && verified, or the cap elapses. */
