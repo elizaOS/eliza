@@ -1,4 +1,4 @@
-import type { IAgentRuntime } from "@elizaos/core";
+import { createHandleResponseTool, type IAgentRuntime } from "@elizaos/core";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { resetDevCloudEnvAuthorityForTests } from "../src/cloud-config/dev-cloud-env-authority";
 import { handleResponseHandler } from "../src/models/text";
@@ -14,7 +14,7 @@ describe("normal Cloud Cerebras request serialization", () => {
     options: {
       canonical?: boolean;
       selected?: boolean;
-      tools?: boolean;
+      tools?: boolean | unknown[];
       staging?: boolean;
       stagingOptIn?: boolean;
       mobileKey?: boolean;
@@ -59,7 +59,7 @@ describe("normal Cloud Cerebras request serialization", () => {
       stream: false,
       ...(options.tools
         ? {
-            tools: [
+            tools: Array.isArray(options.tools) ? options.tools : [
               {
                 type: "function",
                 function: {
@@ -106,6 +106,60 @@ describe("normal Cloud Cerebras request serialization", () => {
     const tools = sent.tools as Array<{ function: { strict: boolean; parameters: unknown } }>;
     expect(tools.map((tool) => tool.function.strict)).toEqual([false, false]);
     expect(tools[0].function.parameters).toMatchObject({ properties: { text: { minLength: 1 } } });
+  });
+  it("keeps HANDLE_RESPONSE intents strict when Calendar supplies local string bounds", async () => {
+    const filterFields = {
+      query: { type: "string" as const, minLength: 1, maxLength: 160 },
+      quote: { type: "string" as const, minLength: 1, maxLength: 2048 },
+      origin: { type: "string" as const, enum: ["current", "referent"] },
+    };
+    const handle = createHandleResponseTool({
+      parameters: {
+        type: "object",
+        additionalProperties: false,
+        required: ["intents", "calendarReadBindings"],
+        properties: {
+          intents: { type: "array", items: { type: "string" } },
+          calendarReadBindings: {
+            type: "array",
+            items: {
+              type: "object",
+              additionalProperties: false,
+              required: ["filterEvidence"],
+              properties: {
+                filterEvidence: {
+                  type: "array",
+                  maxItems: 8,
+                  items: {
+                    type: "object",
+                    additionalProperties: false,
+                    required: ["query", "quote", "origin"],
+                    properties: filterFields,
+                  },
+                },
+              },
+            },
+          },
+        },
+      },
+    });
+    const sent = await request({
+      tools: [handle],
+      staging: true,
+      stagingOptIn: true,
+      mobileKey: true,
+    });
+    expect(sent).toHaveProperty("tools.0.function.strict", true);
+    expect(sent).toHaveProperty(
+      "tools.0.function.parameters.properties.intents",
+      { type: "array", items: { type: "string" } },
+    );
+    expect(sent).toHaveProperty(
+      "tools.0.function.parameters.properties.calendarReadBindings.items.properties.filterEvidence.items.properties",
+      { query: { type: "string" }, quote: { type: "string" }, origin: filterFields.origin },
+    );
+    expect(filterFields.query).toEqual({ type: "string", minLength: 1, maxLength: 160 });
+    expect(filterFields.quote).toEqual({ type: "string", minLength: 1, maxLength: 2048 });
   });
   it.each([
     { staging: true, mobileKey: true },
