@@ -47,7 +47,7 @@ func (s *discoverySession) Close() {
 func (s *discoverySession) Run(scheduleDirectory, trustDirectory string, pinnedRoot []byte, metadataBase, channel, distribution string, generation int64) (*DiscoveryResult, error) {
 	return s.run(scheduleDirectory, trustDirectory, pinnedRoot, metadataBase, channel, distribution, generation, nil)
 }
-func (s *discoverySession) run(scheduleDirectory, trustDirectory string, pinnedRoot []byte, metadataBase, channel, distribution string, generation int64, admit func([]byte, *TrustedTimeInterval) (*AdmissionResult, error)) (*DiscoveryResult, error) {
+func (s *discoverySession) run(scheduleDirectory, trustDirectory string, pinnedRoot []byte, metadataBase, channel, distribution string, generation int64, admit func([]byte, *TrustedTimeInterval, int64) (*AdmissionResult, error)) (*DiscoveryResult, error) {
 	s.mu.Lock()
 	if s.used || s.closed.Load() {
 		s.mu.Unlock()
@@ -81,7 +81,7 @@ func (s *discoverySession) run(scheduleDirectory, trustDirectory string, pinnedR
 	var admission *AdmissionResult
 	var admissionErr error
 	if fetchErr == nil && !s.closed.Load() && admit != nil {
-		admission, admissionErr = admit(descriptor, current)
+		admission, admissionErr = admit(descriptor, current, initial.LowerMillis)
 	}
 	if errors.Is(fetchErr, errTrustCache) {
 		result.Failure = "trust-cache"
@@ -142,9 +142,9 @@ func (s *discoverySession) RunAdmitted(scheduleDirectory, trustDirectory, admiss
 	if err := validateAdmissionDevice(device); err != nil {
 		return nil, err
 	}
-	return s.run(scheduleDirectory, trustDirectory, pinnedRoot, metadataBase, device.Channel, device.Distribution, generation, func(descriptor []byte, bounds *TrustedTimeInterval) (*AdmissionResult, error) {
+	return s.run(scheduleDirectory, trustDirectory, pinnedRoot, metadataBase, device.Channel, device.Distribution, generation, func(descriptor []byte, bounds *TrustedTimeInterval, fetched int64) (*AdmissionResult, error) {
 		policy.Lower, policy.Upper = bounds.LowerMillis, bounds.UpperMillis
-		return evaluateRememberedRelease(admissionDirectory, descriptor, deviceJSON, policy)
+		return evaluateRememberedRelease(admissionDirectory, descriptor, deviceJSON, policy, fetched)
 	})
 }
 
@@ -167,9 +167,9 @@ func (s *discoverySession) RunPrepared(scheduleDirectory, trustDirectory, admiss
 		return nil, err
 	}
 	identity := ""
-	result, err := s.run(scheduleDirectory, trustDirectory, pinnedRoot, metadataBase, device.Channel, device.Distribution, generation, func(descriptor []byte, bounds *TrustedTimeInterval) (*AdmissionResult, error) {
+	result, err := s.run(scheduleDirectory, trustDirectory, pinnedRoot, metadataBase, device.Channel, device.Distribution, generation, func(descriptor []byte, bounds *TrustedTimeInterval, fetched int64) (*AdmissionResult, error) {
 		policy.Lower, policy.Upper = bounds.LowerMillis, bounds.UpperMillis
-		decision, e := evaluateRememberedRelease(admissionDirectory, descriptor, deviceJSON, policy)
+		decision, e := evaluateRememberedRelease(admissionDirectory, descriptor, deviceJSON, policy, fetched)
 		if e != nil {
 			return nil, e
 		}
