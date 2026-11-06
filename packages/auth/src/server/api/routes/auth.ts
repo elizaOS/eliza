@@ -967,8 +967,19 @@ async function consumeSiweNonce(
       tenantId:
         typeof parsed.tenantId === "string" ? parsed.tenantId : undefined,
     };
-  } catch {
-    return { allowedDomains: [] };
+  } catch (cause) {
+    // setSiweNonce always writes this record, so a value that does not parse is
+    // a torn write or a foreign writer, not "no nonce" and not a client that
+    // omitted its Origin header. Collapsing it into `{ allowedDomains: [] }`
+    // hid the fault behind a 401 the caller cannot act on, and an empty
+    // allowedDomains list skips the domain allowlist on the way there. Report
+    // the unreadable record instead.
+    throw new ElizaError("Stored SIWE nonce record cannot be read.", {
+      code: "SIWE_NONCE_UNREADABLE",
+      cause,
+      context: { record: "siwe-nonce" },
+      severity: "ephemeral",
+    });
   }
 }
 
