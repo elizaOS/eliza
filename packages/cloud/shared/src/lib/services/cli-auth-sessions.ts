@@ -8,8 +8,14 @@ import { cliAuthSessionsRepository } from "../../db/repositories";
 import type { ApiKey } from "../../db/schemas/api-keys";
 import type { CliAuthSession } from "../../db/schemas/cli-auth-sessions";
 import { organizationCreatedBySignIn } from "../auth/new-organization";
+import { logger } from "../utils/logger";
 import { apiKeysService } from "./api-keys";
 import { cliAuthSessionCompletionService } from "./cli-auth-session-completion";
+import {
+  InferenceCredentialRevocationUnavailableError,
+  revokeInferenceApiKey,
+  settlePostCommitRevocations,
+} from "./inference-credential-revocation";
 
 /**
  * Session expiry time in minutes.
@@ -306,11 +312,15 @@ export class CliAuthSessionsService {
   /**
    * Reaps expired sessions and revokes the orphan keys minted by abandoned
    * sign-ins (cron-driven). The revocation commits first, then each revoked
-   * hash's auth caches are invalidated — matching the write-then-invalidate
-   * ordering the revocation paths use. These keys' plaintext was never
-   * revealed (consumed_at was NULL), so no warm cache entry can exist; the
-   * invalidation is defense-in-depth and an unconfirmed delete surfaces to
-   * the cron boundary rather than being swallowed.
+   * key is revoked at the admission gate and its auth caches are invalidated —
+   * matching the write-then-invalidate ordering the revocation paths use.
+   *
+   * The commit deleted the sessions that located these keys, so a later run
+   * cannot find them again: every key is attempted before any failure is
+   * raised, and an unconfirmed key is logged and surfaces to the cron boundary
+   * rather than being swallowed. It is not retried, which is safe because its
+   * plaintext was never revealed (consumed_at was NULL): no caller holds the
+   * key, no warm cache entry can exist, and its row no longer authenticates.
    */
   async cleanupExpiredSessions(): Promise<{
     deletedSessions: number;
@@ -319,8 +329,21 @@ export class CliAuthSessionsService {
     const { deletedSessions, revokedOrphanKeys } =
       await cliAuthSessionsRepository.reapExpiredSessions();
 
-    for (const key of revokedOrphanKeys) {
-      await apiKeysService.invalidateCache(key.key_hash);
+    const failures = await settlePostCommitRevocations(revokedOrphanKeys, (key) => [
+      revokeInferenceApiKey(key.organization_id, key.id),
+      apiKeysService.invalidateCache(key.key_hash),
+    ]);
+    for (const { item, reasons } of failures) {
+      logger.error("[CliAuthSessions] Orphan key revocation was not confirmed", {
+        apiKeyId: item.id,
+        error: reasons.map(String).join("; "),
+      });
+    }
+    if (failures.length > 0) {
+      throw new InferenceCredentialRevocationUnavailableError(
+        `Orphan key revocation was not confirmed for ${failures.length}/${revokedOrphanKeys.length} key(s)`,
+        { cause: failures[0]?.reasons[0] },
+      );
     }
 
     return { deletedSessions, revokedOrphanKeys: revokedOrphanKeys.length };

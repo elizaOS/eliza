@@ -37,6 +37,12 @@ import { KNOWN_ROUTE_SHARD_KEYS } from "./_router-shard-keys.generated";
 import { isStorageReadCapabilityPath, serveBlobHostRequest } from "./blob-host";
 import { isThinCliSessionPath } from "./cli-session-paths";
 import { cloneRequestWithScheduledCronMetadata, makeCronHandler } from "./cron";
+import {
+  isInferenceEntryTimingEnabled,
+  prepareInferenceEntryRequest,
+  recordInferenceEntryPhase,
+  timeInferenceEntryPhase,
+} from "./inference-entry-timing";
 import { isPersonalSharedTelegramEdgeEnabled } from "./personal-shared-telegram-edge";
 import {
   isPersonalTelegramDeliveryEpoch1CompatEnabled,
@@ -595,12 +601,38 @@ async function dispatchThinSteward(
 }
 async function getInferenceApp(
   spec: InferenceRouteSpec,
+  timing?: { traceId: string | null; environment: "staging" },
 ): Promise<Hono<AppEnv>> {
   let promise = inferenceAppPromises.get(spec.key);
   if (!promise) {
-    promise = Promise.all([import("./inference-app"), spec.load()]).then(
-      ([shell, route]) =>
-        shell.createInferenceApp(spec.mountPath, route.default),
+    const shell = timing
+      ? timeInferenceEntryPhase(
+          timing.environment,
+          timing.traceId,
+          spec.key,
+          "shell_import",
+          () => import("./inference-app"),
+        )
+      : import("./inference-app");
+    const route = timing
+      ? timeInferenceEntryPhase(
+          timing.environment,
+          timing.traceId,
+          spec.key,
+          "route_import",
+          () => spec.load(),
+        )
+      : spec.load();
+    promise = Promise.all([shell, route]).then(([shell, route]) =>
+      timing
+        ? timeInferenceEntryPhase(
+            timing.environment,
+            timing.traceId,
+            spec.key,
+            "shell_create",
+            async () => shell.createInferenceApp(spec.mountPath, route.default),
+          )
+        : shell.createInferenceApp(spec.mountPath, route.default),
     );
     inferenceAppPromises.set(spec.key, promise);
   }
@@ -629,9 +661,47 @@ async function dispatchInference(
   if (!route) return null;
   const dispatchStartedAt = performance.now();
   const moduleWasInitialized = inferenceAppPromises.has(route.key);
-  const app = await getInferenceApp(route);
+  const timingEnabled = isInferenceEntryTimingEnabled(
+    env.ENVIRONMENT,
+    route.key,
+  );
+  const tracedRequest = timingEnabled
+    ? prepareInferenceEntryRequest(request, env.ENVIRONMENT)
+    : request;
+  const timing = timingEnabled
+    ? {
+        environment: "staging" as const,
+        traceId: tracedRequest.headers.get(ELIZA_TRACE_ID_HEADER),
+      }
+    : undefined;
+  if (timing)
+    recordInferenceEntryPhase({
+      ...timing,
+      path: route.key,
+      phase: "dispatch_enter",
+      durationMs: 0,
+      outcome: "entered",
+      appPromise: moduleWasInitialized ? "existing" : "created",
+    });
+  const app = timing
+    ? await timeInferenceEntryPhase(
+        timing.environment,
+        timing.traceId,
+        route.key,
+        "app_wait",
+        () => getInferenceApp(route, timing),
+      )
+    : await getInferenceApp(route);
   const moduleInitMs = performance.now() - dispatchStartedAt;
-  const response = await app.fetch(request, env, ctx);
+  if (timing)
+    recordInferenceEntryPhase({
+      ...timing,
+      path: route.key,
+      phase: "app_ready",
+      durationMs: moduleInitMs,
+      outcome: "returned",
+    });
+  const response = await app.fetch(tracedRequest, env, ctx);
   const dispatchMs = performance.now() - dispatchStartedAt;
   response.headers.set("X-Eliza-Inference-Path", "thin");
   response.headers.append(
@@ -1050,6 +1120,17 @@ export default {
       nativeApplicationSelectionSurfaceError(request);
     if (nativeSelectionError) return nativeSelectionError;
     const url = new URL(request.url);
+    if (isInferenceEntryTimingEnabled(env.ENVIRONMENT, url.pathname)) {
+      request = prepareInferenceEntryRequest(request, env.ENVIRONMENT);
+      recordInferenceEntryPhase({
+        environment: env.ENVIRONMENT,
+        traceId: request.headers.get(ELIZA_TRACE_ID_HEADER),
+        path: url.pathname,
+        phase: "fetch_enter",
+        durationMs: 0,
+        outcome: "entered",
+      });
+    }
     // Capability tokens are bearer credentials. Reserve their opaque namespace
     // before any host redirect or proxy can forward it to another origin.
     if (isStorageReadCapabilityPath(url)) {
