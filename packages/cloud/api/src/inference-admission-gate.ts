@@ -2074,15 +2074,13 @@ export class InferenceAdmissionGate {
     ) {
       const funded = this.env.INFERENCE_FUNDED_BUDGET_ADMISSION === "true";
       // Mutation fences stay served whenever either lane may have enrolled an
-      // organization; rate-only admission additionally needs the revocation
-      // registry that its credential check reads.
+      // organization.
       const ratePolicy = this.env.INFERENCE_RATE_POLICY_ADMISSION === "true";
       if (
         path.startsWith("/budget/")
           ? !funded
           : path.startsWith("/rate-policy/")
-            ? !ratePolicy ||
-              this.env.INFERENCE_STRONG_REVOCATION_ENABLED !== "true"
+            ? !ratePolicy
             : !(funded || ratePolicy)
       )
         return jsonError("Inference policy admission is not enabled", 503);

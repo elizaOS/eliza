@@ -39,7 +39,7 @@ import {
   assertInferenceCredentialActive,
   type InferenceCredentialCheck,
   InferenceCredentialRevokedError,
-  isInferenceStrongRevocationEnabled,
+  hasInferenceRevocationBoundary,
 } from "./inference-credential-revocation";
 
 interface SessionHydration {
@@ -297,7 +297,7 @@ export async function resolveInferenceSessionAuthContext(
   const deferStrongCredentialCheck =
     options.useAuthCache === true &&
     options.deferStrongCredentialCheck === true &&
-    isInferenceStrongRevocationEnabled(env);
+    hasInferenceRevocationBoundary();
   const claims = await verifyStewardTokenCached(
     {
       NODE_ENV: env.NODE_ENV,

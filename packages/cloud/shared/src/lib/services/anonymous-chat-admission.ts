@@ -21,7 +21,7 @@ import type {
 import { getCookieValueFromHeader } from "../http/cookie-header";
 import { getCloudAwareEnv, getCloudBinding } from "../runtime/cloud-bindings";
 import { logger } from "../utils/logger";
-import { contentModerationService } from "./content-moderation";
+import { adminService } from "./admin";
 
 const ANONYMOUS_SESSION_COOKIE = "eliza-anon-session";
 const DEFAULT_ANONYMOUS_HOURLY_LIMIT = 10;
@@ -232,7 +232,7 @@ async function hydrateGate(stub: RuntimeDurableObjectStub, sessionToken: string)
     return;
   }
 
-  const blocked = await contentModerationService.shouldBlockUser(authoritative.userId);
+  const blocked = await adminService.shouldBlockUser(authoritative.userId);
   const response = await postGate(stub, "/hydrate", {
     sessionId: authoritative.sessionId,
     userId: authoritative.userId,

@@ -22,12 +22,8 @@ import { withCanonicalSettlementReceipt } from "./inference-settlement-receipt";
 import { ElizaError } from "@elizaos/core";
 import { and, eq, isNull } from "drizzle-orm";
 import { dbWrite, writeTransaction } from "../../db/helpers";
-import {
-  lockOrganizationPolicy,
-  lockOrganizationPolicyForRead,
-} from "../../db/repositories/organization-policy-generation";
+import { lockOrganizationPolicy } from "../../db/repositories/organization-policy-generation";
 import { inferenceFundingBudgetGrants } from "../../db/schemas/inference-funding-budgets";
-import { observeInferenceDependency } from "../observability/cloud-backend-observability";
 import { calculateCost, normalizeModelName } from "../pricing";
 import { createCreditReservationSettler } from "../utils/credit-reservation";
 import { logger } from "../utils/logger";
@@ -76,41 +72,14 @@ import {
 } from "./inference-affiliate-cache";
 import type { InferenceAdmissionSnapshot } from "./inference-auth-cache";
 import { isInferenceAdmissionSnapshot } from "./inference-auth-cache";
-import { isDeferredAdmissionEnabled } from "./inference-billing-deferred";
-import {
-  createOptimisticDebitSettler,
-  debitInferenceCost,
-  type GateBalanceSnapshot,
-  getGateBalanceHint,
-  InferenceBalanceCacheWarmingError,
-  isOptimisticBackstopAvailable,
-  isOptimisticBillingEnabled,
-  isOptimisticEligible,
-  resolveSafeBalanceThresholdUsd,
-  writePendingInferenceCharge,
-} from "./inference-billing-fast-path";
-import {
-  admitInferenceChargeViaLedger,
-  createLedgerDebitSettler,
-  resolveInferenceBillingLedger,
-} from "./inference-billing-ledger";
+import { debitInferenceCost, InferenceBalanceCacheWarmingError } from "./inference-billing-fast-path";
 import {
   type InferenceCredentialCheck,
   InferenceCredentialRevokedError,
 } from "./inference-credential-revocation";
-import {
-  withOrganizationPolicyAdmission,
-  withOrganizationPolicyReadAdmission,
-} from "./organization-policy-admission";
-import { sameOrganizationPolicyStamp } from "./organization-policy-stamp";
-import {
-  readOrganizationQuotaPolicyInTransaction,
-  requireOrganizationPolicyBalance,
-  requireOrganizationRateTier,
-} from "./organization-quota-policy";
+import { readOrganizationQuotaPolicyInTransaction } from "./organization-quota-policy";
 import {
   fundSubscriberInferenceCharge,
-  readSubscriberFundingCapacityInTransaction,
   type SubscriberFundingCapacity,
 } from "./subscriber-inference-funding";
 
@@ -119,8 +88,6 @@ export type InferenceAdmissionMode =
   | "durable_object_debit"
   | "durable_object_affiliate_debit"
   | "durable_object_subscription_funding"
-  | "synchronous_db_ledger"
-  | "synchronous_kv_ledger"
   | "synchronous_reservation";
 
 export interface OrganizationInferenceAdmission {

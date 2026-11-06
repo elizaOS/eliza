@@ -5,7 +5,7 @@ import { verifyStewardTokenCached } from "@elizaos/cloud-shared/lib/auth/steward
 import { callMapsRequestAllowance } from "@elizaos/cloud-shared/lib/services/inference-admission-gate";
 import {
   type InferenceCredentialCheck,
-  isInferenceStrongRevocationEnabled,
+  hasInferenceRevocationBoundary,
 } from "@elizaos/cloud-shared/lib/services/inference-credential-revocation";
 import type { MapsOperation } from "@elizaos/cloud-shared/lib/services/maps/contract";
 import type {
@@ -63,7 +63,7 @@ export async function admitMapsRequest(
   caller: MapsCaller,
   operation: MapsOperation,
 ): Promise<MapsCompletion> {
-  if (!isInferenceStrongRevocationEnabled() || !caller.credential)
+  if (!hasInferenceRevocationBoundary() || !caller.credential)
     throw new MapsAdmissionError(
       503,
       "maps_allowance_unconfigured",

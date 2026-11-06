@@ -118,7 +118,7 @@ import {
   type InferenceCredentialCheck,
   InferenceCredentialRevokedError,
   inferenceCredentialRevocationReason,
-  isInferenceStrongRevocationEnabled,
+  hasInferenceRevocationBoundary,
 } from "@elizaos/cloud-shared/lib/services/inference-credential-revocation";
 import { isFundedBudgetAdmissionEnabled } from "@elizaos/cloud-shared/lib/services/inference-funded-budget-admission";
 import {
@@ -1351,7 +1351,7 @@ export async function handleChatCompletionsPOST(
     const deferStrongCredentialCheck =
       requestIsValid &&
       Boolean(options.executionCtx) &&
-      isInferenceStrongRevocationEnabled();
+      hasInferenceRevocationBoundary();
     const resolution = await resolveInferenceAuthContext(req, {
       traceId,
       executionCtx: options.executionCtx,

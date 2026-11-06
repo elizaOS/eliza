@@ -61,10 +61,9 @@ import {
   InferenceCredentialRevocationUnavailableError,
   InferenceCredentialRevokedError,
   inferenceCredentialRevocationReason,
-  isInferenceStrongRevocationEnabled,
+  hasInferenceRevocationBoundary,
 } from "./inference-credential-revocation";
 import { isInferencePolicyAdmissionEnabled } from "./inference-funded-budget-admission";
-import { isInferenceAuthCacheEnabled } from "./inference-hot-path-caches";
 import { resolveInferenceSessionAuthContext } from "./inference-session-auth-context";
 import { readOrganizationQuotaPolicyInTransaction } from "./organization-quota-policy";
 
@@ -652,13 +651,12 @@ export async function resolveInferenceAuthContext(
   };
 
   try {
-    // A Worker request must not bypass the staged positive-cache and strongly
-    // consistent revocation contract merely by selecting cache-only resolution.
-    const authCacheEnabled = isInferenceAuthCacheEnabled();
+    // The positive authorization cache exists only where the organization gate
+    // can revoke it within one request (every Worker); other hosts read the
+    // primary.
+    const authCacheEnabled = hasInferenceRevocationBoundary();
     const deferStrongCredentialCheck =
-      authCacheEnabled &&
-      options.deferStrongCredentialCheck === true &&
-      isInferenceStrongRevocationEnabled();
+      authCacheEnabled && options.deferStrongCredentialCheck === true;
     const extractStartedAt = performance.now();
     const credential = extractApiKeyCredentialWithSource(req);
     trace.timings.extractMs = durationSince(extractStartedAt);

@@ -32,7 +32,6 @@ import {
   type InferenceBudgetPolicy,
   isRatePolicyAdmissionEnabled,
 } from "../services/inference-funded-budget-admission";
-import { isHotPathCachesEnabled } from "../services/inference-hot-path-caches";
 import type { EndpointType, OrgRateLimitConfig } from "../services/org-rate-limits";
 import { type OrgTierCacheExecutionContext, recalculateOrgTier } from "../services/org-rate-limits";
 import { withOrganizationPolicyAdmission } from "../services/organization-policy-admission";
@@ -964,7 +963,7 @@ export async function enforceOrgRateLimit(
             );
         }
 
-        const leaseEnabled = !durableRateStateSelected() && isHotPathCachesEnabled();
+        const leaseEnabled = !durableRateStateSelected();
         const leaseKey = `${organizationId}:${endpointType}`;
         const now = Date.now();
         // Read the lease even when the flag is off: a flag flip must still flush any
