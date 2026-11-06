@@ -483,6 +483,61 @@ describe("interactive task HTTP host", () => {
       storage.close();
     }
   });
+
+  it("a Stop fences a paused task whose resume is still reading the page", async () => {
+    const storage = setup();
+    const observed = deferred<void>();
+    const release = deferred<void>();
+    const runtime = new InteractiveTaskRuntime({
+      owner,
+      store: storage.store,
+      actuator: {
+        capabilities: [],
+        async observe() {
+          observed.resolve();
+          await release.promise;
+          return {
+            id: "view-1",
+            pageId: "page",
+            origin: "https://example.org",
+            version: 1,
+            inputRevision: 0,
+            observedAt: Date.now(),
+          };
+        },
+        async execute() {
+          throw new Error("No actuator capability");
+        },
+      },
+    });
+    runtime.create(goal("message-1"));
+    runtime.control("task-1", 0, "pause");
+    const http = await listenTaskHttp(
+      createInteractiveTaskHandler({
+        runtime,
+        authenticate: async () => owner,
+        authorizeGoal: async (ref) => goal(ref),
+      }),
+    );
+    try {
+      const resume = http.call("/tasks/task-1/resume", { expectedRevision: 1 });
+      await observed.promise;
+      const stop = await http.call("/tasks/current/pause", {});
+      expect(stop.status).toBe(200);
+      expect(await stop.json()).toMatchObject({
+        task: { status: "paused", revision: 2 },
+      });
+      release.resolve();
+      expect((await resume).ok).toBe(false);
+      expect(runtime.get("task-1")).toMatchObject({
+        status: "paused",
+        revision: 2,
+      });
+    } finally {
+      await http.close();
+      storage.close();
+    }
+  });
 });
 
 describe("task event transport", () => {
@@ -657,15 +712,19 @@ it.each(["pause", "close"] as const)(
       expect(client.snapshot()).toMatchObject({ error: "pause failed" });
       expect(client.isPaused()).toBe(false);
       expect(client.currentTaskId()).toBeNull();
+      // Every Stop fences, a paused task too: it starts a new epoch even
+      // while an earlier cleanup is unconfirmed, and answers only when its
+      // own cleanup is confirmed.
       const failedRevision = runtime.get("task-1").revision;
       expect(await client.control("pause")).toBe(false);
-      expect(runtime.get("task-1").revision).toBe(failedRevision);
+      expect(runtime.get("task-1").revision).toBe(failedRevision + 1);
       fail = false;
       expect(await client.control("pause")).toBe(true);
-      expect(runtime.get("task-1").revision).toBe(failedRevision);
+      expect(runtime.get("task-1").revision).toBe(failedRevision + 2);
       const beforeRepeatedPause = calls;
       expect(await client.control("pause")).toBe(true);
-      expect(calls).toBe(beforeRepeatedPause);
+      expect(runtime.get("task-1").revision).toBe(failedRevision + 3);
+      expect(calls).toBe(beforeRepeatedPause + 1);
       fail = true;
       const cancelled = await http.call("/tasks/task-1/cancel", {
         expectedRevision: runtime.get("task-1").revision,
@@ -680,15 +739,17 @@ it.each(["pause", "close"] as const)(
       expect(refreshed.status).toBe(200);
       expect(await refreshed.json()).toEqual({ task: null });
       expect(runtime.get("task-1").revision).toBe(revision);
-      expect(calls).toBe(8);
-      // A retried cleanup keeps the reason of the control that started it.
+      expect(calls).toBe(9);
+      // A retried cleanup keeps the reason of the control that started it;
+      // each new Stop starts its own.
       expect(reasons).toEqual([
         command,
         "close",
         "close",
         "close",
-        "close",
-        "close",
+        "pause",
+        "pause",
+        "pause",
         "cancel",
         "cancel",
       ]);
