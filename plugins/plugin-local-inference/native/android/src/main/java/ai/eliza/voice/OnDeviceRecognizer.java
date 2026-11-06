@@ -88,7 +88,11 @@ public final class OnDeviceRecognizer {
      * ({@code checkRecognitionSupport}). An installed model is kept for the
      * process; "not installed" is asked again after {@link #ABSENT_FOR_MILLIS}.
      * A probe the service does not answer within 5 seconds reads as false and is
-     * asked again after {@link #RETRY_AFTER_MILLIS}. Not on the main thread.
+     * asked again after {@link #RETRY_AFTER_MILLIS}; an error that says the
+     * language is not supported counts as "not installed". Not on the main
+     * thread. A call that asks the service again (the first one, and one after
+     * either window ends) can block for up to 5 seconds, so keep it off
+     * latency-sensitive paths.
      */
     public static boolean available(Context context, String languageTag) {
         String language = requireLanguage(languageTag);
@@ -115,6 +119,8 @@ public final class OnDeviceRecognizer {
 
     /** Asks the recognition service once; an answer after the 5 second wait is recorded when it comes. */
     private static RecognizerAvailability.Answer languageInstalled(Context context, String language) {
+        // Repeats the caller's check so the API 31 and 33 calls below are guarded in this method.
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU) return RecognizerAvailability.Answer.ABSENT;
         CountDownLatch answered = new CountDownLatch(1);
         AtomicReference<RecognizerAvailability.Answer> answer =
                 new AtomicReference<>(RecognizerAvailability.Answer.UNANSWERED);
@@ -144,7 +150,13 @@ public final class OnDeviceRecognizer {
 
                     @Override
                     public void onError(int error) {
-                        // Not an answer: the language is asked again later.
+                        // "Not supported" is a no-model answer; any other error is not an
+                        // answer, and the language is asked again after the retry window.
+                        if (error == SpeechRecognizer.ERROR_LANGUAGE_NOT_SUPPORTED
+                                || error == SpeechRecognizer.ERROR_LANGUAGE_UNAVAILABLE) {
+                            answer.set(RecognizerAvailability.Answer.ABSENT);
+                            if (gaveUp.get()) availability.record(language, RecognizerAvailability.Answer.ABSENT);
+                        }
                         answered.countDown();
                     }
                 });

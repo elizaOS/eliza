@@ -1,17 +1,20 @@
 package ai.eliza.voice;
 
 import android.content.Context;
+import android.os.Build;
 import android.os.SystemClock;
 import android.speech.RecognitionSupport;
 import android.speech.RecognitionSupportCallback;
 import android.speech.SpeechRecognizer;
+import java.lang.reflect.Method;
 import java.util.List;
 
 /**
  * The real {@link OnDeviceRecognizer#available} against a scripted recognition service
  * (speech-pipeline/android-api): an error, a thrown create, a timeout or an interrupt is not "no
- * model", a late answer is kept, "no model" is asked again after its window, and a demote holds
- * against a late answer. Each case uses its own language, since the cache is per process.
+ * model", a "language not supported" error is, a late answer is kept, "no model" is asked again
+ * after its window, a demote holds against a late answer, and the probe itself does nothing below
+ * Android 13. Each case uses its own language, since the cache is per process.
  */
 public final class OnDeviceRecognizerProbeTest {
     static final Context CONTEXT = new Context();
@@ -63,6 +66,23 @@ public final class OnDeviceRecognizerProbeTest {
         advance(OnDeviceRecognizer.RETRY_AFTER_MILLIS);
         check(available("it-IT"), "after a thrown create the next probe is believed");
 
+        // "Language not supported" errors are a no-model answer: held for the absent window.
+        for (int[] error : new int[][] {
+                {SpeechRecognizer.ERROR_LANGUAGE_NOT_SUPPORTED, 0}, {SpeechRecognizer.ERROR_LANGUAGE_UNAVAILABLE, 1}}) {
+            String language = error[1] == 0 ? "nl-NL" : "sv-SE";
+            SpeechRecognizer.supportError = error[0];
+            before = probes();
+            check(!available(language), "a not-supported error reads false");
+            advance(OnDeviceRecognizer.RETRY_AFTER_MILLIS);
+            check(!available(language), "a not-supported error is held past the retry window");
+            check(probes() == before + 1, "no probe within the absent window after a not-supported error");
+            SpeechRecognizer.supportError = null;
+            SpeechRecognizer.installed = List.of("en-US", language);
+            advance(OnDeviceRecognizer.ABSENT_FOR_MILLIS - OnDeviceRecognizer.RETRY_AFTER_MILLIS);
+            check(available(language), "after the absent window the next probe is believed");
+        }
+        SpeechRecognizer.installed = List.of("en-US", "de-DE", "it-IT", "es-US", "pt-BR");
+
         // (2) The service does not answer within 5 seconds; its late answer is kept.
         SpeechRecognizer.supportSilent = true;
         check(!available("es-US"), "a timeout reads false");
@@ -88,8 +108,10 @@ public final class OnDeviceRecognizerProbeTest {
         Thread.currentThread().interrupt();
         check(!available("pt-BR"), "an interrupted probe reads false");
         check(Thread.interrupted(), "the interrupt is kept for the caller");
-        SpeechRecognizer.supportSilent = false;
+        // The interrupted probe returns before the main thread reaches the service: stay silent
+        // until the service holds its callback.
         RecognitionSupportCallback late = takePending();
+        SpeechRecognizer.supportSilent = false;
         OnDeviceRecognizer.demote("pt-BR");
         late.onSupportResult(new RecognitionSupport(List.of("pt-BR")));
         before = probes();
@@ -97,6 +119,21 @@ public final class OnDeviceRecognizerProbeTest {
         advance(1_000_000_000L);
         check(!available("pt-BR"), "a demote holds for the process");
         check(probes() == before, "a demoted language is not probed");
+
+        // Below Android 13 the probe itself answers no model without touching the service.
+        Method languageInstalled =
+                OnDeviceRecognizer.class.getDeclaredMethod("languageInstalled", Context.class, String.class);
+        languageInstalled.setAccessible(true);
+        int sdk = Build.VERSION.SDK_INT;
+        Build.VERSION.SDK_INT = 32;
+        try {
+            before = probes();
+            Object below = languageInstalled.invoke(null, CONTEXT, "en-US");
+            check("ABSENT".equals(String.valueOf(below)), "below Android 13 the probe answers no model");
+            check(probes() == before, "below Android 13 the probe does not ask the service");
+        } finally {
+            Build.VERSION.SDK_INT = sdk;
+        }
 
         System.out.println("PASS on-device recognizer probe wiring");
     }
