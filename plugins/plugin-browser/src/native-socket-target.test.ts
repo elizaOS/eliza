@@ -13,6 +13,7 @@ import { describe, expect, it, vi } from "vitest";
 import { BrowserDispatchFailure } from "./dispatch-types";
 import {
   androidNativeBrowserSocketPath,
+  CANCEL_CONFIRM_MAX_MS,
   COMMIT_GRANT_MAX_MS,
   commitFormHash,
   currentPageFromTabs,
@@ -318,6 +319,127 @@ it("negotiates cancellation and sends a fence for an aborted native request", as
     await rm(directory, { recursive: true, force: true });
   }
 });
+
+it("a cancelled request settles only when a cancel-reply peer answers that it stopped", async () => {
+  const directory = await mkdtemp(join(tmpdir(), "native-cancel-reply-"));
+  const socketPath = join(directory, "browser.sock");
+  const target = new NativeSocketBrowserTarget(() => {}, {
+    registrationMs: 1000,
+    heartbeatMs: 10000,
+    replyMs: 300,
+  });
+  let socket: Socket | undefined;
+  try {
+    await target.start({ ELIZA_BROWSER_NATIVE_SOCKET: socketPath });
+    socket = createConnection(socketPath);
+    const peer = socketFrames(socket);
+    peer.send({
+      type: "hello",
+      protocol: 2,
+      extensionId: "pmldpcoefklbdbgmggcejkfoinmjfeio",
+      profileId: "cancel-reply-profile",
+      capabilities: ["list", "cancel", "cancel-reply"],
+      nonce: "hello",
+    });
+    await vi.waitFor(() => expect(peer.messages[0]?.type).toBe("hello-ack"));
+    const commands = () =>
+      peer.messages.filter((message) => message.type === "command");
+    const cancelOne = async () => {
+      const controller = new AbortController();
+      const running = target.execute(
+        { subaction: "list" },
+        { signal: controller.signal },
+      );
+      const rejected = expect(running).rejects.toMatchObject({
+        reason: "request-cancelled",
+      });
+      const before = commands().length;
+      await vi.waitFor(() => expect(commands()).toHaveLength(before + 1));
+      controller.abort();
+      await rejected;
+      return commands().at(-1)?.id;
+    };
+    // The caller's request ends at once; the fence waits for the peer.
+    const id = await cancelOne();
+    let settled = false;
+    const settling = target.settled().then(() => {
+      settled = true;
+    });
+    await new Promise((resolve) => setTimeout(resolve, 50));
+    expect(settled).toBe(false);
+    peer.send({
+      type: "result",
+      id,
+      ok: false,
+      error: { kind: "STALE_REF", reason: "request-cancelled" },
+    });
+    await settling;
+    await target.settled();
+    // A peer that never answers: the fence ends the connection, which stops
+    // every request it carried, and that teardown is the fence, so a Pause
+    // that waits on it still answers.
+    await cancelOne();
+    await expect(target.settled()).resolves.toBeUndefined();
+    expect(await target.available()).toBe(false);
+    await target.settled();
+  } finally {
+    socket?.destroy();
+    await target.stop();
+    await rm(directory, { recursive: true, force: true });
+  }
+});
+
+it("an unconfirmed cancel ends the fence before a renderer's Pause gives up, with the default reply deadline", async () => {
+  // The renderer waits 10 s for a Pause (TASK_PAUSE_TIMEOUT_MS); the default
+  // reply deadline is 30 s, so the fence must not wait for it.
+  const RENDERER_PAUSE_TIMEOUT_MS = 10_000;
+  expect(CANCEL_CONFIRM_MAX_MS).toBeLessThanOrEqual(
+    RENDERER_PAUSE_TIMEOUT_MS / 2,
+  );
+  const directory = await mkdtemp(join(tmpdir(), "native-cancel-cap-"));
+  const socketPath = join(directory, "browser.sock");
+  const target = new NativeSocketBrowserTarget(() => {}, {
+    registrationMs: 1000,
+    heartbeatMs: 60000,
+  });
+  let socket: Socket | undefined;
+  try {
+    await target.start({ ELIZA_BROWSER_NATIVE_SOCKET: socketPath });
+    socket = createConnection(socketPath);
+    const peer = socketFrames(socket);
+    peer.send({
+      type: "hello",
+      protocol: 2,
+      extensionId: "pmldpcoefklbdbgmggcejkfoinmjfeio",
+      profileId: "cancel-cap-profile",
+      capabilities: ["list", "cancel", "cancel-reply"],
+      nonce: "hello",
+    });
+    await vi.waitFor(() => expect(peer.messages[0]?.type).toBe("hello-ack"));
+    const controller = new AbortController();
+    const running = target.execute(
+      { subaction: "list" },
+      { signal: controller.signal },
+    );
+    const rejected = expect(running).rejects.toMatchObject({
+      reason: "request-cancelled",
+    });
+    await vi.waitFor(() =>
+      expect(peer.messages.some((m) => m.type === "command")).toBe(true),
+    );
+    controller.abort();
+    await rejected;
+    // The peer never answers the cancel.
+    const started = Date.now();
+    await expect(target.settled()).resolves.toBeUndefined();
+    expect(Date.now() - started).toBeLessThan(RENDERER_PAUSE_TIMEOUT_MS);
+    expect(await target.available()).toBe(false);
+  } finally {
+    socket?.destroy();
+    await target.stop();
+    await rm(directory, { recursive: true, force: true });
+  }
+}, 15_000);
 
 it("does not send a cancellable request to an older native peer", async () => {
   const directory = await mkdtemp(join(tmpdir(), "native-no-cancel-"));

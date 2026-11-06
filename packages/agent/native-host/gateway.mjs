@@ -93,6 +93,9 @@ export function createLocalAgentGateway({
   };
   const pending = new Set();
   const rooms = new Map();
+  // Rooms sent a message since the last sign-out: only these can have a turn
+  // that this gateway started still running upstream.
+  const turnRooms = new Set();
   let epoch = 0,
     writeQueue = Promise.resolve();
   const ready = (async () => {
@@ -224,23 +227,26 @@ export function createLocalAgentGateway({
       ) {
         surfaceChannel?.revoke();
         epoch++;
+        // Stop the turn of every room sent a message, not only the rooms
+        // with an open request: a turn keeps running upstream after its
+        // renderer request closed, and must not survive the sign-out.
+        const roomIds = new Set(turnRooms);
+        turnRooms.clear();
         rooms.clear();
         for (const request of pending) {
           request.controller.abort();
-          if (request.roomId)
-            void fetchImpl(
-              new URL(`/api/turns/${request.roomId}/abort`, target),
-              {
-                method: "POST",
-                headers: {
-                  Authorization: `Bearer ${token}`,
-                  "Content-Type": "application/json",
-                },
-                body: JSON.stringify({ reason: "cloud-logout" }),
-                signal: AbortSignal.timeout(5000),
-              },
-            ).catch(() => {});
+          if (request.roomId) roomIds.add(request.roomId);
         }
+        for (const roomId of roomIds)
+          void fetchImpl(new URL(`/api/turns/${roomId}/abort`, target), {
+            method: "POST",
+            headers: {
+              Authorization: `Bearer ${token}`,
+              "Content-Type": "application/json",
+            },
+            body: JSON.stringify({ reason: "cloud-logout" }),
+            signal: AbortSignal.timeout(5000),
+          }).catch(() => {});
         await taskGateway?.revoke();
         await persist();
       }
@@ -367,6 +373,7 @@ export function createLocalAgentGateway({
       }
       const active = { controller, roomId: record?.roomId };
       if (isMessage || isCreate) pending.add(active);
+      if (isMessage) turnRooms.add(record.roomId);
       let response;
       let data;
       try {

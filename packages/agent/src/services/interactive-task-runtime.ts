@@ -194,6 +194,21 @@ export class InteractiveTaskRuntime {
   ): InteractiveTask {
     return this.applyControl(id, expectedRevision, type);
   }
+  /**
+   * Trusted host only, never a renderer route: start a new epoch for a new
+   * browser binding (for example a new action target) while the task stays
+   * active. A host must never pause a task for this: a pause is her Stop or
+   * a host safety stop that only her Resume ends, and a Stop that arrives
+   * meanwhile must hold.
+   * The caller observes again at the returned revision before it acts.
+   */
+  rebind(id: string, expectedRevision: number): InteractiveTask {
+    if (this.pending.has(id))
+      throw new ElizaError("Task operation is already running", {
+        code: "TASK_BUSY",
+      });
+    return this.fence(id, expectedRevision, { type: "rebind" });
+  }
   private applyControl(
     id: string,
     expectedRevision: number,
