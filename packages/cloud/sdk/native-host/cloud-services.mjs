@@ -2379,9 +2379,12 @@ export function createCloudRoutes({
           if (!error?.googleConflict) throw error;
           // Name the Google conflict from the connection's current status:
           // gone or replaced, metadata-only, or a token that needs reconnect.
+          // Cloud also answers 409 when Google's token endpoint is down. Only
+          // a refused grant changes the status, so a status that still names
+          // this connected grant means Google is unavailable.
           if ((await currentAccountId(googleEpoch)) !== grantId)
             throw googleReadFailure("account_changed");
-          throw googleReadFailure("reauth_required");
+          throw googleReadFailure("unavailable");
         }
       },
     });

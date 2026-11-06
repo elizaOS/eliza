@@ -1004,9 +1004,11 @@ function googleHost(t, google, extraPolicy = {}) {
             grantedScopes: google.connections[named] ?? [],
           });
         return Response.json({
-          connected: google.connectionId !== null,
+          connected: google.connectionId !== null && !google.reason,
           configured: true,
-          reason: google.connectionId ? "connected" : "disconnected",
+          reason:
+            google.reason ??
+            (google.connectionId ? "connected" : "disconnected"),
           identity: { email: "owner@example.test" },
           connectionId: google.connectionId,
           grantedCapabilities: ["google.gmail.triage"],
@@ -1344,11 +1346,21 @@ test("task reads report typed reasons and retry only transient failures", async 
       code: "cloud_sign_in_required",
     });
   }
-  // Cloud's Google connector answers 409 when the Google token needs a
-  // reconnect. A fresh status check names the case.
+  // Cloud's Google connector answers 409 when the Google token cannot be
+  // refreshed. A fresh status check names the case: a token that needs a
+  // reconnect, or an outage while the same grant is still connected.
   google.searchFailures = [409];
+  google.afterFailure = () => {
+    google.reason = "needs_reauth";
+  };
   await assert.rejects(port.searchGmailMessagesPage(search(GRANT_A)), {
     code: "reauth_required",
+  });
+  google.reason = undefined;
+  google.searchFailures = [409];
+  google.afterFailure = undefined;
+  await assert.rejects(port.searchGmailMessagesPage(search(GRANT_A)), {
+    code: "unavailable",
   });
   google.searchFailures = [409];
   google.afterFailure = () => {
