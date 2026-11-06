@@ -10,6 +10,10 @@ import (
 	"syscall"
 )
 
+// admissionStateVersion 2 added Refreshed. Installs are dev-only, so a
+// version 1 state fails closed with no migration.
+const admissionStateVersion = 2
+
 type admissionFloor struct {
 	Sequence int64    `json:"sequence"`
 	Revision int64    `json:"revision"`
@@ -17,6 +21,9 @@ type admissionFloor struct {
 	Core     string   `json:"core"`
 	Rollout  string   `json:"rollout"`
 	Revoked  []string `json:"revoked"`
+	// Refreshed is the trusted lower bound of the last descriptor fetched and
+	// authenticated for this lane. Commit freshness is measured against it.
+	Refreshed int64 `json:"refreshed"`
 }
 type admissionState struct {
 	Version      int64                     `json:"version"`
@@ -46,7 +53,7 @@ func InitializeAdmissionState(directory, repository, distribution string) error 
 				return errors.New("admission enrollment already has state")
 			}
 		}
-		state := admissionState{Version: 1, Repository: repository, Distribution: distribution, Lanes: map[string]admissionFloor{}}
+		state := admissionState{Version: admissionStateVersion, Repository: repository, Distribution: distribution, Lanes: map[string]admissionFloor{}}
 		return saveAdmission(directory, state, nil)
 	})
 }
@@ -61,10 +68,13 @@ func EvaluateRememberedReleaseInterval(directory string, descriptor, deviceJSON,
 	if err := decodeAdmission(policyJSON, &policy); err != nil {
 		return nil, err
 	}
-	return evaluateRememberedRelease(directory, descriptor, deviceJSON, policy)
+	return evaluateRememberedRelease(directory, descriptor, deviceJSON, policy, 0)
 }
 
-func evaluateRememberedRelease(directory string, descriptor, deviceJSON []byte, policy admissionPolicy) (result *AdmissionResult, err error) {
+// fetchedLower is the trusted lower bound read before descriptor was fetched
+// and authenticated, or 0 when descriptor is stored bytes. Only a fetch records
+// a lane refresh; re-evaluating stored bytes never counts as fresh metadata.
+func evaluateRememberedRelease(directory string, descriptor, deviceJSON []byte, policy admissionPolicy, fetchedLower int64) (result *AdmissionResult, err error) {
 	err = lockedAdmission(directory, func() error {
 		state, e := readAdmission(directory)
 		if e != nil {
@@ -122,7 +132,7 @@ func evaluateRememberedRelease(directory string, descriptor, deviceJSON []byte, 
 		if floor.Sequence == d.Sequence && floor.Revision == rollout.Revision && floor.Rollout != rolloutHash {
 			return errors.New("rollout revision equivocation")
 		}
-		state.Lanes[device.Channel] = admissionFloor{Sequence: d.Sequence, Revision: rollout.Revision, Security: d.SecurityFloor, Core: coreHash, Rollout: rolloutHash, Revoked: rollout.Revoked}
+		state.Lanes[device.Channel] = admissionFloor{Sequence: d.Sequence, Revision: rollout.Revision, Security: d.SecurityFloor, Core: coreHash, Rollout: rolloutHash, Revoked: rollout.Revoked, Refreshed: max(floor.Refreshed, fetchedLower)}
 		return saveAdmission(directory, *state, nil)
 	})
 	if err != nil {
@@ -176,11 +186,11 @@ func readAdmission(directory string) (*admissionState, error) {
 		return nil, errors.New("admission state checksum mismatch")
 	}
 	s := envelope.State
-	if s.Version != 1 || !matches(s.Repository, repositoryPattern) || !contains([]string{"launcher", "standalone"}, s.Distribution) || len(s.Lanes) > 2 {
+	if s.Version != admissionStateVersion || !matches(s.Repository, repositoryPattern) || !contains([]string{"launcher", "standalone"}, s.Distribution) || len(s.Lanes) > 2 {
 		return nil, errors.New("invalid admission enrollment state")
 	}
 	for channel, floor := range s.Lanes {
-		if !contains([]string{"stable", "beta"}, channel) || !bounded(floor.Sequence, 1, safeInteger) || !bounded(floor.Revision, 1, safeInteger) || !bounded(floor.Security, 1, 2147483647) || !validHex(floor.Core) || !validHex(floor.Rollout) || !stringList(floor.Revoked, 0, 4096, validHex) {
+		if !contains([]string{"stable", "beta"}, channel) || !bounded(floor.Sequence, 1, safeInteger) || !bounded(floor.Revision, 1, safeInteger) || !bounded(floor.Security, 1, 2147483647) || !validHex(floor.Core) || !validHex(floor.Rollout) || !stringList(floor.Revoked, 0, 4096, validHex) || !bounded(floor.Refreshed, 0, safeInteger) {
 			return nil, errors.New("invalid remembered admission floor")
 		}
 	}

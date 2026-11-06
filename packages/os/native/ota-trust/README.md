@@ -48,6 +48,16 @@ temporary files, which hold no trust state, so a write torn by a crash cannot
 stop discovery. Torn trust metadata is refused, never reset, and discovery
 reports it as `Failure` `trust-cache` instead of an ordinary deferral.
 
+Admission is not a lasting permission to install. `EvaluatePreparedForCommit`
+rechecks a prepared pair just before commit against current bounds and the
+lane's stored revocations, security floor and sequence, and requires a metadata
+refresh no older than the caller's bound. Only a fetched descriptor records a
+refresh; `RefreshWithTimeSource` fetches one for a prepared plan without staging
+anything. `EvaluatePreparedRecovery` reports a recovery that revocations or
+floors have made permanently unloadable, so the host can stop waiting for it.
+`TestFreshAdmissionConformance` replays the `OtaFreshAdmission` model against
+these functions; set `OTA_FRESH_CONFORMANCE=full` for every two-step sequence.
+
 Hosts retain trust-root provisioning, signing authority, repository/package
 binding, update UI, permitted hardware and release/rollout policy. Native callers
 must independently recheck current device state and installation authority.
