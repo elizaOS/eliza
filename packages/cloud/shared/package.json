@@ -457,6 +457,7 @@
     "./lib/services/organization-policy-admission": "./src/lib/services/organization-policy-admission.ts",
     "./lib/services/maps/contract": "./src/lib/services/maps/contract.ts",
     "./lib/services/maps/osm-provider": "./src/lib/services/maps/osm-provider.ts",
+    "./lib/services/maps/google-provider": "./src/lib/services/maps/google-provider.ts",
     "./lib/services/maps/backends": "./src/lib/services/maps/backends.ts",
     "./lib/services/maps/graphhopper-router": "./src/lib/services/maps/graphhopper-router.ts",
     "./lib/services/maps/nominatim-geocoder": "./src/lib/services/maps/nominatim-geocoder.ts",

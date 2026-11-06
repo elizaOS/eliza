@@ -569,6 +569,40 @@ each environment:
 - Optional `ELIZA_MAPS_OPERATOR`, `ELIZA_MAPS_ATTRIBUTION` and
   `ELIZA_MAPS_PROVIDER_ID`.
 
+`ELIZA_MAPS_PROVIDER=google` serves the same contract from Google Maps
+Platform instead: Places API (New) text search and place details, Geocoding API
+geocode and reverse, Routes API `computeRoutes` (drive, walk, bicycle) and Map
+Tiles API 2D roadmap tiles. Ops provision:
+
+- Secret `GOOGLE_MAPS_API_KEY`: a server key restricted to those four APIs
+  (no application restriction usable from Workers; restrict by API). It goes
+  only in request headers or Google's own request URLs and never leaves Cloud.
+- Optional `ELIZA_MAPS_COVERAGE_JSON` (default: one `world` region),
+  `ELIZA_MAPS_LANGUAGE` (BCP-47, e.g. `en-US`), `ELIZA_MAPS_REGION` (CLDR,
+  e.g. `US`; tiles default to `en-US`/`US`), `ELIZA_MAPS_ROUTE_ALTERNATIVES`,
+  `ELIZA_MAPS_DATASET_REVISION` (default `google-maps-platform-live`),
+  `ELIZA_MAPS_PROVIDER_ID` (default `eliza-cloud-google`) and
+  `ELIZA_MAPS_ATTRIBUTION` (default `Google Maps`).
+- `ELIZA_MAPS_TILES=false` turns the tile proxy off.
+
+The Maps contract and the device clients accept only `traffic: "none"` and
+`transit: "none"`, so Google routes are requested `TRAFFIC_UNAWARE` and
+transit is refused (`422 unsupported_mode`) even though the Routes API serves
+both; offering them needs a contract change first. Search asks only for basic
+place fields (Text Search Pro); details adds website, phone and opening hours.
+
+`GET /api/v1/maps/tiles/{z}/{x}/{y}` returns one PNG roadmap tile
+(`Cache-Control: private, max-age=86400`) when the provider serves tiles;
+`capabilities.tiles` then gives the URL template, zoom range, tile size and
+the attribution a host must show on the map (`capabilities.map` stays `false`
+until device map planes consume these tiles). Cloud creates the Map Tiles
+session once per isolate, key, language and region, renews it an hour before
+it expires and once more if Google refuses it. Tiles use the same
+authentication, subscription and durable admission as every Maps operation:
+one request unit and a unique `Idempotency-Key` per tile, so size the
+`ELIZA_CLOUD_MAPS_REQUEST_ALLOWANCES` plans for map browsing (a screen is
+roughly 12-20 tiles). Other providers answer `503 maps_not_configured`.
+
 `capabilities` also reports `sources` and a location `disclosure`: the services
 that receive a request's text and coordinates and their operator. Cloud records
 only the operation and result code. A self-hostable reference stack with TLS,
