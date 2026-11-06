@@ -913,7 +913,14 @@ export async function acquireInferenceAdmissionLease(params: {
     // A gate that has never served this organization refuses before any
     // lease mutation. Hydrate it from the primary once, inline, and lease again.
     await response.body?.cancel();
-    await hydrateInferenceAdmissionGate(params.organizationId, stub);
+    try {
+      await hydrateInferenceAdmissionGate(params.organizationId, stub);
+    } catch (error) {
+      // error-policy:J2 no lease was recorded; report the primary failure.
+      throw new InferenceAdmissionGateUnavailableError("Inference admission gate hydration failed", {
+        cause: error,
+      });
+    }
     response = await requestLease();
   }
   if (!response) {
@@ -1114,7 +1121,16 @@ export async function markInferenceAdmissionLeaseDispatched(
         // The authoritative cold response precedes any lease mutation: hydrate
         // the gate from the primary once, inline, and dispatch again.
         gateHydrated = true;
-        await hydrateInferenceAdmissionGate(lease.organizationId, lease.gate);
+        try {
+          await hydrateInferenceAdmissionGate(lease.organizationId, lease.gate);
+        } catch (error) {
+          // error-policy:J2 the gate refused before recording the dispatch.
+          prepared.state = "rejected";
+          throw new InferenceAdmissionDispatchMarkError(
+            "Inference admission gate hydration failed",
+            { cause: error },
+          );
+        }
         continue;
       }
       if (

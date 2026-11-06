@@ -15,22 +15,19 @@ mock.module("@/api-app/lib/generative-route-auth", () => ({
 }));
 
 const lookup = spyOn(charactersService, "getById");
-const cachedLookup = spyOn(charactersService, "getByIdCacheOnly");
 const { default: route } = await import("../agents/[id]/a2a/route");
 const app = new Hono().route("/api/agents/:id/a2a", route);
 
 beforeEach(() => {
   authCalls = 0;
   lookup.mockClear();
-  cachedLookup.mockClear();
 });
 afterAll(() => {
   lookup.mockRestore();
-  cachedLookup.mockRestore();
 });
 
-test("A2A preserves only the pre-admission auth warming marker and retry delay", async () => {
-  for (const code of ["auth_cache_warming", "service_unavailable"] as const) {
+test("A2A maps a retryable auth refusal to a retryable JSON-RPC error before agent lookup", async () => {
+  for (const code of ["service_unavailable"] as const) {
     failure = new ApiError(503, code, "Synthetic refusal", {
       retryable: true,
       retryAfterSeconds: 1,
@@ -49,18 +46,12 @@ test("A2A preserves only the pre-admission auth warming marker and retry delay",
       jsonrpc: "2.0",
       error: {
         code: -32004,
-        message: "Authorization cache unavailable; retry shortly",
-        ...(code === "auth_cache_warming"
-          ? { data: { code: "auth_cache_warming" } }
-          : {}),
+        message: "Authorization is unavailable; retry shortly",
       },
       id: null,
     });
-    expect(response.headers.get("Retry-After")).toBe(
-      code === "auth_cache_warming" ? "1" : null,
-    );
+    expect(response.headers.get("Retry-After")).toBe("1");
   }
-  expect(authCalls).toBe(2);
+  expect(authCalls).toBe(1);
   expect(lookup).not.toHaveBeenCalled();
-  expect(cachedLookup).not.toHaveBeenCalled();
 });
