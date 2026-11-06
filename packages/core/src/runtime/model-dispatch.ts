@@ -512,7 +512,7 @@ export class RuntimeModelDispatch {
 		| ((
 				runtime: IAgentRuntime,
 				params: Record<string, JsonValue | object>,
-			) => Promise<JsonValue | object>)
+		  ) => Promise<JsonValue | object>)
 		| undefined {
 		const requestedModelKey = String(modelType);
 		// Keep capability probes aligned with useModel dispatch: once the

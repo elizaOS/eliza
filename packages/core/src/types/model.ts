@@ -357,7 +357,7 @@ export type ChatMessageContentPart =
 			data: string | URL | Uint8Array;
 			mediaType: string;
 			filename?: string;
-		}
+	  }
 	| { type: string; [key: string]: JsonValue | object | undefined };
 
 export interface ChatMessage {
