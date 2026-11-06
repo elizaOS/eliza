@@ -789,7 +789,6 @@ ELIZA_ONBOARDING_LOGIN_APP_URL = "https://staging.eliza.app"
 # identity. The protected deployment workflow verifies both before publishing.
 ELIZA_MOBILE_APP_AUTH_ENABLED = "true"
 ELIZA_MOBILE_APP_AUTH_APP_ID = "689a1597-85e7-43ca-b000-8c6392d79465"
-NEXT_PUBLIC_NETWORK = "base"
 NEXT_PUBLIC_SOLANA_RPC_URL = "https://api.mainnet-beta.solana.com"
 GITHUB_ORG_NAME = "eliza-cloud-apps"
 GITHUB_TEMPLATE_REPO = "eliza-cloud-apps/cloud-apps-template"
@@ -798,7 +797,6 @@ APP_BILLING_ENVIRONMENT = "test"
 APP_BILLING_UI_ORIGIN = "https://cloud-staging.eliza.app"
 # Staging canary. Set false for an immediate rollback to the full app router.
 THIN_INFERENCE_ENTRY_ENABLED = "true"
-DATABASE_REGION = "na"
 PAYOUT_TESTNET = "true"
 # Warm-pool claim half (#16961). Staging enablement is the next step of that
 # issue's dependency chain but is sequenced behind draining the residual
