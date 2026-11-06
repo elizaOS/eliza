@@ -1,5 +1,6 @@
 import type { StructuredStreamGate } from "@elizaos/core";
 import { describe, expect, it } from "vitest";
+import { createStage1DirectReplyStreamGate } from "../../services/message/stage1-reply-stream.js";
 import {
   makeMessage,
   makeRuntime,
@@ -76,6 +77,36 @@ describe("Stage 1 reply stream gate", () => {
       const { replyEffectStatus: _status, ...withoutStatus } = direct;
       expect(gate?.(withoutStatus)).toBe(false);
     }
+    expect(gate?.({ ...direct, contextRequests: ["history:all"] })).toBe(false);
+    if (precedingKeys.includes("contextRequests")) {
+      const { contextRequests: _read, ...withoutReads } = direct;
+      expect(gate?.(withoutReads)).toBe(false);
+    }
     expect(gate?.(undefined)).toBe(false);
+  });
+
+  it("holds when the call's schema includes a field that could reroute or rewrite the reply after it streams", () => {
+    const direct = {
+      shouldRespond: "RESPOND",
+      contexts: ["simple"],
+      contextRequests: [],
+      intents: [],
+      replyEffectStatus: "none",
+    };
+    const passive = [
+      ...Object.keys(direct),
+      "replyText",
+      "facts",
+      "relationships",
+      "topics",
+      "addressedTo",
+      "emotion",
+    ];
+    expect(createStage1DirectReplyStreamGate(() => passive)(direct)).toBe(true);
+    expect(
+      createStage1DirectReplyStreamGate(() => [...passive, "threadOps"])(
+        direct,
+      ),
+    ).toBe(false);
   });
 });

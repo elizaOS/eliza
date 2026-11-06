@@ -62,20 +62,45 @@ const ALWAYS_REQUIRED_FIELDS = ["shouldRespond", "contexts"] as const;
 /**
  * Routing fields that must have been decided before a direct answer can
  * stream, when the attempt's schema emits them. Stage 1 leaves some out of
- * its model-facing schema (for example `candidateActionNames`, which the
+ * its model-facing schema (it never asks for `candidateActionNames`, which the
  * planner discovers); a field the model never writes can never be waited for.
+ * `candidateActionNames` stays listed for callers whose schema does emit it.
  */
 const REQUIRED_WHEN_EMITTED_FIELDS = [
+  "contextRequests",
   "intents",
   "candidateActionNames",
   "replyEffectStatus",
 ] as const;
 
 /**
+ * Fields written after `replyText` that never change the turn's routing or
+ * the reply text. Any other emitted field (for example a plugin field that
+ * moves the turn to the planner or replaces the reply after it was written)
+ * holds the stream for that call, because the gate decides before such a
+ * field is generated.
+ */
+const PASSIVE_FOLLOWING_FIELDS = [
+  "replyText",
+  "facts",
+  "relationships",
+  "topics",
+  "addressedTo",
+  "emotion",
+] as const;
+
+const STREAM_SAFE_EMITTED_FIELDS: ReadonlySet<string> = new Set([
+  ...Object.keys(DIRECT_REPLY_PRECEDING_FIELDS),
+  ...PASSIVE_FOLLOWING_FIELDS,
+]);
+
+/**
  * Creates the gate for one Stage-1 call. It allows the reply to stream only
  * when the fields generated before it route the turn to a direct answer:
  * RESPOND, simple context, no intents, no context reads, no action candidates
- * and no pending or applied effect. `emittedFieldNames` returns the fields the
+ * and no pending or applied effect, with no field in the call's schema that
+ * could reroute the turn or rewrite the reply after it streams.
+ * `emittedFieldNames` returns the fields the
  * call's schema actually asks the model for, read when the gate runs so a
  * recomposed schema (retry, context read) is honoured. Unstructured prose is
  * held: it has no routing decision to check.
@@ -86,6 +111,9 @@ export function createStage1DirectReplyStreamGate(
   return (preceding) => {
     if (!preceding) return false;
     const emitted = new Set(emittedFieldNames());
+    for (const field of emitted) {
+      if (!STREAM_SAFE_EMITTED_FIELDS.has(field)) return false;
+    }
     for (const field of ALWAYS_REQUIRED_FIELDS) {
       if (!Object.hasOwn(preceding, field)) return false;
     }

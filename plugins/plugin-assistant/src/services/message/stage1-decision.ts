@@ -759,22 +759,22 @@ export async function generateStage1Decision(
   // prompt text stays byte-stable, only the grammar varies per turn. Cloud
   // adapters ignore `responseSkeleton` / `grammar` — `tools` carries the
   // equivalent (unforced) contract for them.
+  // The fields the model is asked to write on the current attempt; skipped
+  // fields stay in the registry projection but are not generated.
+  const activeResponseHandlerFields = () =>
+    selectedResponseHandlerFields.filter(
+      (field) =>
+        !responseHandlerFieldPrompt.skippedFieldNames.includes(field.name),
+    );
   const createResponseGrammar = () =>
     buildResponseGrammar(
       {
         actions: args.runtime.actions ?? [],
-        responseHandlerFields: selectedResponseHandlerFields
-          .filter(
-            (field) =>
-              !responseHandlerFieldPrompt.skippedFieldNames.includes(
-                field.name,
-              ),
-          )
-          .map((field) =>
-            field === replyTextFieldEvaluator && effectiveReplySchema
-              ? { ...field, schema: effectiveReplySchema }
-              : field,
-          ),
+        responseHandlerFields: activeResponseHandlerFields().map((field) =>
+          field === replyTextFieldEvaluator && effectiveReplySchema
+            ? { ...field, schema: effectiveReplySchema }
+            : field,
+        ),
         responseHandlerFieldSignature:
           hashString(
             JSON.stringify(responseHandlerFieldPrompt.skippedFieldNames),
@@ -843,12 +843,7 @@ export async function generateStage1Decision(
       : {
           streamFields: STAGE1_REPLY_STREAM_FIELDS,
           streamFieldGate: createStage1DirectReplyStreamGate(() =>
-            selectedResponseHandlerFields
-              .map((field) => field.name)
-              .filter(
-                (name) =>
-                  !responseHandlerFieldPrompt.skippedFieldNames.includes(name),
-              ),
+            activeResponseHandlerFields().map((field) => field.name),
           ),
         }),
     // This is the only Stage 1 field intended for the user. Local voice
