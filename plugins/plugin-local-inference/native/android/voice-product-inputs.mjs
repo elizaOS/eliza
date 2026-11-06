@@ -69,6 +69,7 @@ export function verifyVoiceProductBundle(inputs, product, record, manifest) {
 }
 
 if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
+  try {
   const args = process.argv.slice(2), options = {};
   for (let i = 0; i < args.length; i += 2) {
     if (!["--inputs", "--languages", "--record", "--manifest"].includes(args[i]) || !args[i + 1] || options[args[i]]) throw new Error("Invalid voice product input arguments");
@@ -83,4 +84,8 @@ if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.me
     verifyVoiceProductBundle(inputs, product, read(options["--record"]), read(options["--manifest"]));
   }
   process.stdout.write(JSON.stringify(product) + "\n");
+  } catch (error) {
+    process.stderr.write(`[voice-product] ${error.message}\n`);
+    process.exitCode = 1;
+  }
 }

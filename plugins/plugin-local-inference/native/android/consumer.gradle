@@ -96,7 +96,8 @@ preBuild.doFirst {
         '--record', record.absolutePath,
         '--manifest', new File(paradeeNative, 'assets/paradee-voice/v1/manifest.json').absolutePath]
     if (project.hasProperty('elizaParadeeLanguages')) productArgs += ['--languages', project.elizaParadeeLanguages.toString()]
-    providers.exec { commandLine productArgs }.standardOutput.asText.get()
+    def productCheck = providers.exec { commandLine productArgs; ignoreExitValue = true }
+    if (productCheck.result.get().exitValue != 0) throw new GradleException(productCheck.standardError.asText.get().trim())
     approved.files.each { entry ->
         if (!packageInference && entry.path.startsWith('jniLibs/')) return
         def target = new File(paradeeNative, entry.path)
