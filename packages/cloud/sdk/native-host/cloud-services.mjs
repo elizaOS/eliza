@@ -551,6 +551,13 @@ export function createCloudRoutes({
   // false: the host has its own sign-in. `/cloud/login` and its status route answer
   // 404, and no Cloud web origin (cloudSiteBase) is used.
   browserSignIn = true,
+  // false: the host offers no Google account link. Every
+  // `/cloud/account/methods/google/*` route answers 404.
+  accountGoogleLink = true,
+  // false: only the host starts and finishes Google sign-in, through the
+  // enrollment it built. `/cloud/native/start` with `method: "google"` and
+  // `/cloud/native/google/return` answer 404.
+  googleSignInRoutes = true,
 } = {}) {
   const billingEnabled = hostPolicy?.accountBilling !== false;
   if (
@@ -599,6 +606,13 @@ export function createCloudRoutes({
     : gmailReadOnlyGrant;
   const message = (key) =>
     hostPolicy.messages?.[key] ?? `Cloud service request failed (${key})`;
+  // A sign-in route this host turned off. The answer is the same before and
+  // after any request, so nothing is read, cleared or sent to Cloud.
+  const refuseSignInRoute = (res, key) =>
+    send(res, 404, {
+      error: hostPolicy.messages?.[key] ?? "Cloud route not available",
+      code: "internal_sign_in_only",
+    });
   const site = browserSignIn ? origin(cloudSiteBase) : null,
     api = origin(cloudApiBase);
   const verifiedRequired = () =>
@@ -1095,12 +1109,26 @@ export function createCloudRoutes({
     try {
       await ready;
       let path = url.pathname;
-      if (
-        (!billingEnabled && path.startsWith("/cloud/account/")) ||
-        (!browserSignIn &&
-          (path === "/cloud/login" || path === "/cloud/login/status"))
-      ) {
+      if (!billingEnabled && path.startsWith("/cloud/account/")) {
         send(res, 404, { error: "Cloud route not available" });
+        return true;
+      }
+      if (
+        !browserSignIn &&
+        (path === "/cloud/login" || path === "/cloud/login/status")
+      ) {
+        refuseSignInRoute(res, "browserSignInUnavailable");
+        return true;
+      }
+      if (
+        !accountGoogleLink &&
+        path.startsWith("/cloud/account/methods/google/")
+      ) {
+        refuseSignInRoute(res, "accountGoogleLinkUnavailable");
+        return true;
+      }
+      if (!googleSignInRoutes && path === "/cloud/native/google/return") {
+        refuseSignInRoute(res, "googleSignInRoutesUnavailable");
         return true;
       }
       let method = req.method,
@@ -1713,6 +1741,14 @@ export function createCloudRoutes({
                 : [];
         if (Object.keys(input).some((key) => !fields.includes(key)))
           throw fail(message("unexpectedSignInFields"));
+        if (
+          !googleSignInRoutes &&
+          operation === "start" &&
+          input.method === "google"
+        ) {
+          refuseSignInRoute(res, "googleSignInRoutesUnavailable");
+          return true;
+        }
         if (operation === "cancel") {
           advanceGeneration();
           attempts.clear();

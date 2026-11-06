@@ -676,6 +676,91 @@ test("native Google sign-in relays only the return address to the private attemp
   );
 });
 
+test("a host-only sign-in refuses browser, Google link and generic Google routes before any work", async (t) => {
+  const handled = [],
+    requests = [];
+  const enrollment = {
+    handle: async (operation, input) => {
+      handled.push([operation, input]);
+      return { status: "ok" };
+    },
+    cancel: async () => ({ status: "cancelled" }),
+  };
+  const routes = createCloudRoutes({
+    browserSignIn: false,
+    accountGoogleLink: false,
+    googleSignInRoutes: false,
+    hostPolicy: {
+      ...policy,
+      messages: {
+        browserSignInUnavailable: "Sign in with a code in the app.",
+        accountGoogleLinkUnavailable: "Sign in with a code in the app.",
+        googleSignInRoutesUnavailable: "Choose Continue with Google.",
+      },
+      createNativeCloudAuth: () => enrollment,
+    },
+    pendingCredentialStore: { read: async () => null },
+    speechVoice: { voiceId: "voice", modelId: "model" },
+    fetchImpl: async (url) => {
+      requests.push(url);
+      throw Error("Unexpected provider request");
+    },
+  });
+  const server = http.createServer((req, res) =>
+    routes(req, res, new URL(req.url, "http://localhost")),
+  );
+  server.listen(0, "127.0.0.1");
+  await once(server, "listening");
+  t.after(() => {
+    server.closeAllConnections();
+    server.close();
+  });
+  const base = `http://127.0.0.1:${server.address().port}`;
+  const post = (path, value) =>
+    fetch(`${base}${path}`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(value),
+    });
+  const code = "Sign in with a code in the app.",
+    google = "Choose Continue with Google.";
+  const callbackUrl = "https://app.example/return#code=c&state=s";
+  for (const [response, error] of [
+    [await post("/cloud/login", {}), code],
+    [
+      await fetch(
+        `${base}/cloud/login/status?sessionId=12345678-1234-1234-1234-123456789012`,
+      ),
+      code,
+    ],
+    [await post("/cloud/account/methods/google/start", {}), code],
+    [await post("/cloud/account/methods/google/return", { callbackUrl }), code],
+    [await post("/cloud/account/methods/google/status", {}), code],
+    [await post("/cloud/account/methods/google/complete", {}), code],
+    [await post("/cloud/account/methods/google/cancel", {}), code],
+    [await post("/cloud/native/start", { method: "google" }), google],
+    [await post("/cloud/native/google/return", { callbackUrl }), google],
+  ]) {
+    assert.equal(response.status, 404);
+    assert.deepEqual(await response.json(), {
+      error,
+      code: "internal_sign_in_only",
+    });
+  }
+  assert.deepEqual(handled, []);
+  assert.deepEqual(requests, []);
+  // Code sign-in and the other account methods are still served.
+  assert.equal(
+    (await post("/cloud/native/start", { email: "a@example.test" })).status,
+    200,
+  );
+  assert.equal((await post("/cloud/account/methods", {})).status, 200);
+  assert.deepEqual(handled, [
+    ["start", { email: "a@example.test" }],
+    ["account-methods", {}],
+  ]);
+});
+
 test("a service-only host composes CLI login and provider-default voice without billing routes", async (t) => {
   const calls = [];
   let cloudSaysCreated;
