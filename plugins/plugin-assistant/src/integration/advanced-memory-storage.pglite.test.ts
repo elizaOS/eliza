@@ -6,9 +6,11 @@
  */
 import {
   AgentRuntime,
+  ChannelType,
   type Character,
   type Entity,
   type IAgentRuntime,
+  type Memory,
   type Plugin,
   Service,
   type UUID,
@@ -23,6 +25,7 @@ import {
 } from "@elizaos/plugin-sql";
 import { v4 as uuidv4 } from "uuid";
 import { afterEach, describe, expect, it } from "vitest";
+import { memoryAction } from "../actions/memories.ts";
 import { createAdvancedMemoryPlugin } from "../features/advanced-memory/index.ts";
 
 type RuntimeMemoryService = {
@@ -224,5 +227,78 @@ describe("plugin-sql advanced memory storage", () => {
     expect(viaLinkedIdentity).toHaveLength(1);
     expect(viaLinkedIdentity[0]?.content).toContain("short emails");
     expect(viaLinkedIdentity[0]?.entityId).toBe(entityA);
+  });
+
+  it("forgets a claim from long-term memory as well as from stored facts", async () => {
+    const runtime = createRuntime();
+    runtimes.push(runtime);
+    const adapter = await createMigratedAdapter(runtime.agentId);
+    runtime.registerDatabaseAdapter(adapter);
+    await runtime.initialize({ skipMigrations: true });
+
+    const entityId = uuidv4() as UUID;
+    const roomId = uuidv4() as UUID;
+    await createEntities(runtime, [entityId]);
+    await runtime.createRooms([
+      {
+        id: roomId,
+        agentId: runtime.agentId,
+        type: ChannelType.DM,
+        source: "test",
+      },
+    ]);
+    const factId = uuidv4() as UUID;
+    await runtime.createMemories([
+      {
+        tableName: "facts",
+        memory: {
+          id: factId,
+          roomId,
+          entityId,
+          agentId: runtime.agentId,
+          createdAt: 1,
+          content: { text: "I live at 12 Oak St." },
+        },
+      },
+    ]);
+    const memoryService = (await runtime.getServiceLoadPromise(
+      "memory",
+    )) as unknown as RuntimeMemoryService;
+    // The long-term evaluator's summary of the same claim, plus an unrelated
+    // memory that must survive.
+    await memoryService.storeLongTermMemory({
+      agentId: runtime.agentId,
+      entityId,
+      category: "semantic",
+      content: "Lives at 12 Oak St.",
+      confidence: 0.9,
+      source: "conversation",
+    });
+    await memoryService.storeLongTermMemory({
+      agentId: runtime.agentId,
+      entityId,
+      category: "semantic",
+      content: "Prefers short emails.",
+      confidence: 0.9,
+      source: "conversation",
+    });
+
+    const message: Memory = {
+      id: uuidv4() as UUID,
+      roomId,
+      entityId,
+      agentId: runtime.agentId,
+      content: { text: "Forget that I live at 12 Oak St." },
+    };
+    const result = await memoryAction.handler(runtime, message, undefined, {
+      parameters: { op: "delete", query: "12 Oak St", confirm: true },
+    });
+
+    expect(result, JSON.stringify(result)).toMatchObject({ success: true });
+    expect(await runtime.getMemoryById(factId)).toBeNull();
+    const remaining = await memoryService.getLongTermMemories(entityId);
+    expect(remaining.map((memory) => memory.content)).toEqual([
+      "Prefers short emails.",
+    ]);
   });
 });
