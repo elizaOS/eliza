@@ -1544,7 +1544,7 @@ export class AutoTopUpService {
   ): Promise<void> {
     const org = await organizationsRepository.findById(attempt.organizationId);
     if (!org) return;
-    const recipientEmail = await this.getUserEmail(org.id);
+    const recipientEmail = await this.billingRecipientEmail(org);
     if (!recipientEmail) return;
 
     let paymentMethodDisplay = "Card on file";
@@ -1570,7 +1570,7 @@ export class AutoTopUpService {
   private async queueAutoTopUpDisabledEmail(organizationId: string, reason: string): Promise<void> {
     const org = await organizationsRepository.findById(organizationId);
     if (!org) return;
-    const recipientEmail = await this.getUserEmail(org.id);
+    const recipientEmail = await this.billingRecipientEmail(org);
     if (!recipientEmail) return;
     const appUrl = process.env.NEXT_PUBLIC_APP_URL || "https://cloud.eliza.app";
     await emailService.sendAutoTopUpDisabledEmail({
@@ -1582,9 +1582,22 @@ export class AutoTopUpService {
     });
   }
 
-  private async getUserEmail(organizationId: string): Promise<string | null> {
-    const users = await usersRepository.listByOrganization(organizationId);
-    return users.find((user) => user.email)?.email ?? null;
+  /**
+   * Who receives a billing notice: the organization's billing email, else
+   * its owner, else an admin. Never an ordinary member: the notice carries
+   * the card and invoice of the organization's payment.
+   */
+  private async billingRecipientEmail(org: {
+    id: string;
+    billing_email?: string | null;
+  }): Promise<string | null> {
+    if (org.billing_email) return org.billing_email;
+    const users = await usersRepository.listByOrganization(org.id);
+    for (const role of ["owner", "admin"]) {
+      const email = users.find((user) => user.role === role && user.email)?.email;
+      if (email) return email;
+    }
+    return null;
   }
 
   /**
