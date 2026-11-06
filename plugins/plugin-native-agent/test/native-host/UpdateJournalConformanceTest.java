@@ -37,7 +37,7 @@ public final class UpdateJournalConformanceTest {
     boolean wasBlocked=j.phase.equals("SUPPORT"),recovering=j.phase.equals("RECOVERING")||(wasBlocked&&j.attempts==1);
     long expected=recovering?rec(j.plan):cand(j.plan),previous=recovering?cand(j.plan):j.base;
     J n=j.copy();
-    if(e.installed==expected){n.phase=recovering?"RECOVERY_PROBATION":"PROBATION";n.reason="";n.reported=null;return n;}
+    if(e.installed==expected){n.phase=recovering?"RECOVERY_PROBATION":"PROBATION";n.reason="";n.reported=null;if(!recovering){n.released=0;n.releases=0;}return n;}
     if(e.installed!=previous){n.phase="SUPPORT";n.reason="unexpected_installed_identity";return n;}
     if(e.blocked!=null){n.phase="SUPPORT";n.reason=e.blocked;return n;}
     // A report while the session is listed is kept, never dropped.

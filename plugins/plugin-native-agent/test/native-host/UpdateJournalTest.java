@@ -260,6 +260,17 @@ public final class UpdateJournalTest {
     UpdateJournal.Plan other=new UpdateJournal.Plan("release-13","stable","launcher",OLD,id(13,'d'),id(14,'e'));
     budget.begin(other,OLD,0);budget.committing("release-13",4,0);budget.reconcileInstallerResult("release-13",4,OLD,false,null,UpdateJournal.InstallerFailure.RETRYABLE);
     check(budget.read().phase==UpdateJournal.Phase.IDLE);check(budget.read().releases==1);check(budget.read().releasedCandidate.equals(other.candidate.digest));
+    // A candidate that installs ends its releases in a row: the record is
+    // cleared, the journal is written as version 4 again, and a later release
+    // of the same candidate counts from one.
+    Path clearedRoot=directory.resolve("retry-cleared");UpdateJournal cleared=new UpdateJournal(clearedRoot,SYNC);
+    for(int attempt=1;attempt<UpdateJournal.MAX_INSTALL_ATTEMPTS_PER_CANDIDATE;attempt++){cleared.begin(plan("stable"),OLD,0);cleared.committing("release-11",3,0);cleared.reconcileInstallerResult("release-11",3,OLD,false,null,UpdateJournal.InstallerFailure.RETRYABLE);}
+    check(cleared.read().releases==UpdateJournal.MAX_INSTALL_ATTEMPTS_PER_CANDIDATE-1);
+    check(java.nio.ByteBuffer.wrap(Files.readAllBytes(clearedRoot.resolve("journal"))).getInt(4)==5);
+    cleared.begin(plan("stable"),OLD,0);cleared.committing("release-11",3,0);cleared.reconcile("release-11",3,NEW,false);
+    check(cleared.read().phase==UpdateJournal.Phase.PROBATION);check(cleared.read().releases==0);check(cleared.read().releasedCandidate.isEmpty());
+    check(java.nio.ByteBuffer.wrap(Files.readAllBytes(clearedRoot.resolve("journal"))).getInt(4)==4);
+    cleared.installedHealthy(cleared.read(),NEW);check(new UpdateJournal(clearedRoot,SYNC).read().releases==0);
     UpdateJournal rejectedPair=new UpdateJournal(directory.resolve("rejected-pair"),SYNC);
     rejectedPair.begin(plan("stable"),OLD,0);rejectedPair.committing("release-11",1,0);
     rejectedPair.reconcileInstallerResult("release-11",1,OLD,false,null,UpdateJournal.InstallerFailure.CANDIDATE_REJECTED);

@@ -217,7 +217,10 @@ public class UpdateJournal {
    * Only a reported candidate fault quarantines, and a fault reported while
    * the session is still listed is kept until it is gone. A gone session with
    * no report waits OUTCOME_UNKNOWN_WAIT_MS of observed uptime
-   * (observeOutcomeUnknown) for a late callback before the plan is released. */
+   * (observeOutcomeUnknown) for a late callback before the plan is released.
+   * That wait holds the journal in SUPPORT, which admits no other plan, and
+   * only observeOutcomeUnknown ends it: a host that calls this directly must
+   * also run InstallReadback.reconcile periodically while awaitingInstaller. */
   public Snapshot reconcileInstallerResult(String planId,int sessionId,Identity installed,boolean sessionPending,String blockedReason,InstallerFailure failure)throws IOException {
     if(blockedReason!=null&&!Arrays.asList("user_action_required","policy_blocked").contains(blockedReason))throw new IllegalArgumentException("Unknown installer reason");
     return transact(s->{
@@ -226,7 +229,13 @@ public class UpdateJournal {
       boolean wasBlocked=s.phase==Phase.SUPPORT;
       boolean recovering=s.phase==Phase.RECOVERING||(wasBlocked&&s.attempts==1);
       Identity expected=recovering?s.plan.recovery:s.plan.candidate;
-      if(expected.matches(installed)){s.phase=recovering?Phase.RECOVERY_PROBATION:Phase.PROBATION;s.reason="";s.reported=null;return;}
+      if(expected.matches(installed)){
+        s.phase=recovering?Phase.RECOVERY_PROBATION:Phase.PROBATION;s.reason="";s.reported=null;
+        // The candidate installed, so its releases are no longer in a row; the
+        // cleared record also lets the journal be written as version 4 again.
+        if(!recovering){s.releasedDigest="";s.releases=0;}
+        return;
+      }
       Identity previous=recovering?s.plan.candidate:s.plan.baseline;
       if(!previous.matches(installed)){s.phase=Phase.SUPPORT;s.reason="unexpected_installed_identity";return;}
       if(blockedReason!=null){s.phase=Phase.SUPPORT;s.reason=blockedReason;return;}
