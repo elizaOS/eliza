@@ -278,6 +278,17 @@ The canonical app also copies BGE through `ElizaAgentService` before the encoder
 verifies its pinned hash. `CopiedModelAssetsInstrumentedTest` checks both actual
 APK extraction paths, model hashes and repeated file reuse on a cleared installation.
 
+To skip the copy, a host stores the models uncompressed (`noCompress` above),
+aligns those entries to 16 bytes, and sets the application meta-data
+`ai.eliza.voice.MODELS_IN_PLACE` to `true`. The installer then writes a
+libelizainference region file (`tools/file-region` in the fork) in place of each
+uncompressed `.gguf` or `.lex` under `asr/` or `tts/`. That file names the
+asset's offset and length in the APK, and the native loaders map those bytes
+directly. The installer hashes the bytes in the APK, again after an update moves
+them. It still copies compressed or unaligned entries, the VAD model and the
+eSpeak NG data. A region bundle needs a libelizainference built from a fork
+commit with region-file support.
+
 ## Licenses
 
 The Java and C++ sources here are MIT. Paradee-8M v1.2 weights
