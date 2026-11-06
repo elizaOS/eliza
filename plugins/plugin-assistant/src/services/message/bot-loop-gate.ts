@@ -50,6 +50,7 @@ import {
   isMultiPartyChannel,
   resolveChannelType,
 } from "../../features/basic-capabilities/providers/group-conversation-signals.ts";
+import { classifyMessageAddress } from "./addressing.ts";
 
 /** Default max consecutive agent turns into a human-free bot exchange. */
 export const DEFAULT_BOT_LOOP_MAX_AGENT_TURNS = 2;
@@ -158,8 +159,14 @@ export async function runBotLoopGate(args: {
   }
   // Direct address has higher precedence than bot-loop suppression. A named
   // agent-to-agent request is intentional orchestration, not ambient reverb.
+  // A reply reference alone is not: connectors attach it to every answer, so
+  // two agents answering each other "reply" on every turn and would never
+  // reach the depth limit. Only a mention or the agent's name bypasses it.
   if (explicitlyAddressesAgent) {
-    return { ignored: false, reason: "directly_addressed" };
+    const address = classifyMessageAddress(runtime, message);
+    if (address.platformMention || address.textualAgentName) {
+      return { ignored: false, reason: "directly_addressed" };
+    }
   }
   if (!message.roomId) {
     return { ignored: false, reason: "window_unavailable" };
