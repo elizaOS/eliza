@@ -14,7 +14,10 @@ import {
   type TaskTransition,
   transitionInteractiveTask,
 } from "@elizaos/core/protocol";
-import type { SqliteInteractiveTaskStore } from "./interactive-task-store.ts";
+import type {
+  SqliteInteractiveTaskStore,
+  UnreadableTaskRecord,
+} from "./interactive-task-store.ts";
 
 /**
  * Why host cleanup runs after a task control. "close" is a pause whose user
@@ -210,14 +213,26 @@ export class InteractiveTaskRuntime {
     transition: TaskTransition,
     reason?: TaskCleanupReason,
   ): InteractiveTask {
+    return this.fenced(
+      id,
+      () =>
+        this.options.store.transition(
+          id,
+          { owner: this.owner, expectedRevision, now: this.now() },
+          transition,
+        ).task,
+      reason,
+    );
+  }
+  private fenced(
+    id: string,
+    write: () => InteractiveTask,
+    reason?: TaskCleanupReason,
+  ): InteractiveTask {
     this.requireHealthy();
     let shouldAbort = false;
     try {
-      const result = this.options.store.transition(
-        id,
-        { owner: this.owner, expectedRevision, now: this.now() },
-        transition,
-      ).task;
+      const result = write();
       shouldAbort = true;
       return result;
     } catch (error) {
@@ -523,6 +538,39 @@ export class InteractiveTaskRuntime {
       this.startCleanup(id);
       await this.settle(id);
     }
+  }
+  /**
+   * The signed-in owner accepts that the task's unknown outcome stays unknown,
+   * for example when sign-out revoked the authorization readback needs. The
+   * task ends as cancelled, the operation stays "unknown" and a new task can
+   * start. Nothing here claims the effect happened or did not. Like
+   * `control`, the caller awaits `settle(id)` for the host cleanup.
+   */
+  acknowledgeUnknown(id: string, expectedRevision: number): InteractiveTask {
+    if (this.pending.has(id))
+      throw new ElizaError("Task operation is already running", {
+        code: "TASK_BUSY",
+      });
+    return this.fenced(
+      id,
+      () =>
+        this.options.store.acknowledgeUnknown(id, {
+          owner: this.owner,
+          expectedRevision,
+          now: this.now(),
+        }),
+      "cancel",
+    );
+  }
+  /** Records of this owner that this version cannot read; their documents are kept. */
+  unreadable(): UnreadableTaskRecord[] {
+    this.requireHealthy();
+    return this.options.store.unreadable(this.owner);
+  }
+  /** The owner releases the slot an unreadable unfinished record held. */
+  acknowledgeUnreadable(id: string): UnreadableTaskRecord[] {
+    this.requireHealthy();
+    return this.options.store.acknowledgeUnreadable(id, this.owner, this.now());
   }
   /** Trusted planner entrypoint; deliberately absent from the renderer routes. */
   async execute(
