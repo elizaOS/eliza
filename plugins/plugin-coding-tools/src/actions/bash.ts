@@ -29,7 +29,10 @@ import {
   consumeDestructiveChallenge,
   issueDestructiveChallenge,
 } from "../lib/destructive-confirmation.js";
-import { classifyDestructiveCommand } from "../lib/destructive-gate.js";
+import {
+  classifyDestructiveCommand,
+  type DestructiveVerdict,
+} from "../lib/destructive-gate.js";
 import {
   capTranscriptForChat,
   failureToActionResult,
@@ -305,6 +308,22 @@ export function boundedDiskAndMemoryInspectionCommand(
     return `${disk}\nWrite-Output ''\nWrite-Output '--- memory ---'\n${memory}`;
   }
   return `${disk}; printf '\\n--- memory ---\\n'; ${memory}`;
+}
+// The Windows probes are PowerShell scripts that assign variables. The
+// destructive gate cannot prove a PowerShell assignment safe (`$x = Remove-Item
+// …` runs `Remove-Item`), so it reports `$name` as a dynamic executable name and
+// asks for confirmation. Each script here is fixed, read-only and written in
+// this file, so only an exact match skips the gate. Other text, including a
+// changed probe, is still classified.
+const WINDOWS_READ_ONLY_PROBE_COMMANDS: ReadonlySet<string> = new Set([
+  WINDOWS_MEMORY_COMMAND,
+  WINDOWS_DISK_INSPECTION_COMMAND,
+  boundedDiskAndMemoryInspectionCommand("windows"),
+  WINDOWS_HEALTH_COMMAND,
+]);
+
+export function isWindowsReadOnlyProbeCommand(command: string): boolean {
+  return WINDOWS_READ_ONLY_PROBE_COMMANDS.has(command);
 }
 const SOURCE_SEARCH_EXCLUDES = [
   "!**/.git/**",
@@ -2038,10 +2057,16 @@ export const shellAction: Action = {
     // may explicitly disable this chat gate with
     // ELIZA_SHELL_DESTRUCTIVE_CONFIRM=0.
     if (destructiveGateEnabled) {
-      const verdict = classifyDestructiveCommand(
-        command,
-        resolveCommandPlatform() === "windows" ? "powershell" : "posix",
-      );
+      const windows = resolveCommandPlatform() === "windows";
+      // A fixed read-only Windows probe from this file needs no confirmation
+      // (see WINDOWS_READ_ONLY_PROBE_COMMANDS). Other commands are classified.
+      const verdict: DestructiveVerdict =
+        windows && isWindowsReadOnlyProbeCommand(command)
+          ? { destructive: false, targets: [] }
+          : classifyDestructiveCommand(
+              command,
+              windows ? "powershell" : "posix",
+            );
       const confirmationRequested = readBoolParam(options, "confirm") === true;
       const confirmation = confirmationRequested
         ? consumeDestructiveChallenge({
