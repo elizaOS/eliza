@@ -167,6 +167,11 @@ then the wrapped copy. A wrapped copy whose entry is gone throws
 reads it back, runs the host step (for example a file move), and only then erases
 the source. A repeat after a stop resumes; a target with a different key is left
 unchanged. Reserve a new directory and alias prefix for per-slot custody.
+Read-only accessors name a slot's custody without reading its data key:
+`wrappingKeyAlias(accountId, databaseId)` (per-slot only), `keyProtection(...)`
+(the wrapping key's `KeyInfo`, or null when it is absent; per-slot only) and
+`wrappedFile(...)` (the wrapped copy's file, which may not exist). Hosts use them
+for a custody readout and for tests that remove a Keystore entry.
 
 This helper has no renderer bridge and is not enabled by default. It does not
 provide a database driver, active-key verification, migration, or complete account
