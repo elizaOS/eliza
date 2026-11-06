@@ -265,13 +265,14 @@ storage = "sqlite"
 # index_name = "eliza-cloud-embeddings"
 
 # -----------------------------------------------------------------------------
-# Queue: Stripe webhook fan-out runs on Redis (redis-rest in Workers, Railway
-# TCP in non-Worker cloud services, embedded Wadis locally), not Cloudflare
-# Queues. The webhook route LPUSHes a JSON
-# envelope; the `* * * * *` cron fires `/api/cron/process-stripe-queue`
-# which drains a bounded batch via the queue helper in
-# `packages/cloud/shared/src/lib/redis-queue.ts`. Failed messages are retried with
-# attempts++ and demoted to a `:dlq` list after `maxAttempts`.
+# Stripe webhook fan-out is a PostgreSQL outbox, not a cache list: the webhook
+# route writes each verified event's work into its `webhook_events` dedupe row
+# in one insert, and the `* * * * *` cron `/api/cron/process-stripe-queue`
+# leases due rows (FOR UPDATE SKIP LOCKED) through
+# `packages/cloud/shared/src/lib/services/stripe-delivery-outbox.ts`. Failed
+# deliveries retry with backoff and are dead-lettered after `maxAttempts`; a
+# Stripe resend makes a dead-lettered delivery due again. CACHE_KV cannot hold a
+# work queue: its list push and pop refuse.
 # -----------------------------------------------------------------------------
 
 # -----------------------------------------------------------------------------

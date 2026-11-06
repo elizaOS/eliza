@@ -577,6 +577,7 @@
     "./lib/services/stripe-checkout-receipt": "./src/lib/services/stripe-checkout-receipt.ts",
     "./lib/services/stripe-connect-payout": "./src/lib/services/stripe-connect-payout.ts",
     "./lib/services/stripe-customer-authority": "./src/lib/services/stripe-customer-authority.ts",
+    "./lib/services/stripe-delivery-outbox": "./src/lib/services/stripe-delivery-outbox.ts",
     "./lib/services/stripe-dunning-lifecycle": "./src/lib/services/stripe-dunning-lifecycle.ts",
     "./lib/services/stripe-paid-renewal": "./src/lib/services/stripe-paid-renewal.ts",
     "./lib/services/stripe-scheduled-cancellation-lifecycle": "./src/lib/services/stripe-scheduled-cancellation-lifecycle.ts",
