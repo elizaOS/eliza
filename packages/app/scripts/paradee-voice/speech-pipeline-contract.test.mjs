@@ -166,6 +166,19 @@ test("the on-device recognizer keeps a late answer and never reads an unanswered
     /^PASS on-device recognizer probe wiring/,
     { android: true },
   ));
+test("the on-device recognizer hears fed speech before finish and keeps its timeout and cancel meaning", () =>
+  run(
+    [
+      "OnDeviceRecognizer",
+      "RecognizerAvailability",
+      "RecognizerUnavailable",
+      "NativeAsr",
+      "VoiceNative",
+    ],
+    "OnDeviceRecognizerSessionTest",
+    /^PASS on-device recognizer session/,
+    { android: true },
+  ));
 test("latency trials link one turn from last user audio to audible playback", () =>
   run(
     ["LiveVadGate", "VoiceLatencyTrials"],

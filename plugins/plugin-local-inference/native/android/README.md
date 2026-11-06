@@ -125,7 +125,10 @@ The legacy `elizaParadeeCapacitor` flag and `ParadeeVoicePlugin` name select the
 same owner. Existing `ai.eliza.voice` Java APIs remain source compatible;
 new code should use `InferenceSession` instead of opening independent handles.
 The old app-side Gradle path forwards here. The public `Wer` helper and legacy Android
-on-device recognizer API remain available. The Capacitor transcription route
+on-device recognizer API remain available. `OnDeviceRecognizer.feed(pcm)` gives the
+recognizer speech while it is spoken, and `finish(limitMillis)` ends it and waits for the
+transcript (same timeout and cancel meaning as `transcribe`). `ParadeeVoice.Request`
+cancels one non-streaming `synthesize` call and no other call on that voice. The Capacitor transcription route
 uses only Phonon-2 through `InferenceSession`, with the same request queue and
 cancellation owner. Missing native assets or a failed transcription report an
 error; they never select the platform recognizer or a cloud provider.
