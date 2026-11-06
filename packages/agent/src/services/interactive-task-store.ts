@@ -66,6 +66,14 @@ function unreadableReason(document: unknown): string | null {
   }
   return null;
 }
+function readable(document: unknown): boolean {
+  try {
+    validateInteractiveTask(parse(document));
+    return true;
+  } catch {
+    return false;
+  }
+}
 const UNRESOLVED = ["prepared", "dispatched", "unknown"];
 
 /** A task record this build could not read; its document stays in the journal. */
@@ -75,6 +83,12 @@ export interface UnreadableTaskRecord {
   quarantinedAt: number;
   /** Set once the owner released the slot the record held. */
   acknowledgedAt: number | null;
+}
+
+/** The owner accepted that this operation's outcome stays unknown. */
+export interface UnknownOutcomeAcknowledgement {
+  operationId: string;
+  acknowledgedAt: number;
 }
 
 export class SqliteInteractiveTaskStore {
@@ -144,6 +158,8 @@ export class SqliteInteractiveTaskStore {
     cursor: number;
     hasMore: boolean;
     task: InteractiveTask;
+    /** Operations whose unknown outcome the owner accepted, and when. */
+    acknowledgements: UnknownOutcomeAcknowledgement[];
   } {
     if (!Number.isSafeInteger(afterSequence) || afterSequence < -1)
       fail("Invalid event cursor", "TASK_INVALID");
@@ -185,8 +201,21 @@ export class SqliteInteractiveTaskStore {
         cursor: events.at(-1)?.sequence ?? afterSequence,
         hasMore: values.length > 128,
         task,
+        acknowledgements: this.acknowledgements(id, owner),
       };
     });
+  }
+
+  private acknowledgements(
+    id: string,
+    owner: TaskOwner,
+  ): UnknownOutcomeAcknowledgement[] {
+    const row = this.db
+      .prepare(
+        "SELECT json_group_array(json_object('operationId', operation_id, 'acknowledgedAt', acknowledged_at)) AS rows FROM (SELECT * FROM interactive_task_unknown_acknowledgements_v1 WHERE task_id = ? AND owner_key = ? ORDER BY acknowledged_at, operation_id)",
+      )
+      .get(id, ownerKey(owner)) as { rows: string };
+    return JSON.parse(row.rows) as UnknownOutcomeAcknowledgement[];
   }
 
   /** Complete bounded history for synchronous host evidence projection.
@@ -331,6 +360,24 @@ export class SqliteInteractiveTaskStore {
    * acknowledges it. */
   private quarantineUnreadable(owner: TaskOwner, now: number): void {
     const key = ownerKey(owner);
+    // A record set aside under another build, such as before a rollback was
+    // undone, is a task again once this build can read it. An acknowledged one
+    // gave up its slot, so it stays set aside.
+    const held = this.db
+      .prepare(
+        "SELECT json_group_array(json_object('id', id, 'document', document)) AS rows FROM interactive_task_journal_v1 WHERE owner_key = ? AND id IN (SELECT task_id FROM interactive_task_quarantine_v1 WHERE owner_key = ? AND acknowledged_at IS NULL)",
+      )
+      .get(key, key) as { rows: string };
+    for (const row of JSON.parse(held.rows) as {
+      id: string;
+      document: unknown;
+    }[])
+      if (readable(row.document))
+        this.db
+          .prepare(
+            "DELETE FROM interactive_task_quarantine_v1 WHERE task_id = ? AND owner_key = ?",
+          )
+          .run(row.id, key);
     const rows = this.db
       .prepare(
         "SELECT json_group_array(json_object('id', id, 'document', document)) AS rows FROM interactive_task_journal_v1 WHERE owner_key = ? AND id NOT IN (SELECT task_id FROM interactive_task_quarantine_v1)",

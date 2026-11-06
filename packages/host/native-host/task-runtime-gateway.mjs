@@ -10,6 +10,8 @@ const ACKNOWLEDGE_ROUTE = new RegExp(
   `^/tasks/(${TASK_ID})/acknowledge-(unknown|unreadable)$`,
 );
 const UNREADABLE_ROUTE = "/tasks/current/unreadable";
+/** The runtime methods the core task routes save through. */
+const CORE_SAVES = new Set(["create", "control", "observe"]);
 
 const answer = (status, value) => Response.json(value, { status });
 const unauthorized = () => answer(401, { code: "TASK_UNAUTHORIZED" });
@@ -347,8 +349,26 @@ export async function createTaskGateway({
         { code: "TASK_HELPER_UNAVAILABLE" },
         { status: 503 },
       );
-    return createInteractiveTaskHandler({
-      runtime,
+    // The core routes answer their own 401 when the account changed by their
+    // last read, which may come after their save. Note each save, so such an
+    // answer becomes a 409 and a 401 still means nothing was saved.
+    const saved = (result) => {
+      scope.committed = true;
+      return result;
+    };
+    const recording = new Proxy(runtime, {
+      get(target, key) {
+        const value = Reflect.get(target, key);
+        if (typeof value !== "function") return value;
+        if (!CORE_SAVES.has(key)) return value.bind(target);
+        return (...args) => {
+          const result = value.apply(target, args);
+          return result instanceof Promise ? result.then(saved) : saved(result);
+        };
+      },
+    });
+    const response = await createInteractiveTaskHandler({
+      runtime: recording,
       authenticate: async () => {
         try {
           const current = await authenticate();
@@ -359,6 +379,9 @@ export async function createTaskGateway({
       },
       authorizeGoal: authorizeGoal || unavailable,
     })(request);
+    return response.status === 401 && scope.committed
+      ? accountChanged()
+      : response;
   }
   return {
     /** Trusted host planner API. Never exposed as a renderer execution route. */
