@@ -23,8 +23,12 @@ type discoverySession struct {
 	closed    atomic.Bool
 }
 
+// DiscoveryResult.Failure says why an attempt that reached the network did not
+// authenticate: "trust-cache" when the local trust cache cannot be read, which
+// no retry repairs, or "fetch" for any other failure. It is empty otherwise.
 type DiscoveryResult struct {
 	Status          string
+	Failure         string
 	Descriptor      []byte
 	DelayMillis     int64
 	Generation      int64
@@ -78,6 +82,11 @@ func (s *discoverySession) run(scheduleDirectory, trustDirectory string, pinnedR
 	var admissionErr error
 	if fetchErr == nil && !s.closed.Load() && admit != nil {
 		admission, admissionErr = admit(descriptor, current)
+	}
+	if errors.Is(fetchErr, errTrustCache) {
+		result.Failure = "trust-cache"
+	} else if fetchErr != nil {
+		result.Failure = "fetch"
 	}
 	success := fetchErr == nil && admissionErr == nil && !s.closed.Load()
 	finalTime, err := readTimeBounds(s.source)

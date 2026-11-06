@@ -46,9 +46,17 @@ public final class NativePreparation implements PreparationFlow.Ports,AutoClosea
   public Enrollment {config=config.clone();root=root.clone();}
   public byte[] getConfig(){return config.clone();}public byte[] getRoot(){return root.clone();}public String getCohortID(){return cohortID;}
  }
- public record DiscoveryResult(String status,boolean hasAdmission,long generation,byte[] descriptor,String authorizationID) {
+ /** failure is "trust-cache" when the local trust cache cannot be read, "fetch"
+  * for any other failed attempt, and empty otherwise. */
+ public record DiscoveryResult(String status,boolean hasAdmission,long generation,byte[] descriptor,String authorizationID,String failure) {
   public String getStatus(){return status;}public Object getAdmission(){return hasAdmission?Boolean.TRUE:null;}
   public long getGeneration(){return generation;}public byte[] getDescriptor(){return descriptor;}public String getAuthorizationID(){return authorizationID;}
+  public String getFailure(){return failure;}
+ }
+ /** The trust cache cannot be read, so no discovery can succeed until it is
+  * repaired. It is reported, never read as an ordinary scheduling deferral. */
+ public static final class TrustCacheUnreadable extends IOException {
+  TrustCacheUnreadable(){super("OTA trust cache unreadable");}
  }
  public record StagedPair(long generation,byte[] descriptor,String authorizationID,String candidatePath,String recoveryPath) {
   public long getGeneration(){return generation;}public byte[] getDescriptor(){return descriptor;}public String getAuthorizationID(){return authorizationID;}
@@ -124,6 +132,7 @@ public final class NativePreparation implements PreparationFlow.Ports,AutoClosea
   Observed observed=observe(fence);EnrolledDiscovery session=trust.newEnrolledDiscoveryWithTimeSource(path("ota-enrollment"),inputs);resources.attach(session::close);
   try {
    DiscoveryResult result=session.runWithTimeSource(working("ota-schedule"),working("ota-trust-"+fence.channel+"-"+config.getString("distribution")),path("ota-admission"),path("ota-prepared"),observed.device,observed.input.securityFloor,fence.generation);
+   if("trust-cache".equals(result.getFailure()))throw new TrustCacheUnreadable();
    queued=journal.read();
    if(!"admitted".equals(result.getStatus())) {
     // A scheduling deferral has no admission result. Continue the previously
