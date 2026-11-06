@@ -8,6 +8,8 @@ import {
   deriveTaskKeys,
   sealedFilePorts,
   sealedTextCodec,
+  syncDirectory,
+  writePrivateFile,
   writePrivateFileSync,
 } from "./task-storage-sealing.mjs";
 
@@ -82,4 +84,44 @@ test("private files are replaced whole with owner-only permissions", async (t) =
   assert.equal(ports.readFile(file), '{"entries":[]}');
   ports.removeFile(file);
   assert.throws(() => ports.readFile(file), { code: "ENOENT" });
+});
+
+test("a private file write can verify the staged text before it replaces the file", async (t) => {
+  const root = await mkdtemp(join(tmpdir(), "task-sealing-"));
+  t.after(() => rm(root, { recursive: true, force: true }));
+  const file = join(root, "identity.json");
+  writePrivateFileSync(file, "old");
+  const seen = [];
+  writePrivateFileSync(file, "new", { verify: (text) => seen.push(text) });
+  assert.deepEqual(seen, ["new"]);
+  assert.equal(await readFile(file, "utf8"), "new");
+
+  const differs = new Error("differs");
+  assert.throws(
+    () =>
+      writePrivateFileSync(file, "bad", {
+        verify: () => {
+          throw differs;
+        },
+      }),
+    differs,
+  );
+  assert.equal(await readFile(file, "utf8"), "new");
+  assert.deepEqual(await readdir(root), ["identity.json"]);
+  syncDirectory(root);
+});
+
+test("the async private file write is atomic and owner-only", async (t) => {
+  const root = await mkdtemp(join(tmpdir(), "task-sealing-"));
+  t.after(() => rm(root, { recursive: true, force: true }));
+  const directory = join(root, "cache");
+  const file = join(directory, "plans.json");
+  await writePrivateFile(file, "first");
+  await writePrivateFile(file, Buffer.from("second"));
+  assert.equal(await readFile(file, "utf8"), "second");
+  assert.equal((await stat(file)).mode & 0o777, 0o600);
+  assert.equal((await stat(directory)).mode & 0o777, 0o700);
+  assert.deepEqual(await readdir(directory), ["plans.json"]);
+  await assert.rejects(writePrivateFile(join(file, "below"), "x"));
+  assert.deepEqual(await readdir(directory), ["plans.json"]);
 });

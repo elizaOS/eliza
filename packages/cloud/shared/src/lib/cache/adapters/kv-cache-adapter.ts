@@ -24,6 +24,8 @@ export interface KvNamespaceLike {
 
 // Cloudflare KV rejects expirationTtl < 60s.
 const KV_MIN_TTL_SECONDS = 60;
+const KV_QUEUE_UNSUPPORTED =
+  "Cloudflare KV cannot hold a work queue: list push and pop are not atomic";
 
 function clampTtlSeconds(ttlSeconds: number): number {
   return Math.max(Math.ceil(ttlSeconds), KV_MIN_TTL_SECONDS);
@@ -43,8 +45,8 @@ function clampTtlSeconds(ttlSeconds: number): number {
  *   - `set …{nx}` / `incr` are NOT atomic (racy under concurrency); callers that
  *     need atomicity gate on `CacheClient.supportsAtomicOperations()`, which
  *     returns false for this backend, so distributed locks use dummy locks.
- *   - list ops (`lpush`/`rpop`/`llen`/`rpoplpush`/`lrem`/`lrange`) are emulated
- *     via a JSON array value.
+ *   - `llen`/`lrem`/`lrange` read a JSON array value; `lpush`/`rpop`/`rpoplpush`
+ *     throw, because a read-then-write list loses concurrent queue writes.
  *   - `pttl` cannot be derived from KV and returns -1 (present, ttl unknown).
  *
  * KV's 60s minimum TTL is clamped transparently.
@@ -145,29 +147,23 @@ export class KvCacheAdapter implements CacheRedisClient {
     return Promise.all(keys.map((key) => this.kv.get(key)));
   }
 
-  // List emulation via a JSON-array value. Non-atomic; for low-contention use.
-  async lpush(key: string, ...values: string[]): Promise<number> {
-    const list = await this.readList(key);
-    list.unshift(...values);
-    await this.kv.put(key, JSON.stringify(list));
-    return list.length;
+  // A list here is one JSON-array value, read and written back whole. Two
+  // writers lose each other's change, so pushes and pops refuse instead of
+  // silently dropping queued work; reads and removal stay for draining old lists.
+  async lpush(_key: string, ..._values: string[]): Promise<number> {
+    throw new Error(KV_QUEUE_UNSUPPORTED);
   }
 
-  async rpop(key: string): Promise<string | null> {
-    const list = await this.readList(key);
-    const value = list.pop() ?? null;
-    if (value !== null) await this.kv.put(key, JSON.stringify(list));
-    return value;
+  async rpop(_key: string): Promise<string | null> {
+    throw new Error(KV_QUEUE_UNSUPPORTED);
   }
 
   async llen(key: string): Promise<number> {
     return (await this.readList(key)).length;
   }
 
-  async rpoplpush(source: string, destination: string): Promise<string | null> {
-    const value = await this.rpop(source);
-    if (value !== null) await this.lpush(destination, value);
-    return value;
+  async rpoplpush(_source: string, _destination: string): Promise<string | null> {
+    throw new Error(KV_QUEUE_UNSUPPORTED);
   }
 
   async lrem(key: string, count: number, value: string): Promise<number> {

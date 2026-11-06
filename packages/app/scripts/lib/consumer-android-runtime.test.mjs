@@ -26,7 +26,7 @@ for (const [targetAbi, bunTarget] of [
       put(".gitignore", "packages/agent/dist-mobile/\n");
       put(
         "packages/agent/scripts/build-mobile-bundle.ts",
-        `import fs from 'node:fs';fs.mkdirSync('packages/agent/dist-mobile',{recursive:true});fs.writeFileSync('packages/agent/dist-mobile/agent-bundle.js','fixture bundle');`,
+        `import fs from 'node:fs';fs.mkdirSync('packages/agent/dist-mobile',{recursive:true});fs.writeFileSync('packages/agent/dist-mobile/agent-bundle.js','fixture bundle');fs.writeFileSync('packages/agent/dist-mobile/stubs.txt',process.env.ELIZA_MOBILE_STUB_PLUGINS ?? '');`,
       );
       put(
         "packages/app/scripts/lib/stage-android-agent.ts",
@@ -58,6 +58,7 @@ for (const [targetAbi, bunTarget] of [
         skillsDirectory,
         targetAbi,
         bunTarget,
+        stubPlugins: ["googleapis", "@elizaos/plugin-discord", "googleapis"],
       };
       const link = path.join(root, "output-link");
       fs.symlinkSync(root, link, "dir");
@@ -72,6 +73,17 @@ for (const [targetAbi, bunTarget] of [
       assert.equal(provenance.commit, expectedCommit);
       assert.deepEqual(provenance.gatewayHashes, { host: "fixture" });
       assert.equal(provenance.target, targetAbi);
+      assert.deepEqual(provenance.stubPlugins, [
+        "@elizaos/plugin-discord",
+        "googleapis",
+      ]);
+      assert.equal(
+        fs.readFileSync(
+          path.join(source, "packages/agent/dist-mobile/stubs.txt"),
+          "utf8",
+        ),
+        "@elizaos/plugin-discord,googleapis",
+      );
       assert.throws(
         () =>
           buildConsumerAndroidRuntime({
@@ -159,9 +171,37 @@ for (const [targetAbi, bunTarget] of [
     }
   });
 
+test("stub plugins must be package names", () => {
+  for (const stubPlugins of [
+    "googleapis",
+    ["googleapis,three"],
+    ["three "],
+    ["./x"],
+    ["pkg/../other"],
+    [""],
+    [1],
+  ])
+    assert.throws(
+      // No source or output: the check runs before either is touched.
+      () => buildConsumerAndroidRuntime({ stubPlugins }),
+      /stub plugins must be a list/,
+      JSON.stringify(stubPlugins),
+    );
+});
+
 test("unsupported runtime ABI fails before reading source or creating output", () => {
   assert.throws(
     () => buildConsumerAndroidRuntime({ targetAbi: "riscv64" }),
     /ABI must be/,
   );
+});
+
+test("stub plugin rule matches the mobile build's parser", () => {
+  const rule = (file) =>
+    fs
+      .readFileSync(new URL(file, import.meta.url), "utf8")
+      .match(/const BARE_SPECIFIER =\s*(\/.+\/i);/)?.[1];
+  const here = rule("./consumer-android-runtime.mjs");
+  assert.ok(here);
+  assert.equal(here, rule("../../../agent/scripts/mobile-stub-plugins.ts"));
 });

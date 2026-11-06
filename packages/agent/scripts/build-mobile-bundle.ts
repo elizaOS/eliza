@@ -28,6 +28,12 @@ import {
   MOBILE_VIEW_PLUGINS,
 } from "../src/runtime/core-plugins.ts";
 import { createMobileBundleDependencies } from "./mobile-bundle-dependencies.ts";
+import {
+  addStubAliasResolver,
+  MOBILE_STUB_PLUGINS_ENV,
+  mergeMobileStubPlugins,
+  parseMobileStubPlugins,
+} from "./mobile-stub-plugins.ts";
 import { mobileWalletConnectorStubPlugin } from "./mobile-wallet-connectors.ts";
 import {
   canUseWorkspaceEntry,
@@ -499,20 +505,44 @@ const pluginBrowserRemoteControlSources = Object.fromEntries(
     ),
   ]),
 );
-const stubAliases = {
-  ...nativeStubs,
-  ...optionalPluginStubs,
-  ...pluginBrowserRemoteControlSources,
-  // Keep the view-only leaf; the parent alias disables desktop subprocesses.
-  "@elizaos/plugin-agent-orchestrator/ui": path.join(
-    repoRoot,
-    "plugins/plugin-agent-orchestrator/src/ui/index.ts",
-  ),
-  // LifeOps registers the browser tables without loading a desktop browser.
-  "@elizaos/plugin-browser/schema": path.join(
-    repoRoot,
-    "plugins/plugin-browser/src/schema.ts",
-  ),
+// Packages the host never loads (ELIZA_MOBILE_STUB_PLUGINS). Longer aliases
+// above still win for their subpaths.
+const hostStubPlugins = parseMobileStubPlugins(
+  process.env[MOBILE_STUB_PLUGINS_ENV],
+);
+if (hostStubPlugins.length > 0)
+  console.log(`[build-mobile] host stubs: ${hostStubPlugins.join(", ")}`);
+const stubAliases = mergeMobileStubPlugins(
+  {
+    ...nativeStubs,
+    ...optionalPluginStubs,
+    ...pluginBrowserRemoteControlSources,
+    // Keep the view-only leaf; the parent alias disables desktop subprocesses.
+    "@elizaos/plugin-agent-orchestrator/ui": path.join(
+      repoRoot,
+      "plugins/plugin-agent-orchestrator/src/ui/index.ts",
+    ),
+    // LifeOps registers the browser tables without loading a desktop browser.
+    "@elizaos/plugin-browser/schema": path.join(
+      repoRoot,
+      "plugins/plugin-browser/src/schema.ts",
+    ),
+    // A pure formatter the mobile workflow host imports; it stays real when a
+    // host stubs plugin-calendar.
+    "@elizaos/plugin-calendar/format": path.join(
+      repoRoot,
+      "plugins/plugin-calendar/src/internal/format.ts",
+    ),
+  },
+  hostStubPlugins,
+  path.join(stubsDir, "null-plugin.ts"),
+);
+// Runs first, so a host stub also wins over the dedupe and source resolvers.
+const hostStubResolverPlugin = {
+  name: "eliza-mobile-host-stubs",
+  setup(build) {
+    addStubAliasResolver(build, stubAliases, hostStubPlugins);
+  },
 };
 const stubResolverPlugin = {
   name: "eliza-mobile-stubs",
@@ -536,28 +566,7 @@ const stubResolverPlugin = {
       }
       return undefined;
     });
-    const aliasNames = Object.keys(stubAliases);
-    const filter = new RegExp(
-      "^(?:" +
-        aliasNames
-          .map((n) => n.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"))
-          .join("|") +
-        ")(?:/.*)?$",
-    );
-    build.onResolve({ filter }, (args) => {
-      // Match the longest alias that's a prefix of the importer.
-      let best = null;
-      for (const name of aliasNames) {
-        if (
-          (args.path === name || args.path.startsWith(`${name}/`)) &&
-          (best === null || name.length > best.length)
-        ) {
-          best = name;
-        }
-      }
-      if (best === null) return undefined;
-      return { path: stubAliases[best], namespace: "file" };
-    });
+    addStubAliasResolver(build, stubAliases, Object.keys(stubAliases));
   },
 };
 const exactMobileStubPlugin = {
@@ -1405,6 +1414,9 @@ const buildResult = await Bun.build({
   outdir: outDir,
   naming: "[dir]/[name].[ext]",
   target: bunBuildTarget,
+  // No bytecode: Bun 1.4.2 emits ESM bytecode only with `compile: true`, and a
+  // CJS bundle bakes the build host's path into `import.meta.url` (PGlite
+  // assets) and rejects `import.meta.resolve`.
   format: "esm",
   ...(iosJscExternals ? { external: iosJscExternals } : {}),
   tsconfig: bundlerTsconfig,
@@ -1444,6 +1456,7 @@ const buildResult = await Bun.build({
       : {}),
   },
   plugins: [
+    hostStubResolverPlugin,
     iosFsSandboxPlugin,
     zodCjsResolverPlugin,
     ethersCjsResolverPlugin,
@@ -1734,6 +1747,7 @@ const manifest = {
     ],
   },
   externalsAsStubs: Object.keys(stubAliases),
+  hostStubs: hostStubPlugins,
   unsupportedAndroidRuntimeStubs: [
     "@elizaos/plugin-agent-orchestrator",
     "@node-llama-cpp/linux-arm64",

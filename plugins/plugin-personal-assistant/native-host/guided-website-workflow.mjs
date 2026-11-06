@@ -141,6 +141,16 @@ function stepSubmits(element) {
 }
 
 /**
+ * Whether a control holds an answer: its `hasInput` flag, or the checked
+ * state of a choice, which has no `hasInput`. Null when the page says neither.
+ */
+export function filled(element) {
+  if (typeof element.hasInput === "boolean") return element.hasInput;
+  if (typeof element.checked === "boolean") return element.checked;
+  return null;
+}
+
+/**
  * Every control of one complete observation, with a stable ref for each. A
  * ref is made from the facts that locate the control (role, name, label,
  * placeholder, title, field name, image text, nearby text, field group and
@@ -277,14 +287,7 @@ export function pageView(snapshot, { controls, protectedFields }) {
               }))
             : null,
         ],
-        [
-          "filled",
-          typeof element.hasInput === "boolean"
-            ? element.hasInput
-            : typeof element.checked === "boolean"
-              ? element.checked
-              : null,
-        ],
+        ["filled", filled(element)],
         ["edited", element.edited === true ? true : null],
         ["required", element.required === true ? true : null],
         ["invalid", element.invalid === true ? true : null],
@@ -312,7 +315,7 @@ export function pageView(snapshot, { controls, protectedFields }) {
     protectedFields: protectedFields.map(({ element, category }) =>
       present([
         ["category", category],
-        ["filled", element.hasInput === true],
+        ["filled", filled(element) === true],
         [
           "form",
           element.form
@@ -521,6 +524,14 @@ export class GuidedWebsiteWorkflow {
   /** The person answered a stop-and-ask question; the same question is not asked again. */
   acknowledge(key) {
     this.acknowledged.add(key);
+  }
+  /**
+   * Takes back an answer the host gave for the person, for example when the
+   * page changed after it. The same question is asked again. Returns whether
+   * the key was acknowledged.
+   */
+  withdrawAcknowledgement(key) {
+    return this.acknowledged.delete(key);
   }
   async clearGuidance() {
     await this.actuator.quiesce?.({
@@ -793,7 +804,7 @@ export class GuidedWebsiteWorkflow {
     // A protected field is hers alone. When it is the next empty field of
     // its form, point at it without asking a model.
     const secret = index.protectedFields.find(
-      ({ element }) => element.disabled !== true && element.hasInput !== true,
+      ({ element }) => element.disabled !== true && filled(element) !== true,
     );
     if (
       secret &&

@@ -94,6 +94,31 @@ test("selection survives store recreation, deduplicates retry and is owner bound
     f.db.prepare("SELECT COUNT(*) AS n FROM bill_source_selections_v1").get().n,
     1,
   );
+  // A host finds the checked bill by its source reference, for this owner only.
+  assert.deepEqual(
+    f.store.findSelectionBySourceRef({ owner }, candidate.sourceRef),
+    selection,
+  );
+  assert.equal(
+    f.store.findSelectionBySourceRef(
+      { owner: { ...owner, actorId: "other" } },
+      candidate.sourceRef,
+    ),
+    null,
+  );
+  assert.equal(
+    f.store.findSelectionBySourceRef(
+      { owner },
+      `bill-source:${"e".repeat(64)}`,
+    ),
+    null,
+  );
+  // A selection whose candidate no longer validates is passed over.
+  f.task.allowedOrigins = ["https://other.example"];
+  assert.equal(
+    f.store.findSelectionBySourceRef({ owner }, candidate.sourceRef),
+    null,
+  );
 });
 test("stale offers and changed source contents cannot select", (t) => {
   const f = fixture(t),

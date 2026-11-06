@@ -23,6 +23,7 @@
 import type { VoiceUiContext } from "../protocol";
 import type { ServerControlFrame } from "./protocol";
 import {
+  type ClientControlFrame,
   parseClientControlFrame,
   serializeServerFrame,
   VOICE_SESSION_PROTOCOL_VERSION,
@@ -52,6 +53,7 @@ export interface VoiceSessionDownlink {
  * while the orchestrator lives next to the merged provider adapters in api.
  */
 export interface VoiceSessionLike {
+  setTurnTerminalSupport?(supported: true): void;
   setUiContext?(context: VoiceUiContext): void;
   start(): void;
   pushUplinkAudio(bytes: Uint8Array): void;
@@ -88,8 +90,12 @@ export interface ServerWebSocketLike {
 
 /** Everything the handler needs to build a session once the token verifies. */
 export interface VoiceWsHandlerDeps {
+  /** Paired resident routes require support before token/provider admission. */
+  requireTurnTerminal?: boolean;
   /** The sessionId the client is connecting for (from the wsUrl query). */
   requestedSessionId: string;
+  /** Local host validates negotiated Stop/rotation intent; never forwarded to providers. */
+  authorizeBye?: (frame: Extract<ClientControlFrame, { t: "bye" }>) => void;
   /** Build a `VoiceSession` for verified claims. Injected so the route wires the
    * real provider factories and the test wires fakes — both exercise the real
    * VoiceSession. */
@@ -271,7 +277,7 @@ export function attachVoiceWsHandler(
         return;
       }
       helloReceived = true;
-      void handleHello(frame.token, frame.protocol);
+      void handleHello(frame.token, frame.protocol, frame.turnTerminal);
       return;
     }
 
@@ -312,6 +318,19 @@ export function attachVoiceWsHandler(
         session.endUplink?.();
         return;
       case "bye":
+        try {
+          deps.authorizeBye?.(frame);
+        } catch {
+          safeSend(
+            socket,
+            serializeServerFrame({
+              t: "error",
+              code: "bye_intent_invalid",
+              retryable: true,
+            }),
+          );
+          return;
+        }
         session.bye();
         state = "closed";
         return;
@@ -332,7 +351,17 @@ export function attachVoiceWsHandler(
     session?.sever("error");
   });
 
-  async function handleHello(token: string, protocol: number): Promise<void> {
+  async function handleHello(
+    token: string,
+    protocol: number,
+    turnTerminal?: true,
+  ): Promise<void> {
+    // Refuse incompatible clients before token claim or paid provider admission.
+    // Version 1 is unchanged; this is an explicit required capability.
+    if (deps.requireTurnTerminal === true && turnTerminal !== true) {
+      fail("turn_terminal_unsupported", "client lacks turn-terminal support");
+      return;
+    }
     if (protocol !== VOICE_SESSION_PROTOCOL_VERSION) {
       fail("hello_bad_protocol", "unsupported protocol version");
       return;
@@ -429,6 +458,8 @@ export function attachVoiceWsHandler(
         return;
       }
       session = builtSession;
+      if (deps.requireTurnTerminal === true && turnTerminal === true)
+        session.setTurnTerminalSupport?.(true);
       state = "active";
       session.start();
     } catch (error) {

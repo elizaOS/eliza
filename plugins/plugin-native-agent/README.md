@@ -14,6 +14,9 @@ bun run --cwd plugins/plugin-native-agent build  # build
 bun run --cwd plugins/plugin-native-agent test   # tests
 ```
 
+The Android module depends on `@elizaos/capacitor-secure-store`, so a Capacitor host
+also includes its `android-nativeonly` module (see that README).
+
 Native-only host primitives live under Android `runtime/` and `updater/` Java
 packages. They share payload extraction, installation identity, request deadlines,
 update journaling, qualified-clock projection and cancellable job ownership.
@@ -150,8 +153,29 @@ explicit callback action, target package, journal and executor. Rejected worker
 submission finishes the broadcast and leaves durable reconciliation to the host.
 Transaction, immutable/framework session and optional package identity must match;
 success/failure hints never substitute for installed-identity and live-session
-readback, and user-action intents are never launched. The Android contract uses
-real PackageInstaller sessions; hosts must also qualify actual installation,
+readback, and user-action intents are never launched. A reported candidate
+fault (an invalid, conflicting or incompatible APK) quarantines a candidate at
+once, and a fault reported while the session is still listed is kept until it is
+gone. A gone session with no report waits `UpdateJournal.OUTCOME_UNKNOWN_WAIT_MS`
+of observed uptime for a late callback, then releases the plan for a later
+attempt. Every release counts, whatever its cause (a retryable report, no report,
+or our own session abandoned uncommitted, such as a commit that keeps throwing):
+after `MAX_INSTALL_ATTEMPTS_PER_CANDIDATE` releases of the same candidate in a row
+it is quarantined. A candidate that installs clears the count, and the journal is
+written as version 4 again. `InstallReadback` abandons our own session only when the platform
+reports it uncommitted (API 29 and later) and the journal has waited long enough:
+on API 31 and later a sealed session reads uncommitted until the platform has
+verified the APK, so a candidate session must stay uncommitted for
+`InstallReadback.UNCOMMITTED_ABANDON_WAIT_MS` of observed uptime, even when the
+host's install timeout is shorter, and a recovery session, attempted only once, is
+kept until the host's install timeout. Hosts must run
+`PackageInstallCoordinator.reconcilePending` periodically (for example from a job)
+while `UpdateJournal.awaitingInstaller` holds: only it counts the observed time
+that times out a stalled session and releases a gone one with no report, and until
+then the journal admits no other plan. A
+committed or unknown session is never abandoned and is left to install or to
+expire on the platform. The Android
+contract uses real PackageInstaller sessions; hosts must also qualify actual installation,
 callback delivery, process death and cached recovery with their signed fixtures.
 
 ### Local runtime health sampling
@@ -270,6 +294,17 @@ cleanup and cancellation between startup stages.
 same verified immutable bundle preparation path. Hosts retain asset names,
 required library lists, storage layout and inventory format; presence does not
 establish integrity or readiness.
+`prepare` and `prepareFromAsset` hash every file on every launch.
+`prepareSealed` and `prepareSealedFromAsset` let a host start sooner. After a full
+SHA-256 check they write a seal to `<root>/.seals/<release>`, outside the release.
+The seal holds the size, mtime, ctime, inode, mode and owner of each listed file and
+native library. While these values match and the seal is under 24 hours old, the
+launch skips the hash and returns `Prepared.deferred`. The host must then call
+`Prepared.verify()` off the startup path and stop the runtime if it throws. A
+missing, changed, unreadable, old or future seal makes the store hash before it
+returns. The seal is not keyed, so code running as the app user can forge it. Only
+`verify()` catches that, and the runtime may run tampered code until it does.
+`Prepared.sealed` is false when no seal could be written; the next launch then hashes first.
 
 Source-checkout consumers can use `scripts/updater-contract-fixtures.mjs` to stage
 or run the five portable updater contracts in their adapter namespace. This keeps
@@ -279,11 +314,15 @@ directory when staging, or supplies a compiler/JVM budget to the runner, which
 owns temporary-directory cleanup and propagates compilation/assertion failures.
 Staging rejects unknown fixtures, invalid packages and existing output files; it never rewrites production source.
 
-`RuntimeRequestDispatcher` shares bounded normal/urgent-control queues, serialized-body admission and destruction cleanup. Pause/cancel/abort work uses a separate single-worker lane. Defaults preserve four normal workers, sixteen queued normal requests and eight queued controls; hosts can configure queue bounds. Body limits count UTF-16 serialized JSON units; transport byte limits and route/authentication policy remain mandatory. Rejected work is never retried. `close()` interrupts active work and discards queued work. Portable contracts cover saturation, urgent progress, size boundaries and teardown.
+`RuntimeRequestDispatcher` shares bounded normal/urgent-control queues, serialized-body admission and destruction cleanup. Pause/cancel/abort work uses a separate single-worker lane. Defaults preserve four normal workers, sixteen queued normal requests and eight queued controls; hosts can configure queue bounds. Body limits count UTF-16 serialized JSON units: `MAX_BODY_TEXT_UNITS` (65536) for every path but `/voice/stt`, which admits `MAX_STT_BODY_TEXT_UNITS` (12 MiB). Transport byte limits and route/authentication policy remain mandatory. Rejected work is never retried. `close()` interrupts active work and discards queued work. Portable contracts cover saturation, urgent progress, size boundaries and teardown.
 
 `runtime.EmbeddedRuntimeService` integrates the existing NativeRuntimeSession and
 EmbeddedRuntimeGroup with Android Service lifecycle, foreground dispatch, status,
-endpoint-bound requests and local health snapshots. Subclasses provide the private
+endpoint-bound requests and local health snapshots. When the runtime is available,
+status reports `requestBodyLimit`: the stock `RuntimeRequestDispatcher.MAX_BODY_TEXT_UNITS`
+a host uses with this service. The host's serialization is what is counted, and
+Android org.json escapes `/`, so a renderer that checks a body's `JSON.stringify`
+length before sending should leave headroom below it. Subclasses provide the private
 runtime root, notification UI/identity, launch commands and timing/size policy.
 Product wrappers retain asset admission, route allowlists, credentials and provider
 configuration. Static adapters use the concrete service class so replacement and

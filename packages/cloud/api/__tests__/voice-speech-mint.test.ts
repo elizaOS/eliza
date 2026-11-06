@@ -141,6 +141,29 @@ test("an invalid window bound disables renewal instead of refusing speech", asyn
   }
 });
 
+test("the hosting probe is staging only and reports each script's first touch", async () => {
+  const stub = { fetch: async () => new Response(null, { status: 404 }) };
+  const namespaces = {
+    INFERENCE_ADMISSION_GATES: { getByName: () => stub },
+    SPEECH_RELAY_SESSIONS: { getByName: () => stub },
+  };
+  const probe = (overrides: Record<string, unknown>) =>
+    app.request(
+      "/api/v1/voice/speech/hosting-probe?first=lean",
+      { method: "POST" },
+      env({ ...namespaces, ...overrides }),
+    );
+  expect((await probe({ ENVIRONMENT: "production" })).status).toBe(404);
+  const staging = await probe({});
+  expect(staging.status).toBe(200);
+  expect(Object.keys((await staging.json()) as object).sort()).toEqual([
+    "apiLiveMs",
+    "apiNewMs",
+    "leanLiveMs",
+    "leanNewMs",
+  ]);
+});
+
 test("a refused consent never returns the capability for the ledger already written", async () => {
   consented = false;
   const response = await settle(mint());

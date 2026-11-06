@@ -212,7 +212,10 @@ import {
   OPTIONAL_STATIC_PLUGIN_REGISTRATIONS,
 } from "./optional-plugins.ts";
 import { deduplicatePluginActions } from "./plugin-action-dedupe.ts";
-import { PROVIDER_PLUGIN_MAP } from "./plugin-collector.ts";
+import {
+  collectConfiguredDeniedPluginNames,
+  PROVIDER_PLUGIN_MAP,
+} from "./plugin-collector.ts";
 import { installRuntimePluginLifecycle } from "./plugin-lifecycle.ts";
 import {
   isWorkspacePluginSourceFallbackAllowed,
@@ -591,10 +594,19 @@ function shouldBlockDeferredPluginImports(): boolean {
 }
 async function registerStaticPluginPhase(
   phase: CoreStaticPluginPhase,
+  denied: ReadonlySet<string> = new Set(),
 ): Promise<void> {
+  // A denied plugin is never resolved, so do not evaluate its module. Its lazy
+  // loader stays registered in case the deny list changes later.
   const registrations = CORE_STATIC_PLUGIN_REGISTRATIONS.filter(
     (registration) =>
       registration.phase === phase &&
+      !(
+        phase === "deferred" &&
+        (denied.has(registration.packageName) ||
+          (registration.registryName !== undefined &&
+            denied.has(registration.registryName)))
+      ) &&
       (!["@elizaos/plugin-sql", SQLITE_PLUGIN].includes(
         registration.packageName,
       ) ||
@@ -721,13 +733,20 @@ async function ensureBlockingCoreStaticPluginsRegistered(
     abortSignal,
   );
 }
+/**
+ * Imports the deferred static plugins once. `denied` (from
+ * collectConfiguredDeniedPluginNames) is read by the first call only.
+ */
 export async function ensureDeferredCoreStaticPluginsRegistered(
   abortSignal?: AbortSignal,
+  denied: ReadonlySet<string> = collectConfiguredDeniedPluginNames(undefined),
 ): Promise<void> {
   if (_deferredStaticPluginsRegistered) return;
   if (!_deferredStaticPluginsRegistrationPromise) {
-    _deferredStaticPluginsRegistrationPromise =
-      registerStaticPluginPhase("deferred");
+    _deferredStaticPluginsRegistrationPromise = registerStaticPluginPhase(
+      "deferred",
+      denied,
+    );
   }
   await awaitOwnedPromise(
     _deferredStaticPluginsRegistrationPromise,
@@ -5733,7 +5752,10 @@ export async function startEliza(
     if (blockDeferredPluginImports) {
       return resolvedPlugins;
     }
-    await ensureDeferredCoreStaticPluginsRegistered(abortSignal);
+    await ensureDeferredCoreStaticPluginsRegistered(
+      abortSignal,
+      collectConfiguredDeniedPluginNames(config),
+    );
     const deferredResolvedPlugins = await resolvePlugins(config, {
       quiet: preOnboarding,
       phase: "deferred",

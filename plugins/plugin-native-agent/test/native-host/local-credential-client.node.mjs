@@ -27,6 +27,7 @@ for (const [label, createStore, wirePrefix] of [
   const unavailable = (error) =>
     error instanceof LocalCredentialBrokerError &&
     error.code === "CREDENTIAL_BROKER_UNAVAILABLE" &&
+    error.status === 503 &&
     error.message === "Local credential storage unavailable";
 
   testStore(

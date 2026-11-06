@@ -7,10 +7,14 @@ import {
 	initializeTestRuntime,
 	SQLiteDatabaseAdapter,
 } from "@elizaos/testing/runtime";
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { ElizaError } from "../src/errors";
 import { AgentRuntime } from "../src/runtime";
 import { TurnAbortedError } from "../src/runtime/turn-controller";
+import {
+	attestAuthenticatedApiDeliveryAudience,
+	OWNER_EXCLUSIVE_DISCLOSURE_GATE,
+} from "../src/security/trusted-delivery-audience";
 import { runWithStreamingContext } from "../src/streaming-context";
 import { runWithTrajectoryContext } from "../src/trajectory-context";
 import type { Character } from "../src/types/agent.js";
@@ -158,6 +162,81 @@ describe("composeState provider execution", () => {
 		expect(calls).toBe(1);
 		expect(firstState.text).toBe("coalesced");
 		expect(secondState.text).toBe("coalesced");
+	});
+
+	it("defers reference bodies only for named owner-exclusive providers and never joins a complete run", async () => {
+		const ownerId = "44444444-4444-4444-8444-444444444444" as UUID;
+		const runtime = await createRuntime({
+			character: {
+				name: "provider-reference-deferral",
+				settings: { ELIZA_ADMIN_ENTITY_ID: ownerId },
+			} as Character,
+		});
+		vi.spyOn(runtime, "getRoom").mockResolvedValue(null);
+		vi.spyOn(runtime, "getParticipantsForRoom").mockResolvedValue([
+			ownerId,
+			ENTITY_ID,
+		]);
+		const slowRead = deferred();
+		const completeStarted = deferred();
+		const seen: Array<[string, boolean | undefined]> = [];
+		runtime.registerProvider({
+			name: "OWNER_BODY",
+			disclosureGate: OWNER_EXCLUSIVE_DISCLOSURE_GATE,
+			get: async (_runtime, _message, _state, context) => {
+				seen.push(["OWNER_BODY", context?.referenceBodyDeferred]);
+				if (context?.referenceBodyDeferred === true)
+					return { text: "slow read skipped", discoveryText: "reference" };
+				completeStarted.resolve();
+				await slowRead.promise;
+				return { text: "complete body", discoveryText: "reference" };
+			},
+		});
+		runtime.registerProvider({
+			name: "PUBLIC_BODY",
+			get: async (_runtime, _message, _state, context) => {
+				seen.push(["PUBLIC_BODY", context?.referenceBodyDeferred]);
+				return { text: "public body" };
+			},
+		});
+		const message: Memory = {
+			...makeMessage("45454545-4545-4545-8545-454545454545"),
+			entityId: ownerId,
+			agentId: ENTITY_ID,
+			content: { text: "gm", channelType: "API", source: "client_chat" },
+		};
+		await attestAuthenticatedApiDeliveryAudience(runtime, message, {
+			kind: "owner_session",
+			principalId: "offline-fixture",
+		});
+		const names = ["OWNER_BODY", "PUBLIC_BODY"];
+
+		// A complete composition (restoration) is in flight on the slow read.
+		const complete = runtime.composeState(message, names, true, false);
+		await completeStarted.promise;
+		// The planner composition does not join it and does not wait for it.
+		const planner = await runtime.composeState(
+			message,
+			names,
+			true,
+			false,
+			[],
+			{
+				deferredReferenceProviders: names,
+			},
+		);
+		expect(planner.text).toContain("slow read skipped");
+		expect(planner.text).not.toContain("complete body");
+
+		slowRead.resolve();
+		expect((await complete).text).toContain("complete body");
+		expect(seen.filter(([name]) => name === "OWNER_BODY")).toEqual([
+			["OWNER_BODY", undefined],
+			["OWNER_BODY", true],
+		]);
+		expect(
+			seen.filter(([name]) => name === "PUBLIC_BODY").map(([, flag]) => flag),
+		).not.toContain(true);
 	});
 
 	it("does not reuse cached provider state for the same message id in another room", async () => {

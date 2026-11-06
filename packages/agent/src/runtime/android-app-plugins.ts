@@ -5,11 +5,11 @@
  * resolves them by name.
  */
 import { gatePluginSessionForHostedApp } from "../services/app-session-gate.ts";
+import { ANDROID_APP_PLUGIN_NAMES } from "./android-app-plugin-loaders.ts";
 import { STATIC_ELIZA_PLUGINS } from "./plugin-types.ts";
 
-const WIFI_APP_NAME = "@elizaos/plugin-native-wifi";
-const CONTACTS_APP_NAME = "@elizaos/plugin-native-contacts";
-const PHONE_APP_NAME = "@elizaos/plugin-native-phone";
+const [WIFI_APP_NAME, CONTACTS_APP_NAME, PHONE_APP_NAME] =
+  ANDROID_APP_PLUGIN_NAMES;
 
 const [
   { contactsProvider, appContactsPlugin: rawContactsPlugin },
