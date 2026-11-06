@@ -137,7 +137,10 @@ export function readActionAllowlist(
 /**
  * Throw when an `ELIZA_ACTION_ALLOWLIST` entry names no registered action, so
  * an action renamed upstream fails the boot instead of silently leaving the
- * product without it. Names are exact: a simile never matches.
+ * product without it. Names are exact: a simile never matches. The check sees
+ * only the actions passed in: the agent runs it once, when the deferred boot
+ * ends, so an action a plugin registers later (a runtime hot-apply) is not
+ * checked.
  */
 export function assertActionAllowlistMatchesActions(
 	actions: readonly Pick<Action, "name">[],

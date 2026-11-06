@@ -89,6 +89,27 @@ describe("ELIZA_CONVERSATION_CALLER_ROLE", () => {
     }
   });
 
+  it("gives the product user an entity no external principal id can derive", () => {
+    process.env.ELIZA_CONVERSATION_CALLER_ROLE = "USER";
+    const product = resolveConversationCaller(
+      request,
+      routeState(),
+      ownerToken,
+    ).entityId;
+    for (const principal of [
+      {
+        kind: "service_gateway",
+        principalId: "product-user",
+        sessionRole: "USER",
+      },
+      { kind: "service_gateway", principalId: "product-user" },
+    ] as TrustedApiPrincipal[]) {
+      expect(
+        resolveConversationCaller(request, routeState(), principal).entityId,
+      ).not.toBe(product);
+    }
+  });
+
   it("grants the compat chat turn USER on a separate entity in the same room", async () => {
     process.env.ELIZA_CONVERSATION_CALLER_ROLE = "USER";
     const { runtime, worlds } = worldRuntime();

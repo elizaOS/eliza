@@ -118,8 +118,10 @@ export function resolveOwnerChatCallerRole(
 /**
  * The entity an owner-authenticated chat turn speaks as under
  * `ELIZA_CONVERSATION_CALLER_ROLE=USER`. It is never the admin entity, so the
- * admin entity's stored OWNER world grant is not reused for these turns.
+ * admin entity's stored OWNER world grant is not reused for these turns. Its
+ * seed has no `conversation-external:` prefix, so no external principal id can
+ * derive the same entity and inherit its USER grant.
  */
 export function productUserChatEntityId(): UUID {
-  return stringToUuid("conversation-external:product-user") as UUID;
+  return stringToUuid("owner-chat-product-user:v1") as UUID;
 }

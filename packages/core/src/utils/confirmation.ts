@@ -77,14 +77,18 @@ const THANKS_WORDS = new Set(["thanks", "thank", "thx", "ty", "cheers"]);
 /** One of these anywhere in a reply makes it a no. */
 const NEGATIVE_WORDS = new Set([
 	"no",
+	"n",
 	"nope",
 	"nah",
 	"not",
 	"never",
 	"nevermind",
+	"nvm",
+	"negative",
 	"don't",
 	"dont",
 	"cancel",
+	"abort",
 	"stop",
 	"wait",
 	"non",
@@ -96,6 +100,9 @@ const NEGATIVE_WORDS = new Set([
 	"아니",
 	"아니요",
 ]);
+
+/** A thumbs-down or cross mark in a reply makes it a no too. */
+const NEGATIVE_SYMBOLS = /[\u{1F44E}\u274C\u274E\u{1F6AB}\u2716]/u;
 
 type ConfirmationReply = "affirmative" | "negative" | "unclear";
 
@@ -116,7 +123,11 @@ function classifyConfirmationReply(message: Memory): ConfirmationReply {
 	const words = (text.match(/[\p{L}\p{N}']+/gu) ?? [])
 		.map((word) => word.replace(/^'+|'+$/g, ""))
 		.filter(Boolean);
-	if (words.some((word) => NEGATIVE_WORDS.has(word))) return "negative";
+	if (
+		NEGATIVE_SYMBOLS.test(text) ||
+		words.some((word) => NEGATIVE_WORDS.has(word))
+	)
+		return "negative";
 	if (/[?？¿]/u.test(text)) return "unclear";
 	// Skip leading politeness ("please, yes"), then require a yes.
 	let i = 0;

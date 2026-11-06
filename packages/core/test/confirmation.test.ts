@@ -93,6 +93,13 @@ describe("requireConfirmation", () => {
 		"sí, pero no",
 		"no, gracias",
 		"cancel",
+		"n",
+		"nvm",
+		"abort",
+		"never mind",
+		"negative",
+		"👎",
+		"❌",
 	])("cancels on the no %j", async (text) => {
 		expect(await replyTo(text)).toBe("cancelled");
 	});
