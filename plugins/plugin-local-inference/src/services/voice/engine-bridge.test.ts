@@ -390,6 +390,105 @@ describe("EngineVoiceBridge direct synthesis guard", () => {
 	});
 });
 
+describe("EngineVoiceBridge phrase boundaries inside numbers", () => {
+	let bundleRoot: string;
+
+	beforeEach(() => {
+		bundleRoot = mkdtempSync(path.join(tmpdir(), "eliza-engine-bridge-"));
+		writePresetBundle(bundleRoot);
+	});
+
+	afterEach(() => {
+		rmSync(bundleRoot, { recursive: true, force: true });
+	});
+
+	/** Streams one reply piece by piece, as `engine.ts` does, and returns the phrases sent to TTS. */
+	async function speak(pieces: string[]): Promise<string[]> {
+		const spoken: string[] = [];
+		const backend: TtsBackend = {
+			async synthesize({ phrase }) {
+				spoken.push(phrase.text);
+				return {
+					phraseId: phrase.id,
+					fromIndex: phrase.fromIndex,
+					toIndex: phrase.toIndex,
+					pcm: new Float32Array(1),
+					sampleRate: 24_000,
+				};
+			},
+		};
+		const bridge = EngineVoiceBridge.start({
+			bundleRoot,
+			useFfiBackend: false,
+			lifecycleLoaders: lifecycleLoadersOk(),
+			backendOverride: backend,
+		});
+		await bridge.arm();
+		let index = 0;
+		for (const text of pieces) {
+			await bridge.pushAcceptedToken({ index: index++, text });
+		}
+		await bridge.settle();
+		return spoken;
+	}
+
+	// Tokenizers emit the separator as its own piece.
+	it.each([
+		[
+			"a thousands separator",
+			["It", " costs", " $", "1", ",", "299", "."],
+			"It costs $1,299.",
+		],
+		["a decimal point", ["Pi", " is", " 3", ".", "14", "."], "Pi is 3.14."],
+		["a clock colon", ["Call", " at", " 10", ":", "30", "."], "Call at 10:30."],
+	])("keeps %s inside one phrase", async (_separator, pieces, phrase) => {
+		expect(await speak(pieces)).toEqual([phrase]);
+	});
+
+	it("does not let the 8-piece phrase cap cut a number spelled one digit per piece", async () => {
+		// Qwen and Gemma tokenizers emit one digit per piece.
+		expect(
+			await speak([
+				"Your",
+				" meeting",
+				" is",
+				" at",
+				" ",
+				"1",
+				"0",
+				":",
+				"3",
+				"0",
+				".",
+			]),
+		).toEqual(["Your meeting is at 10:30."]);
+		expect(
+			await speak([
+				"The",
+				" code",
+				" is",
+				" ",
+				"4",
+				"8",
+				"2",
+				"9",
+				"1",
+				"7",
+				" now",
+				".",
+			]),
+		).toEqual(["The code is 482917", " now."]);
+	});
+
+	it("still ends a phrase at punctuation after a number when no digit follows", async () => {
+		expect(await speak(["Room", " 4", ",", " please", "."])).toEqual([
+			"Room 4,",
+			" please.",
+		]);
+		expect(await speak(["I", " have", " 3", "."])).toEqual(["I have 3."]);
+	});
+});
+
 describe("EngineVoiceBridge.start — ASR region readability", () => {
 	function bundleWithPreset(): string {
 		const root = mkdtempSync(path.join(tmpdir(), "eliza-asr-region-"));
