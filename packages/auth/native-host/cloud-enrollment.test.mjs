@@ -231,6 +231,57 @@ test("lost acknowledgement keeps durable receipt and resumes without email or a 
   });
   assert.equal(f.calls.filter((x) => x.path.endsWith("/connect")).length, 1);
 });
+test("a second accepted code never overwrites the saved sign-in", async () => {
+  let lost = true,
+    minted = 0;
+  const f = fixture({
+    fetch: (path) => {
+      if (path.endsWith("/ack") && lost)
+        return Response.json({}, { status: 503 });
+      if (path.endsWith("/token"))
+        return Response.json({
+          credentialId: `2222222${++minted}-2222-4222-8222-222222222222`,
+          secret: `private-credential-${minted}-not-for-renderer`,
+          tokenType: "Bearer",
+          acknowledgementRequired: true,
+          acknowledgeBy: future(),
+        });
+      return null;
+    },
+  });
+  const begun = await start(f);
+  await assert.rejects(verify(f, begun), { status: 502 });
+  const saved = f.state.pending;
+  // Cloud accepts the code again; the host must not mint a second key.
+  await assert.rejects(verify(f, begun), {
+    status: 409,
+    code: "sign_in_saved_pending",
+  });
+  assert.equal(f.state.pending, saved);
+  assert.equal(minted, 1);
+  lost = false;
+  assert.equal((await f.auth.handle("resume")).connected, true);
+  assert.equal(f.state.active, "private-credential-1-not-for-renderer");
+});
+test("a late acknowledgement lets Cloud's replay decide, not the local clock", async () => {
+  let lost = true;
+  const f = fixture({
+    fetch: (path) =>
+      path.endsWith("/ack") && lost ? Response.json({}, { status: 503 }) : null,
+  });
+  await assert.rejects(verify(f, await start(f)), { status: 502 });
+  // The ack landed at Cloud but its reply was lost, and `acknowledgeBy` passed.
+  await f.pendingStore.write(
+    JSON.stringify({
+      ...JSON.parse(f.state.pending),
+      acknowledgeBy: new Date(Date.now() - 1000).toISOString(),
+    }),
+  );
+  lost = false;
+  assert.equal((await f.auth.handle("resume")).connected, true);
+  assert.equal(f.state.active, "private-credential-not-for-renderer");
+  assert.equal(f.state.pending, null);
+});
 test("pending credential cancellation revokes before forgetting it; failure stays recoverable", async () => {
   let revokeFails = true;
   const f = fixture({
@@ -454,7 +505,10 @@ test("disconnect rejects malformed receipt and never revokes developer credentia
 test("a new email login cannot silently discard an active app or CLI credential", async () => {
   for (const prefix of ["eliza_mobile_", "eliza_"]) {
     const f = fixture({ active: prefix + "d".repeat(64) });
-    await assert.rejects(start(f), { status: 409 });
+    await assert.rejects(start(f), {
+      status: 409,
+      code: "sign_in_account_connected",
+    });
     assert.equal(f.calls.length, 0);
     assert.ok(f.state.active);
   }

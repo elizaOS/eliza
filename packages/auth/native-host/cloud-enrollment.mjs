@@ -648,8 +648,9 @@ export function createNativeCloudAuth({
       call(auth, path, input, token, ticket, method),
   });
   async function finish(ticket, pending, session, scope) {
-    if (!validTime(pending.acknowledgeBy))
-      throw fail(message("error9", "Sign-in expired. Start again."), 410);
+    // No local refusal once `acknowledgeBy` has passed: the ack may have
+    // landed at Cloud with its reply lost. Cloud's replay of the same proof
+    // decides whether this key is live.
     const result = await call(
       api,
       "/api/v1/app-auth/mobile/ack",
@@ -758,6 +759,19 @@ export function createNativeCloudAuth({
         message("error12", "Account service returned no session."),
         502,
       );
+    // One receipt at a time. A second credential would overwrite the first
+    // one's receipt, and Cloud would keep that key live with nothing on this
+    // host to finish or revoke it.
+    if (await pendingStore.read())
+      throw fail(
+        message(
+          "error24",
+          "A saved sign-in needs to be finished or cancelled first.",
+        ),
+        409,
+        SIGN_IN_CONFLICT.saved,
+      );
+    check(ticket);
     // The Cloud API verifies the interactive session and tenant; a renderer never supplies it.
     const state = opaque(),
       verifier = opaque();
