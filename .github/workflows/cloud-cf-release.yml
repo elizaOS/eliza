@@ -1704,6 +1704,26 @@ jobs:
               --var ELIZA_DEPLOY_COMMIT:"$GITHUB_SHA" \
               --tag "$GITHUB_SHA"
             recheck_canonical_source
+            # New speech session objects live in the lean speech host, which
+            # the staging API binds by script_name. Publish it after the
+            # admission gate it calls and before the API that calls it. Its
+            # secrets are operator-provisioned; refuse to publish (and so to
+            # switch the API binding) while any required name is absent.
+            # Production keeps the coordinator in the API Worker.
+            (cd "$CHECKOUT_DIR" && bun packages/cloud/speech-worker/verify-staging-contract.ts)
+            speech_secret_names="$(cd "$CHECKOUT_DIR" && bun packages/cloud/speech-worker/verify-staging-contract.ts --required-secret-names)"
+            speech_secret_inventory="$(bunx wrangler secret list --config ../speech-worker/wrangler.toml --format json)"
+            # shellcheck disable=SC2086 # names are fixed identifiers
+            printf '%s' "$speech_secret_inventory" | node \
+              "$CHECKOUT_DIR/packages/cloud/scripts/verify-worker-secret-binding-names.ts" \
+              $speech_secret_names
+            recheck_canonical_source
+            bunx wrangler deploy \
+              --config ../speech-worker/wrangler.toml \
+              --var ELIZA_DEPLOY_COMMIT:"$GITHUB_SHA" \
+              --var CLOUD_VOICE_USAGE_BACKEND:"$CLOUD_VOICE_USAGE_BACKEND" \
+              --tag "$GITHUB_SHA"
+            recheck_canonical_source
           fi
           bunx wrangler deploy "${args[@]}"
           trap - ERR
