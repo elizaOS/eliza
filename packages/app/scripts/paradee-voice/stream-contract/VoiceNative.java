@@ -32,6 +32,8 @@ final class VoiceNative {
         return 0;
     }
     static int nativeParadeeUnloadVoice(long context, String voiceId) { loadedVoice = null; return 0; }
+    static volatile int speechThreads;
+    static void setSpeechThreads(int threads) { speechThreads = threads; }
     static volatile String rangedVoice;
     static volatile float rangeMin, rangeMax;
     static int nativeParadeeSetVoiceSpeedRange(long context, String voiceId, float min, float max) {

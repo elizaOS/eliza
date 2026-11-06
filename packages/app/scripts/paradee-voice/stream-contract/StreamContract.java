@@ -141,6 +141,28 @@ public final class StreamContract {
             check(seen[0] > 0);
             session.trimMemory();
             check(VoiceNative.loadedVoice == null);
+            // A host's speed range for one language is kept by the session: the slot takes it
+            // when it loads, again after a trim, and at once when it is already loaded.
+            VoiceNative.rangedVoice = null;
+            session.speedRange("es", 0.5f, 1.5f);
+            check(VoiceNative.rangedVoice == null);
+            session.client().prepareVoice("es");
+            check("es".equals(VoiceNative.loadedVoice) && "es".equals(VoiceNative.rangedVoice) && VoiceNative.rangeMin == 0.5f && VoiceNative.rangeMax == 1.5f);
+            session.trimMemory();
+            VoiceNative.rangedVoice = null;
+            session.synthesize("hola", 1, "es");
+            check("es".equals(VoiceNative.rangedVoice) && VoiceNative.rangeMin == 0.5f);
+            session.speedRange("es", 0.75f, 1.25f);
+            check(VoiceNative.rangeMin == 0.75f && VoiceNative.rangeMax == 1.25f);
+            try { session.speedRange("fr", 0.5f, 1.5f); throw new AssertionError(); } catch (IllegalArgumentException expected) {}
+            try { session.speedRange("es", 1.1f, 1.5f); throw new AssertionError(); } catch (IllegalArgumentException expected) {}
+            check(VoiceNative.rangeMin == 0.75f);
+            // The English voice alone, or recognition alone, loads for a readiness check.
+            session.trimMemory();
+            session.client().prepareRecognition();
+            check(!session.isSpeechLoaded() && VoiceNative.loadedVoice == null);
+            session.client().prepareVoice("en");
+            check(session.isSpeechLoaded() && VoiceNative.loadedVoice == null);
         } finally { session.close(); spanish.delete(); }
         File other = File.createTempFile("delibes", ".gguf");
         try (ParadeeVoice voice = ParadeeVoice.slot(other, null, null, "es")) {
@@ -165,8 +187,15 @@ public final class StreamContract {
     static void join(Thread thread) throws Exception { thread.join(5000); check(!thread.isAlive()); }
     static void cancelled(Runnable task) { try { task.run(); throw new AssertionError("Expected cancellation"); } catch (CancellationException expected) {} }
     public static void main(String[] args) throws Exception {
+        // The speech thread count is set before the first voice loads, and is fixed after it.
+        try { ParadeeVoice.setThreadCount(0); throw new AssertionError(); } catch (IllegalArgumentException expected) {}
+        ParadeeVoice.setThreadCount(3);
+        ParadeeVoice.setThreadCount(2);
+        check(VoiceNative.speechThreads == 2);
         File model = File.createTempFile("paradee", ".gguf"), lexicon = File.createTempFile("paradee", ".lex");
         try (ParadeeVoice voice = new ParadeeVoice(model, lexicon, null)) {
+            try { ParadeeVoice.setThreadCount(4); throw new AssertionError(); } catch (IllegalStateException expected) {}
+            check(VoiceNative.speechThreads == 2);
             int[] seen = {0};
             voice.synthesizeStream("hello", 1, (pcm, complete) -> { check(complete ? pcm.length == 0 : pcm.length == 2); seen[0]++; return true; });
             check(seen[0] == 2);
