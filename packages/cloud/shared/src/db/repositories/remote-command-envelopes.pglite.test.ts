@@ -393,6 +393,48 @@ describe("secure remote relay repositories", () => {
       }),
     ).toEqual({ kind: "mismatch" });
   });
+  it("reports a failed host-token digest instead of an absent host", async () => {
+    hostToken = generateRemoteHostToken();
+    await hosts.createOwned({
+      id: hostId,
+      organization_id: organizationId,
+      user_id: ownerId,
+      device_id: "linux-digest-one",
+      display_name: "Digest One",
+      platform: "linux",
+      connection_mode: "relay",
+      runtime_key_id: targetKeyId,
+      signing_public_jwk: ecPublicJwk,
+      encryption_public_jwk: ecPublicJwk,
+      host_token_hash: await hashRemoteHostToken(hostToken),
+      status: "active",
+    });
+    const challenge = (token: string) =>
+      sessions.createPendingForAuthenticatedHost({
+        id: crypto.randomUUID(),
+        hostId,
+        hostToken: token,
+        grantId: crypto.randomUUID(),
+        grantRevision: 1,
+        code: "123456",
+        pairingSecret,
+        expiresAt: new Date(Date.now() + 5 * 60000),
+        grantExpiresAt: new Date(Date.now() + 60 * 60000),
+      });
+    const digest = crypto.subtle.digest;
+    crypto.subtle.digest = (async () => {
+      throw new Error("WebCrypto digest unavailable");
+    }) as typeof crypto.subtle.digest;
+    try {
+      await expect(challenge(hostToken)).rejects.toThrow("WebCrypto digest unavailable");
+    } finally {
+      crypto.subtle.digest = digest;
+    }
+    // The failed digest never reached the database.
+    expect(await database.select().from(remoteSessions)).toEqual([]);
+    // A host that genuinely does not exist still answers "absent".
+    await expect(challenge(generateRemoteHostToken())).resolves.toBeUndefined();
+  });
   it("runs target challenge claim, confirmation, expiry, denial, replay, and no-resurrection", async () => {
     hostToken = generateRemoteHostToken();
     await hosts.createOwned({
