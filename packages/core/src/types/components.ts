@@ -787,6 +787,11 @@ export interface ProviderResult {
 	 * deferred-provider restoration contract. Stored provider evidence stays exact. */
 	discoveryText?: string;
 
+	/** A reference-only result whose complete body requires a fresh composition.
+	 * Keep it discoverable even when the notice is longer than the deferred text.
+	 * This is presentation metadata, never authorization to read the body. */
+	referenceBodyDeferred?: true;
+
 	/**
 	 * Complete, explicit retrieval representation used only when the primary
 	 * text cannot fit the selected model's input boundary. This must describe
@@ -818,6 +823,15 @@ export interface ProviderExecutionContext {
 	signal: AbortSignal;
 	/** Providers admitted to this composition, including reused results; registration alone does not establish ownership. */
 	selectedProviderNames?: readonly string[];
+	/**
+	 * The caller shows the model this provider's shorter `discoveryText` in
+	 * place of `text`; the complete `text` is read only through a fresh
+	 * composition (provider restoration). The provider may skip reads that feed
+	 * only `text`, and `text` must then state each skipped read so it never
+	 * reads as empty data. Composition sets this only for owner-exclusive
+	 * providers, whose results are re-run on every composition and never reused.
+	 */
+	referenceBodyDeferred?: boolean;
 }
 
 /**

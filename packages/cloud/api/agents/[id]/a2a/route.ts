@@ -151,16 +151,19 @@ function a2aAuthError(c: AppContext, error: unknown, id: JsonRpcId | null) {
     );
   }
   if (boundaryError.status === 503) {
+    const authWarming = boundaryError.code === "auth_cache_warming";
     return c.json(
       {
         jsonrpc: "2.0",
         error: {
           code: -32004,
           message: "Authorization cache unavailable; retry shortly",
+          ...(authWarming ? { data: { code: "auth_cache_warming" } } : {}),
         },
         id,
       },
       503,
+      authWarming ? { "Retry-After": "1" } : undefined,
     );
   }
   if (boundaryError.status !== 401 && boundaryError.status !== 403) {

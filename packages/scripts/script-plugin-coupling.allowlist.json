@@ -1,5 +1,10 @@
 [
   {
+    "file": "packages/cloud/scripts/pages-native-auth-callbacks.ts",
+    "tokens": ["@elizaos/plugin-elizacloud"],
+    "reason": "The Pages deployment gate must validate callback origins against the same canonical environment domain contract as the deployed middleware; plugin discovery cannot define this fixed public authority."
+  },
+  {
     "file": "packages/cloud/scripts/shared/seed-local-dev.ts",
     "tokens": ["@elizaos/plugin-sql"],
     "reason": "Local Cloud seeding writes the canonical agent and entity tables owned by SQL; these fixed schema identities must come from the package root rather than plugin discovery or a duplicate schema."

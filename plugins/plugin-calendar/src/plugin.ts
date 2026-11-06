@@ -1,3 +1,4 @@
+import { calendarReadSelectedAction } from "./actions/calendar-read-selected.js";
 import { calendarReviewAction } from "./actions/calendar-review.js";
 import { CalendarMutationPortService } from "./mutations/service.js";
 /**
@@ -67,6 +68,7 @@ export const calendarPlugin: Plugin = {
     CalendarMutationPortService,
   ],
   actions: [
+    calendarReadSelectedAction,
     ...calendarOperationActions(calendarAction),
     calendarSourcesAction,
     conflictDetectAction,

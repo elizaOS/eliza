@@ -22,9 +22,12 @@ on:
           - plan-client
           - plan-addition
           - plan-provision
-          - plan-provision-primary
+          - plan-provision-publisher
+          - plan-isolate-publisher
           - provision-registry
-          - provision-primary
+          - provision-publisher
+          - isolate-publisher
+          - verify-publisher
           - publish-registry
           - repair
       client:
@@ -35,6 +38,12 @@ on:
 
       intended_app_id:
         description: Operator-selected app UUID; fresh fixed UUID for all provisioning operations
+        required: false
+        default: ""
+        type: string
+
+      publisher_organization_id:
+        description: Operator-selected memberless publisher UUID (publisher operations only)
         required: false
         default: ""
         type: string
@@ -75,7 +84,7 @@ permissions:
 
 concurrency:
   # Publication shares the caller's release lock in cloud-cf-deploy.yml.
-  group: ${{ (inputs.operation == 'publish-registry' || inputs.operation == 'provision-registry' || inputs.operation == 'provision-primary') && format('cloud-cf-release-v6-{0}', inputs.target_environment) || format('mobile-app-auth-registration-{0}', inputs.target_environment) }}
+  group: ${{ (inputs.operation == 'publish-registry' || inputs.operation == 'provision-registry' || inputs.operation == 'provision-primary' || inputs.operation == 'provision-publisher' || inputs.operation == 'isolate-publisher') && format('cloud-cf-release-v6-{0}', inputs.target_environment) || format('mobile-app-auth-registration-{0}', inputs.target_environment) }}
   cancel-in-progress: false
   queue: max
 
@@ -86,6 +95,19 @@ jobs:
     environment: ${{ inputs.target_environment }}
     timeout-minutes: 10
     steps:
+      - name: Mask private registration identities before runner environment output
+        run: |
+          python3 - <<'PY'
+          import json, os, re
+          with open(os.environ["GITHUB_EVENT_PATH"]) as event_file:
+              inputs = json.load(event_file).get("inputs", {})
+          for field in ("intended_app_id", "publisher_organization_id"):
+              value = inputs.get(field, "")
+              if value:
+                  if not re.fullmatch(r"[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}", value):
+                      raise SystemExit("Invalid private registration identity")
+                  print("::add-mask::" + value)
+          PY
       - name: Checkout exact admin source
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v6.0.2
       - name: Set up Node
@@ -130,7 +152,7 @@ jobs:
         run: node packages/scripts/cloud/admin/repair-mobile-app-auth-registration.ts "${{ inputs.operation }}"
       - name: Prepare encrypted registry addition or provisioning plan (no writes)
         id: addition
-        if: inputs.operation == 'plan-addition' || inputs.operation == 'plan-provision' || inputs.operation == 'plan-provision-primary'
+        if: inputs.operation == 'plan-addition' || inputs.operation == 'plan-provision' || inputs.operation == 'plan-provision-primary' || inputs.operation == 'plan-provision-publisher' || inputs.operation == 'plan-isolate-publisher'
         env:
           DATABASE_URL: ${{ secrets.DATABASE_URL }}
           ELIZA_MOBILE_APP_AUTH_TARGET_CLIENT_ID: ${{ inputs.client }}
@@ -138,6 +160,7 @@ jobs:
           ELIZA_MOBILE_APP_AUTH_CLIENTS_JSON: ${{ secrets.ELIZA_MOBILE_APP_AUTH_CLIENTS_JSON }}
           ELIZA_MOBILE_APP_AUTH_APP_ID: ${{ secrets.ELIZA_MOBILE_APP_AUTH_APP_ID }}
           ELIZA_MOBILE_APP_AUTH_INTENDED_APP_ID: ${{ inputs.intended_app_id }}
+          ELIZA_MOBILE_APP_AUTH_PUBLISHER_ORGANIZATION_ID: ${{ inputs.publisher_organization_id }}
           ELIZA_MOBILE_APP_AUTH_DISPLAY_NAME: ${{ inputs.display_name }}
           ELIZA_MOBILE_APP_AUTH_ORGANIZATION_ID: ${{ secrets.ELIZA_MOBILE_APP_AUTH_ORGANIZATION_ID }}
           ELIZA_MOBILE_APP_AUTH_OWNER_USER_ID: ${{ secrets.ELIZA_MOBILE_APP_AUTH_OWNER_USER_ID }}
@@ -146,7 +169,7 @@ jobs:
           DATABASE_IDENTITY_EXPECTED_AUTHORITY_SHA256: ${{ vars.DATABASE_IDENTITY_EXPECTED_AUTHORITY_SHA256 }}
         run: node packages/scripts/cloud/admin/plan-mobile-client-addition.ts "${{ inputs.operation }}"
       - name: Upload only the encrypted candidate and rollback
-        if: inputs.operation == 'plan-addition' || inputs.operation == 'plan-provision' || inputs.operation == 'plan-provision-primary'
+        if: inputs.operation == 'plan-addition' || inputs.operation == 'plan-provision' || inputs.operation == 'plan-provision-primary' || inputs.operation == 'plan-provision-publisher' || inputs.operation == 'plan-isolate-publisher'
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
         with:
           name: mobile-client-addition-${{ inputs.target_environment }}
@@ -156,7 +179,7 @@ jobs:
       # Keep the normal source registry unchanged until this succeeds. A release
       # may publish that source, so an unprovisioned candidate cannot be installed.
       - name: Provision the reviewed platform registration only
-        if: inputs.operation == 'provision-registry' || inputs.operation == 'provision-primary'
+        if: inputs.operation == 'provision-registry' || inputs.operation == 'provision-primary' || inputs.operation == 'provision-publisher' || inputs.operation == 'isolate-publisher' || inputs.operation == 'verify-publisher'
         env:
           DATABASE_URL: ${{ secrets.DATABASE_URL }}
           ELIZA_MOBILE_APP_AUTH_TARGET_CLIENT_ID: ${{ inputs.client }}
@@ -165,6 +188,7 @@ jobs:
           ELIZA_MOBILE_APP_AUTH_CLIENTS_JSON: ${{ secrets.ELIZA_MOBILE_APP_AUTH_CLIENTS_JSON }}
           ELIZA_MOBILE_APP_AUTH_APP_ID: ${{ secrets.ELIZA_MOBILE_APP_AUTH_APP_ID }}
           ELIZA_MOBILE_APP_AUTH_INTENDED_APP_ID: ${{ inputs.intended_app_id }}
+          ELIZA_MOBILE_APP_AUTH_PUBLISHER_ORGANIZATION_ID: ${{ inputs.publisher_organization_id }}
           ELIZA_MOBILE_APP_AUTH_ORGANIZATION_ID: ${{ secrets.ELIZA_MOBILE_APP_AUTH_ORGANIZATION_ID }}
           ELIZA_MOBILE_APP_AUTH_OWNER_USER_ID: ${{ secrets.ELIZA_MOBILE_APP_AUTH_OWNER_USER_ID }}
           ELIZA_MOBILE_APP_AUTH_ENVIRONMENT: ${{ inputs.target_environment }}
