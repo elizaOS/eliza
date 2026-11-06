@@ -119,7 +119,11 @@ import {
   isNoResponsePlaceholder,
 } from "./chat-text-helpers.ts";
 import { enrichChatUiViewMetadata } from "./chat-view-metadata.ts";
-import { resolveClientChatAdminEntityId } from "./client-chat-admin.ts";
+import {
+  productUserChatEntityId,
+  resolveClientChatAdminEntityId,
+  resolveOwnerChatCallerRole,
+} from "./client-chat-admin.ts";
 import {
   extractAnthropicSystemAndLastUser,
   extractCompatTextContent,
@@ -3740,14 +3744,22 @@ export async function ensureCompatChatConnection(
   roomId: UUID;
   worldId: UUID;
 }> {
-  const ownerPrincipal =
+  const ownerAuthenticated =
     principal.kind === "owner_session" || principal.kind === "owner_api_token";
-  const userId = ownerPrincipal
-    ? ensureAdminEntityIdForChat(state)
-    : (stringToUuid(
-        `${identityName}:${channelIdPrefix}:external:${principal.principalId}`,
-      ) as UUID);
-  const principalScopedRoomKey = ownerPrincipal
+  // ELIZA_CONVERSATION_CALLER_ROLE=USER: the owner credential carries an end
+  // user's chat, so the turn speaks as the product user at role USER (the same
+  // mapping as resolveConversationCaller in conversation-routes.ts).
+  const productUser =
+    ownerAuthenticated && resolveOwnerChatCallerRole() === "USER";
+  const ownerPrincipal = ownerAuthenticated && !productUser;
+  const userId = productUser
+    ? productUserChatEntityId()
+    : ownerPrincipal
+      ? ensureAdminEntityIdForChat(state)
+      : (stringToUuid(
+          `${identityName}:${channelIdPrefix}:external:${principal.principalId}`,
+        ) as UUID);
+  const principalScopedRoomKey = ownerAuthenticated
     ? roomKey
     : `${principal.kind}:${principal.principalId}:${roomKey}`;
   const roomId = stringToUuid(
@@ -3767,7 +3779,10 @@ export async function ensureCompatChatConnection(
     metadata: ownerPrincipal ? { ownership: { ownerId: userId } } : {},
   });
   if (!ownerPrincipal) {
-    if (principal.kind === "service_gateway" && principal.sessionRole) {
+    if (
+      productUser ||
+      (principal.kind === "service_gateway" && principal.sessionRole)
+    ) {
       await grantSessionUserWorldRole(runtime, worldId, userId);
     }
     return { userId, roomId, worldId };
@@ -3805,7 +3820,8 @@ export async function ensureCompatChatConnection(
 }
 /**
  * Grant-on-first-contact USER world membership for an authenticated
- * machine-session (paired-device) principal's minted external entity, so its
+ * machine-session (paired-device) principal's minted external entity, or for
+ * the product user under `ELIZA_CONVERSATION_CALLER_ROLE=USER`, so its
  * turns resolve at least the session's boundary role through
  * `checkSenderRole`/`resolveEntityRole` (which read `world.metadata.roles`).
  *

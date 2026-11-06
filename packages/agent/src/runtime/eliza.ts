@@ -19,6 +19,7 @@ import { resolveDefaultVaultDataDir } from "@elizaos/auth/vault";
 import {
   AgentRuntime,
   addLogListener,
+  assertActionAllowlistMatchesActions,
   ChannelType,
   type Component,
   createMessageMemory,
@@ -34,6 +35,7 @@ import {
   type Plugin,
   type Provider,
   type RuntimeStopOptions,
+  readActionAllowlist,
   requireConfirmedSendHandlerDelivery,
   resolveStateDir,
   resolveUserPath,
@@ -74,6 +76,7 @@ import {
   getPgliteErrorCode,
   PGLITE_ERROR_CODES,
 } from "@elizaos/plugin-sql/errors";
+import { resolveOwnerChatCallerRole } from "../api/client-chat-admin.ts";
 import {
   debugLogResolvedContext,
   validateRuntimeContext,
@@ -4789,6 +4792,10 @@ export async function startEliza(
   const subAgentCredentialPlugins = shouldRegisterSubAgentCredentialsPlugin()
     ? [{ ...subAgentCredentialsPlugin }]
     : [];
+  // Validate the chat-authority settings before a runtime exists, so a
+  // malformed value fails the boot rather than the first turn.
+  resolveOwnerChatCallerRole();
+  readActionAllowlist();
   const assistantPlugins = createAssistantPlugins(character);
   const assistantPlugin = assistantPlugins[0];
   deduplicatePluginActions([
@@ -5837,6 +5844,7 @@ export async function startEliza(
     // ACTION_ROLE_POLICY keys that match no action name/simile (a silently-inert
     // policy, usually from an action rename after the operator wrote the policy).
     warnOnUnmatchedActionRolePolicyKeys(runtime.actions ?? []);
+    assertActionAllowlistMatchesActions(runtime.actions ?? []);
     await registerConversationProximityProvider();
     // Probe the embedding dimension BEFORE seeding bundled documents (#8769).
     // The deferred plugin waves above register the cloud TEXT_EMBEDDING handler

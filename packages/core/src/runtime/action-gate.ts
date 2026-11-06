@@ -86,17 +86,80 @@ export function withActionGatePolicy<T>(
 	);
 }
 
+let cachedActionAllowlist:
+	| { raw: string; names: ReadonlySet<string> }
+	| undefined;
+
+/**
+ * The host's product allowlist from `ELIZA_ACTION_ALLOWLIST`: a JSON array of
+ * exact action names, or `null` when the setting is unset (every action stays
+ * subject to its own gates). Unlike `ACTION_ROLE_POLICY`, which can only set
+ * minimum roles, the allowlist also refuses an OWNER caller and the agent's
+ * own autonomous and trigger turns. Malformed JSON or a non-string entry
+ * throws, so a broken setting never disables the allowlist.
+ */
+export function readActionAllowlist(): ReadonlySet<string> | null {
+	const raw = process.env.ELIZA_ACTION_ALLOWLIST;
+	if (!raw) return null;
+	if (cachedActionAllowlist?.raw === raw) return cachedActionAllowlist.names;
+	let parsed: unknown;
+	try {
+		parsed = JSON.parse(raw);
+	} catch (error) {
+		// error-policy:J2 The product allowlist is a security boundary; a
+		// malformed setting must fail startup rather than disable it.
+		throw new ElizaError("Failed to parse ELIZA_ACTION_ALLOWLIST", {
+			code: "INVALID_ACTION_ALLOWLIST",
+			cause: error,
+		});
+	}
+	if (
+		!Array.isArray(parsed) ||
+		!parsed.every((name) => typeof name === "string" && name.length > 0)
+	) {
+		throw new ElizaError(
+			"ELIZA_ACTION_ALLOWLIST must be a JSON array of action names",
+			{ code: "INVALID_ACTION_ALLOWLIST" },
+		);
+	}
+	cachedActionAllowlist = { raw, names: new Set(parsed) };
+	return cachedActionAllowlist.names;
+}
+
+/**
+ * Throw when an `ELIZA_ACTION_ALLOWLIST` entry names no registered action, so
+ * an action renamed upstream fails the boot instead of silently leaving the
+ * product without it. Names are exact: a simile never matches.
+ */
+export function assertActionAllowlistMatchesActions(
+	actions: readonly Pick<Action, "name">[],
+): void {
+	const allowlist = readActionAllowlist();
+	if (!allowlist) return;
+	const registered = new Set(actions.map((action) => action.name));
+	const unmatched = [...allowlist].filter((name) => !registered.has(name));
+	if (unmatched.length > 0) {
+		throw new ElizaError(
+			`ELIZA_ACTION_ALLOWLIST names no registered action: ${unmatched.join(", ")}`,
+			{ code: "INVALID_ACTION_ALLOWLIST", context: { unmatched } },
+		);
+	}
+}
+
 /**
  * The single role/context/policy gate deciding whether `action` may run for
  * `ctx`. Composes, in order:
  *
  * 1. the private-action gate (unless `skipPrivateGate`),
  * 2. the non-overridable destination disclosure gate,
- * 3. the operator `ACTION_ROLE_POLICY` override — when set for this action it
+ * 3. the host's `ELIZA_ACTION_ALLOWLIST`, for every caller including the
+ * agent itself,
+ * 4. the request-scoped {@link withActionGatePolicy} restriction,
+ * 5. the operator `ACTION_ROLE_POLICY` override — when set for this action it
  * **replaces** the declared gates and access is decided solely by the
  * policy role,
- * 4. the contextGate (derived from `contextGate ?? {contexts, roleGate}`),
- * 5. the top-level roleGate.
+ * 6. the contextGate (derived from `contextGate ?? {contexts, roleGate}`),
+ * 7. the top-level roleGate.
  *
  * Returns a human-readable failure reason, or `undefined` when the action is
  * allowed. Every exposure and execution path — planner selection, sub-planner
@@ -129,6 +192,14 @@ export function actionGateRejection(
 		return {
 			kind: "disclosure",
 			reason: `Action ${action.name} is not allowed: ${disclosureFailure}`,
+		};
+	}
+
+	const allowlist = readActionAllowlist();
+	if (allowlist && !allowlist.has(action.name)) {
+		return {
+			kind: "context",
+			reason: `Action ${action.name} is not available in this product`,
 		};
 	}
 
