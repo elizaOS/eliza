@@ -335,6 +335,58 @@ describe("durable interactive task journal", () => {
       rmSync(root, { recursive: true, force: true });
     }
   });
+  it("reads a long journal in pages when it sets records aside", () => {
+    const root = mkdtempSync(join(tmpdir(), "eliza-task-paged-recovery-"));
+    const connection = new DatabaseSync(join(root, "host.sqlite"));
+    connection.exec("PRAGMA synchronous = FULL");
+    try {
+      let store = new SqliteInteractiveTaskStore(connection);
+      const history = 150;
+      for (let i = 0; i < history; i++) {
+        const id = `task-${String(i).padStart(4, "0")}`;
+        store.create({ ...input, id });
+        store.transition(
+          id,
+          { owner, expectedRevision: 0, now: 1001 },
+          { type: "cancel" },
+        );
+      }
+      const last = store.create({ ...input, id: "task-9999" });
+      connection
+        .prepare(
+          "UPDATE interactive_task_journal_v1 SET document = ? WHERE id = ?",
+        )
+        .run(JSON.stringify({ ...last, laterField: true }), last.id);
+      // The largest set of journal rows recovery holds at once.
+      let largest = 0;
+      store = new SqliteInteractiveTaskStore({
+        exec: (sql) => connection.exec(sql),
+        prepare: (sql) => {
+          const statement = connection.prepare(sql);
+          return {
+            get: (...parameters) => {
+              const row = statement.get(...parameters) as
+                | { rows?: unknown }
+                | undefined;
+              if (typeof row?.rows === "string")
+                largest = Math.max(largest, JSON.parse(row.rows).length);
+              return row;
+            },
+            run: (...parameters) => statement.run(...parameters),
+          };
+        },
+      });
+      expect(store.recoverOwner(owner, 2000)).toBeNull();
+      expect(store.unreadable(owner).map((record) => record.taskId)).toEqual([
+        last.id,
+      ]);
+      expect(largest).toBeGreaterThan(0);
+      expect(largest).toBeLessThanOrEqual(64);
+    } finally {
+      connection.close();
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
   it("reads a set-aside record again once a build can read it", () => {
     const root = mkdtempSync(join(tmpdir(), "eliza-task-readable-again-"));
     const connections: DatabaseSync[] = [];

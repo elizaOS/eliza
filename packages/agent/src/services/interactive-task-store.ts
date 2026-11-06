@@ -26,6 +26,9 @@ export interface TaskSqliteConnection {
   };
 }
 
+/** Journal rows recovery reads at a time. */
+const RECOVERY_PAGE = 64;
+
 function ownerKey(owner: TaskOwner): string {
   return JSON.stringify([
     owner.agentId,
@@ -378,22 +381,26 @@ export class SqliteInteractiveTaskStore {
             "DELETE FROM interactive_task_quarantine_v1 WHERE task_id = ? AND owner_key = ?",
           )
           .run(row.id, key);
-    const rows = this.db
-      .prepare(
-        "SELECT json_group_array(json_object('id', id, 'document', document)) AS rows FROM interactive_task_journal_v1 WHERE owner_key = ? AND id NOT IN (SELECT task_id FROM interactive_task_quarantine_v1)",
-      )
-      .get(key) as { rows: string };
-    for (const row of JSON.parse(rows.rows) as {
-      id: string;
-      document: unknown;
-    }[]) {
-      const reason = unreadableReason(row.document);
-      if (reason === null) continue;
-      this.db
-        .prepare(
-          "INSERT INTO interactive_task_quarantine_v1 (task_id, owner_key, reason, quarantined_at) VALUES (?, ?, ?, ?)",
-        )
-        .run(row.id, key, reason, now);
+    // The journal keeps every task the owner ever ran, so read it in id
+    // pages: memory stays bounded however long the history grows.
+    const page = this.db.prepare(
+      "SELECT json_group_array(json_object('id', id, 'document', document)) AS rows FROM (SELECT id, document FROM interactive_task_journal_v1 WHERE owner_key = ? AND id > ? AND id NOT IN (SELECT task_id FROM interactive_task_quarantine_v1) ORDER BY id LIMIT ?)",
+    );
+    for (let afterId = ""; ; ) {
+      const rows = JSON.parse(
+        (page.get(key, afterId, RECOVERY_PAGE) as { rows: string }).rows,
+      ) as { id: string; document: unknown }[];
+      for (const row of rows) {
+        const reason = unreadableReason(row.document);
+        if (reason === null) continue;
+        this.db
+          .prepare(
+            "INSERT INTO interactive_task_quarantine_v1 (task_id, owner_key, reason, quarantined_at) VALUES (?, ?, ?, ?)",
+          )
+          .run(row.id, key, reason, now);
+      }
+      if (rows.length < RECOVERY_PAGE) break;
+      afterId = rows[rows.length - 1].id;
     }
   }
 
