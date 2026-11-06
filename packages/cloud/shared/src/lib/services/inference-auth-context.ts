@@ -800,9 +800,56 @@ export async function resolveInferenceAuthContext(
       trace.cacheRead = "unavailable";
     }
 
-    // A true miss (or an unreadable cache) is decided by the primary inline,
-    // once, and the decision is projected into the cache under `waitUntil`;
-    // the request never fails because the cache is cold.
+    // A true miss (or an unreadable cache) is decided by the primary once per
+    // key (coalesced across concurrent requests) and serves this request; its
+    // positive or negative projection is written under `waitUntil`. The
+    // request never fails because the cache is cold.
+    if (authCacheEnabled && cacheAvailable && options.executionCtx && !options.forceAuthoritative) {
+      const hydrationOptions = { ...options, executionCtx: options.executionCtx };
+      const hydration = getOrCreateApiKeyHydration(req, keyHash, hydrationOptions);
+      trace.cacheWrite = "deferred";
+      observeHydrationProjection(hydration, hydrationOptions, true);
+      const decided = await hydration.decision;
+      if (decided?.kind === "rejected" || decided?.kind === "suspended") {
+        trace.authoritative = decided.kind;
+        trace.result = decided.kind;
+        logStandingDenial({
+          status: decided.kind === "suspended" ? 403 : decided.status,
+          reason: decided.reason,
+          source: "authoritative",
+        });
+        return decided;
+      }
+      if (decided?.kind === "authorized" && decided.credential) {
+        const decidedCredential = decided.credential;
+        if (!deferStrongCredentialCheck) {
+          try {
+            await assertInferenceCredentialActive(decided.ctx.orgId, decidedCredential);
+          } catch (error) {
+            if (!(error instanceof InferenceCredentialRevokedError)) throw error;
+            const reason = inferenceCredentialRevocationReason(error.reason);
+            const revoked = error.reason === "credential_revoked";
+            trace.result = revoked ? "rejected" : "suspended";
+            logStandingDenial({ status: revoked ? 401 : 403, reason, source: "authoritative" });
+            return revoked
+              ? { kind: "rejected", status: 401, reason }
+              : { kind: "suspended", userId: decided.ctx.userId, reason };
+          }
+        }
+        observeInferenceApiKeyUsage(decided, options.executionCtx);
+        trace.authoritative = "authorized";
+        trace.result = "authorized_origin";
+        return {
+          kind: "authorized",
+          ctx: decided.ctx,
+          source: "origin",
+          ...(deferStrongCredentialCheck || options.includeVerifiedCredential === true
+            ? { credential: decidedCredential }
+            : {}),
+        };
+      }
+      // The shared decision failed or exceeded its deadline: decide inline.
+    }
     trace.authoritative = "error";
     trace.result = "error";
     let { user, apiKey } = await requireInferenceApiKeyWithOrg(credential.rawKey, {
