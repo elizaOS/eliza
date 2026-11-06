@@ -1114,6 +1114,12 @@ export class GuidedWebsiteWorkflow {
       if (checked.result) return checked.result;
       if (checked.decision !== authorized) {
         this.offer = null;
+        // A bare true was the old contract: name the change, so a host
+        // written for it fails loudly instead of never pressing anything.
+        if (checked.decision === true)
+          throw new BillHostError(
+            "authorizeAction answered true at dispatch; return context.authorize() to allow the effect",
+          );
         return blocked(this.words.noTarget, "no-target");
       }
       ({ observation, snapshot } = checked);
