@@ -283,9 +283,11 @@ Staging rejects unknown fixtures, invalid packages and existing output files; it
 
 `runtime.EmbeddedRuntimeService` integrates the existing NativeRuntimeSession and
 EmbeddedRuntimeGroup with Android Service lifecycle, foreground dispatch, status,
-endpoint-bound requests and local health snapshots. Status reports `requestBodyLimit`
-(`RuntimeRequestDispatcher.MAX_BODY_TEXT_UNITS`), so a renderer can check a body's
-`JSON.stringify` length before the bridge rejects it. Subclasses provide the private
+endpoint-bound requests and local health snapshots. When the runtime is available,
+status reports `requestBodyLimit`: the stock `RuntimeRequestDispatcher.MAX_BODY_TEXT_UNITS`
+a host uses with this service. The host's serialization is what is counted, and
+Android org.json escapes `/`, so a renderer that checks a body's `JSON.stringify`
+length before sending should leave headroom below it. Subclasses provide the private
 runtime root, notification UI/identity, launch commands and timing/size policy.
 Product wrappers retain asset admission, route allowlists, credentials and provider
 configuration. Static adapters use the concrete service class so replacement and
