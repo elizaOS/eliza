@@ -34,7 +34,10 @@ public final class UpdateJournalConformanceTest {
     if(e.installed==expected){n.phase=recovering?"RECOVERY_PROBATION":"PROBATION";n.reason="";return n;}
     if(e.installed!=previous){n.phase="SUPPORT";n.reason="unexpected_installed_identity";return n;}
     if(e.blocked!=null){n.phase="SUPPORT";n.reason=e.blocked;return n;}
-    if(wasBlocked||e.pending)return j;
+    if(e.pending)return j;
+    // The model's FixExit, applied by readback: a stalled install with no session
+    // and the baseline running is released. A recovery stays in support.
+    if(wasBlocked)return recovering?j:j.cleared("IDLE","install_not_completed");
     n.phase=recovering?"SUPPORT":"QUARANTINED";n.q.add(cand(j.plan));n.reason=recovering?"recovery_install_failed":"candidate_install_failed";return n;
   }
   static J stepAdmit(J j,Event e,String target) {

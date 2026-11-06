@@ -125,7 +125,7 @@ public final class UpdateJournalTest {
       check(callback.read().phase==UpdateJournal.Phase.SUPPORT);check(callback.read().reason.equals(reason));
       check(UpdateJournal.awaitingInstaller(callback.read()));
       callback=new UpdateJournal(directory.resolve("callback-"+reason),SYNC);
-      callback.reconcile("release-11",5,OLD,false);check(callback.read().phase==UpdateJournal.Phase.SUPPORT);
+      callback.reconcile("release-11",5,OLD,true);check(callback.read().phase==UpdateJournal.Phase.SUPPORT);
       callback.reconcile("release-11",5,NEW,false);check(callback.read().phase==UpdateJournal.Phase.PROBATION);
       callback.reconcileInstallerResult("release-11",5,OLD,false,reason);check(callback.read().phase==UpdateJournal.Phase.PROBATION);
       callback.localHealthFailed(callback.read(),NEW);callback.recovering("release-11",6);
@@ -163,6 +163,37 @@ public final class UpdateJournalTest {
     UpdateJournal badRecovery=new UpdateJournal(directory.resolve("bad-recovery"),SYNC);badRecovery.begin(plan("stable"),OLD,0);badRecovery.committing("release-11",1,0);badRecovery.reconcile(NEW,false);badRecovery.localHealthFailed(badRecovery.read(),NEW);badRecovery.recovering("release-11",2);badRecovery.reconcile(RECOVERY,false);badRecovery.localHealthFailed(badRecovery.read(),RECOVERY);check(badRecovery.read().phase==UpdateJournal.Phase.SUPPORT);
     check(badRecovery.read().quarantine.contains(RECOVERY.digest));check(!fail.read().quarantine.contains(RECOVERY.digest));
     badRecovery.setChannel("beta");badRecovery.setChannel("stable");check(badRecovery.read().quarantine.contains(RECOVERY.digest));
+    // A session lost or timed out with the baseline still running is released,
+    // never left in support for good; a live session or a recovery is kept.
+    for(String stall:new String[]{"install_timeout","install_clock_invalid","policy_blocked","user_action_required"}) {
+      UpdateJournal stalled=new UpdateJournal(directory.resolve("stalled-"+stall),SYNC);stalled.begin(plan("stable"),OLD,0);stalled.committing("release-11",3,0);
+      if(stall.equals("install_timeout")){stalled.observePending("release-11",3,10,0,1000);stalled.observePending("release-11",3,10,1000,1000);}
+      else if(stall.equals("install_clock_invalid")){stalled.observePending("release-11",3,10,500,1000);stalled.observePending("release-11",3,10,100,1000);}
+      else stalled.reconcileInstallerResult("release-11",3,OLD,true,stall);
+      check(stalled.read().reason.equals(stall));
+      stalled.reconcile("release-11",3,OLD,true);check(stalled.read().reason.equals(stall));
+      long generation=stalled.read().channelGeneration;
+      stalled.reconcile("release-11",3,OLD,false);
+      check(stalled.read().phase==UpdateJournal.Phase.IDLE);check(stalled.read().plan==null);check(stalled.read().reason.equals("install_not_completed"));
+      check(stalled.read().quarantine.isEmpty());check(stalled.read().channelGeneration==generation);check(!UpdateJournal.awaitingInstaller(stalled.read()));
+      stalled.begin(plan("stable"),OLD,generation);check(stalled.read().phase==UpdateJournal.Phase.VERIFIED);
+    }
+    UpdateJournal stalledRecovery=new UpdateJournal(directory.resolve("stalled-recovery"),SYNC);stalledRecovery.begin(plan("stable"),OLD,0);stalledRecovery.committing("release-11",3,0);stalledRecovery.reconcile(NEW,false);
+    stalledRecovery.localHealthFailed(stalledRecovery.read(),NEW);stalledRecovery.recovering("release-11",4);stalledRecovery.observePending("release-11",4,10,0,1000);stalledRecovery.observePending("release-11",4,10,1000,1000);
+    stalledRecovery.reconcile("release-11",4,NEW,false);check(stalledRecovery.read().phase==UpdateJournal.Phase.SUPPORT);check(stalledRecovery.read().reason.equals("install_timeout"));
+    // A throw from the platform handoff after the durable intent is reported as
+    // such, so the coordinator keeps the session and readback decides.
+    UpdateJournal binder=new UpdateJournal(directory.resolve("binder"),SYNC);binder.begin(plan("stable"),OLD,0);
+    try{binder.committingWithAction("release-11",3,0,()->{throw new IllegalStateException("binder died");});throw new AssertionError("Handoff failure hidden");}
+    catch(UpdateJournal.HandoffFailed expected){check(expected.getCause() instanceof IllegalStateException);}
+    check(binder.read().phase==UpdateJournal.Phase.COMMITTING);
+    binder.reconcile("release-11",3,OLD,true);check(binder.read().phase==UpdateJournal.Phase.COMMITTING);
+    binder.reconcile("release-11",3,NEW,false);check(binder.read().phase==UpdateJournal.Phase.PROBATION);check(binder.read().quarantine.isEmpty());
+    UpdateJournal.Plan next=new UpdateJournal.Plan("release-13","stable","launcher",OLD,id(13,'d'),id(14,'e'));
+    UpdateJournal second=new UpdateJournal(directory.resolve("binder-unpublished"),SYNC);second.begin(next,OLD,0);
+    try{new UpdateJournal(directory.resolve("binder-unpublished"),SYNC,name->{if(name.equals("published"))throw new IOException("lost after rename");}).committingWithAction("release-13",3,0,()->{throw new AssertionError("Handoff ran after failed publish");});throw new AssertionError("Publish failure hidden");}
+    catch(UpdateJournal.HandoffFailed wrong){throw new AssertionError("Publish failure reported as handoff");}
+    catch(IOException expected){assertions++;}
     UpdateJournal rejectedPair=new UpdateJournal(directory.resolve("rejected-pair"),SYNC);
     rejectedPair.begin(plan("stable"),OLD,0);rejectedPair.committing("release-11",1,0);rejectedPair.reconcile(OLD,false);
     UpdateJournal.Plan quarantinedRecovery=new UpdateJournal.Plan("release-13","stable","launcher",OLD,id(13,'d'),id(14,'b'));

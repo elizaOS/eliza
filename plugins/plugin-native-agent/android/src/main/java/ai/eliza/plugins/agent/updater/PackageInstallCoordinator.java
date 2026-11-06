@@ -90,9 +90,10 @@ public abstract class PackageInstallCoordinator {
       else journal.committingWithAction(plan,id,generation,()->session.commit(callback.getIntentSender()));
       return id;
     } catch(Exception failure) {
-      try{installer.abandonSession(id);}catch(Exception ignored){}
-      // A binder error does not prove the platform rejected commit. Read its
-      // live session state rather than fabricating a terminal callback.
+      // A throw from Session.commit does not prove the platform refused it, and
+      // abandoning could race an install already under way. Only a session that
+      // was never handed off is abandoned; readback decides the rest.
+      if(!(failure instanceof UpdateJournal.HandoffFailed))try{installer.abandonSession(id);}catch(Exception ignored){}
       try{reconcilePending(context,target,journal,observationBudgetMs);}catch(Exception reconciliation){failure.addSuppressed(reconciliation);}
       throw failure;
     }

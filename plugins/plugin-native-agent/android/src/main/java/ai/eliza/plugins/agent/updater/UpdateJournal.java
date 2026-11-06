@@ -14,6 +14,12 @@ public class UpdateJournal {
   public interface Durability { void syncDirectory(Path path) throws IOException; }
   public interface Faults { void boundary(String name) throws IOException; }
   public interface CommitAction { void commit() throws IOException; }
+  /** The platform handoff threw after the install intent was durable. The
+   * platform may still install, so callers must not abandon the session;
+   * installed and session readback decide the outcome. */
+  public static final class HandoffFailed extends IOException {
+    HandoffFailed(Exception cause) { super("Platform handoff outcome unknown",cause); }
+  }
   public static final class Identity {
     public final long code;
     public final String digest;
@@ -187,7 +193,11 @@ public class UpdateJournal {
       Identity previous=recovering?s.plan.candidate:s.plan.baseline;
       if(!previous.matches(installed)){s.phase=Phase.SUPPORT;s.reason="unexpected_installed_identity";return;}
       if(blockedReason!=null){s.phase=Phase.SUPPORT;s.reason=blockedReason;return;}
-      if(wasBlocked||sessionPending)return;
+      if(sessionPending)return;
+      // A stalled install whose session is gone, with the baseline still
+      // running, can no longer install. Release it so the plan can be admitted
+      // again; quarantine and channel generation stay. Recovery stays in support.
+      if(wasBlocked){if(!recovering)release(s);return;}
       s.phase=recovering?Phase.SUPPORT:Phase.QUARANTINED;
       quarantine(s,false);s.reason=recovering?"recovery_install_failed":"candidate_install_failed";
     });
@@ -215,6 +225,7 @@ public class UpdateJournal {
     });
   }
   private static void resetPending(State s){s.pendingMillis=0;s.observedBoot=-1;s.observedElapsed=-1;}
+  private static void release(State s){s.phase=Phase.IDLE;s.plan=null;s.session=-1;s.reason="install_not_completed";resetPending(s);}
   /** Callers capture this snapshot before collecting health evidence. Both
    * verdicts compare it under the mutation lock; even a channel change or a
    * competing verdict invalidates an in-flight observation. This is a race
@@ -290,7 +301,11 @@ public class UpdateJournal {
   private Snapshot transact(Mutation mutation) throws IOException { return transact(mutation,null); }
   /** Persists the step, then runs the platform handoff under the same lock. */
   private Snapshot transact(Mutation mutation,CommitAction commit) throws IOException {
-    return locked(current->{State next=step(current,mutation);store.publish(encode(next));if(commit!=null)commit.commit();return new Snapshot(next);});
+    return locked(current->{
+      State next=step(current,mutation);store.publish(encode(next));
+      if(commit!=null)try{commit.commit();}catch(IOException|RuntimeException failure){throw new HandoffFailed(failure);}
+      return new Snapshot(next);
+    });
   }
   private <T> T locked(Locked<T> body) throws IOException { return store.exclusive(()->body.apply(decode(store.read()))); }
   private static State decode(byte[] envelope) throws IOException {
