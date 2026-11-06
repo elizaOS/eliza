@@ -592,7 +592,6 @@ export {
 	isSyntheticConversationArtifactMemory,
 	isSyntheticConversationArtifactText,
 } from "./utils/synthetic-conversation-artifact";
-export { extractFirstSentence, hasFirstSentence } from "./utils/text-splitting";
 export {
 	isTtsDebugEnabled,
 	ttsDebug,
