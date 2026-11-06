@@ -181,6 +181,15 @@ export function createInteractiveTaskHandler(options: {
           return json(401, { code: "TASK_UNAUTHORIZED" });
         if (goal.goalRef !== input.goalRef)
           return json(403, { code: "TASK_ACTION_DENIED" });
+        // A repeated start of the current task's goal (its first reply was
+        // lost) gets that task while its authorization stands. Any other
+        // goal, or a revoked task, keeps the slot and the start is refused.
+        const current = options.runtime.current();
+        if (
+          current?.goalRef === goal.goalRef &&
+          current.authorization.state === "active"
+        )
+          return json(200, { task: view(current) });
         return json(201, { task: view(options.runtime.create(goal)) });
       }
       const match = taskRoutePattern.exec(url.pathname);
