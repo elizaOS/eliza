@@ -1195,11 +1195,10 @@ test("an account change at any credential read of a request is fenced", async (t
     ["active", "POST", "/tasks/note", {}],
     ["empty", "POST", "/tasks", { goalRef: "bill" }],
     ["unknown", "POST", "/tasks/task-a/acknowledge-unknown", "revision"],
-    // A stop may be saved before a later read sees the change; the change
-    // revokes the task as well, so either way it does not act again.
-    ["active", "POST", "/tasks/task-a/pause", "revision", "stop"],
-    ["active", "POST", "/tasks/current/pause", {}, "stop"],
-    ["active", "POST", "/tasks/task-a/cancel", "revision", "stop"],
+    ["active", "POST", "/tasks/task-a/pause", "revision"],
+    ["active", "POST", "/tasks/current/pause", {}],
+    ["active", "POST", "/tasks/task-a/cancel", "revision"],
+    ["paused", "POST", "/tasks/task-a/resume", "revision"],
   ];
   let run = 0;
   async function attempt([setup, method, path, body], flip) {
@@ -1247,24 +1246,24 @@ test("an account change at any credential read of a request is fenced", async (t
     try {
       const runtime = await gateway.forCurrentOwner();
       if (setup !== "empty") runtime.create(grant("task-a"));
+      if (setup === "paused") runtime.control("task-a", 0, "pause");
       if (setup === "unknown") {
         await fillWithLostReply(runtime, "task-a");
         await gateway.revoke();
         await gateway.forCurrentOwner();
       }
       const db = new DatabaseSync(join(directory, `journal-${run}.sqlite`));
-      // Rows saved for account A: notes, tasks and acknowledgements.
+      // Rows the request saved for account A: notes, tasks, acknowledgements
+      // and task events, since every change to a task appends one. The
+      // revoke an account change appends is the fence's, not the request's.
+      const ofA = `owner_key LIKE '%"account-a"%'`;
       const scopeOfA = () =>
         JSON.stringify(
           [
             "SELECT count(*) AS n FROM notes WHERE owner = 'account-a'",
-            ...[
-              "interactive_task_journal_v1",
-              "interactive_task_unknown_acknowledgements_v1",
-            ].map(
-              (table) =>
-                `SELECT count(*) AS n FROM ${table} WHERE owner_key LIKE '%"account-a"%'`,
-            ),
+            `SELECT count(*) AS n FROM interactive_task_journal_v1 WHERE ${ofA}`,
+            `SELECT count(*) AS n FROM interactive_task_unknown_acknowledgements_v1 WHERE ${ofA}`,
+            `SELECT count(*) AS n FROM interactive_task_events_v1 WHERE ${ofA} AND json_extract(document, '$.kind') <> 'revoke'`,
           ].map((sql) => db.prepare(sql).get().n),
         );
       const before = scopeOfA();
@@ -1293,7 +1292,7 @@ test("an account change at any credential read of a request is fenced", async (t
   let cases = 0;
   const savedThenChanged = new Set();
   for (const route of routes) {
-    const [setup, method, path, , stop] = route;
+    const [setup, method, path] = route;
     const baseline = await attempt(route);
     assert.ok(
       baseline.status < 300,
@@ -1318,22 +1317,27 @@ test("an account change at any credential read of a request is fenced", async (t
             `${name}: ${result.status}`,
           );
         // A 401 means nothing was saved for A; a save is answered 409.
-        if (result.status === 401 && !stop)
-          assert.equal(result.wroteForA, false, name);
-        if (result.wroteForA && !stop)
+        if (result.status === 401) assert.equal(result.wroteForA, false, name);
+        if (result.wroteForA)
           assert.equal(result.code, "TASK_ACCOUNT_CHANGED", name);
         if (result.code === "TASK_ACCOUNT_CHANGED") savedThenChanged.add(path);
         if (result.status < 300) assert.equal(result.wroteForA, false, name);
         // The change revoked A's task, unless the request had already ended it.
-        if (setup === "active")
+        if (setup === "active" || setup === "paused")
           assert.ok(result.authorization === "revoked" || result.ended, name);
       }
   }
   t.diagnostic(`${cases} flip cases`);
   assert.ok(cases > 60);
-  // Both saving routes reach the case where the save landed before the change.
+  // Every route that saves after its last check, host or core, reaches the
+  // case where the save landed before the change. A start reads nothing after
+  // its save.
   assert.deepEqual([...savedThenChanged].sort(), [
+    "/tasks/current/pause",
     "/tasks/note",
     "/tasks/task-a/acknowledge-unknown",
+    "/tasks/task-a/cancel",
+    "/tasks/task-a/pause",
+    "/tasks/task-a/resume",
   ]);
 });

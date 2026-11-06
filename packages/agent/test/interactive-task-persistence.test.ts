@@ -229,7 +229,17 @@ describe("durable interactive task journal", () => {
       for (const connection of connections.splice(0)) connection.close();
       runtime = open();
       expect(runtime.get(input.id).operations[0].status).toBe("unknown");
+      // The history shows who accepted the unknown outcome and when.
+      expect(runtime.events(input.id).acknowledgements).toEqual([
+        { operationId: "op-1", acknowledgedAt: expect.any(Number) },
+      ]);
       expect(runtime.create({ ...input, id: "task-2" }).id).toBe("task-2");
+      // A later sign-out revokes the ended task again; the acknowledged
+      // operation does not take the slot back from the new task.
+      const ended = runtime.get(input.id);
+      runtime.control(input.id, ended.revision, "revoke");
+      await runtime.settle(input.id);
+      expect(runtime.current()?.id).toBe("task-2");
     } finally {
       for (const connection of connections) connection.close();
       rmSync(root, { recursive: true, force: true });
@@ -319,6 +329,48 @@ describe("durable interactive task journal", () => {
         .run("task-2");
       expect(() => runtimeOn(open())).toThrow(
         expect.objectContaining({ code: "TASK_STORAGE_CORRUPT" }),
+      );
+    } finally {
+      for (const connection of connections) connection.close();
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
+  it("reads a set-aside record again once a build can read it", () => {
+    const root = mkdtempSync(join(tmpdir(), "eliza-task-readable-again-"));
+    const connections: DatabaseSync[] = [];
+    const open = () => {
+      const connection = new DatabaseSync(join(root, "host.sqlite"));
+      connections.push(connection);
+      connection.exec("PRAGMA synchronous = FULL");
+      return new SqliteInteractiveTaskStore(connection);
+    };
+    try {
+      let store = open();
+      const written = store.create(input);
+      const original = JSON.stringify(written);
+      // A newer build wrote the record, then the device rolled back.
+      connections[0]
+        .prepare(
+          "UPDATE interactive_task_journal_v1 SET document = ? WHERE id = ?",
+        )
+        .run(JSON.stringify({ ...written, laterField: true }), input.id);
+      store = open();
+      expect(store.recoverOwner(owner, 2000)).toBeNull();
+      expect(store.unreadable(owner)).toHaveLength(1);
+      // The newer build returns, and the record reads again.
+      connections[0]
+        .prepare(
+          "UPDATE interactive_task_journal_v1 SET document = ? WHERE id = ?",
+        )
+        .run(original, input.id);
+      store = open();
+      const recovered = store.recoverOwner(owner, 3000);
+      expect(recovered).toMatchObject({ id: input.id, status: "paused" });
+      expect(store.unreadable(owner)).toEqual([]);
+      expect(store.get(input.id, owner)?.status).toBe("paused");
+      // It holds the slot as an ordinary unfinished task again.
+      expect(() => store.create({ ...input, id: "task-2" })).toThrow(
+        expect.objectContaining({ code: "TASK_CONFLICT" }),
       );
     } finally {
       for (const connection of connections) connection.close();
