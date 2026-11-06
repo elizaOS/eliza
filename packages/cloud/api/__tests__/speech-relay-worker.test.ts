@@ -16,7 +16,7 @@ beforeAll(async () => {
   const sources: Array<[RegExp, string]> = [
     [
       /\/services\/inference-billing-fast-path\.ts$/,
-      `export class InferenceBalanceCacheWarmingError extends Error {}`,
+      `export class InferenceBillingUnavailableError extends Error {}`,
     ],
     [
       /\/inference-admission-recovery\.ts$/,

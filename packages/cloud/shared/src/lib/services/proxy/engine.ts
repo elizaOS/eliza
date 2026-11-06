@@ -14,7 +14,7 @@ import { reserveAllowanceEligibleCredits } from "../allowance-first-credits";
 import { InsufficientCreditsError } from "../credits";
 import { isInferenceAdmissionGateWarmingError } from "../inference-admission-gate";
 import type { InferenceAdmissionSnapshot } from "../inference-auth-cache";
-import { InferenceBalanceCacheWarmingError } from "../inference-billing-fast-path";
+import { InferenceBillingUnavailableError } from "../inference-billing-fast-path";
 import {
   type InferenceCredentialCheck,
   InferenceCredentialRevocationUnavailableError,
@@ -554,7 +554,7 @@ export function createHandler(
 
       if (
         error instanceof InferenceAdmissionUnavailableError ||
-        error instanceof InferenceBalanceCacheWarmingError ||
+        error instanceof InferenceBillingUnavailableError ||
         error instanceof InferenceCredentialRevocationUnavailableError
       ) {
         logger.warn("[Proxy Engine] Combined admission unavailable", {

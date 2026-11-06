@@ -41,19 +41,6 @@ import {
 import { lockInferencePolicyUsers } from "./inference-policy-fence";
 import { managedDomainsService } from "./managed-domains";
 
-const appByIdHydrations = new Map<string, Promise<void>>();
-
-export interface AppCacheExecutionContext {
-  waitUntil(promise: Promise<unknown>): void;
-}
-
-export type InferenceAppCacheResolution =
-  | { kind: "ready"; app: App | null }
-  | {
-      kind: "warming" | "unavailable";
-      cacheRead: "miss" | "invalid" | "unavailable" | "error";
-    };
-
 function isCachedApp(value: unknown, expectedId: string): value is App {
   if (!value || typeof value !== "object") return false;
   const candidate = value as Partial<App>;
@@ -207,59 +194,6 @@ export class AppsService {
     return app;
   }
 
-  private scheduleAppByIdHydration(id: string, executionCtx: AppCacheExecutionContext): void {
-    let hydration = appByIdHydrations.get(id);
-    if (!hydration) {
-      hydration = this.loadAndCacheAppById(id)
-        .then(() => undefined)
-        .catch((error) => {
-          // error-policy:J7 the retry observes warming until authoritative app
-          // state reaches cache; the detached DB/cache failure remains logged.
-          logger.warn("[Apps] Background inference app hydration failed", {
-            appId: id,
-            error: error instanceof Error ? error.message : String(error),
-          });
-        })
-        .finally(() => {
-          appByIdHydrations.delete(id);
-        });
-      appByIdHydrations.set(id, hydration);
-    }
-    executionCtx.waitUntil(hydration);
-  }
-
-  /**
-   * Cache-only app lookup for inference. A missing or malformed cache entry
-   * never falls through to Postgres on the request promise; Worker callers
-   * retain one coalesced authoritative fill under `waitUntil`.
-   */
-  async getByIdCacheOnly(
-    id: string,
-    options: { executionCtx?: AppCacheExecutionContext } = {},
-  ): Promise<InferenceAppCacheResolution> {
-    const inMemory = getInferenceAppById(id);
-    if (inMemory) {
-      return { kind: "ready", app: structuredClone(inMemory) };
-    }
-    const outcome = await cache.getWithOutcome<unknown>(CacheKeys.app.byId(id));
-    if (outcome.kind === "hit") {
-      if (isNoneMarker(outcome.value)) return { kind: "ready", app: null };
-      if (isCachedApp(outcome.value, id)) {
-        setInferenceAppById(id, outcome.value);
-        return { kind: "ready", app: outcome.value };
-      }
-    }
-
-    const cacheRead = outcome.kind === "hit" ? ("invalid" as const) : outcome.kind;
-    if (options.executionCtx) {
-      this.scheduleAppByIdHydration(id, options.executionCtx);
-    }
-    return {
-      kind: cacheRead === "unavailable" || cacheRead === "error" ? "unavailable" : "warming",
-      cacheRead,
-    };
-  }
-
   /**
    * Get app by slug with Redis caching.
    *
@@ -308,20 +242,6 @@ export class AppsService {
     }
 
     return app;
-  }
-
-  /** Cache-only inference variant of {@link getAuthorizedMonetizedAppForUser}. */
-  async getAuthorizedMonetizedAppForUserCacheOnly(
-    appId: string,
-    _user: { id: string; organization_id: string },
-    options: { executionCtx?: AppCacheExecutionContext } = {},
-  ): Promise<InferenceAppCacheResolution> {
-    const resolution = await this.getByIdCacheOnly(appId, options);
-    if (resolution.kind !== "ready") return resolution;
-    return {
-      kind: "ready",
-      app: resolution.app?.monetization_enabled ? resolution.app : null,
-    };
   }
 
   /**

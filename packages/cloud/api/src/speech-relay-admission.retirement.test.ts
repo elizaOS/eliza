@@ -4,10 +4,10 @@ import type { SpeechRelayRetirementHandle } from "@elizaos/host/voice/speech-rel
 import { InMemoryVoiceUsageStore } from "@elizaos/host/voice/usage";
 
 class InsufficientCreditsError extends Error {}
-class InferenceBalanceCacheWarmingError extends Error {}
+class InferenceBillingUnavailableError extends Error {}
 mock.module(
   "@elizaos/cloud-shared/lib/services/inference-billing-fast-path",
-  () => ({ InferenceBalanceCacheWarmingError }),
+  () => ({ InferenceBillingUnavailableError }),
 );
 mock.module("@elizaos/cloud-shared/lib/services/credits", () => ({
   InsufficientCreditsError,
@@ -196,7 +196,7 @@ test("proven STT settles while unknown TTS keeps its target undecided", async ()
 });
 test("pre-lease warming records no reservation", async () => {
   state.failAt = 0;
-  state.failure = new InferenceBalanceCacheWarmingError();
+  state.failure = new InferenceBillingUnavailableError();
   const progress: unknown[] = [];
   await expect(
     reserve(async (kind, value) => {
@@ -226,9 +226,9 @@ test("a warming-shaped progress error cannot claim no reservation", async () => 
     reserve(async (_kind, value) => {
       progress.push(value.state);
       if (value.state === "reserving")
-        throw new InferenceBalanceCacheWarmingError();
+        throw new InferenceBillingUnavailableError();
     }),
-  ).rejects.toBeInstanceOf(InferenceBalanceCacheWarmingError);
+  ).rejects.toBeInstanceOf(InferenceBillingUnavailableError);
   expect(progress).toEqual(["reserving"]);
 });
 

@@ -35,7 +35,7 @@ import {
 } from "./inference-auth-cache";
 import {
   getGateBalanceHint,
-  InferenceBalanceCacheWarmingError,
+  InferenceBillingUnavailableError,
 } from "./inference-billing-fast-path";
 import {
   type InferenceCredentialCheck,
@@ -227,7 +227,7 @@ export async function admitAppInferenceCacheOnly(
       );
     }
     if (error instanceof InferenceAdmissionGateUnavailableError) {
-      throw new InferenceBalanceCacheWarmingError();
+      throw new InferenceBillingUnavailableError();
     }
     throw error;
   }
@@ -250,7 +250,7 @@ export async function admitAppInferenceCacheOnly(
         );
       }
       if (error instanceof InferenceAdmissionGateUnavailableError) {
-        throw new InferenceBalanceCacheWarmingError(error);
+        throw new InferenceBillingUnavailableError(error);
       }
       throw error;
     }

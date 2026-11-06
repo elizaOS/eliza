@@ -55,7 +55,7 @@ import {
   type InferenceAuthTelemetry,
   resolveInferenceAuthContext,
 } from "@elizaos/cloud-shared/lib/services/inference-auth-context";
-import { InferenceBalanceCacheWarmingError } from "@elizaos/cloud-shared/lib/services/inference-billing-fast-path";
+import { InferenceBillingUnavailableError } from "@elizaos/cloud-shared/lib/services/inference-billing-fast-path";
 import {
   assertInferenceCredentialActive,
   type InferenceCredentialCheck,
@@ -574,7 +574,7 @@ app.post("/", async (c) => {
           { "Retry-After": "1" },
         );
       }
-      if (error instanceof InferenceBalanceCacheWarmingError) {
+      if (error instanceof InferenceBillingUnavailableError) {
         const unavailable =
           error instanceof InferencePricingCacheUnavailableError ||
           error instanceof InferenceAffiliateCacheUnavailableError;

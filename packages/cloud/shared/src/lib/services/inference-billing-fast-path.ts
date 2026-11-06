@@ -121,10 +121,14 @@ export interface GateBalanceReadOptions {
   executionCtx?: { waitUntil(promise: Promise<unknown>): void };
 }
 
-export class InferenceBalanceCacheWarmingError extends Error {
+/**
+ * A billing dependency (organization gate, pricing, affiliate policy) could not
+ * serve this request. Retryable; a cold cache never raises it.
+ */
+export class InferenceBillingUnavailableError extends Error {
   constructor(cause?: unknown) {
-    super("Inference billing cache is warming; retry the request", { cause });
-    this.name = "InferenceBalanceCacheWarmingError";
+    super("Inference billing is unavailable; retry the request", { cause });
+    this.name = "InferenceBillingUnavailableError";
   }
 }
 

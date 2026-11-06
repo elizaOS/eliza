@@ -73,7 +73,7 @@ import {
   inferenceRateLimitConfig,
 } from "../inference-admission-snapshot";
 import type { InferenceAdmissionSnapshot } from "../inference-auth-cache";
-import { InferenceBalanceCacheWarmingError } from "../inference-billing-fast-path";
+import { InferenceBillingUnavailableError } from "../inference-billing-fast-path";
 import {
   isKnownPreDispatchProviderConfigurationError,
   isKnownUnacceptedProviderError,
@@ -1187,7 +1187,7 @@ async function admitTurn(
     // runtime's retryable cache-warming signal.
     if (
       error instanceof InferenceAdmissionUnavailableError ||
-      error instanceof InferenceBalanceCacheWarmingError
+      error instanceof InferenceBillingUnavailableError
     ) {
       throw new SharedRuntimeCacheWarmingError("Billing authorization is warming. Retry shortly.");
     }

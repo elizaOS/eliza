@@ -71,7 +71,7 @@ import { isInferenceAdmissionGateWarmingError } from "@elizaos/cloud-shared/lib/
 import { inferenceRateLimitConfig } from "@elizaos/cloud-shared/lib/services/inference-admission-snapshot";
 import type { InferenceAdmissionSnapshot } from "@elizaos/cloud-shared/lib/services/inference-auth-cache";
 import { resolveInferenceAuthContext } from "@elizaos/cloud-shared/lib/services/inference-auth-context";
-import { InferenceBalanceCacheWarmingError } from "@elizaos/cloud-shared/lib/services/inference-billing-fast-path";
+import { InferenceBillingUnavailableError } from "@elizaos/cloud-shared/lib/services/inference-billing-fast-path";
 import type { InferenceCredentialCheck } from "@elizaos/cloud-shared/lib/services/inference-credential-revocation";
 import {
   isKnownPreDispatchProviderConfigurationError,
@@ -933,7 +933,7 @@ app.post("/", async (c) => {
         }
         if (
           error instanceof InferenceAdmissionUnavailableError ||
-          error instanceof InferenceBalanceCacheWarmingError ||
+          error instanceof InferenceBillingUnavailableError ||
           error instanceof AiPricingCacheWarmingError ||
           error instanceof AiPricingCacheUnavailableError
         ) {
@@ -991,7 +991,7 @@ app.post("/", async (c) => {
         }
         if (
           error instanceof InferenceAdmissionUnavailableError ||
-          error instanceof InferenceBalanceCacheWarmingError
+          error instanceof InferenceBillingUnavailableError
         ) {
           return anthropicError(
             "api_error",
@@ -1141,7 +1141,7 @@ app.post("/", async (c) => {
       }
       if (
         error instanceof InferenceAdmissionUnavailableError ||
-        error instanceof InferenceBalanceCacheWarmingError
+        error instanceof InferenceBillingUnavailableError
       ) {
         logger.error(
           "[Messages API] provider-boundary admission failed closed",

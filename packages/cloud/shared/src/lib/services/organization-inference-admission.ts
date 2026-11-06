@@ -71,7 +71,7 @@ import {
 } from "./inference-affiliate-cache";
 import type { InferenceAdmissionSnapshot } from "./inference-auth-cache";
 import { isInferenceAdmissionSnapshot } from "./inference-auth-cache";
-import { debitInferenceCost, InferenceBalanceCacheWarmingError } from "./inference-billing-fast-path";
+import { debitInferenceCost, InferenceBillingUnavailableError } from "./inference-billing-fast-path";
 import {
   type InferenceCredentialCheck,
   InferenceCredentialRevokedError,
@@ -138,7 +138,7 @@ export interface OrganizationInferenceAdmissionParams {
 }
 
 /** Retryable signal for a configured Worker cache that cannot serve pricing. */
-export class InferencePricingCacheUnavailableError extends InferenceBalanceCacheWarmingError {
+export class InferencePricingCacheUnavailableError extends InferenceBillingUnavailableError {
   constructor(readonly cause: AiPricingCacheUnavailableError) {
     super();
     this.name = "InferencePricingCacheUnavailableError";
@@ -146,7 +146,7 @@ export class InferencePricingCacheUnavailableError extends InferenceBalanceCache
 }
 
 /** Retryable signal for an affiliate policy cache that cannot serve safely. */
-export class InferenceAffiliateCacheUnavailableError extends InferenceBalanceCacheWarmingError {
+export class InferenceAffiliateCacheUnavailableError extends InferenceBillingUnavailableError {
   constructor(readonly cause: AffiliateCacheUnavailableError) {
     super();
     this.name = "InferenceAffiliateCacheUnavailableError";
