@@ -220,6 +220,8 @@ class ElizaSurfaceManagerPlugin : Plugin() {
         keyboardListener = null
         surfaces.values.forEach(::disposeSurface)
         surfaces.clear()
+        inputRouter?.let { (it.parent as? ViewGroup)?.removeView(it) }
+        inputRouter = null
         dockScope.cancel()
         helperEntry?.destroy()
         helperEntry = null
@@ -374,6 +376,7 @@ class ElizaSurfaceManagerPlugin : Plugin() {
         val gate: BrowserMainFrameGate = BrowserMainFrameGate(),
         /** Set for a persistent keyed profile, which outlives the surface. */
         val profileKey: String? = null,
+        val layer: SurfaceLayer = SurfaceLayer.ABOVE_HOST,
     )
 
     private data class HistoryObservation(
@@ -397,6 +400,7 @@ class ElizaSurfaceManagerPlugin : Plugin() {
         activity.lifecycle.currentState.isAtLeast(Lifecycle.State.RESUMED)
 
     private val surfaces = HashMap<String, Surface>()
+    private var inputRouter: BelowHostInputRouter? = null
     private var keyboardListener: ViewTreeObserver.OnGlobalLayoutListener? = null
     private var keyboardVisible = false
     private val activeOwners = ActiveOwnerRegistry()
@@ -707,6 +711,10 @@ class ElizaSurfaceManagerPlugin : Plugin() {
             call.reject("createSurface profileKey needs isolated storage and 1 to 128 plain characters")
             return
         }
+        val layer = SurfaceLayer.parse(call.getString("layer")) ?: run {
+            call.reject("createSurface layer must be above-host or below-host")
+            return
+        }
 
         activity.runOnUiThread {
             val identity = requireActiveIdentity(call, "createSurface") ?: return@runOnUiThread
@@ -723,7 +731,7 @@ class ElizaSurfaceManagerPlugin : Plugin() {
                     existing.epoch != identity.epoch ||
                     existing.process != process || existing.storage != storage ||
                     existing.interceptNavigation != interceptNavigation ||
-                    existing.profileKey != profileKey
+                    existing.profileKey != profileKey || existing.layer != layer
                 ) {
                     call.reject("surface $id already exists with different owner/session/policy")
                     return@runOnUiThread
@@ -740,7 +748,11 @@ class ElizaSurfaceManagerPlugin : Plugin() {
                 return@runOnUiThread
             }
 
-            val container = OccludingSurfaceLayout(activity)
+            val branch = hostBranch(host, bridge.webView) ?: run {
+                call.reject("host webview is not inside its FrameLayout ancestor")
+                return@runOnUiThread
+            }
+            val container = OccludingSurfaceLayout(activity, layer)
             val webView = WebView(activity)
             val gate = BrowserMainFrameGate()
             webView.webViewClient = object : WebViewClient() {
@@ -997,8 +1009,13 @@ class ElizaSurfaceManagerPlugin : Plugin() {
             // shared storage ⇒ the default profile (host-scoped store).
 
             val lp = FrameLayout.LayoutParams(0, 0)
-            host.addView(container, lp)
+            host.addView(container, surfaceInsertIndex(layer, host.indexOfChild(branch)), lp)
             container.visibility = View.GONE
+            if (layer == SurfaceLayer.BELOW_HOST) {
+                placeInputRouter(host, branch)
+                // TalkBack reads host chrome first, then the website.
+                if (bridge.webView.id != View.NO_ID) webView.accessibilityTraversalAfter = bridge.webView.id
+            }
             val control = try {
                 if (SurfaceControlChannel.supported()) SurfaceControlChannel(webView, pageControl) else null
             } catch (error: Exception) {
@@ -1054,6 +1071,7 @@ class ElizaSurfaceManagerPlugin : Plugin() {
                 interceptNavigation = interceptNavigation,
                 gate = gate,
                 profileKey = profileKey,
+                layer = layer,
             )
             call.resolve()
         }
@@ -1773,7 +1791,13 @@ class ElizaSurfaceManagerPlugin : Plugin() {
                 }
             }
             selected?.let { surface ->
-                surface.container.bringToFront()
+                if (surface.layer == SurfaceLayer.ABOVE_HOST) {
+                    surface.container.bringToFront()
+                } else {
+                    (surface.container.parent as? ViewGroup)?.let { host ->
+                        hostBranch(host, bridge.webView)?.let { placeInputRouter(host, it) }
+                    }
+                }
                 surface.container.visibility = View.VISIBLE
                 surface.foregrounded = true
             }
@@ -1949,6 +1973,22 @@ class ElizaSurfaceManagerPlugin : Plugin() {
             width >= 0.0 && height >= 0.0 && topLeftRadius >= 0.0 &&
             topRightRadius >= 0.0 && bottomRightRadius >= 0.0 && bottomLeftRadius >= 0.0
 
+    /** Keeps the below-host input router directly above the host WebView's branch. */
+    private fun placeInputRouter(host: ViewGroup, branch: View) {
+        val router = inputRouter ?: BelowHostInputRouter(activity) {
+            surfaces.values.filter { it.layer == SurfaceLayer.BELOW_HOST && !it.disposed && it.foregrounded }
+                .map { it.container }
+        }.also { inputRouter = it }
+        val index = host.indexOfChild(branch) + 1
+        if (router.parent === host && host.indexOfChild(router) == index) return
+        (router.parent as? ViewGroup)?.removeView(router)
+        host.addView(
+            router,
+            host.indexOfChild(branch) + 1,
+            FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT),
+        )
+    }
+
     private fun applyGeometry(surface: Surface, density: Float) {
         surface.container.setOuterClip(
             surface.outerClip?.let { clip ->
@@ -2083,8 +2123,16 @@ internal data class RoundedOcclusionRect(
  * chrome while keeping the page full-size and live. Returning false outside
  * that outer clip or inside an occlusion lets the parent continue hit-testing
  * the Capacitor host WebView underneath.
+ *
+ * In the `below-host` layer the host draws over the page, so the page is clipped
+ * only to its outer clip's rectangle: no rounded clip and no holes, which a
+ * WebView's draw functor would apply aliased. Occlusions are then host-owned
+ * rects for input and capture masking only.
  */
-internal class OccludingSurfaceLayout(context: Context) : FrameLayout(context) {
+internal class OccludingSurfaceLayout(
+    context: Context,
+    val layer: SurfaceLayer = SurfaceLayer.ABOVE_HOST,
+) : FrameLayout(context) {
     private var outerClip: RoundedOuterClip? = null
     private var occlusions: List<RoundedOcclusionRect> = emptyList()
     private val clipPath = Path()
@@ -2101,7 +2149,18 @@ internal class OccludingSurfaceLayout(context: Context) : FrameLayout(context) {
         invalidate()
     }
 
+    /** Whether a point in this layout's pixels is the website's, not host chrome's. */
+    fun pageOwns(x: Float, y: Float): Boolean = pageOwnsPoint(x, y, width, height, outerClip, occlusions)
+
     override fun dispatchDraw(canvas: Canvas) {
+        if (layer == SurfaceLayer.BELOW_HOST) {
+            val clip = outerClip ?: return super.dispatchDraw(canvas)
+            val saveCount = canvas.save()
+            canvas.clipRect(clip.left, clip.top, clip.right, clip.bottom)
+            super.dispatchDraw(canvas)
+            canvas.restoreToCount(saveCount)
+            return
+        }
         if (outerClip == null && occlusions.isEmpty()) {
             super.dispatchDraw(canvas)
             return

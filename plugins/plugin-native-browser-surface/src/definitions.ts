@@ -64,6 +64,26 @@ export type NativePageGuidance =
       restore?: boolean;
     };
 
+/**
+ * Where the native page sits relative to the host WebView.
+ *
+ * - `above-host` (default): the page is drawn over the host. Host chrome over the
+ *   page shows through holes cut with `setOcclusionRects`.
+ * - `below-host` (Android only; iOS rejects it): the page is drawn under the host,
+ *   so the host draws its own chrome, corners and shadows over it with no holes.
+ *   The host must be transparent where the page shows: its WebView background
+ *   (`WebView.setBackgroundColor(Color.TRANSPARENT)`), every view between the
+ *   WebView and its nearest `FrameLayout` ancestor, and its page CSS over the page
+ *   rect. The page is clipped only to the outer clip's rectangle, so the host paints
+ *   the rounded corners. `setOcclusionRects` then names the host-owned rects: a touch,
+ *   hover or mouse event that starts on the page outside them goes to the website for
+ *   the whole gesture; any other stays with the host. Captures paint over them and
+ *   over everything outside the outer clip, so host pixels drawn over the page outside
+ *   those rects (a shadow, for example) appear in captures. Put host nodes over the
+ *   page in `aria-hidden` so TalkBack reaches the website's own nodes there.
+ */
+export type SurfaceLayer = "above-host" | "below-host";
+
 export interface CreateSurfaceOptions extends SurfaceOwnerOptions {
   /** Stable per-surface id (the Browser tab's surface id). */
   id: string;
@@ -98,6 +118,8 @@ export interface CreateSurfaceOptions extends SurfaceOwnerOptions {
    * that is cleared when it closes and deleted once Android releases it.
    */
   profileKey?: string;
+  /** Default `above-host`. Fixed for the life of the surface. */
+  layer?: SurfaceLayer;
 }
 
 /** A cross-origin main-frame navigation an intercepting surface held for the host. */
@@ -373,6 +395,8 @@ export interface ElizaSurfaceManagerPlugin {
   /**
    * Punch rounded regions out of the native layer so host-rendered overlays can
    * paint and receive input without hiding or resizing the underlying page.
+   * For a `below-host` surface nothing is cut out: the rects are where the host
+   * receives input and where captures are masked.
    */
   setOcclusionRects(options: SetOcclusionRectsOptions): Promise<void>;
   /** Load a URL in an existing surface. */

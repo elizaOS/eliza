@@ -80,6 +80,20 @@ website sign-ins survive. `purgeProfiles({ profileKey })` removes it at once and
 its surfaces (`surfaceClosed`); `purgeProfiles({ idleMs })` removes keyed profiles idle
 for that long. `clearSurfaceStorage` signs one isolated surface out of every website.
 
+Android `createSurface({ ..., layer: "below-host" })` draws the page under the host
+WebView instead of over it, so the host draws its own chrome, rounded corners and
+shadows over the page and nothing is cut out of the website. The host makes its
+WebView background, every view between that WebView and its nearest `FrameLayout`
+ancestor, and its page CSS over the page rect transparent. The page is clipped only to
+its outer clip's rectangle. `setOcclusionRects` then lists the host-owned rects: a
+gesture, hover or mouse event that starts on the page outside them goes to the website
+until it ends; any other stays with the host. A finger added during a gesture follows
+the first finger. The website gets the whole gesture, so its own long-press, text
+selection and focus (and so the keyboard) work as in the default layer. TalkBack reads host chrome first, then the website; host nodes over the
+page must be `aria-hidden`. Captures paint over the host-owned rects and outside the
+outer clip, so host pixels drawn outside those rects (a shadow) can appear in them.
+iOS rejects this layer.
+
 `captureSurface` returns a JPEG of the visible page, about 1024 px on the long edge, for
 a vision fallback. Before the copy it covers password, `cc-*`, `one-time-code` and other
 sign-in fields, host-supplied selectors and every frame the page cannot read; it removes
