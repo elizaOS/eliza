@@ -1902,6 +1902,11 @@
             reloaded.text !== back.text,
           "native reload preserves readable page content",
         );
+        await call("stopLoading", { ...identity, id });
+        assert(
+          (await call("getSurfaceState", { ...identity, id })).progress === 100,
+          "stopping a finished page leaves it loaded",
+        );
         await call("presentSurface", { ...identity });
         await rejects("readPage", { ...identity, id });
         await call("presentSurface", { ...identity, id });

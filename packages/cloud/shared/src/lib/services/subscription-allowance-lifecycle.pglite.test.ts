@@ -1177,18 +1177,12 @@ test("Worker mobile identity funds inference entirely from its active Plus allow
   );
   const { resolveInferenceAuthContext } = await import("./inference-auth-context");
   const deferred: Promise<unknown>[] = [];
+  // The authoritative decision is what Worker hydration projects into the
+  // combined cache; a Worker request itself never resolves it inline.
   const auth = await resolveInferenceAuthContext(
     new Request("https://api.eliza.app/api/v1/chat/completions", {
       headers: { Authorization: `Bearer ${key}` },
     }),
-    {
-      cacheOnly: true,
-      executionCtx: {
-        waitUntil(promise) {
-          deferred.push(promise);
-        },
-      },
-    },
   );
   expect(auth.kind).toBe("authorized");
   if (auth.kind !== "authorized") throw Error("Mobile caller refused");

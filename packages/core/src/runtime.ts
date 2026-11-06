@@ -4030,6 +4030,8 @@ export class AgentRuntime implements IAgentRuntime {
 			);
 		}
 		this.taskWorkers.set(taskHandler.name, taskHandler);
+		// A task skipped for a missing worker can run now; wake the task timer.
+		this._markLocalTasksDirty();
 	}
 
 	getTaskWorker(name: string): TaskWorker | undefined {

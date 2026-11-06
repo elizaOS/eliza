@@ -1,5 +1,6 @@
 /** Consumes native requests once; cancellation bypasses the command queue. */
 import { executeCommand, prepareCommand } from "./commands.mjs";
+import { applyEffectWatch, WATCHED_EFFECTS } from "./effect-watch.mjs";
 import {
   createManualActivity,
   installManualActivity,
@@ -8,7 +9,11 @@ import { BridgeError, parseCommand } from "./protocol.mjs";
 import { createTaskBindings } from "./task-bindings.mjs";
 import { createTaskGuidance } from "./task-guidance.mjs";
 
-export function createCommandHandler(api) {
+/**
+ * `effects` is the network watch (createEffectWatch). Without one, task
+ * snapshots report only what the page itself saw.
+ */
+export function createCommandHandler(api, { effects } = {}) {
   let protectionAdvisory = null;
   let protectionRevision = 0;
   const cancelled = new Set();
@@ -73,14 +78,45 @@ export function createCommandHandler(api) {
         const priorCurrent = isCurrent;
         isCurrent = () => priorCurrent() && feedback.current();
       }
+      const command = request.command;
+      const tabId = Number(command.id);
+      let cancelWatch;
+      if (effects && command.taskPolicy) {
+        if (WATCHED_EFFECTS.includes(command.subaction))
+          cancelWatch = effects.arm(
+            tabId,
+            command.taskPolicy,
+            command.subaction,
+          );
+        // The host's own navigation is not something the page did.
+        else if (command.subaction !== "snapshot")
+          cancelWatch = effects.close(tabId, Date.now(), { host: true });
+      } else if (
+        effects &&
+        ["navigate", "back", "forward", "reload", "close"].includes(
+          command.subaction,
+        )
+      )
+        cancelWatch = effects.close(tabId, Date.now(), { host: true });
       let result;
       try {
-        result = await executeCommand(
-          api,
-          request.command,
-          prepared,
-          isCurrent,
-        );
+        try {
+          result = await executeCommand(
+            api,
+            request.command,
+            prepared,
+            isCurrent,
+          );
+        } catch (error) {
+          // Refused before the page acted (a stale ref, or a navigation the
+          // policy blocked): the earlier watch still holds.
+          if (
+            error instanceof BridgeError &&
+            error.kind !== "UNCERTAIN_OUTCOME"
+          )
+            cancelWatch?.();
+          throw error;
+        }
         if (
           request.command.taskPolicy &&
           request.command.subaction === "snapshot"
@@ -120,6 +156,7 @@ export function createCommandHandler(api) {
           for (const frame of result.frames || [])
             if (frame.frameId === 0) frame.manualActivity = manualActivity;
         }
+        applyEffectWatch(effects, command, result);
         if (feedback) await new Promise((resolve) => setTimeout(resolve, 150));
       } finally {
         if (feedback) await guidance.cancel(request.id);

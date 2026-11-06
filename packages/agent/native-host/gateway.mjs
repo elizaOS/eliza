@@ -57,7 +57,10 @@ export function createLocalAgentGateway({
   surfaceChannel,
   inferenceConfigured = async () => true,
   fetchImpl = fetch,
+  requestScope = (_req, _res, next) => next(),
 } = {}) {
+  if (typeof requestScope !== "function")
+    throw new TypeError("requestScope must be a function");
   if (
     !hostPolicy ||
     Array.isArray(origins) === (typeof isAllowedOrigin === "function") ||
@@ -127,7 +130,7 @@ export function createLocalAgentGateway({
     "Access-Control-Allow-Headers": "Authorization, Content-Type",
     "Access-Control-Max-Age": "600",
   };
-  const server = http.createServer(async (req, res) => {
+  const handle = async (req, res) => {
     const origin = req.headers.origin;
     // Host validation also rejects DNS rebinding requests without an Origin.
     let originAllowed = !origin;
@@ -468,6 +471,24 @@ export function createLocalAgentGateway({
           ? { code: error.code }
           : {}),
       });
+    }
+  };
+  // `requestScope(req, res, next)` lets a host run each request inside its
+  // own context (for example an AsyncLocalStorage scope). It must call
+  // `next()` once; `next` returns the handler's promise. A hook that throws
+  // before `next` fails only that request.
+  const server = http.createServer((req, res) => {
+    let started = false;
+    const next = () => {
+      if (started) throw new Error("Request handler already started");
+      started = true;
+      return handle(req, res);
+    };
+    try {
+      requestScope(req, res, next);
+    } catch {
+      if (!started && !res.headersSent)
+        json(res, 500, { error: "Local agent unavailable" });
     }
   });
   server.on("close", () => surfaceChannel?.close());

@@ -42,7 +42,8 @@ export interface EmailAuthConfig {
    * Pluggable email provider.
    * Defaults to ConsoleProvider so nothing breaks without API credentials.
    */
-  provider?: EmailProvider;
+  /** Null explicitly disables delivery; undefined allows the development fallback. */
+  provider?: EmailProvider | null;
   /** Token TTL in milliseconds. Default: 10 minutes. */
   tokenTtlMs?: number;
   /** Maximum time to wait for a provider acceptance receipt. Default: 30 seconds. */
@@ -534,8 +535,9 @@ export class EmailAuth {
     // Console delivery is forbidden in production. Reject before storing a
     // challenge so the API cannot report success for an undeliverable login.
     this.deliveryNotConfigured =
-      process.env.NODE_ENV === "production" &&
-      this.provider instanceof ConsoleProvider;
+      config.provider === null ||
+      (process.env.NODE_ENV === "production" &&
+        this.provider instanceof ConsoleProvider);
     this.tokenStore = config.tokenStore ?? new TokenStore();
     this.replyTo = config.replyTo;
     this.templateId = config.templateId;

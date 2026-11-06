@@ -3641,6 +3641,62 @@
       "when": 1796083200167,
       "tag": "0549_drop_erc8004_agent_identity",
       "breakpoints": true
+    },
+    {
+      "idx": 520,
+      "version": "7",
+      "when": 1796083200168,
+      "tag": "0550_app_creator_audit_reference",
+      "breakpoints": true
+    },
+    {
+      "idx": 521,
+      "version": "7",
+      "when": 1796083200169,
+      "tag": "0551_native_app_publishers",
+      "breakpoints": true
+    },
+    {
+      "idx": 522,
+      "version": "7",
+      "when": 1796083200170,
+      "tag": "0552_inference_rate_policy_fences",
+      "breakpoints": true
+    },
+    {
+      "idx": 523,
+      "version": "7",
+      "when": 1796083200171,
+      "tag": "0553_inference_policy_snapshot_fence",
+      "breakpoints": true
+    },
+    {
+      "idx": 524,
+      "version": "7",
+      "when": 1796083200172,
+      "tag": "0554_subscription_cancellation_dispatch_settle",
+      "breakpoints": true
+    },
+    {
+      "idx": 525,
+      "version": "7",
+      "when": 1796083200173,
+      "tag": "0555_stripe_delivery_outbox",
+      "breakpoints": true
+    },
+    {
+      "idx": 526,
+      "version": "7",
+      "when": 1796083200174,
+      "tag": "0556_stripe_delivery_outbox_due_index",
+      "breakpoints": true
+    },
+    {
+      "idx": 527,
+      "version": "7",
+      "when": 1796083200175,
+      "tag": "0557_stripe_delivery_lease_check_validate",
+      "breakpoints": true
     }
   ]
 }

@@ -99,6 +99,8 @@ jobs:
 
       - name: Tenant-scope gate (no unscoped pk-only reads of apps data-plane) (#9853)
         run: bun run --cwd packages/cloud/shared check:tenant-scope
+      - name: Staging admission Worker source contract
+        run: bun packages/cloud/admission-worker/verify-staging-contract.ts
 
   # NOTE: the Worker bundle stub-drift gate (#14422) runs inside
   # `lint-and-types` above — packages/cloud/api chains `check:worker-bundle`

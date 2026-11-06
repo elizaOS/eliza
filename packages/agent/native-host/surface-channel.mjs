@@ -7,6 +7,10 @@ export const SURFACE_CHANNEL_PATHS = new Set([
   "/browser/surface/close",
 ]);
 export const SURFACE_CHANNEL_BYTES = 2 * 1024 * 1024;
+/** A connection expires this long after a pull arrives or returns. */
+export const SURFACE_CONNECTION_TTL_MS = 15000;
+/** An idle pull waits this long, below the connection TTL, unless woken. */
+export const SURFACE_PULL_HOLD_MS = 10000;
 export class SurfaceChannelError extends Error {
   constructor(code, message, status = 409) {
     super(message);
@@ -45,16 +49,20 @@ const copy = (value) => {
 export function createSurfaceCommandChannel({
   credentialGate,
   timeoutMs = 10000,
+  pullHoldMs = SURFACE_PULL_HOLD_MS,
   now = Date.now,
 } = {}) {
   if (
     typeof credentialGate !== "function" ||
     !Number.isSafeInteger(timeoutMs) ||
     timeoutMs < 1 ||
-    timeoutMs > 30000
+    timeoutMs > 30000 ||
+    !Number.isSafeInteger(pullHoldMs) ||
+    pullHoldMs < 1 ||
+    pullHoldMs >= SURFACE_CONNECTION_TTL_MS
   )
     throw new TypeError(
-      "A credential gate and bounded command deadline are required",
+      "A credential gate, bounded command deadline and pull hold are required",
     );
   let session = null,
     highestEpoch = -1,
@@ -127,7 +135,7 @@ export function createSurfaceCommandChannel({
           clientId: input.clientId,
           epoch: input.epoch,
           sequence: 0,
-          expiresAt: now() + 15000,
+          expiresAt: now() + SURFACE_CONNECTION_TTL_MS,
           cancellations: new Set(),
           wake: null,
         };
@@ -177,17 +185,19 @@ export function createSurfaceCommandChannel({
         throw failure("INVALID_REQUEST", "Unknown surface request", 400);
       if (scope.wake)
         throw failure("BUSY", "Only one surface pull may wait at a time");
-      scope.expiresAt = now() + 15000;
+      scope.expiresAt = now() + SURFACE_CONNECTION_TTL_MS;
       const next = () =>
         [...pending.values()].find(
           (entry) => entry.scope === scope && !entry.delivered,
         );
+      // Hold an idle pull. A new command, cancellation, close or account
+      // change wakes it early.
       if (!next() && !scope.cancellations.size) {
         await new Promise((resolve) => {
           const timer = setTimeout(() => {
             scope.wake = null;
             resolve();
-          }, 1000);
+          }, pullHoldMs);
           scope.wake = () => {
             clearTimeout(timer);
             scope.wake = null;
@@ -196,6 +206,8 @@ export function createSurfaceCommandChannel({
         });
       }
       current(scope, await owner());
+      // The client gets the full TTL to send its next pull.
+      scope.expiresAt = now() + SURFACE_CONNECTION_TTL_MS;
       const cancellations = [...scope.cancellations];
       scope.cancellations.clear();
       const entry = next();

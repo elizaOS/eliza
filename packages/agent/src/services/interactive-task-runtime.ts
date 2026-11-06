@@ -9,6 +9,7 @@ import {
   TASK_ACTION_NOT_DISPATCHED_REF,
   type TaskActionProposal,
   type TaskObservation,
+  type TaskOutcome,
   type TaskOwner,
   type TaskTransition,
   transitionInteractiveTask,
@@ -58,10 +59,7 @@ export interface InteractiveTaskActuator {
       signal: AbortSignal;
       isCurrent: () => boolean;
     },
-  ): Promise<
-    | { status: "succeeded" | "failed"; evidenceRef: string }
-    | { status: "unknown"; evidenceRef?: string }
-  >;
+  ): Promise<TaskOutcome>;
   execute(
     proposal: TaskActionProposal,
     context: {
@@ -70,10 +68,7 @@ export interface InteractiveTaskActuator {
       /** Required immediately before the native effect, in addition to native checks. */
       isCurrent: () => boolean;
     },
-  ): Promise<
-    | { status: "succeeded" | "failed"; evidenceRef: string }
-    | { status: "unknown"; evidenceRef?: string }
-  >;
+  ): Promise<TaskOutcome>;
 }
 export type AuthorizedTaskGoal = Pick<
   Parameters<SqliteInteractiveTaskStore["create"]>[0],
@@ -508,12 +503,20 @@ export class InteractiveTaskRuntime {
           expectedRevision: fence.revision,
           now: this.now(),
         },
-        {
-          type: "reconcile",
-          operationId,
-          status: result.status,
-          evidenceRef: result.evidenceRef,
-        },
+        // Copy only the outcome: a readback reply must not set other fields.
+        result.status === "unknown"
+          ? {
+              type: "reconcile",
+              operationId,
+              status: "unknown",
+              evidenceRef: result.evidenceRef,
+            }
+          : {
+              type: "reconcile",
+              operationId,
+              status: result.status,
+              evidenceRef: result.evidenceRef,
+            },
       ).task;
     } finally {
       this.pending.delete(id);

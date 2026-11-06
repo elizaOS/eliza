@@ -219,6 +219,80 @@ async function isLocalWranglerRecycleResponse(
   return fromWorkerd && body === expectedBody;
 }
 
+const CACHE_WARMING_MAX_RETRIES = 3;
+const PRE_ADMISSION_CACHE_WARMING_CODES = new Set([
+  "auth_cache_warming",
+  "rate_limit_cache_warming",
+  "inference_dependency_cache_warming",
+  "billing_cache_warming",
+  "inference_admission_cache_warming",
+]);
+
+/**
+ * Worker hot paths are decided from the auth cache only. A credential with no
+ * cache entry yet gets a retryable 503 while hydration runs under `waitUntil`
+ * (the Eliza Cloud client retries it). These refusals precede any mutation,
+ * so replaying them is safe. Match only the structured warming shapes.
+ */
+export async function cacheWarmingRetryDelayMs(
+  response: Response,
+): Promise<number | null> {
+  if (
+    response.status !== 503 ||
+    !isJsonMediaType(response.headers.get("content-type"))
+  )
+    return null;
+  let body: unknown;
+  try {
+    body = await response.clone().json();
+  } catch {
+    return null;
+  }
+  if (!body || typeof body !== "object" || Array.isArray(body)) return null;
+  const record = body as Record<string, unknown>;
+  const error =
+    record.error &&
+    typeof record.error === "object" &&
+    !Array.isArray(record.error)
+      ? (record.error as Record<string, unknown>)
+      : undefined;
+  const data =
+    error?.data && typeof error.data === "object" && !Array.isArray(error.data)
+      ? (error.data as Record<string, unknown>)
+      : undefined;
+  const code = typeof error?.code === "string" ? error.code : record.code;
+  // A generic retryable 503 or JSON-RPC -32004 may follow an admitted
+  // operation. Only these explicit pre-admission refusals permit a replay.
+  const warming =
+    (record.jsonrpc === undefined &&
+      typeof code === "string" &&
+      PRE_ADMISSION_CACHE_WARMING_CODES.has(code)) ||
+    (record.jsonrpc === "2.0" &&
+      error?.code === -32004 &&
+      data?.code === "auth_cache_warming");
+  if (!warming) return null;
+  const retryAfter = Number(response.headers.get("retry-after"));
+  return Number.isFinite(retryAfter) && retryAfter > 0
+    ? Math.min(retryAfter, 5) * 1000
+    : 1000;
+}
+
+/** Raw fetch for bodies the JSON helper cannot express (multipart), with the
+ * same bounded retry of structured cache-warming refusals. */
+export async function fetchRetryingCacheWarming(
+  path: string,
+  makeInit: () => RequestInit,
+): Promise<Response> {
+  let res = await fetch(url(path), makeInit());
+  for (let attempt = 0; attempt < CACHE_WARMING_MAX_RETRIES; attempt++) {
+    const delayMs = await cacheWarmingRetryDelayMs(res);
+    if (delayMs === null) break;
+    await new Promise((resolve) => setTimeout(resolve, delayMs));
+    res = await fetch(url(path), makeInit());
+  }
+  return res;
+}
+
 async function request(
   method: string,
   path: string,
@@ -276,6 +350,12 @@ async function request(
     await new Promise((resolve) =>
       setTimeout(resolve, LOCAL_WRANGLER_RECYCLE_RETRY_DELAY_MS),
     );
+    res = await fetch(url(path), makeInit());
+  }
+  for (let attempt = 0; attempt < CACHE_WARMING_MAX_RETRIES; attempt++) {
+    const delayMs = await cacheWarmingRetryDelayMs(res);
+    if (delayMs === null) break;
+    await new Promise((resolve) => setTimeout(resolve, delayMs));
     res = await fetch(url(path), makeInit());
   }
   if (res.status === 500 && !isJsonMediaType(res.headers.get("content-type"))) {

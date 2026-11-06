@@ -1,4 +1,8 @@
 import {
+  setInferenceOrganizationActive,
+  setInferenceSubjectActive,
+} from "../../lib/services/inference-credential-revocation";
+import {
   clearDisabledInferencePolicyForAccountDeletion,
   withInferenceUserPolicyMutation,
 } from "../../lib/services/inference-policy-fence";
@@ -45,6 +49,7 @@ import { organizations } from "../schemas/organizations";
 import { providerAdmissions } from "../schemas/provider-admissions";
 import { userSessions } from "../schemas/user-sessions";
 import { users } from "../schemas/users";
+import { isNativeAppPublisher } from "./native-app-publishers";
 import { readPostLockDatabaseNow } from "./primary-database-clock";
 
 const TERMINAL_REQUEST_STATUSES = ["completed", "canceled"] as const;
@@ -331,7 +336,7 @@ export class AccountDeletionRequestsRepository {
 
       const activeMembers = members.filter((member) => member.is_active && !member.deleted_at);
       const activeOwners = activeMembers.filter((member) => member.role === "owner");
-      if (activeMembers.length !== 1) {
+      if (activeMembers.length !== 1 || (await isNativeAppPublisher(organization.id, tx))) {
         return {
           outcome: "transfer_required",
           activeOwnerCount: activeOwners.length,
@@ -470,7 +475,7 @@ export class AccountDeletionRequestsRepository {
       if (providerAdmission) return { outcome: "provider_work_in_flight" };
       const activeMembers = members.filter((member) => member.is_active && !member.deleted_at);
       const activeOwners = activeMembers.filter((member) => member.role === "owner");
-      if (activeMembers.length !== 1) {
+      if (activeMembers.length !== 1 || (await isNativeAppPublisher(organization.id, tx))) {
         return { outcome: "transfer_required", activeOwnerCount: activeOwners.length };
       }
 
@@ -532,6 +537,11 @@ export class AccountDeletionRequestsRepository {
           severity: "fatal",
         });
       }
+      // Fence the gate last, still before commit. A rollback leaves the request
+      // "requested", which cancellation refuses, so only a replay of this
+      // activation can repair the gate: no failed write above may reach it.
+      await setInferenceOrganizationActive(organization.id, false);
+      await setInferenceSubjectActive(organization.id, current.id, false, "account");
       return { outcome: "activated", request: activated };
     });
   }
@@ -716,7 +726,7 @@ export class AccountDeletionRequestsRepository {
       const activeOwners = members.filter(
         (member) => member.is_active && !member.deleted_at && member.role === "owner",
       );
-      if (members.length !== 1) {
+      if (members.length !== 1 || (await isNativeAppPublisher(organization.id, tx))) {
         return {
           outcome: "transfer_required",
           activeOwnerCount: activeOwners.length,
@@ -1225,7 +1235,7 @@ export class AccountDeletionRequestsRepository {
       const activeOwners = members.filter(
         (member) => member.is_active && !member.deleted_at && member.role === "owner",
       );
-      if (members.length !== 1) {
+      if (members.length !== 1 || (await isNativeAppPublisher(organization.id, tx))) {
         return { outcome: "transfer_required", activeOwnerCount: activeOwners.length };
       }
       if (
@@ -2070,6 +2080,10 @@ export class AccountDeletionRequestsRepository {
       }
 
       const restoredRevision = request.lifecycle_revision + 1;
+      // Inside the transaction: a gate failure rolls back and the cancellation
+      // retries. After commit, a failure would leave the account denied for good.
+      await setInferenceSubjectActive(organization.id, user.id, true, "account");
+      await setInferenceOrganizationActive(organization.id, true);
       await tx
         .update(organizations)
         .set({
