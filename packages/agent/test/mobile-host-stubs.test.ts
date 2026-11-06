@@ -69,6 +69,17 @@ it("is installed first by the mobile bundle build", async () => {
   expect(source).toMatch(
     /process\.env\[MOBILE_STUB_PLUGINS_ENV\][\s\S]+hostStubs: hostStubPlugins/,
   );
+  // Source subpaths that app code imports at boot stay real under a host stub.
+  for (const [alias, file] of [
+    ["@elizaos/plugin-browser/schema", "plugins/plugin-browser/src/schema.ts"],
+    [
+      "@elizaos/plugin-calendar/format",
+      "plugins/plugin-calendar/src/internal/format.ts",
+    ],
+  ]) {
+    expect(source).toContain(`"${alias}": path.join(`);
+    expect(source).toContain(`"${file}"`);
+  }
 });
 
 it("bundles host-stubbed packages as the throw-on-call stub", async () => {

@@ -527,6 +527,12 @@ const stubAliases = mergeMobileStubPlugins(
       repoRoot,
       "plugins/plugin-browser/src/schema.ts",
     ),
+    // A pure formatter the mobile workflow host imports; it stays real when a
+    // host stubs plugin-calendar.
+    "@elizaos/plugin-calendar/format": path.join(
+      repoRoot,
+      "plugins/plugin-calendar/src/internal/format.ts",
+    ),
   },
   hostStubPlugins,
   path.join(stubsDir, "null-plugin.ts"),

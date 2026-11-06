@@ -16,9 +16,19 @@ Missing or changed inputs fail validation; source comments are not an inventory.
 
 A host that never loads a package can set `ELIZA_MOBILE_STUB_PLUGINS` to a
 comma-separated list of package names (for example `googleapis,three`). The
-build resolves each one, and its subpaths, to the throw-on-call stub, and lists
-them as `hostStubs` in the manifest. The load smoke still runs; check the boot
-too, because a named import from a stub is `undefined`.
+build resolves each one, and its subpaths, to the null-plugin stub, and lists
+them as `hostStubs` in the manifest. A named import from a stub is `undefined`,
+so using it fails with a TypeError; properties read off its default export are
+functions that throw `MOBILE_CAPABILITY_UNAVAILABLE`. The load smoke still runs;
+check the boot and the features you keep too. Known limits:
+
+- `@elizaos/plugin-calendar/format` and `@elizaos/plugin-browser/schema` stay
+  real under a stub of their package, because app code imports them at boot.
+- Do not stub `@elizaos/plugin-workflow` if the host sets
+  `ELIZA_MOBILE_WORKFLOWS=1`.
+- Stubbing `phonemizer` makes Kokoro use its bundled ASCII G2P.
+- `@elizaos/plugin-todos` named imports back the shared todo cutover route;
+  stub it only if the host never uses that route.
 
 Import public runtime, service, role, and operation APIs from `@elizaos/agent`.
 Agent code imports core APIs and catalog maps through `@elizaos/core`.
