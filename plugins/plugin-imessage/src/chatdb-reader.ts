@@ -392,7 +392,9 @@ export interface ChatDbReader {
    * when the reader has been closed. Throws an `ElizaError` with code
    * {@link IMESSAGE_ATTACHMENT_READ_FAILED} (context `rowId`) when a row's
    * attachment metadata cannot be read, unless that row is listed in
-   * `options.tolerateAttachmentReadFailure`.
+   * `options.tolerateAttachmentReadFailure`. Throws an `ElizaError` with code
+   * {@link IMESSAGE_CHATDB_READ_FAILED} when the query itself fails, so a
+   * locked database is not reported as an empty mailbox.
    */
   fetchNewMessages(
     sinceRowId: number,
@@ -914,10 +916,16 @@ export async function openChatDb(
       try {
         rows = pollStmt.all(sinceRowId, limit) as typeof rows;
       } catch (error) {
-        logger.error(
-          `[imessage] chat.db query failed: ${error instanceof Error ? error.message : String(error)}`
-        );
-        return [];
+        // A failed read is not a quiet inbox. Returning [] here is the same
+        // value the poller treats as "nothing new", so a locked or unreadable
+        // database would drop every incoming message without advancing the
+        // cursor. Throw the same typed error listMessages/listChats already
+        // use; the poll loop's handler reports it.
+        throw new ElizaError("iMessage chat.db messages could not be read", {
+          code: IMESSAGE_CHATDB_READ_FAILED,
+          cause: error,
+          severity: "ephemeral",
+        });
       }
 
       return materializeMessages(rows, options);
