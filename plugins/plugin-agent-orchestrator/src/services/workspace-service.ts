@@ -115,6 +115,7 @@ import {
   commit as gitCommit,
   createPR as gitCreatePR,
   getStatus as gitGetStatus,
+  headCommit as gitHeadCommit,
   push as gitPush,
 } from "./workspace-git-ops.js";
 import {
@@ -872,6 +873,14 @@ export class CodingWorkspaceService {
       throw new Error(`Workspace ${workspaceId} not found`);
     }
     return gitGetStatus(workspace.path);
+  }
+
+  async headCommit(workspaceId: string): Promise<string> {
+    const workspace = this.workspaces.get(workspaceId);
+    if (!workspace) {
+      throw new Error(`Workspace ${workspaceId} not found`);
+    }
+    return gitHeadCommit(workspace.path);
   }
 
   async commit(workspaceId: string, options: CommitOptions): Promise<string> {
