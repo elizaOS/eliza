@@ -385,6 +385,9 @@ function foregroundRequestHandling(
   }
 }
 
+/** One night check-in per night: two are never sent within this span. */
+const NIGHT_CHECKIN_DEDUPE_MS = 12 * 60 * 60 * 1000;
+
 /**
  * Reminder attempts whose send may have reached the recipient: the connector
  * accepted part of it, accepted it but failed to save it, gave no delivery
@@ -393,9 +396,6 @@ function foregroundRequestHandling(
  * channel. A clean refusal (`runtime_send_not_delivered`) or a missing send
  * handler (`runtime_send_handler_missing`, nothing was sent) is retried.
  */
-/** One night check-in per night: two are never sent within this span. */
-const NIGHT_CHECKIN_DEDUPE_MS = 12 * 60 * 60 * 1000;
-
 const SEND_MAY_HAVE_REACHED_RECIPIENT = new Set([
   "runtime_send_acceptance_unknown",
   "runtime_send_partially_delivered",
