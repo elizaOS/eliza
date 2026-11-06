@@ -160,6 +160,40 @@ public final class StreamContract {
         } finally { other.delete(); }
         check(ParadeeVoice.infoField("{\"a\":\"x\",\"sample_rate\":24000}", "sample_rate").equals("24000"));
     }
+    /**
+     * Batch calls: a cancel that lands after a call began, before the library cleared its cancel
+     * flag, still ends that call cancelled, as does a cancel while it waits for the lock. The
+     * next call is not hit.
+     */
+    static void batchCancelContract(File root, File model, File lexicon) throws Exception {
+        try (ParadeeVoice voice = new ParadeeVoice(model, lexicon, null); NativeAsr asr = new NativeAsr(root)) {
+            try {
+                VoiceNative.entering = voice::cancel;
+                cancelled(() -> voice.synthesize("lost", 1));
+                cancelled(() -> voice.synthesizePhonemes("lost", 1));
+                VoiceNative.entering = asr::cancel;
+                cancelled(() -> asr.transcribe(new float[]{0.1f}));
+            } finally { VoiceNative.entering = null; }
+            check(voice.synthesize("next", 1).samples.length == 1);
+            check(voice.synthesizePhonemes("next", 1).samples.length == 1);
+            check(asr.transcribe(new float[]{0.1f}).equals(VoiceNative.heard));
+            CountDownLatch entered = new CountDownLatch(1), release = new CountDownLatch(1);
+            int[] nativeCalls = {0};
+            VoiceNative.entering = () -> { nativeCalls[0]++; entered.countDown(); await(release); };
+            AtomicReference<Throwable> failure = new AtomicReference<>();
+            try {
+                Thread active = new Thread(() -> { try { cancelled(() -> voice.synthesize("active", 1)); } catch (Throwable error) { failure.set(error); } });
+                active.start(); await(entered);
+                Thread queued = new Thread(() -> { try { cancelled(() -> voice.synthesize("queued", 1)); } catch (Throwable error) { failure.set(error); } });
+                queued.start();
+                long deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(5);
+                while (queued.getState() != Thread.State.BLOCKED && System.nanoTime() < deadline) Thread.yield();
+                check(queued.getState() == Thread.State.BLOCKED);
+                voice.cancel(); release.countDown(); join(active); join(queued);
+            } finally { VoiceNative.entering = null; }
+            check(failure.get() == null && nativeCalls[0] == 1);
+        }
+    }
     static void check(boolean value) { if (!value) throw new AssertionError(); }
     static void await(CountDownLatch latch) { try { check(latch.await(5, TimeUnit.SECONDS)); } catch (InterruptedException error) { throw new AssertionError(error); } }
     static void join(Thread thread) throws Exception { thread.join(5000); check(!thread.isAlive()); }
@@ -256,6 +290,7 @@ public final class StreamContract {
         vadContract(root, model, lexicon);
         clientContract(root, model, lexicon);
         languageContract(root, model, lexicon);
+        batchCancelContract(root, model, lexicon);
         model.delete(); lexicon.delete(); asrDir.delete(); root.delete();
         System.out.println("Paradee stream and shared inference lifecycle contracts passed");
     }

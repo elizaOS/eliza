@@ -204,17 +204,36 @@ public final class ParadeeVoice implements AutoCloseable {
      * rate; it is clamped to the voice's speed range: the model's validated range
      * (Delibes: 0.85 to 1.15) unless {@link #speedRange} set another.
      */
-    public synchronized Audio synthesize(String text, float speed) {
-        long ctx = check();
-        float[] pcm = voiceId == null ? VoiceNative.nativeParadeeSynthesize(ctx, bytes(text), speed)
-                : VoiceNative.nativeParadeeSynthesizeVoice(ctx, voiceId, bytes(text), speed);
-        return new Audio(pcm, sampleRate);
+    public Audio synthesize(String text, float speed) {
+        final long admitted = generation.get();
+        synchronized (this) {
+            long ctx = check();
+            if (generation.get() != admitted) throw new CancellationException();
+            float[] pcm = voiceId == null ? VoiceNative.nativeParadeeSynthesize(ctx, bytes(text), speed)
+                    : VoiceNative.nativeParadeeSynthesizeVoice(ctx, voiceId, bytes(text), speed);
+            return admittedAudio(admitted, pcm);
+        }
     }
 
     /** Speaks text that is already in misaki phonemes (the default voice only). */
-    public synchronized Audio synthesizePhonemes(String phonemes, float speed) {
+    public Audio synthesizePhonemes(String phonemes, float speed) {
         if (voiceId != null) throw new IllegalStateException("Phoneme input is available on the default voice only");
-        return new Audio(VoiceNative.nativeParadeeSynthesizePhonemes(check(), bytes(phonemes), speed), sampleRate);
+        final long admitted = generation.get();
+        synchronized (this) {
+            long ctx = check();
+            if (generation.get() != admitted) throw new CancellationException();
+            return admittedAudio(admitted, VoiceNative.nativeParadeeSynthesizePhonemes(ctx, bytes(phonemes), speed));
+        }
+    }
+
+    /**
+     * The audio of a call admitted at {@code admitted}. The library clears its cancel flag when a
+     * call enters, so a cancel that lands between admission and that point does not stop the
+     * native call; the call still ends cancelled and its audio is discarded.
+     */
+    private Audio admittedAudio(long admitted, float[] pcm) {
+        if (generation.get() != admitted) throw new CancellationException();
+        return new Audio(pcm, sampleRate);
     }
 
     /** Receives native model chunks on the synthesis worker. Return false to cancel. */
@@ -267,7 +286,10 @@ public final class ParadeeVoice implements AutoCloseable {
         }
     }
 
-    /** Stops the running synthesis, if any. Safe from any thread. */
+    /**
+     * Stops the running synthesis and every call waiting for it, if any. Safe from any thread.
+     * It is not aimed at one call: a caller that shares this voice cancels only its own running call.
+     */
     public void cancel() {
         generation.incrementAndGet();
         synchronized (handleLock) {
