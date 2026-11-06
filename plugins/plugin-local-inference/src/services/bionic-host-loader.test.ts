@@ -813,3 +813,32 @@ describe("BionicHostLoader.synthesize without an active bundle", () => {
 		);
 	});
 });
+
+describe("BionicHostLoader voice bundle", () => {
+	const keys = ["ELIZA_ANDROID_APP_DATA_DIR", "ELIZA_ANDROID_VOICE_BUNDLE_DIR"];
+	const saved = keys.map((key) => process.env[key]);
+	afterEach(() => {
+		keys.forEach((key, index) => {
+			if (saved[index] === undefined) delete process.env[key];
+			else process.env[key] = saved[index];
+		});
+	});
+	const bundleDir = () =>
+		(new BionicHostLoader("sock") as unknown as { bundleDir: string })
+			.bundleDir;
+	it("uses the installed voice bundle before any text model loads", () => {
+		delete process.env.ELIZA_ANDROID_VOICE_BUNDLE_DIR;
+		process.env.ELIZA_ANDROID_APP_DATA_DIR = "/data/data/example.app";
+		expect(bundleDir()).toBe("/data/data/example.app/files/paradee-voice-v1");
+	});
+	it("uses the directory the host chose for its voice bundle", () => {
+		process.env.ELIZA_ANDROID_APP_DATA_DIR = "/data/data/example.app";
+		process.env.ELIZA_ANDROID_VOICE_BUNDLE_DIR =
+			"/data/data/example.app/files/eliza-1/bundle";
+		expect(bundleDir()).toBe("/data/data/example.app/files/eliza-1/bundle");
+	});
+	it("has no bundle outside an Android app", () => {
+		for (const key of keys) delete process.env[key];
+		expect(bundleDir()).toBe("");
+	});
+});

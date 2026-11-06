@@ -58,11 +58,14 @@ import type {
 } from "@elizaos/contracts";
 import {
   ElizaError,
+  getStreamingContext,
   type IAgentRuntime,
   logger,
+  Semaphore,
   Service,
   SsrfBlockedError,
   stableStringify,
+  timeInferenceSpan,
   toWellFormedUnicode,
   truncateWellFormed,
 } from "@elizaos/core";
@@ -274,6 +277,9 @@ type GoogleCalendarSyncBatch = {
 const CALENDAR_FEED_FRESHNESS_MS = 60_000;
 const DEFAULT_ICS_SYNC_LEASE_MS = 30_000;
 const CALENDAR_SOURCE_UNSUPPORTED = "CALENDAR_SOURCE_UNSUPPORTED";
+/** Managed owner feeds one service reads at once, across every overlapping
+ * aggregate read. Each one verifies the owner over the private broker. */
+const MANAGED_CALENDAR_FEED_CONCURRENCY = 4;
 export const MAX_GOOGLE_CALENDAR_EVENTS = 10_000;
 
 type CalendarSecretsService = {
@@ -1397,6 +1403,9 @@ export class CalendarService extends Service {
   private readonly managedCalendar = createManagedCalendarRead(
     process.env,
     fetch,
+  );
+  private readonly managedFeedReads = new Semaphore(
+    MANAGED_CALENDAR_FEED_CONCURRENCY,
   );
   private gate: CalendarHostGate;
   private microsoftPort: MicrosoftGraphCalendarPort;
@@ -3761,7 +3770,9 @@ export class CalendarService extends Service {
   async discoverCalendars(
     requestUrl: URL,
     request?: ListLifeOpsCalendarsRequest,
+    signal?: AbortSignal,
   ): Promise<CalendarSourceDiscovery> {
+    signal?.throwIfAborted();
     const mode = normalizeOptionalConnectorMode(request?.mode, "mode");
     const side = normalizeOptionalConnectorSide(request?.side, "side");
     const targetsNonGoogleProvider =
@@ -3770,7 +3781,9 @@ export class CalendarService extends Service {
       isElizaCalendarGrant(request?.grantId);
     const statuses = targetsNonGoogleProvider
       ? []
-      : await this.gate.getGoogleConnectorAccounts(requestUrl, side);
+      : await timeInferenceSpan("calendar:discovery:google-accounts", () =>
+          this.gate.getGoogleConnectorAccounts(requestUrl, side),
+        );
     const grants = statuses
       .filter(hasGoogleConnectorGrant)
       .map((status) => status.grant)
@@ -3795,9 +3808,13 @@ export class CalendarService extends Service {
       );
       for (const grant of grants) {
         try {
-          const entries = await listCalendars({
-            accountId: accountIdForGrant(grant),
-          });
+          const entries = await timeInferenceSpan(
+            "calendar:discovery:google-calendars",
+            () =>
+              listCalendars({
+                accountId: accountIdForGrant(grant),
+              }),
+          );
           summaries.push(
             ...entries.map((entry) =>
               lifeOpsCalendarSummaryFromGoogle({ entry, grant }),
@@ -3824,10 +3841,14 @@ export class CalendarService extends Service {
     if (shouldIncludeMicrosoftCalendar({ mode, grantId: request?.grantId })) {
       let microsoftAccounts: MicrosoftCalendarAccount[] = [];
       try {
-        microsoftAccounts = await this.microsoftPort.listAccounts({
-          side,
-          grantId: request?.grantId,
-        });
+        microsoftAccounts = await timeInferenceSpan(
+          "calendar:discovery:microsoft-accounts",
+          () =>
+            this.microsoftPort.listAccounts({
+              side,
+              grantId: request?.grantId,
+            }),
+        );
       } catch (error) {
         // error-policy:J4 Microsoft discovery remains an explicit failed
         // source so healthy Google/Apple accounts still produce a partial feed.
@@ -3884,7 +3905,10 @@ export class CalendarService extends Service {
           continue;
         }
         try {
-          const calendars = await this.microsoftPort.listCalendars(account);
+          const calendars = await timeInferenceSpan(
+            "calendar:discovery:microsoft-calendars",
+            () => this.microsoftPort.listCalendars(account),
+          );
           summaries.push(
             ...calendars.map((calendar) =>
               lifeOpsCalendarSummaryFromMicrosoft({ account, calendar }),
@@ -3909,11 +3933,15 @@ export class CalendarService extends Service {
       }
     }
     if (shouldIncludeAppleCalendar({ mode, side, grantId: request?.grantId })) {
-      const appleCalendars = await listNativeAppleCalendars({
-        agentId: this.agentId(),
-        side: "owner",
-        runtime: this.runtime,
-      });
+      const appleCalendars = await timeInferenceSpan(
+        "calendar:discovery:apple-calendars",
+        () =>
+          listNativeAppleCalendars({
+            agentId: this.agentId(),
+            side: "owner",
+            runtime: this.runtime,
+          }),
+      );
       if (appleCalendars.ok) {
         summaries.push(...appleCalendars.data);
       } else if (
@@ -3952,7 +3980,10 @@ export class CalendarService extends Service {
       }
     }
     if (shouldIncludeIcsCalendars({ mode, side, grantId: request?.grantId })) {
-      const icsSources = await this.repo.listIcsCalendarSources(this.agentId());
+      const icsSources = await timeInferenceSpan(
+        "calendar:discovery:ics-sources",
+        () => this.repo.listIcsCalendarSources(this.agentId()),
+      );
       summaries.push(
         ...icsSources
           .filter((source) =>
@@ -3961,13 +3992,18 @@ export class CalendarService extends Service {
           .map(icsCalendarSummary),
       );
     }
+    const managedCalendar = this.managedCalendar;
     if (
-      this.managedCalendar?.acceptsGrantId(request?.grantId) &&
+      managedCalendar?.acceptsGrantId(request?.grantId) &&
       side !== "agent" &&
       (!mode || mode === "cloud_managed")
     ) {
       try {
-        const managed = await this.managedCalendar.sources();
+        signal?.throwIfAborted();
+        const managed = await timeInferenceSpan(
+          "calendar:discovery:managed-sources",
+          () => managedCalendar.sources(signal),
+        );
         summaries.push(
           ...managed.filter(
             (calendar) =>
@@ -3975,6 +4011,7 @@ export class CalendarService extends Service {
           ),
         );
       } catch (error) {
+        signal?.throwIfAborted();
         const calendar = managedCalendarPlaceholder(request?.grantId);
         const sourceError = calendarSourceError(error);
         let diagnosticOnly = false;
@@ -4006,29 +4043,34 @@ export class CalendarService extends Service {
         );
       }
     }
-    const preferences = await ensureCalendarFeedIncludes(
-      this.runtime,
-      summaries.map((summary) => {
-        // A managed host lists the owner's own calendars and declares which
-        // ones its product shows by default; that default holds until the
-        // owner chooses otherwise for the source.
-        const managed = this.managedCalendar?.owns(summary) === true;
-        return {
-          provider: summary.provider,
-          side: summary.side,
-          grantId: summary.grantId,
-          connectorAccountId: summary.connectorAccountId,
-          calendarId: summary.calendarId,
-          // The built-in calendar is the zero-config product surface. Other
-          // external accounts remain discoverable but enter the aggregate feed
-          // only after the owner explicitly enables them in Calendar Sources.
-          initialIncluded:
-            summary.provider === ELIZA_CALENDAR_PROVIDER ||
-            ((summary.provider === "ics" || managed) &&
-              summary.includeInFeed === true),
-          ...(managed ? { followInitialUntilChosen: true } : {}),
-        };
-      }),
+    signal?.throwIfAborted();
+    const preferences = await timeInferenceSpan(
+      "calendar:discovery:preferences",
+      () =>
+        ensureCalendarFeedIncludes(
+          this.runtime,
+          summaries.map((summary) => {
+            // A managed host lists the owner's own calendars and declares which
+            // ones its product shows by default; that default holds until the
+            // owner chooses otherwise for the source.
+            const managed = this.managedCalendar?.owns(summary) === true;
+            return {
+              provider: summary.provider,
+              side: summary.side,
+              grantId: summary.grantId,
+              connectorAccountId: summary.connectorAccountId,
+              calendarId: summary.calendarId,
+              // The built-in calendar is the zero-config product surface. Other
+              // external accounts remain discoverable but enter the aggregate feed
+              // only after the owner explicitly enables them in Calendar Sources.
+              initialIncluded:
+                summary.provider === ELIZA_CALENDAR_PROVIDER ||
+                ((summary.provider === "ics" || managed) &&
+                  summary.includeInFeed === true),
+              ...(managed ? { followInitialUntilChosen: true } : {}),
+            };
+          }),
+        ),
     );
     return {
       calendars: summaries.map((summary) => {
@@ -5550,8 +5592,11 @@ export class CalendarService extends Service {
     requestUrl: URL,
     request: GetLifeOpsCalendarFeedRequest = {},
     now = new Date(),
+    signal?: AbortSignal,
   ): Promise<LifeOpsCalendarFeed> {
-    return (await this.getCalendarFeedSnapshot(requestUrl, request, now)).feed;
+    return (
+      await this.getCalendarFeedSnapshot(requestUrl, request, now, signal)
+    ).feed;
   }
 
   /** One authorized discovery observation for feed health and its full versioned catalog.
@@ -5561,10 +5606,17 @@ export class CalendarService extends Service {
     requestUrl: URL,
     request: GetLifeOpsCalendarFeedRequest = {},
     now = new Date(),
+    signal?: AbortSignal,
   ): Promise<{
     feed: LifeOpsCalendarFeed;
     calendars: LifeOpsCalendarSummary[];
   }> {
+    const turnSignal = getStreamingContext()?.abortSignal;
+    const requestSignal =
+      signal && turnSignal && signal !== turnSignal
+        ? AbortSignal.any([signal, turnSignal])
+        : (signal ?? turnSignal);
+    requestSignal?.throwIfAborted();
     const mode = normalizeOptionalConnectorMode(request.mode, "mode");
     const side = normalizeOptionalConnectorSide(request.side, "side");
     const explicitCalendarId = normalizeOptionalString(request.calendarId);
@@ -5583,11 +5635,14 @@ export class CalendarService extends Service {
     const forceSync =
       normalizeOptionalBoolean(request.forceSync, "forceSync") ?? false;
 
-    const discovery = await this.discoverCalendars(requestUrl, {
-      mode,
-      side,
-      grantId: request.grantId,
-    });
+    const discovery = await timeInferenceSpan("calendar:feed:discovery", () =>
+      this.discoverCalendars(
+        requestUrl,
+        { mode, side, grantId: request.grantId },
+        requestSignal,
+      ),
+    );
+    requestSignal?.throwIfAborted();
     const listedCalendars = discovery.calendars;
     const discoveryFailures = discovery.failures.filter((source) => {
       if (request.grantId && source.key.grantId !== request.grantId) {
@@ -5721,19 +5776,31 @@ export class CalendarService extends Service {
         };
       }
     }
-    return {
-      calendars: listedCalendars,
-      feed: await this.aggregateCalendarFeedsAcrossCalendars(
-        requestUrl,
-        calendars,
-        timeMin,
-        timeMax,
-        timeZone,
-        forceSync,
-        now,
-        discoveryFailures,
-      ),
-    };
+    // Managed reads end with this request: when a source branch throws, the
+    // reads still waiting or in flight stop.
+    const reads = new AbortController();
+    try {
+      return {
+        calendars: listedCalendars,
+        feed: await timeInferenceSpan("calendar:feed:aggregate", () =>
+          this.aggregateCalendarFeedsAcrossCalendars(
+            requestUrl,
+            calendars,
+            timeMin,
+            timeMax,
+            timeZone,
+            forceSync,
+            now,
+            discoveryFailures,
+            requestSignal
+              ? AbortSignal.any([requestSignal, reads.signal])
+              : reads.signal,
+          ),
+        ),
+      };
+    } finally {
+      reads.abort();
+    }
   }
 
   private async aggregateCalendarFeedsAcrossCalendars(
@@ -5743,24 +5810,64 @@ export class CalendarService extends Service {
     timeMax: string,
     timeZone: string,
     forceSync: boolean,
-    now = new Date(),
-    discoveryFailures: readonly LifeOpsCalendarSourceHealth[] = [],
+    now: Date,
+    discoveryFailures: readonly LifeOpsCalendarSourceHealth[],
+    signal: AbortSignal,
   ): Promise<LifeOpsCalendarFeed> {
     const sources: (AggregatedCalendarFeedSource & {
       calendar: LifeOpsCalendarSummary;
     })[] = [];
-    for (const calendar of calendars) {
-      if (this.managedCalendar?.owns(calendar)) {
+    // Cost: one broker read per managed source, at most four active per service.
+    // Cancellation removes queued work; it adds no polling or provider calls.
+    // Managed feeds start now under the service's shared bound, admitted in
+    // calendar order, and are consumed in calendar order below. Each settles
+    // alone, so a failed source still degrades and reports on its own. A read
+    // whose request ended while it waited gives its turn back unread.
+    const managed = this.managedCalendar;
+    const managedFeeds = calendars.map((calendar) =>
+      managed?.owns(calendar)
+        ? (async (): Promise<
+            { feed: LifeOpsCalendarFeed } | { error: unknown }
+          > => {
+            let acquired = false;
+            try {
+              await this.managedFeedReads.acquire(signal);
+              acquired = true;
+              signal.throwIfAborted();
+              return {
+                feed: await timeInferenceSpan(
+                  "calendar:feed:managed-source",
+                  () =>
+                    managed.feed(
+                      calendar,
+                      timeMin,
+                      timeMax,
+                      timeZone,
+                      this.agentId(),
+                      signal,
+                    ),
+                  { provider: calendar.provider },
+                ),
+              };
+            } catch (error) {
+              return { error };
+            } finally {
+              if (acquired) this.managedFeedReads.release();
+            }
+          })()
+        : undefined,
+    );
+    for (const [index, calendar] of calendars.entries()) {
+      signal.throwIfAborted();
+      const managedFeed = managedFeeds[index];
+      if (managedFeed) {
+        const read = await managedFeed;
+        signal.throwIfAborted();
         let feed: LifeOpsCalendarFeed;
-        try {
-          feed = await this.managedCalendar.feed(
-            calendar,
-            timeMin,
-            timeMax,
-            timeZone,
-            this.agentId(),
-          );
-        } catch (error) {
+        if ("feed" in read) {
+          feed = read.feed;
+        } else {
+          const { error } = read;
           const sourceError = calendarSourceError(error);
           this.runtime.reportError("calendar:feed-managed-source", error, {
             source: calendarSourceKey(calendar),
@@ -5780,11 +5887,9 @@ export class CalendarService extends Service {
       if (calendar.provider === ELIZA_CALENDAR_PROVIDER) {
         sources.push({
           calendar,
-          feed: await this.readElizaCalendarFeed({
-            calendar,
-            timeMin,
-            timeMax,
-          }),
+          feed: await timeInferenceSpan("calendar:feed:local", () =>
+            this.readElizaCalendarFeed({ calendar, timeMin, timeMax }),
+          ),
         });
         continue;
       }

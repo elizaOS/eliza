@@ -1202,6 +1202,27 @@ class ElizaSurfaceManagerPlugin : Plugin() {
     }
 
     @PluginMethod
+    fun stopLoading(call: PluginCall) {
+        val id = call.getString("id") ?: run {
+            call.reject("stopLoading requires an id")
+            return
+        }
+        activity.runOnUiThread {
+            val identity = requireActiveIdentity(call, "stopLoading") ?: return@runOnUiThread
+            val surface = ownedSurface(call, id, identity, "stopLoading")
+                ?: return@runOnUiThread
+            surface.historyObservation = null
+            surface.webView.stopLoading()
+            // A navigation stopped before it commits never finishes, so its approval ends here.
+            surface.gate.settle(null)
+            // onPageFinished may not follow a stop (or may name an address that never
+            // committed), so the host is told to re-read state and clear its loading line.
+            if (isLive(surface)) notifyListeners("navigationChanged", surfaceEvent(id, surface))
+            call.resolve()
+        }
+    }
+
+    @PluginMethod
     fun goBack(call: PluginCall) {
         val id = call.getString("id") ?: run {
             call.reject("goBack requires an id")

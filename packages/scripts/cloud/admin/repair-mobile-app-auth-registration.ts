@@ -129,11 +129,12 @@ export interface RegistrationRepairClient {
   ): Promise<{ rows: T[] }>;
 }
 
-/** Validate the operator-selected creation authority without changing any row. */
+/** The organization owns an existing registration. Creation also names an
+ * active operator in that organization for its initial audit reference. */
 export async function validateRegistrationAuthority(
   client: RegistrationRepairClient,
   organizationId: string,
-  ownerUserId: string,
+  ownerUserId?: string,
 ): Promise<void> {
   const authority = await client.query<{
     organization_active: boolean;
@@ -149,10 +150,11 @@ export async function validateRegistrationAuthority(
          LEFT JOIN users AS owner ON owner.id = $2::uuid
         WHERE org.id = $1::uuid
         LIMIT 1`,
-    [organizationId, ownerUserId],
+    [organizationId, ownerUserId ?? null],
   );
   const authorityRow = authority.rows[0];
   if (!authorityRow?.organization_active) fail("authority.organization_active");
+  if (!ownerUserId) return;
   if (!authorityRow.owner_active) fail("authority.owner_active");
   if (!authorityRow.owner_matches_organization)
     fail("authority.same_organization");
@@ -189,7 +191,7 @@ export async function repairRegistrationTransaction(
 
     const existing = await client.query<{
       organization_id: string;
-      created_by_user_id: string;
+      created_by_user_id: string | null;
       api_key_id: string | null;
     }>(
       `SELECT organization_id::text, created_by_user_id::text, api_key_id::text
@@ -199,19 +201,31 @@ export async function repairRegistrationTransaction(
     const current = existing.rows[0];
     if (
       current &&
-      ((protectedOrganizationId &&
-        current.organization_id !== protectedOrganizationId) ||
-        (protectedOwnerUserId &&
-          current.created_by_user_id !== protectedOwnerUserId))
+      protectedOrganizationId &&
+      current.organization_id !== protectedOrganizationId
     ) {
       fail("registration.explicit_ownership_match");
     }
     const organizationId = current?.organization_id ?? protectedOrganizationId;
-    const ownerUserId = current?.created_by_user_id ?? protectedOwnerUserId;
+    const ownerUserId = current
+      ? current.created_by_user_id
+      : protectedOwnerUserId;
     if (!organizationId) fail("input.organization_id_for_creation");
-    if (!ownerUserId) fail("input.owner_user_id_for_creation");
+    const publisher = await client.query<{ registered: boolean }>(
+      `SELECT EXISTS(SELECT 1 FROM native_app_publishers WHERE organization_id=$1::uuid) AS registered`,
+      [organizationId],
+    );
+    const isPublisher = publisher.rows[0]?.registered === true;
+    if (!current && !ownerUserId && !isPublisher)
+      fail("input.owner_user_id_for_creation");
 
-    await validateRegistrationAuthority(client, organizationId, ownerUserId);
+    // Do not require the historical creator to remain active or even exist.
+    // An explicitly supplied operator is still checked before any mutation.
+    await validateRegistrationAuthority(
+      client,
+      organizationId,
+      protectedOwnerUserId,
+    );
 
     const duplicate = await client.query<{ count: number }>(
       `SELECT count(*)::integer AS count
@@ -225,25 +239,26 @@ export async function repairRegistrationTransaction(
     if (duplicate.rows[0]?.count !== 0)
       fail("registration.unique_callback_owner");
 
-    const apiKeyId = current?.api_key_id ?? randomUUID();
+    const apiKeyId = isPublisher ? null : (current?.api_key_id ?? randomUUID());
     if (current?.api_key_id) {
       const key = await client.query<{
         organization_id: string;
         user_id: string;
+        is_active: boolean;
+        deleted_at: unknown;
       }>(
-        `SELECT organization_id::text, user_id::text
+        `SELECT organization_id::text, user_id::text, is_active, deleted_at
            FROM api_keys WHERE id = $1::uuid FOR UPDATE`,
         [current.api_key_id],
       );
       const keyRow = key.rows[0];
-      if (
-        keyRow &&
-        (keyRow.organization_id !== organizationId ||
-          keyRow.user_id !== ownerUserId)
-      ) {
+      if (keyRow && keyRow.organization_id !== organizationId) {
         fail("registration.generated_key_ownership");
       }
-      if (keyRow) {
+      if (isPublisher && keyRow && (keyRow.is_active || !keyRow.deleted_at)) {
+        fail("registration.publisher_generated_key_active");
+      }
+      if (keyRow && !isPublisher) {
         await client.query(
           `UPDATE api_keys
               SET is_active = FALSE, deleted_at = COALESCE(deleted_at, NOW())
@@ -278,7 +293,7 @@ export async function repairRegistrationTransaction(
           appId,
           `${target.slugPrefix}-${appId}`,
           organizationId,
-          ownerUserId,
+          ownerUserId ?? null,
           target.redirectOrigin,
           target.redirectUri,
           apiKeyId,

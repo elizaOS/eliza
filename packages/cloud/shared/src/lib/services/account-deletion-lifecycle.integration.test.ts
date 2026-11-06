@@ -6,17 +6,19 @@ process.env.DATABASE_URL ||= "pglite://memory";
 process.env.NODE_ENV ||= "test";
 
 import { pushSchema } from "drizzle-kit/api";
-import { eq } from "drizzle-orm";
+import { eq, sql } from "drizzle-orm";
 import { resolveAccountDeletionTestDatabase } from "../../db/account-deletion-test-database";
 import { closeDatabaseConnectionsForTests, dbWrite } from "../../db/client";
 import { accountDeletionExports } from "../../db/schemas/account-deletion-exports";
 import { accountDeletionPhaseReceipts } from "../../db/schemas/account-deletion-phase-receipts";
 import { accountDeletionRequests } from "../../db/schemas/account-deletion-requests";
 import { apiKeys } from "../../db/schemas/api-keys";
+import { nativeAppPublishers } from "../../db/schemas/native-app-publishers";
 import { organizationBalanceRevisionSequence, organizations } from "../../db/schemas/organizations";
 import { providerAdmissions } from "../../db/schemas/provider-admissions";
 import { userSessions } from "../../db/schemas/user-sessions";
 import { users } from "../../db/schemas/users";
+import { runWithCloudBindingsAsync } from "../runtime/cloud-bindings";
 import {
   activateAccountDeletion,
   getAccountDeletionStatusByCredential,
@@ -28,8 +30,37 @@ const PERSONAL_USER_ID = "22222222-2222-4222-8222-222222222222";
 const SHARED_ORGANIZATION_ID = "44444444-4444-4444-8444-444444444444";
 const SHARED_USER_ID = "55555555-5555-4555-8555-555555555555";
 const SHARED_OWNER_ID = "66666666-6666-4666-8666-666666666666";
+const REPLAY_ORGANIZATION_ID = "77777777-7777-4777-8777-777777777777";
+const REPLAY_USER_ID = "88888888-8888-4888-8888-888888888888";
 const TEST_DATABASE = resolveAccountDeletionTestDatabase();
 let databaseReady = true;
+
+/** A gate that records each mutation path and refuses while `available` is false. */
+function recordingGate() {
+  const gate = {
+    available: true,
+    paths: [] as string[],
+    run: <T>(fn: () => Promise<T>) =>
+      runWithCloudBindingsAsync(
+        {
+          VOICE_SPEECH_RELAY_ENABLED: "true",
+          INFERENCE_ADMISSION_GATES: {
+            getByName: () => ({
+              async fetch(request: Request) {
+                gate.paths.push(new URL(request.url).pathname);
+                return Response.json(
+                  { committed: gate.available },
+                  { status: gate.available ? 200 : 503 },
+                );
+              },
+            }),
+          },
+        },
+        fn,
+      ),
+  };
+  return gate;
+}
 
 beforeAll(async () => {
   if (!TEST_DATABASE) {
@@ -45,6 +76,7 @@ beforeAll(async () => {
         apiKeys,
         organizationBalanceRevisionSequence,
         organizations,
+        nativeAppPublishers,
         providerAdmissions,
         userSessions,
         users,
@@ -168,6 +200,75 @@ describe("account deletion reservation lifecycle", () => {
       status: "reserved",
       export: { status: "pending" },
     });
+  });
+
+  test("activation reaches the gate only after its writes, and a rollback can be replayed", async () => {
+    await dbWrite.insert(organizations).values({
+      id: REPLAY_ORGANIZATION_ID,
+      name: "Replayed activation",
+      slug: "replayed-account-deletion",
+    });
+    await dbWrite.insert(users).values({
+      id: REPLAY_USER_ID,
+      organization_id: REPLAY_ORGANIZATION_ID,
+      steward_user_id: "steward-replay",
+      role: "owner",
+    });
+    const accepted = await requestAccountDeletion({
+      userId: REPLAY_USER_ID,
+      organizationId: REPLAY_ORGANIZATION_ID,
+      stewardUserId: "steward-replay",
+      admissionCredential: "r".repeat(43),
+      now: new Date("2026-08-22T12:00:00Z"),
+    });
+    const activate = () =>
+      activateAccountDeletion(accepted.recoveryCredential, new Date("2026-08-22T12:00:00Z"));
+    const expectAccountStillActive = async () => {
+      const [user] = await dbWrite.select().from(users).where(eq(users.id, REPLAY_USER_ID));
+      const [organization] = await dbWrite
+        .select()
+        .from(organizations)
+        .where(eq(organizations.id, REPLAY_ORGANIZATION_ID));
+      expect(user?.is_active).toBe(true);
+      expect(organization?.is_active).toBe(true);
+    };
+    const gate = recordingGate();
+
+    // A rolled-back request stays "requested", which cancellation refuses, so a
+    // failed write must leave the gate untouched.
+    await dbWrite.execute(sql`
+      CREATE FUNCTION refuse_deletion_request_update() RETURNS trigger AS $$
+      BEGIN RAISE EXCEPTION 'deletion request write refused'; END;
+      $$ LANGUAGE plpgsql
+    `);
+    await dbWrite.execute(sql`
+      CREATE TRIGGER refuse_deletion_request_trigger BEFORE UPDATE ON account_deletion_requests
+      FOR EACH ROW EXECUTE FUNCTION refuse_deletion_request_update()
+    `);
+    try {
+      await expect(gate.run(activate)).rejects.toThrow();
+    } finally {
+      await dbWrite.execute(
+        sql`DROP TRIGGER refuse_deletion_request_trigger ON account_deletion_requests`,
+      );
+      await dbWrite.execute(sql`DROP FUNCTION refuse_deletion_request_update()`);
+    }
+    expect(gate.paths).toEqual([]);
+    await expectAccountStillActive();
+
+    gate.available = false;
+    await expect(gate.run(activate)).rejects.toMatchObject({
+      code: "INFERENCE_CREDENTIAL_REVOCATION_UNAVAILABLE",
+    });
+    await expectAccountStillActive();
+
+    gate.available = true;
+    gate.paths = [];
+    await expect(gate.run(activate)).resolves.toMatchObject({
+      status: "reserved",
+      accessState: "fenced",
+    });
+    expect(gate.paths).toEqual(["/organization/set-active", "/subject/set-active"]);
   });
 
   test("requires explicit successor transfer for a shared member without fencing the tenant", async () => {
