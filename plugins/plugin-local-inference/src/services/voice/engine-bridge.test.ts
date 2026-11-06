@@ -26,7 +26,7 @@ import {
 } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { fakeFfi } from "./__test-helpers__/fake-ffi";
 import {
 	EngineVoiceBridge,
@@ -402,12 +402,14 @@ describe("EngineVoiceBridge phrase boundaries inside numbers", () => {
 		rmSync(bundleRoot, { recursive: true, force: true });
 	});
 
-	/** Streams one reply piece by piece, as `engine.ts` does, and returns the phrases sent to TTS. */
-	async function speak(pieces: string[]): Promise<string[]> {
-		const spoken: string[] = [];
+	/** Streams reply pieces one by one, as `engine.ts` does, and records the phrases sent to TTS. */
+	async function stream(
+		pieces: string[],
+	): Promise<{ bridge: EngineVoiceBridge; spoken: Phrase[] }> {
+		const spoken: Phrase[] = [];
 		const backend: TtsBackend = {
 			async synthesize({ phrase }) {
-				spoken.push(phrase.text);
+				spoken.push(phrase);
 				return {
 					phraseId: phrase.id,
 					fromIndex: phrase.fromIndex,
@@ -428,8 +430,14 @@ describe("EngineVoiceBridge phrase boundaries inside numbers", () => {
 		for (const text of pieces) {
 			await bridge.pushAcceptedToken({ index: index++, text });
 		}
+		return { bridge, spoken };
+	}
+
+	/** Streams one whole reply and returns the text of each phrase sent to TTS. */
+	async function speak(pieces: string[]): Promise<string[]> {
+		const { bridge, spoken } = await stream(pieces);
 		await bridge.settle();
-		return spoken;
+		return spoken.map(({ text }) => text);
 	}
 
 	// Tokenizers emit the separator as its own piece.
@@ -486,6 +494,25 @@ describe("EngineVoiceBridge phrase boundaries inside numbers", () => {
 			" please.",
 		]);
 		expect(await speak(["I", " have", " 3", "."])).toEqual(["I have 3."]);
+	});
+
+	it("labels a held cut as punctuation when the end of the reply or the time budget releases it", async () => {
+		const ended = await stream(["I", " have", " 3", "."]);
+		await ended.bridge.settle();
+		expect(
+			ended.spoken.map(({ text, terminator }) => [text, terminator]),
+		).toEqual([["I have 3.", "punctuation"]]);
+
+		// A slow model: the scheduler's time-budget timer releases the cut
+		// before the next piece arrives.
+		const slow = await stream(["I", " have", " 3", "."]);
+		await vi.waitFor(() => expect(slow.spoken).toHaveLength(1), {
+			timeout: 5_000,
+		});
+		expect(
+			slow.spoken.map(({ text, terminator }) => [text, terminator]),
+		).toEqual([["I have 3.", "punctuation"]]);
+		await slow.bridge.settle();
 	});
 });
 

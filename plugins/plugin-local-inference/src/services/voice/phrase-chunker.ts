@@ -297,6 +297,9 @@ export class PhraseChunker {
 	}
 
 	private flushAs(terminator: Phrase["terminator"]): Phrase {
+		// A held cut is where the phrase ends, also when the end of the reply
+		// or the time budget releases it.
+		const boundary = this.heldCut ?? terminator;
 		const tokens = this.buffer;
 		this.buffer = [];
 		this.heldCut = null;
@@ -311,7 +314,7 @@ export class PhraseChunker {
 			text,
 			fromIndex,
 			toIndex,
-			terminator,
+			terminator: boundary,
 		};
 		return phrase;
 	}
