@@ -31,6 +31,8 @@ export function makeMessageManagerHarness({
 	handleMessage,
 	dm = true,
 	mentionsBot = false,
+	system = false,
+	type = 0,
 }: {
 	inboundId: string;
 	content: string;
@@ -41,6 +43,10 @@ export function makeMessageManagerHarness({
 	) => Promise<void>;
 	dm?: boolean;
 	mentionsBot?: boolean;
+	/** discord.js `Message#system`: a server notice, not something a person wrote. */
+	system?: boolean;
+	/** Discord `MessageType` (0 = Default). */
+	type?: number;
 }) {
 	const memories = new Map<string, Memory>();
 	const sends: string[] = [];
@@ -140,6 +146,8 @@ export function makeMessageManagerHarness({
 	const inbound = {
 		id: inboundId,
 		content,
+		system,
+		type,
 		createdTimestamp: Date.now(),
 		author: {
 			id: AUTHOR_ID,
