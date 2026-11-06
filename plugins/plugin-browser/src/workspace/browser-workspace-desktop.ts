@@ -219,6 +219,15 @@ export function createDesktopBrowserWorkspaceCommandScript(
       return document;
     }
   })();
+  // An element from the selected frame belongs to that frame's window, whose
+  // constructors differ from the top window's: type checks, dispatched events
+  // and computed style must come from the element's own realm.
+  const realmOf = (node) => node?.ownerDocument?.defaultView || window;
+  const isKind = (node, name) => {
+    if (!node) return false;
+    const ctor = realmOf(node)[name] || window[name];
+    return typeof ctor === "function" && node instanceof ctor;
+  };
   const textMatches = (candidate, wanted, exact = false) => {
     const left = normalize(candidate).toLowerCase();
     const right = normalize(wanted).toLowerCase();
@@ -250,9 +259,9 @@ export function createDesktopBrowserWorkspaceCommandScript(
   };
   const serialize = (element) => {
     const value =
-      element instanceof HTMLInputElement ||
-      element instanceof HTMLTextAreaElement ||
-      element instanceof HTMLSelectElement
+      isKind(element, "HTMLInputElement") ||
+      isKind(element, "HTMLTextAreaElement") ||
+      isKind(element, "HTMLSelectElement")
         ? element.value
         : null;
     return {
@@ -696,23 +705,23 @@ export function createDesktopBrowserWorkspaceCommandScript(
     }
     if (
       !(
-        element instanceof HTMLInputElement ||
-        element instanceof HTMLTextAreaElement ||
-        element instanceof HTMLSelectElement
+        isKind(element, "HTMLInputElement") ||
+        isKind(element, "HTMLTextAreaElement") ||
+        isKind(element, "HTMLSelectElement")
       )
     ) {
       throw new Error("Target element is not an input, textarea, or select.");
     }
     const nextValue = appendMode ? \`\${element.value ?? ""}\${command.value ?? ""}\` : (command.value ?? "");
     element.value = nextValue;
-    element.dispatchEvent(new Event("input", { bubbles: true }));
-    element.dispatchEvent(new Event("change", { bubbles: true }));
+    element.dispatchEvent(new (realmOf(element).Event)("input", { bubbles: true }));
+    element.dispatchEvent(new (realmOf(element).Event)("change", { bubbles: true }));
     return { selector: selectorFor(element), value: element.value };
   };
   const setChecked = (targetValue) => {
     const element = findTarget();
     if (!element) throw new Error("Target element was not found.");
-    if (!(element instanceof HTMLInputElement)) {
+    if (!(isKind(element, "HTMLInputElement"))) {
       throw new Error("Target element is not a checkbox or radio input.");
     }
     const type = (element.type || "").toLowerCase();
@@ -720,14 +729,14 @@ export function createDesktopBrowserWorkspaceCommandScript(
       throw new Error("Target element is not a checkbox or radio input.");
     }
     element.checked = targetValue;
-    element.dispatchEvent(new Event("input", { bubbles: true }));
-    element.dispatchEvent(new Event("change", { bubbles: true }));
+    element.dispatchEvent(new (realmOf(element).Event)("input", { bubbles: true }));
+    element.dispatchEvent(new (realmOf(element).Event)("change", { bubbles: true }));
     return { checked: element.checked, selector: selectorFor(element) };
   };
   const setSelectValue = () => {
     const element = findTarget();
     if (!element) throw new Error("Target element was not found.");
-    if (!(element instanceof HTMLSelectElement)) {
+    if (!(isKind(element, "HTMLSelectElement"))) {
       throw new Error("Target element is not a select.");
     }
     const targetValue = command.value ?? "";
@@ -740,8 +749,8 @@ export function createDesktopBrowserWorkspaceCommandScript(
     }
     element.value = option.value;
     option.selected = true;
-    element.dispatchEvent(new Event("input", { bubbles: true }));
-    element.dispatchEvent(new Event("change", { bubbles: true }));
+    element.dispatchEvent(new (realmOf(element).Event)("input", { bubbles: true }));
+    element.dispatchEvent(new (realmOf(element).Event)("change", { bubbles: true }));
     return { selector: selectorFor(element), value: element.value };
   };
   const focusElement = (element) => {
@@ -749,7 +758,7 @@ export function createDesktopBrowserWorkspaceCommandScript(
     if (typeof element.focus === "function") {
       element.focus();
       // Match the web backend: typing after focus lands after existing text.
-      if (element instanceof HTMLInputElement || element instanceof HTMLTextAreaElement) {
+      if (isKind(element, "HTMLInputElement") || isKind(element, "HTMLTextAreaElement")) {
         try {
           if (element.selectionStart !== null) {
             element.setSelectionRange(element.value.length, element.value.length);
@@ -770,7 +779,7 @@ export function createDesktopBrowserWorkspaceCommandScript(
   const activateElement = (subaction, element) => {
     if (!element) throw new Error("Target element was not found.");
     if (subaction === "dblclick") {
-      element.dispatchEvent(new MouseEvent("dblclick", { bubbles: true }));
+      element.dispatchEvent(new (realmOf(element).MouseEvent)("dblclick", { bubbles: true }));
     }
     if (typeof element.click === "function") {
       element.click();
@@ -812,7 +821,7 @@ export function createDesktopBrowserWorkspaceCommandScript(
       const target = findTarget() || activeDocument.activeElement || activeDocument.body;
       const key = command.key || "Enter";
       target.dispatchEvent(
-        new KeyboardEvent("keydown", {
+        new (realmOf(target).KeyboardEvent)("keydown", {
           key: key,
           bubbles: true,
           cancelable: true,
@@ -820,7 +829,7 @@ export function createDesktopBrowserWorkspaceCommandScript(
         }),
       );
       target.dispatchEvent(
-        new KeyboardEvent("keyup", {
+        new (realmOf(target).KeyboardEvent)("keyup", {
           key: key,
           bubbles: true,
           cancelable: true,
@@ -885,14 +894,14 @@ export function createDesktopBrowserWorkspaceCommandScript(
     const target = keyboardTarget();
     if (
       !(
-        target instanceof HTMLInputElement ||
-        target instanceof HTMLTextAreaElement ||
-        target instanceof HTMLSelectElement
+        isKind(target, "HTMLInputElement") ||
+        isKind(target, "HTMLTextAreaElement") ||
+        isKind(target, "HTMLSelectElement")
       )
     ) {
       throw new Error("Keyboard text input requires an input, textarea, or select target.");
     }
-    if (target instanceof HTMLSelectElement) return setInputValue(appendMode, target);
+    if (isKind(target, "HTMLSelectElement")) return setInputValue(appendMode, target);
     // Both keyboard commands insert at the caret or replace the selected text,
     // matching the web backend.
     if (target.readOnly || target.disabled) {
@@ -904,14 +913,14 @@ export function createDesktopBrowserWorkspaceCommandScript(
     } catch {}
     if (start === null) return setInputValue(true, target);
     target.setRangeText(command.value ?? "", start, target.selectionEnd ?? start, "end");
-    target.dispatchEvent(new Event("input", { bubbles: true }));
-    target.dispatchEvent(new Event("change", { bubbles: true }));
+    target.dispatchEvent(new (realmOf(target).Event)("input", { bubbles: true }));
+    target.dispatchEvent(new (realmOf(target).Event)("change", { bubbles: true }));
     return { selector: selectorFor(target), value: target.value };
   };
   const keyPhase = (phase) => {
     const target = keyboardTarget();
     const key = command.key || "Enter";
-    target.dispatchEvent(new KeyboardEvent(phase, { key, bubbles: true }));
+    target.dispatchEvent(new (realmOf(target).KeyboardEvent)(phase, { key, bubbles: true }));
     return { key, phase, selector: selectorFor(target) };
   };
   const scrollTarget = () => findTarget();
@@ -921,7 +930,7 @@ export function createDesktopBrowserWorkspaceCommandScript(
     const pixels = Math.max(1, Math.abs(Number(command.pixels) || 240));
     const axis = direction === "left" || direction === "right" ? "x" : "y";
     const delta = direction === "up" || direction === "left" ? -pixels : pixels;
-    if (target instanceof HTMLElement) {
+    if (isKind(target, "HTMLElement")) {
       if (axis === "y") {
         target.scrollTop = (target.scrollTop || 0) + delta;
         return { axis, selector: selectorFor(target), value: target.scrollTop };
@@ -956,9 +965,9 @@ export function createDesktopBrowserWorkspaceCommandScript(
       case "box":
         return element.getBoundingClientRect();
       case "checked":
-        return element instanceof HTMLInputElement
+        return isKind(element, "HTMLInputElement")
           ? Boolean(element.checked)
-          : element instanceof HTMLOptionElement
+          : isKind(element, "HTMLOptionElement")
             ? Boolean(element.selected)
             : false;
       case "enabled":
@@ -966,7 +975,7 @@ export function createDesktopBrowserWorkspaceCommandScript(
       case "html":
         return element.innerHTML;
       case "styles": {
-        const computed = getComputedStyle(element);
+        const computed = realmOf(element).getComputedStyle(element);
         return {
           display: computed.display || null,
           visibility: computed.visibility || null,
@@ -1104,8 +1113,8 @@ export function createDesktopBrowserWorkspaceCommandScript(
     case "press": {
       const target = findTarget() ?? activeDocument.activeElement ?? activeDocument.body;
       const key = command.key || "Enter";
-      target.dispatchEvent(new KeyboardEvent("keydown", { key, bubbles: true }));
-      target.dispatchEvent(new KeyboardEvent("keyup", { key, bubbles: true }));
+      target.dispatchEvent(new (realmOf(target).KeyboardEvent)("keydown", { key, bubbles: true }));
+      target.dispatchEvent(new (realmOf(target).KeyboardEvent)("keyup", { key, bubbles: true }));
       return { key, url: location.href };
     }
     case "realistic-click":

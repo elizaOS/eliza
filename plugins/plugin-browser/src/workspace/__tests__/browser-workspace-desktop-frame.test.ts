@@ -94,6 +94,54 @@ describe("desktop browser workspace DOM commands after frame select", () => {
     expect(clicked).toEqual(["frame"]);
   });
 
+  it("fills, checks and selects form controls inside the selected frame", () => {
+    const dom = openPage(
+      '<input id="email" value="main"><iframe id="second-frame"></iframe>',
+    );
+    const frameDocument =
+      dom.window.document.querySelector<HTMLIFrameElement>(
+        "#second-frame",
+      )?.contentDocument;
+    if (!frameDocument) throw new Error("iframe has no document");
+    frameDocument.body.innerHTML =
+      '<input id="email"><input id="agree" type="checkbox">' +
+      '<select id="plan"><option value="free">Free</option><option value="pro">Pro</option></select>';
+    const inputEvents: string[] = [];
+    frameDocument
+      .querySelector("#email")
+      ?.addEventListener("input", () => inputEvents.push("frame-email"));
+
+    run(dom, { subaction: "frame", selector: "#second-frame" });
+    runCommand(dom, {
+      subaction: "fill",
+      selector: "#email",
+      value: "a@b.test",
+    });
+    runCommand(dom, { subaction: "check", selector: "#agree" });
+    runCommand(dom, { subaction: "select", selector: "#plan", value: "pro" });
+
+    expect(frameDocument.querySelector<HTMLInputElement>("#email")?.value).toBe(
+      "a@b.test",
+    );
+    expect(inputEvents).toEqual(["frame-email"]);
+    expect(
+      frameDocument.querySelector<HTMLInputElement>("#agree")?.checked,
+    ).toBe(true);
+    expect(frameDocument.querySelector<HTMLSelectElement>("#plan")?.value).toBe(
+      "pro",
+    );
+    expect(
+      dom.window.document.querySelector<HTMLInputElement>("#email")?.value,
+    ).toBe("main");
+    expect(
+      runCommand(dom, {
+        subaction: "get",
+        getMode: "value",
+        selector: "#email",
+      }),
+    ).toEqual({ value: "a@b.test" });
+  });
+
   it("snapshots the selected frame's elements and text", () => {
     const dom = openPage(
       '<button id="main-only">Main</button><iframe id="second-frame"></iframe>',
