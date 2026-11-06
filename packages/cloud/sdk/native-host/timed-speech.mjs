@@ -162,8 +162,11 @@ export async function* readTimedSpeech(response) {
   }
 }
 
-/** Ephemeral JSON bridge over a single provider stream. One-frame replay absorbs
- * lost pull replies without synthesizing again. No credentials or audio are persisted. */
+/** Ephemeral JSON bridge over a single provider stream. The host reads frames as
+ * they arrive and keeps those the client has not acknowledged, so a lost pull reply
+ * replays without synthesizing again. Pulling cursor N acknowledges frames before N.
+ * A batch pull returns every frame ready after the cursor. No credentials or audio
+ * are persisted. */
 export function createSpeechStreamSessions({
   open,
   assertOwner,
@@ -173,13 +176,16 @@ export function createSpeechStreamSessions({
   // two live provider streams. Completed sessions retain only terminal metadata.
   maxSessions = 256,
   maxActive = 2,
+  // After the terminal frame is delivered, keep unacknowledged audio this long.
+  replayMs = 30000,
 }) {
   const sessions = new Map(),
     requests = new Map();
   function stop(session, state) {
     if (state !== "failed" || !["cancelled", "expired"].includes(session.state))
       session.state = state;
-    session.last = null;
+    session.frames = [];
+    wake(session);
     const response = session.response,
       iterator = session.iterator;
     session.response = undefined;
@@ -189,14 +195,56 @@ export function createSpeechStreamSessions({
       void response.body.cancel().catch(() => {});
     void iterator?.return?.().catch(() => {});
   }
+  function wake(session) {
+    const resolve = session.wake;
+    session.ready = new Promise((r) => {
+      session.wake = r;
+    });
+    resolve?.();
+  }
+  async function read(session) {
+    try {
+      for (;;) {
+        const result = await session.iterator.next();
+        if (session.state !== "open") return;
+        if (result.done) throw fail("Incomplete speech stream");
+        session.frames.push(result.value);
+        if (result.value.type === "done") {
+          session.state = "done";
+          wake(session);
+          await session.iterator.return();
+          session.iterator = undefined;
+          session.response = undefined;
+          return;
+        }
+        wake(session);
+      }
+    } catch (error) {
+      if (session.state === "open")
+        session.error =
+          error instanceof NativeCloudServiceError
+            ? error
+            : fail("Speech stream unavailable");
+      stop(session, "failed");
+    }
+  }
   function sweep() {
-    for (const [id, session] of sessions)
+    for (const [id, session] of sessions) {
+      if (
+        session.delivered !== undefined &&
+        now() >= session.delivered + replayMs &&
+        session.frames.length > 1
+      ) {
+        session.base += session.frames.length - 1;
+        session.frames = session.frames.slice(-1);
+      }
       if (now() >= session.expires) {
         stop(session, "expired");
         clearTimeout(session.timer);
         sessions.delete(id);
         requests.delete(session.requestId);
       }
+    }
   }
   async function owned(id, owner) {
     sweep();
@@ -250,12 +298,12 @@ export function createSpeechStreamSessions({
         controller: new AbortController(),
         expires: now() + lifetimeMs,
         state: "opening",
-        cursor: 0,
-        last: null,
+        base: 0,
+        frames: [],
         renderedSpeed: null,
         opening: null,
-        pulling: null,
       };
+      wake(session);
       sessions.set(session.id, session);
       requests.set(requestId, session.id);
       session.timer = setTimeout(() => stop(session, "expired"), lifetimeMs);
@@ -270,6 +318,7 @@ export function createSpeechStreamSessions({
           if (session.state !== "opening" || session.controller.signal.aborted)
             throw fail("Speech stream stopped", 410);
           session.state = "open";
+          void read(session);
         } catch (error) {
           stop(session, "failed");
           throw error instanceof NativeCloudServiceError
@@ -284,44 +333,36 @@ export function createSpeechStreamSessions({
         renderedSpeed: session.renderedSpeed,
       };
     },
-    async pull({ streamId, owner, cursor }) {
+    async pull({ streamId, owner, cursor, batch = false }) {
       const session = await owned(streamId, owner);
       if (!Number.isSafeInteger(cursor) || cursor < 0)
         throw fail("Invalid speech cursor", 400);
-      if (session.last?.cursor === cursor) return session.last;
-      if (session.state !== "open" || cursor !== session.cursor)
-        throw fail("Speech stream cursor unavailable", 409);
-      if (!session.pulling)
-        session.pulling = (async () => {
-          try {
-            const result = await session.iterator.next();
-            await assertOwner(owner);
-            if (
-              session.state !== "open" ||
-              session.controller.signal.aborted ||
-              now() >= session.expires
-            )
-              throw fail("Speech stream stopped", 410);
-            if (result.done) throw fail("Incomplete speech stream");
-            session.last = { cursor, frame: result.value };
-            session.cursor++;
-            if (result.value.type === "done") {
-              session.state = "done";
-              await session.iterator.return();
-              session.iterator = undefined;
-              session.response = undefined;
-            }
-            return session.last;
-          } catch (error) {
-            stop(session, "failed");
-            throw error instanceof NativeCloudServiceError
-              ? error
-              : fail("Speech stream unavailable");
-          } finally {
-            session.pulling = null;
-          }
-        })();
-      return session.pulling;
+      const unavailable = () =>
+        session.error ?? fail("Speech stream cursor unavailable", 409);
+      if (
+        !["open", "done"].includes(session.state) ||
+        cursor < session.base ||
+        cursor > session.base + session.frames.length ||
+        (cursor === session.base + session.frames.length &&
+          session.state === "done")
+      )
+        throw unavailable();
+      // The client has every frame before its cursor.
+      session.frames.splice(0, cursor - session.base);
+      session.base = cursor;
+      while (!session.frames.length && session.state === "open")
+        await session.ready;
+      await assertOwner(owner);
+      if (session.owner !== owner || now() >= session.expires)
+        throw fail("Speech stream expired", 410);
+      if (session.state !== "open" && session.state !== "done")
+        throw session.error ?? fail("Speech stream stopped", 410);
+      if (cursor !== session.base) throw unavailable();
+      const frames = batch
+        ? session.frames.slice()
+        : session.frames.slice(0, 1);
+      if (frames.at(-1).type === "done") session.delivered ??= now();
+      return batch ? { cursor, frames } : { cursor, frame: frames[0] };
     },
     async cancel({ streamId, requestId, owner }) {
       if (requestId !== undefined) {
@@ -345,7 +386,8 @@ export function createSpeechStreamSessions({
             controller: new AbortController(),
             expires: now() + lifetimeMs,
             state: "cancelled",
-            last: null,
+            base: 0,
+            frames: [],
             renderedSpeed: null,
             opening: Promise.resolve(),
           };

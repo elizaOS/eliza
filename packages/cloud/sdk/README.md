@@ -182,7 +182,11 @@ and discard unfinished media; this transport alone does not implement playback.
 `@elizaos/cloud-sdk/native-speech-stream` is the browser-safe counterpart to the
 native session routes. Inject the host's authenticated JSON transport into
 `createNativeSpeechStream`, call `open`/`pull`, and retain the same instance when
-explicitly retrying a lost transport reply. Its request identity and cursor do not
+explicitly retrying a lost transport reply. Each pull request sends `batch: true`
+and gets every frame the host has ready after the cursor (`{cursor, frames}`);
+`pull` then returns them one at a time. A pull without `batch` keeps the old
+single-frame reply (`{cursor, frame}`). Pulling cursor N tells the host the
+client has every frame before N. Its request identity and cursor do not
 change on transport failure; malformed protocol data stops the session. Concurrent
 pulls share one delivery. A ten-minute client deadline prevents an expired host
 identity from accidentally starting a new synthesis. Pass an account/playback
