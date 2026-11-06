@@ -68,22 +68,7 @@ export async function handleGenerateImagePOST(
       if (appScopeId && appScopeId !== options.requiredAppId) {
         return jsonError(c, 403, "Access denied to this app", "access_denied");
       }
-      const resolution = executionCtx
-        ? await appsService.getByIdCacheOnly(options.requiredAppId, {
-            executionCtx,
-          })
-        : {
-            kind: "ready" as const,
-            app: (await appsService.getById(options.requiredAppId)) ?? null,
-          };
-      if (resolution.kind !== "ready") {
-        throw new ApiError(
-          503,
-          "service_unavailable",
-          "App cache is warming; retry shortly",
-        );
-      }
-      inferenceApp = resolution.app;
+      inferenceApp = (await appsService.getById(options.requiredAppId)) ?? null;
       if (!inferenceApp) {
         return jsonError(c, 404, "App not found", "resource_not_found");
       }
