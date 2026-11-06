@@ -374,8 +374,24 @@ describe("selected native note edits within the native contract bounds", () => {
     });
   });
 
-  it("refuses an edit that would exceed the native body bound", async () => {
-    const body = "x".repeat(31_995);
-    await expect(plan({ title: "Packing", body }, bodyLine)).rejects.toThrow();
-  });
+  it.each([
+    ["body", { title: "Packing", body: "x".repeat(31_995) }, bodyLine],
+    [
+      "title",
+      { title: `Packing ${"T".repeat(240)}`, body: "Pack a jacket." },
+      {
+        action: "replace",
+        field: "title",
+        oldText: "Packing",
+        newText: "Packing list for the long weekend",
+      },
+    ],
+  ])(
+    "refuses an edit past the native %s bound with a typed error",
+    async (_name, fields, textEdit) => {
+      await expect(plan(fields, textEdit)).rejects.toMatchObject({
+        code: "NOTES_VALIDATION_FAILED",
+      });
+    },
+  );
 });

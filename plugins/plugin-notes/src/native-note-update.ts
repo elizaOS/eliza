@@ -50,7 +50,15 @@ const patchSchema: NonNullable<GenerateTextParams["responseSchema"]> = {
  * more than the 240 / 20,001 characters the Notes store keeps. */
 function parseDeviceNote(note: StickyNote): StickyNote {
   const { title, body } = projectNoteForModel(note);
-  notesFields({ title, body });
+  try {
+    notesFields({ title, body });
+  } catch (cause) {
+    throw new ElizaError("Note text must fit the native Notes contract.", {
+      code: "NOTES_VALIDATION_FAILED",
+      cause,
+      severity: "ephemeral",
+    });
+  }
   if (!(title + body).trim())
     throw new ElizaError("Note content must not be empty.", {
       code: "NOTES_VALIDATION_FAILED",
