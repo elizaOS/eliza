@@ -151,7 +151,7 @@ export class NativeTaskActuator {
   constructor(
     private options: {
       target: Pick<NativeSocketBrowserTarget, "bindTask" | "execute"> &
-        Partial<Pick<NativeSocketBrowserTarget, "guideTask">>;
+        Partial<Pick<NativeSocketBrowserTarget, "guideTask" | "settled">>;
       getTask: (id: string) => InteractiveTask;
       policy: (task: InteractiveTask) => TaskBrowserPolicy;
       /** Durable and strictly increasing per tab, including after host restart. */
@@ -553,7 +553,11 @@ export class NativeTaskActuator {
     return { guide, context: binding.context, tabId: binding.policy.tabId };
   }
 
-  /** May run after task revocation. It only removes this owner's cached overlay. */
+  /**
+   * May run after task revocation. It only removes this owner's cached
+   * overlay. It resolves only once no cancelled browser command can still
+   * reach the page, so a Pause never answers before its fence did.
+   */
   async quiesce({
     owner,
     taskId,
@@ -561,6 +565,7 @@ export class NativeTaskActuator {
     owner: TaskOwner;
     taskId: string;
   }): Promise<void> {
+    await this.options.target.settled?.();
     if (!this.activeGuidance.has(taskId)) return;
     const binding = this.guidanceOwner(owner, taskId);
     const revision = (this.guidanceRevisions.get(taskId) ?? 0) + 1;

@@ -37,11 +37,26 @@ export function createCommandHandler(api) {
   async function handle(message, sender, connectionCurrent) {
     let isCurrent = connectionCurrent;
     let request;
+    // A cancelled request is answered once it has stopped, so the host knows
+    // that nothing of it is still on its way to the page ("cancel-reply").
+    const stopped = () =>
+      request && cancelled.has(request.id) && connectionCurrent()
+        ? sender.send({
+            type: "result",
+            id: request.id,
+            ok: false,
+            error: {
+              kind: "STALE_REF",
+              message: "The request was cancelled before it took effect.",
+              reason: "request-cancelled",
+            },
+          })
+        : undefined;
     try {
       if (!isCurrent()) return;
       request = parseCommand(message);
       isCurrent = () => connectionCurrent() && !cancelled.has(request.id);
-      if (!isCurrent()) return;
+      if (!isCurrent()) return stopped();
       const key = `request:${request.id}`;
       const previous = (await api.storage.local.get(key))[key];
       if (previous)
@@ -54,9 +69,9 @@ export function createCommandHandler(api) {
       isCurrent = () => transportCurrent() && scoped.current();
       request.command = scoped.command;
       const prepared = await prepareCommand(api, request.command);
-      if (!isCurrent()) return;
+      if (!isCurrent()) return stopped();
       await api.storage.local.set({ [key]: "admitted" });
-      if (!isCurrent()) return;
+      if (!isCurrent()) return stopped();
       let feedback;
       if (
         request.command.taskPolicy &&

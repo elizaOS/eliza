@@ -1,5 +1,8 @@
 import { describe, expect, it } from "vitest";
-import { validTaskBrowserBlockers } from "./task-actuator.js";
+import {
+  NativeTaskActuator,
+  validTaskBrowserBlockers,
+} from "./task-actuator.js";
 
 const elements = [
   { selector: "snap:0:0", label: "Reject all" },
@@ -58,5 +61,59 @@ describe("validTaskBrowserBlockers", () => {
 
   it("rejects a blocker report that is not a list", () => {
     expect(validTaskBrowserBlockers({ elements, blockers: {} })).toBe(false);
+  });
+});
+
+describe("NativeTaskActuator cleanup", () => {
+  it("answers only once no cancelled browser command can still take effect", async () => {
+    let settle!: (error?: Error) => void;
+    const settled = new Promise<void>((resolve, reject) => {
+      settle = (error) => (error ? reject(error) : resolve());
+    });
+    const fail = () => {
+      throw new Error("unexpected call");
+    };
+    const actuator = new NativeTaskActuator({
+      target: {
+        bindTask: fail,
+        execute: fail,
+        settled: () => settled,
+      },
+      getTask: fail,
+      policy: fail,
+      nextBindingRevision: fail,
+      resolveValue: fail,
+      verify: fail,
+      recordEvidence: fail,
+    });
+    const owner = {
+      actorId: "actor",
+      agentId: "agent",
+      connector: { source: "browser", accountId: "account" },
+    };
+    let done = false;
+    const quiesced = actuator.quiesce({ owner, taskId: "task-1" }).then(() => {
+      done = true;
+    });
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    expect(done).toBe(false);
+    settle();
+    await quiesced;
+    const refused = new NativeTaskActuator({
+      target: {
+        bindTask: fail,
+        execute: fail,
+        settled: () => Promise.reject(new Error("cancel unconfirmed")),
+      },
+      getTask: fail,
+      policy: fail,
+      nextBindingRevision: fail,
+      resolveValue: fail,
+      verify: fail,
+      recordEvidence: fail,
+    });
+    await expect(refused.quiesce({ owner, taskId: "task-1" })).rejects.toThrow(
+      "cancel unconfirmed",
+    );
   });
 });
