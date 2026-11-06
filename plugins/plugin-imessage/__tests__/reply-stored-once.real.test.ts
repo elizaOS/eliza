@@ -117,10 +117,18 @@ describe("iMessage reply persistence (keyless)", () => {
  * callback runs, as the assistant message service does. The callback, the
  * merge and the PGlite rows below are the real ones.
  */
-async function dispatchWithProcessor(transport: "native" | "blooio", replies: Content[]) {
+async function dispatchWithProcessor(
+  transport: "native" | "blooio",
+  replies: Content[],
+  extraSettings: Record<string, string> = {}
+) {
   const harness: ModelProviderTestRuntime = await createTestRuntimeWithModelProvider({
     plugins: [createAssistantPlugin()],
-    settings: { IMESSAGE_AUTO_REPLY: "true", ELIZA_LIFEOPS_PASSIVE_CONNECTORS: "false" },
+    settings: {
+      IMESSAGE_AUTO_REPLY: "true",
+      ELIZA_LIFEOPS_PASSIVE_CONNECTORS: "false",
+      ...extraSettings,
+    },
     fixtures: [],
   });
   cleanups.push(harness.cleanup);
@@ -215,5 +223,25 @@ describe("iMessage reply persistence: one row per delivered message", () => {
     expect(rows).toHaveLength(1);
     expect(rows[0]?.id).toBe(responseId);
     expect(rows[0]?.content.attachments ?? []).toEqual([]);
+  }, 90_000);
+
+  it("stores the delivered text with rendered link-outs on the merged row", async () => {
+    const responseId = "8c3f2e74-9b5a-4dac-9f4a-5e6d7c8f9a03";
+    const { sent, rows } = await dispatchWithProcessor(
+      "native",
+      [
+        {
+          text: "Open this task",
+          responseId,
+          interactions: [{ kind: "task", threadId: "abc-123" }],
+        } as unknown as Content,
+      ],
+      { ELIZA_APP_URL: "https://app.example.com" }
+    );
+    expect(sent).toHaveLength(1);
+    expect(sent[0]?.text).toContain("abc-123");
+    expect(rows).toHaveLength(1);
+    expect(rows[0]?.id).toBe(responseId);
+    expect(rows[0]?.content.text).toBe(sent[0]?.text);
   }, 90_000);
 });

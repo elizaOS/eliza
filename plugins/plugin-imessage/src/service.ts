@@ -1982,6 +1982,9 @@ export class IMessageService extends Service implements IIMessageService {
       ...existing,
       content: {
         ...existing.content,
+        // The delivered wire text: interaction link-outs are rendered into it,
+        // so later turns see what the owner received.
+        text: memory.content.text,
         source: memory.content.source,
         inReplyTo: memory.content.inReplyTo,
         channelType: memory.content.channelType,
