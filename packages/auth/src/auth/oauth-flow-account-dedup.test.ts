@@ -134,7 +134,7 @@ function unsignedJwt(claims: Record<string, unknown>): string {
 }
 
 async function linkCodex(
-  seat: { workspace: string; email: string },
+  seat: { workspace: string; email?: string },
   refresh: string,
 ): Promise<void> {
   vendor.nextCreds = {
@@ -143,7 +143,8 @@ async function linkCodex(
     }),
     refresh,
     expires: FAR_FUTURE,
-    idToken: unsignedJwt({ email: seat.email }),
+    // The vendor completion's id token is optional; without it no email is known.
+    ...(seat.email ? { idToken: unsignedJwt({ email: seat.email }) } : {}),
   };
   const handle = await startCodexOAuthFlow({
     label: "Codex",
@@ -263,6 +264,24 @@ describe("OAuth account linking keeps distinct identities apart", () => {
     const seat = { workspace: "ws-w", email: "a@x.test" };
     await linkCodex(seat, "refresh-1");
     await linkCodex(seat, "refresh-2");
+
+    expect(storedRefreshTokens("openai-codex")).toEqual([
+      { email: "a@x.test", organizationId: "ws-w", refresh: "refresh-2" },
+    ]);
+  });
+
+  it("Codex: the same workspace logging in again without an email updates its one account", async () => {
+    await linkCodex({ workspace: "ws-w" }, "refresh-1");
+    await linkCodex({ workspace: "ws-w" }, "refresh-2");
+
+    expect(storedRefreshTokens("openai-codex")).toEqual([
+      { email: undefined, organizationId: "ws-w", refresh: "refresh-2" },
+    ]);
+  });
+
+  it("Codex: an account stored without an email is updated when the email becomes known", async () => {
+    await linkCodex({ workspace: "ws-w" }, "refresh-1");
+    await linkCodex({ workspace: "ws-w", email: "a@x.test" }, "refresh-2");
 
     expect(storedRefreshTokens("openai-codex")).toEqual([
       { email: "a@x.test", organizationId: "ws-w", refresh: "refresh-2" },

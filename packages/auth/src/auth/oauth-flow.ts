@@ -215,7 +215,13 @@ function buildAccountRecord(args: {
           // either side, is upgraded in place instead of duplicated.
           return sameEmail && account.organizationId === args.organizationId;
         }
-        return sameEmail && account.organizationId === args.organizationId;
+        if (account.organizationId !== args.organizationId) return false;
+        // Without an email on either side there is no seat identity to
+        // compare (Codex carries no per-user id), so the workspace is the
+        // only anchor: a re-auth of that workspace updates its record
+        // instead of adding a second one with the stale token kept.
+        if (!normalizedEmail || !normalizeIdentity(account.email)) return true;
+        return sameEmail;
       });
   const existing = replacement ?? deduplicated;
   const record: AccountCredentialRecord = {
