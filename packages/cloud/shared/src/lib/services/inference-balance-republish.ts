@@ -16,10 +16,8 @@ import { republishOrgBalanceHint } from "./inference-auth-cache";
  * deletes `CacheKeys.inference.orgBalance`. That delete is correct for callers
  * that cannot know the resulting balance (top-ups, refunds, admin adjustments).
  * A DO-fenced inference debit instead keeps the last valid projection present
- * only through this authoritative overwrite; legacy inference settlers still
- * delete then seed it here. Leaving the key absent until a later request made
- * the *next* Worker turn a full `cacheOnly` miss — a hard, user-visible 503
- * "Billing authorization is warming", not a slow read.
+ * through this authoritative overwrite, so the next Worker turn does not pay a
+ * cold primary read for a balance the debit already returned.
  *
  * `lowerOrgBalanceHint` cannot repair the delete path: it is lower-only and
  * bails when no entry exists, so after eviction it is always a no-op.
@@ -30,9 +28,8 @@ import { republishOrgBalanceHint } from "./inference-auth-cache";
  *
  * Republication is one write with no cache readback. The cache is a projection,
  * not the monetary authority: Worker dispatch is fenced by the serialized,
- * revision-aware InferenceAdmissionGate Durable Object. Non-Worker callers use
- * the atomic DB-ledger admission or reserve synchronously; the legacy KV lane
- * is never allowed to dispatch from this projection. Older snapshots therefore
+ * revision-aware InferenceAdmissionGate Durable Object, and non-Worker callers
+ * reserve synchronously. Older snapshots therefore
  * cannot reopen an active gate even if concurrent writers reach Redis out of order.
  */
 export async function republishOrgBalanceHintAfterDebit(

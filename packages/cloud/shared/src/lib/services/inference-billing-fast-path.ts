@@ -19,16 +19,7 @@ import {
 import { republishOrgBalanceHintAfterDebit } from "./inference-balance-republish";
 
 /**
- * Read the gate balance for an org, stale-while-revalidate. Serves the KV hint
- * whenever one exists; if it is older than the `orgBalance` freshness window it
- * is still returned immediately and an authoritative refresh is scheduled in the
- * background. Only a full miss (no hint within the physical `orgBalanceStale`
- * lifetime) blocks on the authoritative read. This keeps the human-paced first
- * call of each turn off the ~200-500ms balance re-read that a hard 15s TTL
- * forced, without widening the over-admit window: every optimistic charge still
- * lands in the durable pending-charge ledger, the debit settler lowers the hint
- * after each settle, and top-ups invalidate it — so a drained org is corrected
- * on its first settle exactly as before, not after the stale window.
+ * Options for reading the gate balance hint (see `getGateBalanceHint`).
  */
 export interface GateBalanceReadOptions {
   /**
@@ -100,6 +91,15 @@ function observeBackgroundBalanceRefresh(
   );
 }
 
+/**
+ * Read the gate balance hint for an org, stale-while-revalidate. Serves the KV
+ * hint whenever one exists; if it is older than the `orgBalance` freshness
+ * window it is still returned immediately and an authoritative refresh is
+ * scheduled in the background. Only a full miss blocks on the authoritative
+ * read. The hint is never the monetary authority: the organization Durable
+ * Object lease is revision-aware and serializes every in-flight estimate, the
+ * debit settler lowers the hint after each settle, and top-ups evict it.
+ */
 export async function getGateBalanceHint(
   organizationId: string,
   options: GateBalanceReadOptions = {},
@@ -127,13 +127,6 @@ export async function getGateBalanceHint(
   // A cold hint is read from the primary once (coalesced per isolate) and
   // serves this request; it never fails the request for being cold.
   return await refreshOrgBalanceHint(organizationId);
-}
-
-export async function getGateBalanceUsd(
-  organizationId: string,
-  options: GateBalanceReadOptions = {},
-): Promise<number> {
-  return (await getGateBalanceHint(organizationId, options)).balanceUsd;
 }
 
 export interface DebitContext {
