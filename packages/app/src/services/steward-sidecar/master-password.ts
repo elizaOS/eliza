@@ -31,9 +31,13 @@ function readPassword(path: string): string {
     const metadata = fstatSync(descriptor);
     if (
       !metadata.isFile() ||
-      (metadata.mode & 0o077) !== 0 ||
+      // Windows reports every writable file as mode 0o666 — group/other
+      // permission bits do not exist there, so the owner-only reduction on
+      // Windows is exactly "regular file". The mode and uid checks belong to
+      // the POSIX gate, which the adjacent getuid availability check already
+      // draws (unchanged on POSIX: same mode bits, same uid comparison).
       (typeof process.getuid === "function" &&
-        metadata.uid !== process.getuid())
+        ((metadata.mode & 0o077) !== 0 || metadata.uid !== process.getuid()))
     ) {
       throw new ElizaError(
         "Local login password must be an owner-only regular file",
