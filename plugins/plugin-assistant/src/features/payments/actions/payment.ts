@@ -210,6 +210,8 @@ function envelopeToDispatchRequest(
     amountCents: envelope.amountCents,
     currency: envelope.currency,
     hostedUrl: envelope.hostedUrl,
+    // Link-out adapters (the connector DMs) send the link in `callback.url`.
+    ...(envelope.hostedUrl ? { callback: { url: envelope.hostedUrl } } : {}),
     paymentContext: envelope.paymentContext,
     reason: envelope.reason,
     status: envelope.status,
