@@ -95,8 +95,10 @@ let cachedActionAllowlist:
  * exact action names, or `null` when the setting is unset (every action stays
  * subject to its own gates). Unlike `ACTION_ROLE_POLICY`, which can only set
  * minimum roles, the allowlist also refuses an OWNER caller and the agent's
- * own autonomous and trigger turns. An empty value, malformed JSON or a
- * non-string entry throws, so a broken setting never disables the allowlist.
+ * own autonomous and trigger turns. It covers every action, core flow actions
+ * such as `REPLY` included, so a host lists each one it needs. An empty value,
+ * malformed JSON or a non-string entry throws, so a broken setting never
+ * disables the allowlist.
  */
 export function readActionAllowlist(
 	env: NodeJS.ProcessEnv = process.env,
