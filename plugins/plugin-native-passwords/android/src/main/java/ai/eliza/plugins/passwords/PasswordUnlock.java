@@ -26,6 +26,7 @@ public final class PasswordUnlock {
     final long ticket;
     final Result result;
     final CancellationSignal cancellation = new CancellationSignal();
+    final PasswordSurfaces.Hold surface = PasswordSurfaces.open();
     boolean finished;
     Pending(Activity activity, PasswordVaultAccess access, long ticket, Result result) {
       this.activity = activity; this.access = access; this.ticket = ticket; this.result = result;
@@ -35,13 +36,15 @@ public final class PasswordUnlock {
       if (finished) return;
       finished = true;
       activity.getApplication().unregisterActivityLifecycleCallbacks(this);
-      if (accepted && !activity.isFinishing() && !activity.isDestroyed() && access.complete(ticket, true)) {
-        result.unlocked(ticket);
-      } else {
-        access.lock(ticket);
-        cancellation.cancel();
-        result.failed(code);
-      }
+      try {
+        if (accepted && !activity.isFinishing() && !activity.isDestroyed() && access.complete(ticket, true)) {
+          result.unlocked(ticket);
+        } else {
+          access.lock(ticket);
+          cancellation.cancel();
+          result.failed(code);
+        }
+      } finally { surface.close(); }
     }
     @Override public void onActivityDestroyed(Activity owner) { if (owner == activity) complete(false, "cancelled"); }
     @Override public void onActivityStopped(Activity owner) { if (owner == activity && owner.isFinishing()) complete(false, "cancelled"); }
@@ -61,8 +64,8 @@ public final class PasswordUnlock {
     if (keyguard == null || !keyguard.isDeviceSecure()) { result.failed("no-screen-lock"); return; }
     long ticket = access.begin();
     if (ticket == 0) { result.failed("busy"); return; }
-    PasswordEditor.dismiss(); // The new challenge revoked the draft's admitting grant.
     Pending pending = new Pending(activity, access, ticket, result);
+    PasswordEditor.dismiss(); // The new challenge revoked the draft's admitting grant.
     try {
       BiometricPrompt.Builder builder = new BiometricPrompt.Builder(activity)
         .setTitle(activity.getString(R.string.eliza_passwords_unlock_title))

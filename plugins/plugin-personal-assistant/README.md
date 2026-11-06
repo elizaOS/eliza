@@ -46,7 +46,17 @@ the person has typed in, and every code-step result names a fixed `codeReason`.
 Every fixed workflow stop, unknown outcome or pending save also has a
 `reasonCode`, so a host can use its own words without matching English text.
 `assistantName` (default `Eliza`) names the assistant in fixed workflow words.
-`listForOwner(owner)` lists one owner's saved outcomes, newest first. Bill
+`listForOwner(owner, { limit, skipInvalid })` lists one owner's saved outcomes,
+newest first; `limit` reads at most that many rows, and `skipInvalid` leaves out
+a record that fails validation instead of failing the list.
+`createBillSourceStore(...).findSelectionBySourceRef(runtime, sourceRef)` returns
+the owner's newest checked selection of that bill, or null. `billOwnerKey`
+(`native-host/bill-owner-key.mjs`) is the `owner_key` of the bill store tables.
+`createBillHelperHost` also takes `assistantName`, `valueResolver(reference, task,
+resolveCode)` and `actuatorOptions` (more browser actuator options, such as
+`describeAction`; the options the host binds always win), and
+`createWorkflow(options, input)`, which returns a `BillWorkflow` subclass instance
+for one task; the shared steps that look again then call its methods. Bill
 search fails with `account_mismatch` when the connected Google address cannot
 receive the configured recipient's mail (masked addresses are matched by their
 visible parts). `googleSource.windowDays` searches that number of days up to the
@@ -59,13 +69,16 @@ browser observation with a stable ref made from its locating facts (role,
 name, placeholder, title, field name, image text, nearby text, row text, group
 and form), so controls with no usable name can still be found. Password, code,
 card, bank and ID-number fields are kept apart: `pageView` gives a model only
-their category and whether they are filled, and the workflow points at them
+their category and whether they are filled (`filled(element)`: `hasInput`, or
+the checked state of a choice), and the workflow points at them
 for the person without asking a model. `pageView.blockers` lists what stands in
 front of the page (modal, cookie or consent banner, person check, sign-in wall,
 paywall) with `covers` and, when the browser identified one, the control ref of
 a close control (`ref`) or a consent banner's reject control (`rejectRef`). A
 person check never carries a ref. The host's `planStep` reads `pageView`
 and returns one step with a ref; `checkStep` can stop and ask before a step.
+`acknowledge(key)` records an answer to a stop-and-ask question, and
+`withdrawAcknowledgement(key)` takes back one the host gave, so it is asked again.
 By default the workflow points at the control; the person presses every control. Its only
 effect is `fill(offerKey)`: one held value into one empty ordinary field after
 the person agrees. It compares every page fact with the offered page first,
@@ -77,12 +90,19 @@ then return `kind: "agent-action"`, a current control ref, an action (`click`,
 `fill`, `select`, or directional `scroll`) and a held `valueRef` when needed.
 `executeAction(offerKey)` rechecks host policy and the complete page observation
 before one task-runtime dispatch; `actionTargets(task)` supplies its current target.
+`authorizeAction(input, context)` runs in two phases. While a step is planned,
+`context.phase` is `"plan"` and answering `true` offers it. At dispatch,
+`context.phase` is `"dispatch"` and only returning `context.authorize()` lets the
+effect run, so no planning answer, and no bare `true`, can authorize an effect.
 The host must grant the capability, decide consequence policy, resolve held values,
 and verify the result from fresh page evidence. The default remains person-guided.
 Unknown effects stop further actions and are not replayed.
 
 A browser-stopped submit or page change pauses the task; a form the person sent
-while the website was hers is a `person-check` stop. `BillWorkflow` is the bill
+while the website was hers is a `person-check` stop. A `person-check` result
+carries the task `epoch` it was asked in; pass it back as
+`acknowledge(result.key, { epoch: result.epoch })` so a late yes given after a
+Stop or Resume never arms the step. `BillWorkflow` is the bill
 configuration of this workflow. Run the real Chromium and model lane with
 `ELIZA_BROWSER_EXECUTABLE=... CEREBRAS_API_KEY=... bun run --cwd plugins/plugin-personal-assistant test:guided-website`.
 
@@ -141,7 +161,10 @@ URL. Hosts supply transport and UI wording; owner authorization and durable effe
 controls remain on the host. Stopping a client suppresses late replies, not host
 effects already dispatched. The leaf is exported as `./native-host/bill-client`.
 `BillDecisionClient.hold()` suspends timed re-checks while a question is answered;
-a command started meanwhile is sent only after `release()`.
+a command started meanwhile is sent only after `release()`. `release({ send: false })`
+ends a hold whose question was not answered: waiting commands are not sent and
+resolve `false`, and no re-check starts. `release()` returns whether a command was
+waiting.
 
 
 `native-host/bill-review-controller.ts` sequences explicitly requested bill metadata

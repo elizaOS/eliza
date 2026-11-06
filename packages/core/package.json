@@ -91,6 +91,12 @@
 			"import": "./dist/speech.js",
 			"default": "./dist/speech.js"
 		},
+		"./task-events": {
+			"eliza-source": "./src/messaging/task-events.ts",
+			"types": "./dist/messaging/task-events.d.ts",
+			"import": "./dist/messaging/task-events.js",
+			"default": "./dist/messaging/task-events.js"
+		},
 		"./task-widgets": {
 			"eliza-source": "./src/messaging/task-widgets.ts",
 			"types": "./dist/messaging/task-widgets.d.ts",

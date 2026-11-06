@@ -21,6 +21,20 @@ import (
 
 const maxBytes int64 = 1024 * 1024
 
+// errTrustCache marks a trust cache whose contents are refused: an unsafe,
+// oversized or unparsable entry, or a corrupt or missing clock floor or root.
+// Retrying cannot repair it, so discovery reports it apart from a fetch
+// failure. An I/O error (a full disk, a failed fsync) is not one of these: it
+// may pass, and reports as an ordinary failure.
+var errTrustCache = errors.New("OTA trust cache unusable")
+
+func trustCacheError(err error) error {
+	if err == nil {
+		return nil
+	}
+	return fmt.Errorf("%w: %w", errTrustCache, err)
+}
+
 // Response and Transport use gomobile-compatible types. Transport must enforce
 // TLS, host/DNS/redirect restrictions, deadlines and cancellation independently.
 type Response struct {
@@ -47,7 +61,7 @@ func (f *boundedFetcher) DownloadFile(address string, limit int64, _ time.Durati
 		return nil, errors.New("TUF fetch budget exceeded")
 	}
 	if f.directory != "" {
-		if err := syncCache(f.directory); err != nil {
+		if err := syncCache(f.directory, false); err != nil {
 			return nil, err
 		}
 	}
@@ -107,15 +121,21 @@ func FetchDescriptorInterval(privateDirectory string, pinnedRoot []byte, metadat
 		return nil, errors.New("trust cache already in use")
 	}
 	defer syscall.Flock(int(lock.Fd()), syscall.LOCK_UN)
+	if e = discardScratch(privateDirectory); e != nil {
+		return nil, e
+	}
 	// Refuse unsafe cached entries before the library reads any of them.
-	if e = syncCache(privateDirectory); e != nil {
+	if e = syncCache(privateDirectory, true); e != nil {
 		return nil, e
 	}
 	clockBytes, clockErr := os.ReadFile(filepath.Join(privateDirectory, ".clock"))
 	if clockErr == nil {
 		floor, parseErr := strconv.ParseInt(string(clockBytes), 10, 64)
-		if parseErr != nil || !bounded(floor, 1, safeInteger) || trustedUpperMillis < floor {
-			return nil, errors.New("trusted time rollback or corruption")
+		if parseErr != nil || !bounded(floor, 1, safeInteger) {
+			return nil, trustCacheError(errors.New("trusted time floor corrupt"))
+		}
+		if trustedUpperMillis < floor {
+			return nil, errors.New("trusted time rollback")
 		}
 		trustedLowerMillis = max(trustedLowerMillis, floor)
 	} else if !os.IsNotExist(clockErr) {
@@ -125,7 +145,7 @@ func FetchDescriptorInterval(privateDirectory string, pinnedRoot []byte, metadat
 	cached, e := os.ReadFile(filepath.Join(privateDirectory, "root.json"))
 	if e == nil {
 		if os.IsNotExist(clockErr) {
-			return nil, errors.New("trusted time floor missing")
+			return nil, trustCacheError(errors.New("trusted time floor missing"))
 		}
 		root = cached
 	} else if !os.IsNotExist(e) {
@@ -134,7 +154,7 @@ func FetchDescriptorInterval(privateDirectory string, pinnedRoot []byte, metadat
 		entries, _ := os.ReadDir(privateDirectory)
 		for _, entry := range entries {
 			if strings.HasSuffix(entry.Name(), ".json") {
-				return nil, errors.New("trusted root missing from existing cache")
+				return nil, trustCacheError(errors.New("trusted root missing from existing cache"))
 			}
 		}
 	}
@@ -170,7 +190,7 @@ func FetchDescriptorInterval(privateDirectory string, pinnedRoot []byte, metadat
 	// go-tuf atomically renames metadata but does not fsync it. Sync every file
 	// and the directory before returning even on refresh failure/root rotation.
 	defer func() {
-		if syncErr := syncCache(privateDirectory); syncErr != nil {
+		if syncErr := syncCache(privateDirectory, false); syncErr != nil {
 			result = nil
 			err = errors.Join(err, syncErr)
 		}
@@ -199,13 +219,51 @@ func FetchDescriptorInterval(privateDirectory string, pinnedRoot []byte, metadat
 	}
 	return data, nil
 }
-func syncCache(directory string) error {
+
+// discardScratch removes the cache files that hold no trust state, so that one
+// write torn by a crash cannot stop every later session: the descriptor, which
+// go-tuf writes in place and nothing reads back, and the temporaries of
+// interrupted metadata and clock writes. Only regular files are removed; any
+// other entry is left for syncCache to refuse. Trust metadata is never removed,
+// so a torn metadata file still fails closed.
+func discardScratch(directory string) error {
+	entries, err := os.ReadDir(directory)
+	if err != nil {
+		return err
+	}
+	for _, entry := range entries {
+		name := entry.Name()
+		if name != "descriptor.json" && !strings.HasPrefix(name, "tuf_tmp") && !strings.HasPrefix(name, "clock_tmp") {
+			continue
+		}
+		if !entry.Type().IsRegular() {
+			continue
+		}
+		if err = os.Remove(filepath.Join(directory, name)); err != nil && !os.IsNotExist(err) {
+			return err
+		}
+	}
+	return nil
+}
+
+// syncCache refuses unsafe or unparsable cache entries, then fsyncs every file
+// and the directory. Only the check before a session reads the cache reports a
+// refusal as errTrustCache (validate): during a session go-tuf is writing the
+// cache, and the next session's check decides whether what it left is usable.
+// I/O errors are never errTrustCache.
+func syncCache(directory string, validate bool) error {
+	refuse := func(err error) error {
+		if validate {
+			return trustCacheError(err)
+		}
+		return err
+	}
 	entries, err := os.ReadDir(directory)
 	if err != nil {
 		return err
 	}
 	if len(entries) > 256 {
-		return errors.New("TUF cache entry budget exceeded")
+		return refuse(errors.New("TUF cache entry budget exceeded"))
 	}
 	for _, entry := range entries {
 		info, err := entry.Info()
@@ -213,7 +271,7 @@ func syncCache(directory string) error {
 			return err
 		}
 		if !info.Mode().IsRegular() || info.Size() > maxBytes {
-			return errors.New("unsafe TUF cache entry")
+			return refuse(errors.New("unsafe TUF cache entry"))
 		}
 		if strings.HasSuffix(entry.Name(), ".json") {
 			data, readErr := os.ReadFile(filepath.Join(directory, entry.Name()))
@@ -221,7 +279,7 @@ func syncCache(directory string) error {
 				return readErr
 			}
 			if parseErr := checkJSON(data); parseErr != nil {
-				return parseErr
+				return refuse(parseErr)
 			}
 		}
 		file, err := os.Open(filepath.Join(directory, entry.Name()))
@@ -262,5 +320,5 @@ func persistClock(directory string, millis int64) error {
 	if err = os.Rename(name, filepath.Join(directory, ".clock")); err != nil {
 		return err
 	}
-	return syncCache(directory)
+	return syncCache(directory, false)
 }
