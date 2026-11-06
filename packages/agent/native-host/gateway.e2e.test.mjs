@@ -744,6 +744,7 @@ test("embedded surface HTTP channel fences account replacement, cancellation, la
   let account = "owner-a";
   const channel = createSurfaceCommandChannel({
     credentialGate: async () => account,
+    pullHoldMs: 100,
   });
   const server = createLocalAgentGateway({
     token: "agent-authority",

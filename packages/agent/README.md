@@ -226,7 +226,10 @@ four POST routes under `/browser/surface/` require the inbound bearer token and
 normal origin policy. The browser-safe `surface-client.mjs` accepts the host's
 authenticated request adapter and native command handler; it never reads keys.
 Connections use increasing renderer epochs. Commands have bounded deadlines,
-are delivered once, and are never retried or reconnected automatically. Account
+are delivered once, and are never retried or reconnected automatically. An idle
+pull is held for `SURFACE_PULL_HOLD_MS` (10 s, below the 15 s connection expiry;
+hosts may pass a shorter `pullHoldMs`) and returns early on a new command,
+cancellation, close or account change. Account
 replacement and close retire pending commands. Losing a delivered effect returns
 `UNCERTAIN_OUTCOME`; a receipt is not proof that the website achieved the goal.
 Complete replies up to the explicit 2 MiB transport limit are accepted; larger
