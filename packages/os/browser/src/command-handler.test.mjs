@@ -116,20 +116,25 @@ test("a cancelled queued request never starts after an earlier request completes
     () => true,
   );
   await handler({ type: "cancel", id: "second" }, f.sender, () => true);
-  assert.deepEqual(f.replies, []);
+  // The cancelled request had not started, so it is answered at once, not
+  // after the request ahead of it: the host then knows nothing of it can
+  // still take effect, and a slow request ahead never makes its fence wait.
+  assert.deepEqual(
+    f.replies.map((reply) => [reply.id, reply.ok]),
+    [["second", false]],
+  );
   release.resolve();
   await Promise.all([first, second]);
   assert.equal(queries, 1);
-  // The cancelled request is answered once it stopped, after the request
-  // ahead of it: the host then knows nothing of it can still take effect.
+  // It is answered once only.
   assert.deepEqual(
     f.replies.map((reply) => [reply.id, reply.ok]),
     [
-      ["first", true],
       ["second", false],
+      ["first", true],
     ],
   );
-  assert.deepEqual(f.replies[1].error, {
+  assert.deepEqual(f.replies[0].error, {
     kind: "STALE_REF",
     message: "The request was cancelled before it took effect.",
     reason: "request-cancelled",
