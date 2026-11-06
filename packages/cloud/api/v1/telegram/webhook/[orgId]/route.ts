@@ -22,9 +22,13 @@ import { agentGatewayRouterService } from "@elizaos/cloud-shared/lib/services/ag
 import { telegramAutomationService } from "@elizaos/cloud-shared/lib/services/telegram-automation";
 import { telegramAppAutomationService } from "@elizaos/cloud-shared/lib/services/telegram-automation/app-automation";
 import { logger } from "@elizaos/cloud-shared/lib/utils/logger";
-import { isCommand } from "@elizaos/cloud-shared/lib/utils/telegram-helpers";
+import {
+  isCommand,
+  splitMessage,
+} from "@elizaos/cloud-shared/lib/utils/telegram-helpers";
 import type { AppEnv } from "@elizaos/cloud-shared/types/cloud-worker-env";
 import { ElizaError } from "@elizaos/core";
+
 import { Hono } from "hono";
 import { Telegraf } from "telegraf";
 import type { ChatMemberUpdated, Message, Update } from "telegraf/types";
@@ -395,8 +399,11 @@ ${matchingApp.website_url ? `🌐 Website: ${matchingApp.website_url}` : ""}`;
 
       if (routed.handled) {
         const replyText = routed.replyText?.trim();
-        if (replyText) {
-          await ctx.reply(replyText);
+        // A reply over Telegram's message limit is rejected whole, which
+        // fails the update and makes Telegram redeliver it into a new turn.
+        // Send it as ordered parts instead.
+        for (const part of splitMessage(replyText ?? "")) {
+          await ctx.reply(part);
         }
         return;
       }
