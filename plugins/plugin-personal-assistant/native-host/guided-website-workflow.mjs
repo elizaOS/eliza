@@ -559,11 +559,22 @@ export class GuidedWebsiteWorkflow {
   withdrawAcknowledgement(key) {
     return this.acknowledged.delete(key);
   }
+  /**
+   * Hides this task's guidance. The actuator also waits for an earlier
+   * cancelled browser command to be confirmed stopped; when Chromium does
+   * not confirm it, the actuator ends that connection, which stops every
+   * command it carried. That is the fence a Pause reports, not a failure of
+   * this step, so the step still returns its own result.
+   */
   async clearGuidance() {
-    await this.actuator.quiesce?.({
-      owner: this.runtime.owner,
-      taskId: this.taskId,
-    });
+    try {
+      await this.actuator.quiesce?.({
+        owner: this.runtime.owner,
+        taskId: this.taskId,
+      });
+    } catch (error) {
+      if (error?.reason !== "cancel-unconfirmed") throw error;
+    }
   }
   async requireAuthority() {
     if (!(await this.stillAuthorized()) || this.signal.aborted) {
