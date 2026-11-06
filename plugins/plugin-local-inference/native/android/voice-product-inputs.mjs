@@ -14,8 +14,8 @@ export function voiceProductInputs(inputs, requested) {
   const spanish = languages.includes("es");
   if (spanish && inputs.spanish?.enabled !== true) throw new Error("Spanish is not enabled by the pinned inputs");
   const spanishData = ["es_dict", "lang/roa/es"];
-  if (!Array.isArray(inputs.espeak?.data) || !Array.isArray(spanishData) ||
-      spanishData.some(file => typeof file !== "string" || (spanish && !inputs.espeak.data.includes(file)))) {
+  if (!Array.isArray(inputs.espeak?.data) ||
+      (spanish && spanishData.some(file => !inputs.espeak.data.includes(file)))) {
     throw new Error("Spanish eSpeak data must name pinned input files");
   }
   return {
@@ -54,11 +54,11 @@ export function verifyVoiceProductBundle(inputs, product, record, manifest) {
     const rows = files.filter(row => row.path === prefix + pin.path);
     if (rows.length !== 1 || rows[0].bytes !== pin.bytes || rows[0].sha256 !== pin.sha256) throw new Error(`Voice input differs from pinned bytes: ${pin.path}`);
   }
-  const tts = new Set([inputs.paradee.path, ...(product.spanish ? [inputs.spanish.path] : [])]);
+  const selectedModels = new Set(models.map(pin => pin.path));
   for (const row of files) {
     if (typeof row.path !== "string") throw new Error("Invalid voice build path");
     const relative = row.path.startsWith(prefix) ? row.path.slice(prefix.length) : "";
-    if (relative.startsWith("tts/paradee/") && /\.gguf$/i.test(relative) && !tts.has(relative)) throw new Error("Undeclared speech model in product bundle");
+    if (/\.gguf$/i.test(relative) && !selectedModels.has(relative)) throw new Error("Undeclared speech model in product bundle");
     if (!product.spanish && (relative === inputs.spanish?.path || relative.startsWith("notices/delibes/") ||
         product.spanishData.some(file => relative === `tts/paradee/espeak-ng-data/${file}`))) throw new Error("Spanish assets are not selected by this product");
   }

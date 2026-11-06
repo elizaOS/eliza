@@ -54,6 +54,7 @@ test('producer and Gradle contract keep explicit English bundles separate from t
   f=>{f.manifest.files[0].sha256='0'.repeat(64);},
   f=>{f.manifest.format='eliza-paradee-voice-v3';},
   f=>{const row={path:inputs.spanish.path,bytes:inputs.spanish.bytes,sha256:inputs.spanish.sha256};f.manifest.files.push(row);f.record.files.push({...row,path:'assets/paradee-voice/v1/'+row.path});},
+  f=>{const row={path:'asr/extra-es.gguf',bytes:1,sha256:'0'.repeat(64)};f.manifest.files.push(row);f.record.files.push({...row,path:'assets/paradee-voice/v1/'+row.path});},
   f=>{const row={path:'tts/paradee/espeak-ng-data/es_dict',bytes:1,sha256:'0'.repeat(64)};f.manifest.files.push(row);f.record.files.push({...row,path:'assets/paradee-voice/v1/'+row.path});},
  ]){const f=make(english);mutate(f);assert.throws(()=>verifyVoiceProductBundle(inputs,english,f.record,f.manifest));}
  const badSpanish=make(bilingual);badSpanish.record.files.find(row=>row.path.endsWith(inputs.spanish.path)).sha256='0'.repeat(64);
