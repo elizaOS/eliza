@@ -4,6 +4,7 @@ import { mkdir, open, rename, unlink } from "node:fs/promises";
 import { dirname } from "node:path";
 import { createDocumentImageDescriber } from "./document-image-describer.mjs";
 import { NativeCloudServiceError } from "./errors.mjs";
+import { mailAddress, mailAddresses, mailboxState } from "./mail-fields.mjs";
 import { createMailboxReadPort } from "./mailbox-read-port.mjs";
 import { createManagedGoogleReadPort } from "./managed-google-read-port.mjs";
 import { executePlanChange, validatePlanChangeInput } from "./plan-change.mjs";
@@ -2570,6 +2571,11 @@ export function createCloudRoutes({
         reviewDigest: value.reviewDigest,
         state: value.state,
         providerResult,
+        // A change's labels after it, reduced as the mailbox read port does.
+        mailbox:
+          value.kind !== "send" && Array.isArray(providerResult?.labelIds)
+            ? mailboxState(providerResult.labelIds, providerResult.historyId)
+            : null,
         rejectionCode:
           typeof value.rejectionCode === "string" ? value.rejectionCode : null,
       };
@@ -2611,18 +2617,33 @@ export function createCloudRoutes({
           false,
         );
         const prepared = receipt(value?.receipt, requestId);
+        const review = value.review;
         if (
           prepared.kind !== effect.kind ||
-          !value.review ||
-          typeof value.review !== "object" ||
-          Array.isArray(value.review)
+          !review ||
+          typeof review !== "object" ||
+          Array.isArray(review) ||
+          // A send review names what the owner confirms: who it is from and
+          // to, the subject and the names of the files.
+          (effect.kind === "send" &&
+            (review.kind !== "send" ||
+              !mailAddress(review.from) ||
+              !mailAddresses(review.to, true) ||
+              !mailAddresses(review.cc) ||
+              typeof review.subject !== "string" ||
+              ![review.attachments, review.forwardedAttachments].every(
+                (files) =>
+                  files === undefined ||
+                  (Array.isArray(files) &&
+                    files.every((file) => typeof file?.name === "string")),
+              )))
         )
           throw fail(message("invalidCloudResponse"), 502);
         return {
           version: 1,
           accountId,
           receipt: prepared,
-          review: value.review,
+          review,
         };
       },
       /** Performs the reviewed effect once; a repeat returns the same receipt. */
@@ -2776,4 +2797,5 @@ export function createFileCredentialStore(path) {
 
 export { createDocumentImageDescriber } from "./document-image-describer.mjs";
 export { loadDocumentRuntime } from "./document-runtime.mjs";
+export { mailAddress, mailAddresses, mailboxState } from "./mail-fields.mjs";
 export { createManagedGoogleReadPort } from "./managed-google-read-port.mjs";

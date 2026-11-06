@@ -1,6 +1,8 @@
 import assert from "node:assert/strict";
 import { createHash } from "node:crypto";
+import { readFile } from "node:fs/promises";
 import test from "node:test";
+import { mailAddress, mailAddresses } from "./mail-fields.mjs";
 import { createMailboxReadPort } from "./mailbox-read-port.mjs";
 import { createManagedGoogleReadPort } from "./managed-google-read-port.mjs";
 
@@ -331,4 +333,48 @@ test("server-valid null sender addresses retain display text in list and detail"
     assert.equal(opened.remoteImages, false);
     assert.equal(opened.format, "text");
   }
+});
+
+test("mail addresses follow the rule of Cloud's inbox review", async () => {
+  const source = await readFile(
+    new URL(
+      "../../shared/src/lib/services/agent-google-connector/inbox-provider.ts",
+      import.meta.url,
+    ),
+    "utf8",
+  );
+  const mailbox = source.match(/function mailbox\(value[\s\S]*?\n\}/)?.[0];
+  const addresses = source.match(/function addresses\(value[\s\S]*?\n\}/)?.[0];
+  assert.match(mailbox, /text\(value, 254, true\)/);
+  assert.match(mailbox, /address\.includes\("\.\."\)/);
+  assert.match(
+    addresses,
+    /value\.length > 50 \|\| \(required && !value\.length\)/,
+  );
+  // Cloud's own pattern, read from its source.
+  const pattern = new RegExp(mailbox.match(/\/(\^.*\$)\/\.test/)[1]);
+  for (const value of [
+    "ann@example.test",
+    "a.b+c@mail.example.co",
+    "Ann <ann@example.test>",
+    "ann..b@example.test",
+    "ann@example",
+    "ann@-example.test",
+    "ann@example.test\n",
+    "ann @example.test",
+    `${"a".repeat(244)}@example.test`,
+    `${"a".repeat(245)}@example.test`,
+  ])
+    assert.equal(
+      mailAddress(value),
+      value.length <= 254 && !value.includes("..") && pattern.test(value),
+      value,
+    );
+  const fifty = Array.from({ length: 50 }, (_, i) => `p${i}@example.test`);
+  assert.equal(mailAddresses(fifty, true), fifty);
+  assert.equal(mailAddresses([...fifty, "q@example.test"]), null);
+  assert.deepEqual(mailAddresses(undefined), []);
+  assert.equal(mailAddresses(undefined, true), null);
+  assert.equal(mailAddresses([], true), null);
+  assert.equal(mailAddresses(["Ann <ann@example.test>"]), null);
 });

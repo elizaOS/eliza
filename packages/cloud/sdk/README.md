@@ -202,6 +202,10 @@ must separately authorize and implement their native/renderer read bridge; this
 factory does not enable an HTTP route or change task-read authority.
 Each message detail also carries `state`: Gmail's `historyId` for the message
 and whether it is unread, in the inbox or in the trash (no other labels).
+`mail-fields.mjs` has no imports, so a renderer can use it too. It exports this
+reduction (`mailboxState(labels, historyId)`) and Cloud's recipient rule:
+`mailAddress(value)` (one bare address, no display name) and
+`mailAddresses(value, required)` (at most 50; the list, or null).
 
 By default the owner's Gmail grant must be exactly read-only (`gmail.readonly`
 plus sign-in identity). A host that sets `hostPolicy.gmailOwnerWrites: true`
@@ -225,7 +229,11 @@ the owner's reviewed changes (`send`, `archive`, `unarchive`, `trash`,
 operations: `prepare({requestId, proposal})` returns Cloud's `review` and a
 `prepared` receipt to show the owner, `dispatch({requestId, reviewDigest,
 proposal})` performs exactly that review once, and `observe({requestId})` reads
-the canonical receipt. Before each call it checks the signed-in owner, the
+the canonical receipt. A change's receipt also carries `mailbox`, the labels
+it left reduced as a read reduces them (null for send and before dispatch).
+`prepare` refuses a send review without a valid `from`, `to`, `cc`, `subject`
+and file names with a 502.
+Before each call it checks the signed-in owner, the
 Cloud sign-in and that `accountId` is still the connected grant holding the
 scope the effect needs (`gmail.send` for send, `gmail.modify` otherwise).
 Writes are never retried. Dispatch captures the reviewed input before any

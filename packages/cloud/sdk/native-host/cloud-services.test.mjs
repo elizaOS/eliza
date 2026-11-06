@@ -1048,7 +1048,7 @@ function googleHost(t, google, extraPolicy = {}) {
             reviewDigest: "a".repeat(64),
             state: path.endsWith("/dispatch") ? "succeeded" : "prepared",
             providerResult: path.endsWith("/dispatch")
-              ? { messageId: "m1" }
+              ? { messageId: "m1", labelIds: ["UNREAD"], historyId: "4243" }
               : null,
             rejectionCode: null,
             createdAt: "2026-10-30T00:00:00Z",
@@ -2058,6 +2058,7 @@ test("the owner mail writer relays Cloud's reviewed two-step operation for the c
     proposal: archive,
   });
   assert.equal(prepared.receipt.state, "prepared");
+  assert.equal(prepared.receipt.mailbox, null);
   assert.deepEqual(prepared.review, { kind: "archive", messageId: "m1" });
   const prepare = calls.find((c) => c.url.endsWith("/inbox-v1/operations"));
   assert.equal(prepare.init.method, "POST");
@@ -2072,6 +2073,13 @@ test("the owner mail writer relays Cloud's reviewed two-step operation for the c
     proposal: archive,
   });
   assert.equal(done.receipt.state, "succeeded");
+  // The labels the change left, reduced as a read reduces them.
+  assert.deepEqual(done.receipt.mailbox, {
+    historyId: "4243",
+    unread: true,
+    inInbox: false,
+    inTrash: false,
+  });
   assert.ok(
     calls.some((c) =>
       c.url.endsWith(`/inbox-v1/operations/${OPERATION}/dispatch`),
@@ -2143,4 +2151,61 @@ test("the owner mail writer relays Cloud's reviewed two-step operation for the c
     writer.prepare({ requestId: OPERATION, proposal: archive }),
     { code: "insufficient_scope" },
   );
+});
+
+test("the owner mail writer refuses a send review it cannot show the owner", async (t) => {
+  const google = {
+    connectionId: GRANT_A,
+    scopes: [READ_SCOPE, SEND_SCOPE, "openid"],
+  };
+  const { routes } = googleHost(t, google, { gmailOwnerWrites: true });
+  const writer = routes.mailboxWriterForAccount({
+    actorId: "owner",
+    accountId: GRANT_A,
+  });
+  const review = {
+    kind: "send",
+    from: "owner@example.test",
+    to: ["ann@example.test"],
+    cc: [],
+    subject: "Hello",
+    attachments: [{ name: "bill.pdf" }],
+  };
+  const answer = (value) => () =>
+    Response.json({
+      receipt: {
+        requestId: OPERATION,
+        kind: "send",
+        reviewDigest: "a".repeat(64),
+        state: "prepared",
+      },
+      review: value,
+    });
+  const proposal = {
+    kind: "send",
+    mode: "compose",
+    to: ["ann@example.test"],
+    subject: "Hello",
+    bodyText: "Hi",
+  };
+  google.operationResponse = answer(review);
+  assert.deepEqual(
+    (await writer.prepare({ requestId: OPERATION, proposal })).review,
+    review,
+  );
+  for (const malformed of [
+    { ...review, from: "Owner <owner@example.test>" },
+    { ...review, to: [] },
+    { ...review, to: ["ann..b@example.test"] },
+    { ...review, cc: "ann@example.test" },
+    { ...review, subject: undefined },
+    { ...review, attachments: [{ size: 4 }] },
+    { ...review, forwardedAttachments: {} },
+    { ...review, kind: "archive" },
+  ]) {
+    google.operationResponse = answer(malformed);
+    await assert.rejects(writer.prepare({ requestId: OPERATION, proposal }), {
+      status: 502,
+    });
+  }
 });
