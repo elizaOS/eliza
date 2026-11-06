@@ -2,7 +2,25 @@ import { createHash } from "node:crypto";
 import { readFile } from "node:fs/promises";
 import { pathToFileURL } from "node:url";
 import { NativeHostError } from "./errors.mjs";
+import { initialOwnerFence, ownerFenceStep } from "./task-owner-fence.mjs";
 import { openTaskDatabase } from "./task-storage.mjs";
+
+const answer = (status, value) => Response.json(value, { status });
+const unauthorized = () => answer(401, { code: "TASK_UNAUTHORIZED" });
+/** The account changed after this request saved a change for the former one. */
+const accountChanged = () => answer(409, { code: "TASK_ACCOUNT_CHANGED" });
+const superseded = () =>
+  new NativeHostError("Task authentication superseded", {
+    code: "TASK_UNAUTHORIZED",
+  });
+/** One error as itself; several keep a code they all share. */
+function combined(errors) {
+  if (errors.length === 1) return errors[0];
+  const error = new AggregateError(errors, "Task cleanup failed");
+  const code = errors[0]?.code;
+  if (errors.every((item) => item?.code === code)) error.code = code;
+  return error;
+}
 
 /** The host owns identity and storage; shared code owns task transitions. */
 export async function createTaskGateway({
@@ -82,11 +100,8 @@ export async function createTaskGateway({
     }
   };
   const runtimes = new Map();
-  let activeOwner = null;
-  let epoch = 0;
+  let fence = initialOwnerFence;
   let authSequence = 0;
-  let settledAuthSequence = 0;
-  let closed = false;
   let databaseClosed = false;
   const authenticatedEpochs = new WeakMap();
   const ownerFor = (account) => ({
@@ -107,46 +122,69 @@ export async function createTaskGateway({
     if (task && task.authorization.state === "active")
       runtime.control(task.id, task.revision, "revoke");
   }
-  async function settle() {
-    for (const runtime of runtimes.values()) await runtime.settle();
+  /** Apply one fence step. A revoke tries every runtime, even after a failure. */
+  function step(event) {
+    const result = ownerFenceStep(fence, event);
+    fence = result.fence;
+    const errors = [];
+    if (result.revoke)
+      for (const runtime of runtimes.values())
+        try {
+          revoke(runtime);
+        } catch (error) {
+          errors.push(error);
+        }
+    return { decision: result.decision, errors };
+  }
+  async function settle(errors = []) {
+    for (const runtime of runtimes.values())
+      try {
+        await runtime.settle();
+      } catch (error) {
+        errors.push(error);
+      }
+    if (errors.length) throw combined(errors);
+  }
+  async function readGate() {
+    try {
+      return (await credentialGate()) || null;
+    } catch {
+      return null;
+    }
   }
   async function authenticate() {
-    const startedEpoch = epoch;
-    const sequence = ++authSequence;
-    let account, failure;
-    try {
-      account = await credentialGate();
-    } catch (error) {
-      failure = error;
+    const startedEpoch = fence.epoch;
+    for (let confirming = false; ; confirming = true) {
+      const sequence = ++authSequence;
+      const account = await readGate();
+      const { decision, errors } = step({
+        type: "read",
+        sequence,
+        startedEpoch,
+        account,
+        confirming,
+      });
+      // Read the gate once more before ending the live owner's tasks.
+      if (decision === "confirm") continue;
+      if (decision === "superseded") throw superseded();
+      if (decision === "signed-out") {
+        await settle(errors);
+        throw new NativeHostError("Task account unavailable", {
+          code: "TASK_UNAUTHORIZED",
+        });
+      }
+      const committedEpoch = fence.epoch;
+      await settle(errors);
+      if (
+        fence.closed ||
+        committedEpoch !== fence.epoch ||
+        fence.owner !== account
+      )
+        throw superseded();
+      const owner = ownerFor(account);
+      authenticatedEpochs.set(owner, fence.epoch);
+      return owner;
     }
-    // A late credential result must not change ownership or revoke a newer task.
-    if (
-      closed ||
-      startedEpoch !== epoch ||
-      (sequence < settledAuthSequence &&
-        (failure || !account || account !== activeOwner))
-    )
-      throw new NativeHostError("Task authentication superseded");
-    settledAuthSequence = Math.max(settledAuthSequence, sequence);
-    if (failure || !account) {
-      epoch++;
-      activeOwner = null;
-      for (const runtime of runtimes.values()) revoke(runtime);
-      await settle();
-      throw new NativeHostError("Task account unavailable");
-    }
-    if (activeOwner && activeOwner !== account) {
-      epoch++;
-      for (const runtime of runtimes.values()) revoke(runtime);
-    }
-    activeOwner = account;
-    const committedEpoch = epoch;
-    await settle();
-    if (closed || committedEpoch !== epoch || activeOwner !== account)
-      throw new NativeHostError("Task authentication superseded");
-    const owner = ownerFor(account);
-    authenticatedEpochs.set(owner, epoch);
-    return owner;
   }
   function runtimeFor(owner) {
     let runtime = runtimes.get(owner.actorId);
@@ -180,38 +218,69 @@ export async function createTaskGateway({
     initialOwner = null;
   }
   if (initialOwner) runtimeFor(initialOwner);
-  async function handleRequest(request) {
+  async function handleRequest(request, scope) {
     let owner;
     try {
       owner = await authenticate();
     } catch (error) {
       return error?.code === "TASK_CLEANUP_UNCONFIRMED"
-        ? Response.json({ code: error.code }, { status: 503 })
-        : Response.json({ code: "TASK_UNAUTHORIZED" }, { status: 401 });
+        ? answer(503, { code: error.code })
+        : unauthorized();
     }
-    if (closed || authenticatedEpochs.get(owner) !== epoch)
-      return Response.json({ code: "TASK_UNAUTHORIZED" }, { status: 401 });
-    const requestEpoch = epoch;
+    if (fence.closed || authenticatedEpochs.get(owner) !== fence.epoch)
+      return unauthorized();
+    const requestEpoch = fence.epoch;
+    scope.owner = owner.actorId;
+    scope.epoch = requestEpoch;
     const runtime = runtimeFor(owner);
-    const extensionResponse = await extension?.(request, {
-      owner,
-      runtime,
-      authenticate,
-      requestEpoch,
-      currentEpoch: () => epoch,
-    });
-    if (extensionResponse !== undefined && extensionResponse !== null) {
-      if (!(extensionResponse instanceof Response))
+    /** True while this request still answers for the owner and epoch it began in. */
+    const isCurrent = () =>
+      !fence.closed &&
+      !request.signal.aborted &&
+      fence.epoch === requestEpoch &&
+      fence.owner === owner.actorId;
+    // A 401 means nothing was saved. After a saved change it is a 409.
+    const refused = () => (scope.committed ? accountChanged() : unauthorized());
+    /**
+     * Save a change only while the request is current: read the gate, check
+     * the fence, then run `write`. The durable write must happen before
+     * `write` first awaits, so no account change can come between the check
+     * and the write.
+     */
+    const commit = async (write) => {
+      await authenticate();
+      if (!isCurrent()) throw superseded();
+      const result = write();
+      scope.committed = true;
+      return result;
+    };
+    /** Deliver a host response only if the account is still the same. */
+    const fenced = async (response) => {
+      try {
+        const current = await authenticate();
+        if (isCurrent() && current.actorId === owner.actorId) return response;
+      } catch {}
+      return refused();
+    };
+    let hostResponse;
+    try {
+      hostResponse = await extension?.(request, {
+        owner,
+        runtime,
+        authenticate,
+        requestEpoch,
+        currentEpoch: () => fence.epoch,
+        isCurrent,
+        commit,
+      });
+    } catch (error) {
+      if (error?.code === "TASK_UNAUTHORIZED" || !isCurrent()) return refused();
+      throw error;
+    }
+    if (hostResponse !== undefined && hostResponse !== null) {
+      if (!(hostResponse instanceof Response))
         throw new NativeHostError("Invalid task host extension response");
-      const current = await authenticate();
-      if (
-        closed ||
-        request.signal.aborted ||
-        requestEpoch !== epoch ||
-        current.actorId !== owner.actorId
-      )
-        return Response.json({ code: "TASK_UNAUTHORIZED" }, { status: 401 });
-      return extensionResponse;
+      return fenced(hostResponse);
     }
     // Do not create a cosmetic task when the actual helper is unavailable.
     if (
@@ -228,7 +297,7 @@ export async function createTaskGateway({
       authenticate: async () => {
         try {
           const current = await authenticate();
-          return requestEpoch === epoch ? current : null;
+          return requestEpoch === fence.epoch ? current : null;
         } catch {
           return null;
         }
@@ -240,8 +309,8 @@ export async function createTaskGateway({
     /** Trusted host planner API. Never exposed as a renderer execution route. */
     async forCurrentOwner() {
       const owner = await authenticate();
-      if (closed || authenticatedEpochs.get(owner) !== epoch)
-        throw new NativeHostError("Task authentication superseded");
+      if (fence.closed || authenticatedEpochs.get(owner) !== fence.epoch)
+        throw superseded();
       return runtimeFor(owner);
     },
     /** Explicit trusted-host pilot integration; never a renderer route. */
@@ -249,20 +318,22 @@ export async function createTaskGateway({
       if (typeof factory !== "function")
         throw new NativeHostError("Pilot capture factory unavailable");
       const owner = await authenticate(),
-        requestEpoch = epoch;
+        requestEpoch = fence.epoch;
       const capture = factory({
         db,
         tasks: store,
         owner,
         isCurrentOwner: () =>
-          !closed && requestEpoch === epoch && activeOwner === owner.actorId,
+          !fence.closed &&
+          requestEpoch === fence.epoch &&
+          fence.owner === owner.actorId,
       });
       return capture.collect();
     },
     /** Trusted chat adapter. No renderer-supplied widget or workflow refresh. */
     async presentationForConversation({ taskId, expectedEpoch, actorId }) {
       const owner = await authenticate(),
-        requestEpoch = epoch;
+        requestEpoch = fence.epoch;
       if (owner.actorId !== actorId)
         throw new NativeHostError("Task account changed");
       const runtime = runtimeFor(owner),
@@ -282,8 +353,8 @@ export async function createTaskGateway({
       const current = await authenticate(),
         latest = runtime.get(taskId);
       if (
-        closed ||
-        requestEpoch !== epoch ||
+        fence.closed ||
+        requestEpoch !== fence.epoch ||
         current.actorId !== actorId ||
         latest.epoch !== expectedEpoch ||
         latest.revision !== task.revision ||
@@ -313,8 +384,8 @@ export async function createTaskGateway({
       }
       const afterDecoration = await authenticate();
       if (
-        closed ||
-        requestEpoch !== epoch ||
+        fence.closed ||
+        requestEpoch !== fence.epoch ||
         afterDecoration.actorId !== actorId
       )
         throw new NativeHostError("Task changed");
@@ -330,14 +401,14 @@ export async function createTaskGateway({
     },
     /** `onResponse` observes each answer; it cannot change or fail it. */
     async handle(request) {
-      if (typeof onResponse !== "function") return handleRequest(request);
+      const scope = { owner: null, epoch: -1, committed: false };
+      if (typeof onResponse !== "function")
+        return handleRequest(request, scope);
       const started = performance.now();
       let response;
       try {
-        response = await handleRequest(request);
+        response = await handleRequest(request, scope);
       } finally {
-        const responseEpoch = epoch;
-        const responseOwner = activeOwner;
         try {
           await onResponse({
             request,
@@ -345,47 +416,35 @@ export async function createTaskGateway({
             durationMs: performance.now() - started,
           });
         } catch {}
+        // Fenced on the owner and epoch the request authenticated in.
         if (response?.ok) {
+          let current = null;
           try {
-            const current = await authenticate();
-            if (
-              closed ||
-              request.signal.aborted ||
-              responseEpoch !== epoch ||
-              current.actorId !== responseOwner
-            )
-              response = Response.json(
-                { code: "TASK_UNAUTHORIZED" },
-                { status: 401 },
-              );
-          } catch {
-            response = Response.json(
-              { code: "TASK_UNAUTHORIZED" },
-              { status: 401 },
-            );
-          }
+            current = await authenticate();
+          } catch {}
+          if (
+            fence.closed ||
+            request.signal.aborted ||
+            scope.epoch !== fence.epoch ||
+            current?.actorId !== scope.owner
+          )
+            response = scope.committed ? accountChanged() : unauthorized();
         }
       }
       return response;
     },
     revoke() {
-      epoch++;
-      activeOwner = null;
-      for (const runtime of runtimes.values()) revoke(runtime);
-      return settle();
+      return settle(step({ type: "revoke" }).errors);
     },
     async close() {
       if (databaseClosed) return;
-      if (!closed) {
-        closed = true;
-        epoch++;
-        for (const runtime of runtimes.values()) revoke(runtime);
-      }
-      await settle();
-      if (!databaseClosed) {
-        db.close();
-        databaseClosed = true;
-      }
+      // A retried close tries again each task an earlier close could not revoke.
+      const { errors } = fence.closed
+        ? step({ type: "revoke" })
+        : step({ type: "close" });
+      await settle(errors);
+      db.close();
+      databaseClosed = true;
     },
   };
 }
