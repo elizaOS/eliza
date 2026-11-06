@@ -75,7 +75,7 @@ export interface ProjectScopeOptions {
  * helper can wrap either without importing the full DB interface.
  */
 export interface WorldScopedFilter {
-	worldId?: UUID;
+	worldId?: UUID | null;
 	[key: string]: unknown;
 }
 
@@ -87,7 +87,8 @@ export interface WorldScopedFilter {
  * - If the caller already set a `worldId` that DISAGREES with the project world
  * while a projectId is in effect, that is a fail-closed error (a caller trying
  * to read one project's memories under another project's scope). A matching
- * worldId is a no-op.
+ * worldId is a no-op. An unset worldId (`undefined` or `null`) means the
+ * filter is unscoped, and it is stamped with the project world.
  */
 export function scopeMemoryFilterToProject<T extends WorldScopedFilter>(
 	filter: T,
@@ -96,7 +97,7 @@ export function scopeMemoryFilterToProject<T extends WorldScopedFilter>(
 	const projectId = normalizeProjectId(opts.projectId);
 	if (!projectId) return filter;
 	const worldId = projectWorldId(opts.agentId, projectId);
-	if (filter.worldId !== undefined && filter.worldId !== worldId) {
+	if (filter.worldId != null && filter.worldId !== worldId) {
 		throw projectMemoryScopeError(
 			`scopeMemoryFilterToProject: filter.worldId (${filter.worldId}) conflicts with active project world (${worldId}); refusing cross-project read`,
 			"PROJECT_MEMORY_SCOPE_FILTER_WORLD_CONFLICT",
@@ -129,6 +130,8 @@ export interface WorldScopedMemory {
  * - A pre-existing conflicting `worldId` on the memory (while a project is in
  * effect) is a fail-closed error: writing a memory tagged for project B while
  * scoped to project A would poison isolation. A matching worldId is a no-op.
+ * An unset worldId (`undefined` or `null`) means the memory is unscoped, and
+ * it is stamped with the project world.
  */
 export function scopeMemoryToProject<T extends WorldScopedMemory>(
 	memory: T,
@@ -137,7 +140,7 @@ export function scopeMemoryToProject<T extends WorldScopedMemory>(
 	const projectId = normalizeProjectId(opts.projectId);
 	if (!projectId) return memory;
 	const worldId = projectWorldId(opts.agentId, projectId);
-	if (memory.worldId !== undefined && memory.worldId !== worldId) {
+	if (memory.worldId != null && memory.worldId !== worldId) {
 		throw projectMemoryScopeError(
 			`scopeMemoryToProject: memory.worldId (${memory.worldId}) conflicts with active project world (${worldId}); refusing to write cross-project memory`,
 			"PROJECT_MEMORY_SCOPE_MEMORY_WORLD_CONFLICT",
