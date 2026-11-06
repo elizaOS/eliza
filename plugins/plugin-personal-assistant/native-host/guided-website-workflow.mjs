@@ -1006,27 +1006,22 @@ export class GuidedWebsiteWorkflow {
       this.grant.selector !== offer.selector ||
       this.grant.action !== offer.action.split(".")[0]
     ) {
-      this.runtime.control(task.id, task.revision, "pause");
+      // A new target needs a new epoch. The task stays active: only her
+      // Stop pauses it, and a Stop meanwhile fails the observe below.
+      task = this.runtime.rebind(task.id, task.revision);
       await this.runtime.settle?.(task.id);
-      task = this.runtime.get(this.taskId);
       this.grant = {
         epoch: task.epoch,
         selector: offer.selector,
         action: offer.action.split(".")[0],
       };
-      task = await this.runtime.observe(
-        task.id,
-        task.revision,
-        true,
-        this.stillAuthorized,
-      );
-    } else
-      task = await this.runtime.observe(
-        task.id,
-        task.revision,
-        false,
-        this.stillAuthorized,
-      );
+    }
+    task = await this.runtime.observe(
+      task.id,
+      task.revision,
+      false,
+      this.stillAuthorized,
+    );
     let { observation, snapshot } = this.actuator.readObservation(
       task.id,
       this.runtime.owner,

@@ -125,12 +125,10 @@ export function createInteractiveTaskHandler(options: {
           return json(401, { code: "TASK_UNAUTHORIZED" });
         const close = input.reason === "close";
         let task = options.runtime.current();
-        // Close still reaches a paused task, so the host removes its guide.
-        if (
-          task &&
-          !["completed", "cancelled"].includes(task.status) &&
-          (task.status !== "paused" || close)
-        )
+        // Every Stop fences, a paused task too: it starts a new epoch, aborts
+        // any work in flight (a step in flight becomes an unknown outcome)
+        // and removes the guide, so nothing started before it can go on.
+        if (task && !["completed", "cancelled"].includes(task.status))
           task = options.runtime.control(
             task.id,
             task.revision,
