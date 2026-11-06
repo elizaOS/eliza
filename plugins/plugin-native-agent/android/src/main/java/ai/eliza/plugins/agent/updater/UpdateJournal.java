@@ -368,24 +368,29 @@ public class UpdateJournal {
       require(Files.isRegularFile(file,LinkOption.NOFOLLOW_LINKS) && Files.size(file)<=MAX_BYTES,"Invalid updater journal");
       byte[] envelope=Files.readAllBytes(file);markInitialized();return envelope;
     }
+    /** The marker follows the first published journal. A failed or full first
+     * write leaves no marker, so the device still reads as new; a journal lost
+     * after the marker reads as lost. Between the rename and the marker, a loss
+     * would read as new; load repairs a missing marker on the next read. */
     @Override public void publish(byte[] envelope) throws IOException {
-      markInitialized();
-      Path temporary=directory.resolve("journal.next");
-      try(FileChannel file=FileChannel.open(temporary,StandardOpenOption.CREATE,StandardOpenOption.TRUNCATE_EXISTING,StandardOpenOption.WRITE,LinkOption.NOFOLLOW_LINKS)) {
-        java.nio.ByteBuffer buffer=java.nio.ByteBuffer.wrap(envelope);while(buffer.hasRemaining())file.write(buffer);
-        faults.boundary("before-sync");file.force(true);
-      }
-      faults.boundary("before-rename");Files.move(temporary,directory.resolve("journal"),StandardCopyOption.ATOMIC_MOVE,StandardCopyOption.REPLACE_EXISTING);
-      durability.syncDirectory(directory);faults.boundary("published");
+      replace("journal",envelope,"");
+      markInitialized();faults.boundary("published");
     }
     private void markInitialized() throws IOException {
       Path marker=directory.resolve("initialized");
       if(Files.exists(marker,LinkOption.NOFOLLOW_LINKS)) {
         require(Files.isRegularFile(marker,LinkOption.NOFOLLOW_LINKS)&&Files.size(marker)==1&&Files.readAllBytes(marker)[0]==1,"Invalid journal initialization marker");return;
       }
-      try(FileChannel file=FileChannel.open(marker,StandardOpenOption.CREATE_NEW,StandardOpenOption.WRITE,LinkOption.NOFOLLOW_LINKS)) {
-        java.nio.ByteBuffer value=java.nio.ByteBuffer.wrap(new byte[]{1});while(value.hasRemaining())file.write(value);file.force(true);
+      replace("initialized",new byte[]{1},"marker-");
+    }
+    /** Fsync a temporary file, then rename it over name, so name is never partial. */
+    private void replace(String name,byte[] value,String boundary) throws IOException {
+      Path temporary=directory.resolve(name+".next");
+      try(FileChannel file=FileChannel.open(temporary,StandardOpenOption.CREATE,StandardOpenOption.TRUNCATE_EXISTING,StandardOpenOption.WRITE,LinkOption.NOFOLLOW_LINKS)) {
+        java.nio.ByteBuffer buffer=java.nio.ByteBuffer.wrap(value);while(buffer.hasRemaining())file.write(buffer);
+        faults.boundary(boundary+"before-sync");file.force(true);
       }
+      faults.boundary(boundary+"before-rename");Files.move(temporary,directory.resolve(name),StandardCopyOption.ATOMIC_MOVE,StandardCopyOption.REPLACE_EXISTING);
       durability.syncDirectory(directory);
     }
   }

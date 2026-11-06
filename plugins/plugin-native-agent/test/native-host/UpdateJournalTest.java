@@ -171,7 +171,18 @@ public final class UpdateJournalTest {
     java.util.concurrent.atomic.AtomicBoolean cleanupOnLostJournal=new java.util.concurrent.atomic.AtomicBoolean(false);
     rejects(()->loss.withLockedSnapshot(state->cleanupOnLostJournal.set(true)));check(!cleanupOnLostJournal.get());
     Path interrupted=directory.resolve("first-write");UpdateJournal firstWrite=new UpdateJournal(interrupted,SYNC,name->{if(name.equals("before-sync"))throw new IOException("simulated first-write failure");});
-    rejects(()->firstWrite.setChannel("beta"));rejects(()->new UpdateJournal(interrupted,SYNC).read());
+    // A failed or full first write leaves a new device, never a missing journal.
+    rejects(()->firstWrite.setChannel("beta"));check(new UpdateJournal(interrupted,SYNC).read().revision==0);check(!Files.exists(interrupted.resolve("initialized")));
+    new UpdateJournal(interrupted,SYNC).setChannel("beta");check(new UpdateJournal(interrupted,SYNC).read().channel.equals("beta"));
+    Path unmarked=directory.resolve("marker-write");UpdateJournal markerWrite=new UpdateJournal(unmarked,SYNC,name->{if(name.equals("marker-before-rename"))throw new IOException("simulated full storage");});
+    rejects(()->markerWrite.setChannel("beta"));check(!Files.exists(unmarked.resolve("initialized")));
+    check(new UpdateJournal(unmarked,SYNC).read().channel.equals("beta"));check(Files.readAllBytes(unmarked.resolve("initialized")).length==1);
+    Files.delete(unmarked.resolve("journal"));rejects(()->new UpdateJournal(unmarked,SYNC).read());
+    for(String boundary:new String[]{"marker-before-sync","marker-before-rename"}) {
+      Path root=directory.resolve("first-"+boundary);
+      Process child=new ProcessBuilder(Path.of(System.getProperty("java.home"),"bin/java").toString(),"-cp",System.getProperty("java.class.path"),UpdateJournalTest.class.getName(),root.toString(),boundary).inheritIO().start();check(child.waitFor()==24);
+      check(new UpdateJournal(root,SYNC).read().channel.equals("beta"));check(Files.readAllBytes(root.resolve("initialized")).length==1);
+    }
     Path legacy=directory.resolve("legacy");UpdateJournal previous=new UpdateJournal(legacy,SYNC);previous.setChannel("beta");Files.delete(legacy.resolve("initialized"));check(previous.read().channel.equals("beta"));check(Files.exists(legacy.resolve("initialized")));
     UpdateJournal retention=new UpdateJournal(directory.resolve("retention"),SYNC);
     java.util.concurrent.atomic.AtomicBoolean validated=new java.util.concurrent.atomic.AtomicBoolean(false);
@@ -220,6 +231,6 @@ public final class UpdateJournalTest {
       check(new UpdateJournal(concurrent,SYNC).read().revision==16);
       check(new UpdateJournal(concurrent,SYNC).read().channelGeneration==1);
     } finally {pool.shutdownNow();}
-    System.out.println("UpdateJournal: "+assertions+" assertions passed; 9 real process-death boundaries");
+    System.out.println("UpdateJournal: "+assertions+" assertions passed; 11 real process-death boundaries");
   }
 }
