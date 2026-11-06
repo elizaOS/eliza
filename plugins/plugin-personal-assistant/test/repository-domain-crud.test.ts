@@ -926,6 +926,64 @@ describe("LifeOpsRepository domain CRUD", () => {
     ).toHaveLength(2);
   });
 
+  it("reads the whole inbox cache when no read cap is given", async () => {
+    const { LifeOpsService } = await import("../src/lifeops/service.ts");
+    const now = Date.now();
+    const message = (
+      externalId: string,
+      receivedAtMs: number,
+      priorityScore?: number,
+    ) => ({
+      id: `discord:${externalId}`,
+      channel: "discord" as const,
+      sender: {
+        id: `sender-${externalId}`,
+        displayName: `Sender ${externalId}`,
+        email: null,
+        avatarUrl: null,
+      },
+      subject: null,
+      snippet: externalId,
+      receivedAt: new Date(receivedAtMs).toISOString(),
+      unread: true,
+      deepLink: null,
+      sourceRef: { channel: "discord" as const, externalId },
+      threadId: `thread-${externalId}`,
+      chatType: "dm" as const,
+      ...(priorityScore === undefined ? {} : { priorityScore }),
+    });
+    // 520 recent messages, then one unanswered high-priority message that
+    // arrived two days ago.
+    await repository.upsertCachedInboxMessages(runtime.agentId, [
+      ...Array.from({ length: 520 }, (_, index) =>
+        message(`recent-${index}`, now - (index + 1) * 60_000),
+      ),
+      message("missed", now - 48 * 60 * 60_000, 90),
+    ]);
+
+    expect(
+      await repository.listCachedInboxMessages(runtime.agentId, {
+        channels: ["discord"],
+      }),
+    ).toHaveLength(521);
+    expect(
+      await repository.listCachedInboxMessages(runtime.agentId, {
+        channels: ["discord"],
+        maxResults: 24,
+      }),
+    ).toHaveLength(24);
+
+    // A missed-only view reads the cache without a cap, so the newer
+    // messages cannot push the missed one out of the read.
+    const missed = await new LifeOpsService(runtime).getInbox({
+      channels: ["discord"],
+      cacheMode: "cache-only",
+      missedOnly: true,
+      limit: 24,
+    });
+    expect(missed.messages.map((item) => item.id)).toEqual(["discord:missed"]);
+  });
+
   it("clearing a Google grant purges only that grant's calendar events", async () => {
     const { LifeOpsService } = await import("../src/lifeops/service.ts");
     const event = (grantId: string, externalId: string) => ({

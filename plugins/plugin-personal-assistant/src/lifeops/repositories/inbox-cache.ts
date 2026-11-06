@@ -177,10 +177,12 @@ export class InboxCacheRepository {
     const gmailAccountClause = options?.gmailAccountId
       ? `AND gmail_account_id = ${sqlQuote(options.gmailAccountId)}`
       : "";
-    const limit =
+    // An omitted cap reads every matching row: the inbox domain omits it on
+    // purpose (missed-only views, complete cache reads).
+    const limitClause =
       options?.maxResults !== undefined && Number.isFinite(options.maxResults)
-        ? Math.max(1, Math.floor(options.maxResults))
-        : 500;
+        ? `LIMIT ${sqlInteger(Math.max(1, Math.floor(options.maxResults)))}`
+        : "";
     const rows = await executeRawSql(
       this.runtime,
       `SELECT *
@@ -189,7 +191,7 @@ export class InboxCacheRepository {
           ${channelClause}
           ${gmailAccountClause}
         ORDER BY received_at DESC
-        LIMIT ${sqlInteger(limit)}`,
+        ${limitClause}`,
     );
     return rows.map(parseCachedInboxMessage);
   }
