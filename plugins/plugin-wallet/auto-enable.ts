@@ -49,8 +49,9 @@ function hasCloudStewardWallet(env: NodeJS.ProcessEnv): boolean {
  *   - Solana local key
  *   - cloud-provisioned Steward
  *
- * Honors `ELIZA_AGENT_WALLET_AUTO_ENABLE === "0"` opt-out, and respects an
- * explicit `enabled: false` on any of plugin-wallet's legacy entry names
+ * Honors `ELIZA_AGENT_WALLET_AUTO_ENABLE === "0"` opt-out and the owner's
+ * "Enable Wallet" capability switch (`ui.capabilities.wallet === false`), and
+ * respects an explicit `enabled: false` on any of plugin-wallet's legacy entry names
  * (`wallet`, `agent-wallet`, `evm`, `solana`). The central engine only
  * checks the canonical short id (`wallet`); the legacy aliases need to be
  * honored here.
@@ -59,6 +60,12 @@ export function shouldEnable(ctx: PluginAutoEnableContext): boolean {
   const { env, config } = ctx;
 
   if (env.ELIZA_AGENT_WALLET_AUTO_ENABLE === "0") return false;
+
+  // Settings → Capabilities and SETTINGS toggle_capability write this flag.
+  // Only an explicit `false` disables; environment-driven enablement is kept.
+  const capabilities = (config.ui as Record<string, unknown> | undefined)
+    ?.capabilities as Record<string, unknown> | undefined;
+  if (capabilities?.wallet === false) return false;
 
   const entries = (config.plugins as Record<string, unknown> | undefined)
     ?.entries as Record<string, { enabled?: boolean } | undefined> | undefined;

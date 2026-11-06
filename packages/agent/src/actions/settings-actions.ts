@@ -305,9 +305,10 @@ function handleToggleCapability(params: Record<string, unknown>): ActionResult {
     );
   }
 
+  // Capabilities are plugin selections, applied when the runtime restarts.
   return ok(
-    `Capability ${capability} is now ${enabled ? "enabled" : "disabled"}.`,
-    { op: "toggle_capability", capability, enabled },
+    `Capability ${capability} is now ${enabled ? "enabled" : "disabled"} in settings. Restart the agent to apply it.`,
+    { op: "toggle_capability", capability, enabled, requiresRestart: true },
   );
 }
 
