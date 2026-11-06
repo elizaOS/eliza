@@ -14,6 +14,9 @@ bun run --cwd plugins/plugin-native-agent build  # build
 bun run --cwd plugins/plugin-native-agent test   # tests
 ```
 
+The Android module depends on `@elizaos/capacitor-secure-store`, so a Capacitor host
+also includes its `android-nativeonly` module (see that README).
+
 Native-only host primitives live under Android `runtime/` and `updater/` Java
 packages. They share payload extraction, installation identity, request deadlines,
 update journaling, qualified-clock projection and cancellable job ownership.

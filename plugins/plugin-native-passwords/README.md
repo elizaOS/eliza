@@ -26,9 +26,12 @@ bun run --cwd plugins/plugin-native-passwords test   # TS client + JVM policy te
 
 ## Host integration (Android)
 
-1. Include both Gradle modules. This module depends on
-   `project(':elizaos-capacitor-secure-store')`; set the Gradle property
-   `elizaPasswordsSecureStoreProject` if the host names it differently.
+1. Include this module and secure-store's `android-nativeonly` module, which holds the vault
+   custody classes without the `SecureStorePlugin` bridge. This module depends on
+   `project(':elizaos-capacitor-secure-store-nativeonly')`; set the Gradle property
+   `elizaPasswordsSecureStoreProject` if the host names it differently. CSV transfer is in the
+   optional `android-transfer` module (`:elizaos-capacitor-passwords-transfer`, which depends on
+   `:elizaos-capacitor-passwords`); a host without it has no transfer classes.
 2. Register `PasswordsPlugin` in the bridge Activity.
 3. Opt in to being an Autofill provider by declaring the service in the host manifest:
 
@@ -122,7 +125,7 @@ Queued work is bound to the grant that admitted it; a later unlock cannot revive
 Destroyed Activities cancel their pending prompts, and old owners cannot revoke a newer grant.
 Opening the fill picker preserves the original request deadline. Framework cancellation or a
 replacement request revokes the picker before it can publish a result.
-The vault locks when the host Activity stops and when the unlock window ends. Hosts can separately register `PasswordTransferPlugin` (`ElizaPasswordTransfer`) for
+The vault locks when the host Activity stops and when the unlock window ends. Hosts that include `android-transfer` can register `PasswordTransferPlugin` (`ElizaPasswordTransfer`) for
 CSV export and import. Use `createTransferClient` for count-only results. Export requires
 an explicit plaintext-file warning, a user-picked document and fresh authentication after
 the picker returns. Export reads one native vault snapshot and writes bounded CSV rows.
