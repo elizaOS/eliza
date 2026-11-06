@@ -184,7 +184,8 @@ type commitPolicy struct {
 // commit is seen unless it is newer than that bound. It reads only local state
 // and returns "eligible" or the first refusal: "expired", "rollout-time",
 // "revoked-artifact" (candidate or recovery), "below-security-floor",
-// "superseded" (the lane admitted a newer sequence) or "stale-metadata" (no
+// "superseded" (the lane has authenticated a newer sequence, even one this
+// device defers: publishing it withdraws this one) or "stale-metadata" (no
 // refresh at or after refreshedAfterLowerMs, or the bounds reach past
 // commitByUpperMs).
 func EvaluatePreparedForCommit(directory, admissionDirectory, identity string, policyJSON []byte) (decision string, err error) {
