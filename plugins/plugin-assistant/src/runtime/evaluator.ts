@@ -36,6 +36,7 @@ import type {
   EvaluatorOutput,
   EvaluatorRoute,
   EvaluatorRuntime,
+  JSONSchema,
   PlannerToolCall,
   PlannerTrajectory,
   RecordedStage,
@@ -391,6 +392,10 @@ const UNCONFIRMED_CALENDAR_READ_COPY = {
   search_events: {
     unread: "I couldn't look up that event in your calendar just now.",
     partial: "I couldn't confirm that event.",
+  },
+  read_selected: {
+    unread: "I couldn't read the selected calendar event just now.",
+    partial: "I couldn't confirm the selected calendar event.",
   },
   check_availability: {
     unread: "I couldn't check whether that time is free just now.",
@@ -995,6 +1000,17 @@ async function runEvaluatorWithSelectedModel(
     ),
   };
   const responseSchema = structuredClone(evaluatorSchema);
+  const finalContext = params.trajectory.modelBaseContext ?? params.context;
+  const voicePolicy =
+    finalContext.metadata?.responseChannel === "VOICE_DM"
+      ? finalContext.staticPrefix?.staticProviders?.find(
+          (segment) => segment.id === "voice-response-style",
+        )
+      : undefined;
+  if (voicePolicy && responseSchema.properties?.messageToUser) {
+    responseSchema.properties.messageToUser.description = `${responseSchema.properties.messageToUser.description ?? ""}\n${voicePolicy.content}`;
+  }
+
   if (params.typedReadReply) {
     if (!responseSchema.properties)
       throw new ElizaError("Typed read evaluator schema has no properties", {
@@ -1031,6 +1047,7 @@ async function runEvaluatorWithSelectedModel(
     ? evaluatorBudgetOptions(budgetResolution.contextWindowTokens)
     : {};
   const renderArgs = {
+    responseSchema,
     ...(params.typedReadReply ? { typedReadReply: params.typedReadReply } : {}),
     context: params.context,
     trajectory: params.trajectory,
@@ -1721,6 +1738,7 @@ function evaluatorRestorableContext(
 }
 
 function renderEvaluatorModelInput(params: {
+  responseSchema: JSONSchema;
   context: ContextObject;
   trajectory: PlannerTrajectory;
   template?: string;
@@ -1746,6 +1764,20 @@ function renderEvaluatorModelInput(params: {
   const renderedContext = renderContextObject(
     projectEvaluatorContext(deferred.context),
   );
+  // The final generation field owns voice policy. Remove its earlier prompt
+  // copy so it is supplied once, in responseSchema.messageToUser.description.
+  const voicePolicy =
+    deferred.context.metadata?.responseChannel === "VOICE_DM"
+      ? deferred.context.staticPrefix?.staticProviders?.find(
+          (segment) => segment.id === "voice-response-style",
+        )
+      : undefined;
+  if (voicePolicy) {
+    renderedContext.promptSegments = renderedContext.promptSegments.filter(
+      (segment) => segment.id !== voicePolicy.id,
+    );
+  }
+
   renderedContext.promptSegments = orderHistoryFirst(
     deferred.context,
     renderedContext.promptSegments,
@@ -1835,17 +1867,7 @@ ${typedReadCorrectionDraft.get(params.trajectory) ? `Correct only the final answ
     { content: `evaluator_stage:\n${instructions}`, stable: true },
     // Hash the native response contract without duplicating it in model text.
     {
-      content: JSON.stringify(
-        params.typedReadReply
-          ? {
-              ...evaluatorSchema,
-              properties: {
-                ...evaluatorSchema.properties,
-                typedReadParts: typedReadPartsSchema,
-              },
-            }
-          : evaluatorSchema,
-      ),
+      content: JSON.stringify(params.responseSchema),
       stable: true,
     },
   ]);
@@ -2002,8 +2024,18 @@ export function parseEvaluatorOutput(
         : {}),
     ...(Array.isArray(parsed.outcomeCoverage)
       ? {
-          outcomeCoverage:
-            parsed.outcomeCoverage as EvaluatorOutput["outcomeCoverage"],
+          // Repeated identical wire rows carry no additional judgment. Keep
+          // conflicting rows intact so the coverage guard still rejects them.
+          outcomeCoverage: parsed.outcomeCoverage.filter(
+            (entry, index, entries) =>
+              entries.findIndex(
+                (other) =>
+                  other.intentId === entry.intentId &&
+                  other.status === entry.status &&
+                  JSON.stringify(other.evidenceStepIds) ===
+                    JSON.stringify(entry.evidenceStepIds),
+              ) === index,
+          ) as EvaluatorOutput["outcomeCoverage"],
         }
       : {}),
     decision,
@@ -2743,12 +2775,13 @@ function isCalendarReadCall(
  * A call that names no zone asks for local days in the owner's Calendar zone,
  * which the producer states as the read's timeZone. Live 2026-10-31, an
  * Eliza-only "this week" read with no zone in its call became the partial
- * caveat (tj-413f7f38d569e7). A call without bounds, or with bounds that do
- * not resolve, proves no window. */
+ * caveat (tj-413f7f38d569e7). Absent arguments require a current-request-bound
+ * canonical producer window; otherwise missing or unresolved bounds prove nothing. */
 function feedReadCoversRequestedWindow(
   params: PlannerToolCall["params"],
   data: Record<string, unknown>,
   readTimeZone: unknown,
+  binding?: CalendarReadBinding,
 ): boolean {
   let details = params?.details;
   if (typeof details === "string") {
@@ -2758,6 +2791,24 @@ function feedReadCoversRequestedWindow(
       // error-policy:J3 untrusted model arguments; unparseable bounds prove nothing
       return false;
     }
+  }
+  // The canonical handler may resolve the owner's stated day when the model
+  // omits details entirely. Only that current request's bound producer window
+  // can replace absent arguments; malformed or explicit bounds never fall back.
+  if (details === undefined && binding) {
+    const proof = data.requestWindow;
+    if (
+      !isObjectRecord(proof) ||
+      proof.kind !== "calendar.request-window.v1" ||
+      proof.sourceMessageId !== binding.sourceMessageId ||
+      proof.roomId !== binding.roomId ||
+      proof.actorId !== binding.actorId ||
+      proof.requestedAt !== binding.requestedAt ||
+      typeof proof.timeZone !== "string" ||
+      proof.timeZone !== readTimeZone
+    )
+      return false;
+    details = { timeMin: proof.timeMin, timeMax: proof.timeMax };
   }
   if (!isObjectRecord(details)) return false;
   const read = [data.timeMin, data.timeMax].map((bound) =>
@@ -2821,6 +2872,7 @@ function feedReadCoversRequestedWindow(
 function feedReadAnswersRequest(
   binding: CalendarReadBinding,
   step: PlannerTrajectory["steps"][number],
+  allowResolvedWindow = false,
 ): "complete" | "google-unavailable" | undefined {
   const result = step.result,
     data = result?.data,
@@ -2847,6 +2899,7 @@ function feedReadAnswersRequest(
       step.toolCall?.params,
       data,
       read.timeZone,
+      allowResolvedWindow ? binding : undefined,
     ) ||
     // calendar-handler.ts sets this in a device-owned Calendar turn, where a
     // connected-provider read must not stand in for the unread app Calendar.
@@ -2933,7 +2986,10 @@ function requestBoundFeedRead(
         !step.terminalOnly &&
         isCalendarReadCall(step.toolCall, "feed"),
     )
-    .map(([id, step]) => [id, feedReadAnswersRequest(binding, step)] as const);
+    .map(
+      ([id, step]) =>
+        [id, feedReadAnswersRequest(binding, step, true)] as const,
+    );
   const soleLast = (bound: typeof calls) =>
     bound.length === 1 && bound[0] === calls.at(-1) ? bound[0][0] : undefined;
   return (
@@ -3082,6 +3138,43 @@ export function calendarReadCoverage(
         );
       const reply = data.replyContext;
       if (!isObjectRecord(reply) || reply.domain !== "calendar") return false;
+      if (binding.operation === "read_selected") {
+        const target = binding.selectedTarget;
+        const proof = data.selectionProof;
+        const event = data.event;
+        if (
+          !target ||
+          !isObjectRecord(proof) ||
+          !isObjectRecord(event) ||
+          reply.scenario !== "selected_event" ||
+          !["id", "revision", "accountId", "sourceRevision"].every(
+            (key) =>
+              typeof target[key as keyof typeof target] === "string" &&
+              !!target[key as keyof typeof target] &&
+              proof[key] === target[key as keyof typeof target],
+          ) ||
+          proof.sourceMessageId !== binding.sourceMessageId ||
+          proof.actorId !== binding.actorId ||
+          proof.roomId !== binding.roomId ||
+          proof.requestedAt !== binding.requestedAt ||
+          event.id !== target.id ||
+          event.grantId !== target.accountId ||
+          !isObjectRecord(event.metadata) ||
+          event.metadata.etag !== target.revision ||
+          !step.result.effectReceipts?.some(
+            (receipt) =>
+              receipt.operation === "calendar.event.selected.read" &&
+              receipt.resource.kind === "calendar.event" &&
+              receipt.resource.id === target.id &&
+              receipt.resource.version === target.revision &&
+              receipt.outcome === "noop" &&
+              receipt.idempotency.replayed === false &&
+              Date.parse(receipt.observedAt) >= binding.requestedAt,
+          )
+        )
+          return rejectEvidence("CALENDAR_READ_TARGET_SNAPSHOT_INVALID");
+        return true;
+      }
       if (binding.operation === "feed") {
         const scope = reply.context;
         if (
@@ -3095,15 +3188,75 @@ export function calendarReadCoverage(
         // where the same read, uncited, would not. A read of the phone
         // Calendar alone verifies only when the reply can take the caveat
         // and no complete read is also cited.
-        const answer = feedReadAnswersRequest(binding, step);
+        const answer = feedReadAnswersRequest(
+          binding,
+          step,
+          bindings.filter(
+            (other) => isObjectRecord(other) && other.operation === "feed",
+          ).length === 1,
+        );
         if (answer === "google-unavailable" && phoneOnlyAccepted)
           phoneOnly = true;
         else if (answer !== "complete")
           rejectEvidence("CALENDAR_READ_COVERAGE_INCOMPLETE");
         return answer === "complete";
       }
-      if (binding.operation === "search_events")
+      if (binding.operation === "search_events") {
+        let details = step.toolCall.params?.details;
+        if (typeof details === "string") {
+          try {
+            details = JSON.parse(details);
+          } catch {
+            return rejectEvidence("CALENDAR_READ_EVIDENCE_REJECTED");
+          }
+        }
+        const filters = binding.filterEvidence;
+        const values = [
+          step.toolCall.params?.query,
+          ...(Array.isArray(step.toolCall.params?.queries)
+            ? step.toolCall.params.queries
+            : []),
+          ...(isObjectRecord(details)
+            ? [
+                details.query,
+                ...(Array.isArray(details.queries) ? details.queries : []),
+              ]
+            : []),
+        ].filter((v): v is string => typeof v === "string" && !!v.trim());
+        const scope = reply.context;
+        if (
+          !Array.isArray(filters) ||
+          !filters.length ||
+          !values.length ||
+          !filters.every(
+            (e) =>
+              isObjectRecord(e) &&
+              typeof e.query === "string" &&
+              typeof e.quote === "string" &&
+              e.query === e.quote.trim() &&
+              (e.origin === "current" || e.origin === "referent") &&
+              (e.origin !== "current" ||
+                (e.sourceMessageId === binding.sourceMessageId &&
+                  e.sourceActorId === binding.actorId &&
+                  e.sourceCreatedAt === binding.requestedAt)) &&
+              e.sourceRoomId === binding.roomId &&
+              !!e.sourceMessageId &&
+              !!e.sourceActorId &&
+              Number.isFinite(e.sourceCreatedAt) &&
+              e.sourceCreatedAt <= binding.requestedAt,
+          ) ||
+          !values.every((q) =>
+            filters.some(
+              (e) => e.query.toLowerCase() === q.trim().toLowerCase(),
+            ),
+          ) ||
+          !isObjectRecord(scope) ||
+          scope.selection !== "filtered_search" ||
+          scope.contentFilterApplied !== true
+        )
+          return rejectEvidence("CALENDAR_READ_EVIDENCE_REJECTED");
         return reply.scenario === "search_results";
+      }
       if (binding.operation !== "next_event" || reply.scenario !== "next_event")
         return false;
       const scope = data.readScope;
@@ -4271,7 +4424,37 @@ function parseEvaluatorText(text: string): ParsedEvaluatorObject {
   // unambiguous for every canonical spelling (think/thinking/reasoning/…):
   // everything before the LAST close is reasoning, never output — strip it
   // before any envelope handling (#20080 generalizes the F18 </think> fix).
-  return parseEvaluatorVisibleText(stripReasoningPrefixes(text));
+  return parseEvaluatorVisibleText(
+    unwrapNativeVerdictEnvelope(stripReasoningPrefixes(text).trim()),
+  );
+}
+
+/**
+ * Qwen-family models can serialize the evaluator verdict in their native
+ * tool-call dialect even though the evaluator offers no tools (live cold
+ * calendar voice turn tj-929faaf3d187f1: `<tool_call><function=functions.<hash>>`
+ * around a complete FINISH verdict). Rejecting it as extra text replanned a
+ * REPLY and paid a second evaluator call (3.6 s + 5.4 s). Unwrap only one
+ * envelope that is the whole response, names that opaque function and holds
+ * exactly one evaluator-shaped JSON object; the body then gets the same checks
+ * as bare evaluator JSON. Every other shape keeps its current path. The name
+ * must be that observed `functions.<64 hex>$<32 hex>` digest: an action in any
+ * case or namespace (`CALENDAR`, `calendar`, `functions.CALENDAR`) is still an
+ * action call, and unwrapping it would discard that identity before validation.
+ * The body is matched greedily and trimmed after: a lazy body between two
+ * `\s*` runs backtracks quadratically on padding before the close and
+ * cubically on padding after the open tag when the envelope does not close.
+ */
+function unwrapNativeVerdictEnvelope(text: string): string {
+  const match =
+    /^<tool_call>\s*<function=([^>\s]+)>([\s\S]*)<\/function>\s*<\/tool_call>$/.exec(
+      text,
+    );
+  if (!match || !/^functions\.[0-9a-f]{64}\$[0-9a-f]{32}$/.test(match[1])) {
+    return text;
+  }
+  const body = match[2].trim();
+  return isEvaluatorShapedObject(tryParseJson(body)) ? body : text;
 }
 
 function parseEvaluatorVisibleText(text: string): ParsedEvaluatorObject {

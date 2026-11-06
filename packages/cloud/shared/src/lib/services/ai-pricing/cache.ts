@@ -10,6 +10,7 @@
 import type { AiPricingEntry } from "../../../db/schemas/ai-pricing";
 import { cache } from "../../cache/client";
 import { logger } from "../../utils/logger";
+import { OperationTimeoutError, withTimeout } from "../../utils/with-timeout";
 import {
   EXTERNAL_CACHE_TTL_MS,
   type ExternalCacheValue,
@@ -160,6 +161,17 @@ const TEXT_PRICING_HARD_TTL_SECONDS = 15 * 60;
 const TEXT_PRICING_HARD_TTL_MS = TEXT_PRICING_HARD_TTL_SECONDS * 1000;
 const TEXT_PRICING_FAILURE_TTL_MS = 15 * 1000;
 const TEXT_PRICING_CACHE_VERSION = 1;
+const COLD_PRICING_WAIT_MS = 1000;
+
+/** Wait only for validated canonical rates; durable persistence remains in waitUntil. */
+async function awaitColdPricing<T>(load: Promise<T>): Promise<T> {
+  try {
+    return await withTimeout(load, COLD_PRICING_WAIT_MS, "Canonical pricing cold load");
+  } catch (error) {
+    if (error instanceof OperationTimeoutError) throw new AiPricingCacheWarmingError();
+    throw new AiPricingCacheUnavailableError();
+  }
+}
 
 interface CachedTextPricingRates {
   v: typeof TEXT_PRICING_CACHE_VERSION;
@@ -399,10 +411,9 @@ export async function getCachedTextPricingRates(
   }
   textPricingFailures.delete(cacheKey);
   if (outcome.kind === "miss") {
-    // The Worker hot path never joins the Postgres pricing load: the request
-    // is retryable while hydration runs under `waitUntil`.
-    scheduleTextPricingHydration(cacheKey, required, loader, options.executionCtx);
-    throw new AiPricingCacheWarmingError();
+    return await awaitColdPricing(
+      scheduleTextPricingHydration(cacheKey, required, loader, options.executionCtx),
+    );
   }
   scheduleTextPricingHydration(cacheKey, required, loader, options.executionCtx);
   throw new AiPricingCacheUnavailableError();
@@ -557,8 +568,9 @@ export async function getCachedFlatPricingEntry(
   }
   flatPricingFailures.delete(cacheKey);
   if (outcome.kind === "miss") {
-    scheduleFlatPricingHydration(cacheKey, loader, options.executionCtx);
-    throw new AiPricingCacheWarmingError();
+    return await awaitColdPricing(
+      scheduleFlatPricingHydration(cacheKey, loader, options.executionCtx),
+    );
   }
   scheduleFlatPricingHydration(cacheKey, loader, options.executionCtx);
   throw new AiPricingCacheUnavailableError();

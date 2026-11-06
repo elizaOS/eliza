@@ -22,7 +22,9 @@ import {
  * When an exact action name appears in this policy, its declared `contextGate`
  * is bypassed and access is decided solely by whether the caller satisfies the
  * policy's minimum role. Used to whitelist actions whose upstream `contextGate`
- * is narrower than a particular deployment needs.
+ * is narrower than a particular deployment needs. A minimum role can never
+ * refuse an OWNER caller (or the agent itself); a host that must keep an
+ * action away from every caller uses `ELIZA_ACTION_ALLOWLIST` instead.
  *
  * The policy is evaluated in exactly one place — the shared `actionGateFailure`
  * / `canActionRun` gate in `runtime/action-gate.ts` — which every

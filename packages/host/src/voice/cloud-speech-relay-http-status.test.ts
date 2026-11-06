@@ -1,5 +1,8 @@
 import { expect, test } from "vitest";
-import { createCloudSpeechRelayPorts } from "./cloud-speech-relay-client";
+import {
+  CloudSpeechRelayClientError,
+  createCloudSpeechRelayPorts,
+} from "./cloud-speech-relay-client";
 
 test("HTTP availability is transport, not authorization, and never retries consent or mint", async () => {
   for (const failedPath of ["/consent", "/session"])
@@ -27,21 +30,33 @@ test("HTTP availability is transport, not authorization, and never retries conse
           );
         return Response.json({
           consentNonce: crypto.randomUUID(),
+          retirementProofVersion: 1,
           expiresAt: new Date(Date.now() + 300000).toISOString(),
         });
       };
-      await expect(
-        createCloudSpeechRelayPorts({
-          enabled: true,
-          origin: "https://api-staging.eliza.app",
-          credential: async () => "fixture-only",
-          assertCurrent() {},
-          fetch: fakeFetch as typeof fetch,
-          websocket() {
-            throw Error("must not open socket");
-          },
-        }),
-      ).rejects.toMatchObject({ code });
+      const startup = createCloudSpeechRelayPorts({
+        enabled: true,
+        origin: "https://api-staging.eliza.app",
+        credential: async () => "fixture-only",
+        assertCurrent() {},
+        fetch: fakeFetch as typeof fetch,
+        websocket() {
+          throw Error("must not open socket");
+        },
+      });
+      await expect(startup).rejects.toMatchObject({ code });
+      if (failedPath === "/session") {
+        const failure = await startup.catch((error: unknown) => error);
+        expect(failure).toBeInstanceOf(CloudSpeechRelayClientError);
+        const cause = (failure as Error).cause;
+        expect(cause).toBeInstanceOf(AggregateError);
+        expect((cause as AggregateError).errors).toHaveLength(2);
+        expect((cause as AggregateError).errors[0]).toMatchObject({ code });
+        expect((cause as AggregateError).errors[1]).toMatchObject({
+          code: "protocol",
+          message: "Cloud speech admission remains unconfirmed",
+        });
+      }
       expect(paths).toEqual(
         failedPath === "/consent"
           ? ["/api/v1/voice/speech/consent"]

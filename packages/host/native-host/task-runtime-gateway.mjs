@@ -17,6 +17,7 @@ export async function createTaskGateway({
   extensionFactory,
   decoratePresentation,
   onResponse,
+  storageInspector,
   agentId = "eliza",
   connectorSource = "native-gateway",
 }) {
@@ -367,6 +368,17 @@ export async function createTaskGateway({
         }
       }
       return response;
+    },
+    /**
+     * Read-only storage health for the gateway's native `/local-storage`
+     * probe: "ok", "deferred" or "unavailable". It never authenticates. The
+     * host's `storageInspector(db)` gives the answer; without one, or once
+     * the gateway is closing, the answer is "unavailable".
+     */
+    inspectStorage() {
+      if (closed || typeof storageInspector !== "function")
+        return "unavailable";
+      return storageInspector(db);
     },
     revoke() {
       epoch++;

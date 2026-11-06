@@ -20,6 +20,7 @@ export const BILLING_CATALOG_FIXTURE_MIGRATIONS = [
   "0508_app_notification_secret_envelope_v2",
   "0414_app_subscription_outbox_delivery",
   "0415_app_billing_webhook_recovery",
+  "0555_stripe_delivery_outbox",
   "0416_app_billing_checkout_expiry",
   "0417_app_billing_membership_authority",
 ] as const;
@@ -52,6 +53,7 @@ export async function installBillingCommandEvidenceTestColumns(
     "0524_organization_schedule_compensation_result",
     "0525_organization_schedule_configured_result",
     "0526_organization_schedule_configured_snapshot",
+    "0554_subscription_cancellation_dispatch_settle",
   ]) {
     const migration = await readFile(
       new URL(`../db/migrations/${tag}.sql`, import.meta.url),

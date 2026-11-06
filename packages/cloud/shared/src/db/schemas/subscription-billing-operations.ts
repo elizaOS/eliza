@@ -103,6 +103,8 @@ export const billingSubscriptionCommands = pgTable(
     lease_token: uuid("lease_token"),
     lease_expires_at: timestamp("lease_expires_at", { withTimezone: true }),
     cancellation_dispatch_state: text("cancellation_dispatch_state").$type<"ready" | "started">(),
+    /** Primary-clock time the cancellation dispatch fence committed; starts the provider settle window. */
+    cancellation_dispatched_at: timestamp("cancellation_dispatched_at", { withTimezone: true }),
     organization_upgrade_dispatch_state: text("organization_upgrade_dispatch_state").$type<
       "ready" | "started"
     >(),
@@ -327,6 +329,10 @@ export const billingSubscriptionCommands = pgTable(
     cancellation_dispatch_check: check(
       "billing_subscription_commands_cancellation_dispatch_check",
       sql`${table.cancellation_dispatch_state} IS NULL OR (${table.kind} IN ('cancel','resume') AND ${table.cancellation_dispatch_state} IN ('ready','started'))`,
+    ),
+    cancellation_dispatched_at_check: check(
+      "billing_subscription_commands_cancellation_dispatched_at_check",
+      sql`${table.cancellation_dispatched_at} IS NULL OR ${table.cancellation_dispatch_state} = 'started'`,
     ),
     historical_settlement_shape: check(
       "organization_upgrade_settlement_evidence_shape",

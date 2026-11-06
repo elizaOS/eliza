@@ -11,7 +11,6 @@ import { buildWorkspaceSourceAliases } from "../scripts/vitest/source-aliases.ts
 const packageRoot = fileURLToPath(new URL("./", import.meta.url));
 const monorepoRoot = resolve(packageRoot, "../..");
 const uiSrc = resolve(packageRoot, "src");
-const coreSrc = resolve(monorepoRoot, "packages/core/src");
 const cloudRoutingSrc = resolve(monorepoRoot, "packages/cloud/routing/src");
 const cloudSharedSrc = resolve(monorepoRoot, "packages/cloud/shared/src");
 const loggerSrc = resolve(monorepoRoot, "packages/logger/src");
@@ -93,14 +92,6 @@ export default defineConfig({
       {
         find: /^@elizaos\/cloud-shared\/(.+)$/,
         replacement: resolve(cloudSharedSrc, "$1"),
-      },
-      {
-        find: /^@elizaos\/core$/,
-        replacement: resolve(coreSrc, "index.ts"),
-      },
-      {
-        find: /^@elizaos\/core\/(.+)$/,
-        replacement: resolve(coreSrc, "$1"),
       },
       {
         find: /^@elizaos\/app(?:\/browser|\/ui-compat)?$/,
@@ -283,6 +274,7 @@ export default defineConfig({
       "src/**/__e2e__/**/*.test.{ts,tsx}",
       "test/cloud/network-site-handoff.test.ts",
       "src/voice/voice-session-cloud-budget-rotation.test.ts",
+      "src/hooks/useRealtimeVoiceSession.refusal.test.tsx",
       "src/voice/voice-session-prepared-navigation.test.ts",
       "src/voice/voice-capture-factory.test.ts",
       "src/utils/value-formatting.test.ts",
