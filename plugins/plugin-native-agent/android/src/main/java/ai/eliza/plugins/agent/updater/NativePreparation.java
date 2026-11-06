@@ -114,7 +114,7 @@ public final class NativePreparation implements PreparationFlow.Ports,AutoClosea
   }finally{resources.release();}
  }
  @Override public String commitDecision(PreparationFlow.Fence fence)throws Exception {
-  return trust.evaluatePreparedForCommit(path("ota-prepared"),path("ota-admission"),fence.planId,PackageInstallCoordinator.commitFreshnessPolicy(currentTime(),inputs.read().securityFloor,0));
+  return trust.evaluatePreparedForCommit(path("ota-prepared"),path("ota-admission"),fence.planId,PackageInstallCoordinator.commitFreshnessPolicy(currentTime(),inputs.read().securityFloor,CommitFreshness.UNBOUNDED));
  }
  @Override public void discardVerified(PreparationFlow.Fence fence,String reason)throws Exception {journal.discardVerified(fence.planId,fence.generation,reason);}
  @Override public String recoveryDecision(PreparationFlow.Fence fence)throws Exception {

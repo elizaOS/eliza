@@ -21,7 +21,9 @@ public class PreparationFlow {
  /** Commit decisions that end a VERIFIED plan for good. Others, such as
   * stale-metadata, wait for a later refresh. */
  public static final Set<String> DISCARDS=Set.of("expired","revoked-artifact","below-security-floor","superseded");
- /** Recovery decisions that revocations or floors keep for good. */
+ /** Recovery decisions that revocations or floors keep for good. Lost
+  * prepared or admission state is an error, not one of these: the wait goes on
+  * and is reported, since state loss is not evidence the recovery is unsafe. */
  public static final Set<String> RECOVERY_REFUSALS=Set.of("revoked-artifact","below-security-floor");
  public interface Prepared {}
  public interface Staged {}

@@ -40,10 +40,14 @@ Admission is not a lasting permission. While a plan is `VERIFIED`, a run refresh
 metadata instead of preparing and drops the plan when it has expired, been revoked,
 fallen below the security floor or been superseded. Commit runs the host's
 `verifyCommitFreshness` under the journal lock, and a refusal leaves the plan
-`VERIFIED`. The activation run passes its trusted start time to `commit`, and the
-lane must have refreshed no more than `MAX_COMMIT_STALENESS_MS` (default 0: in the
-same run) before it. A `RECOVERY_READY` plan whose recovery revocations or floors
-have made unloadable moves to `QUARANTINED`, so a newer release can fix it forward.
+`VERIFIED`. The activation run passes its trusted start time to `commit`. The
+lane must have refreshed no more than `CommitFreshness.MAX_COMMIT_STALENESS_MS`
+(default 0: in the same run) before that start, and the commit must happen
+within `CommitFreshness.MAX_ACTIVATION_RUN_MS` (default 10 minutes) of it, so a
+revocation published before a commit is missed for at most their sum. A
+`RECOVERY_READY` plan whose recovery revocations or floors have made unloadable
+moves to `QUARANTINED`, so a newer release can fix it forward. Lost prepared or
+admission state is reported as an error and the wait goes on.
 Its portable contract is included in `test:native-host`. Qualify the host adapter
 separately with real Android install/recovery tests; journal tests alone do not
 prove silent-install authority or product health.
