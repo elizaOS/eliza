@@ -2221,14 +2221,22 @@ test("the owner mail writer refuses a send review it cannot show the owner", asy
     subject: "Hello",
     bodyText: "Hi",
   };
-  google.operationResponse = answer(review);
-  assert.deepEqual(
-    (await writer.prepare({ requestId: OPERATION, proposal })).review,
+  // Cloud sends with cc or bcc alone.
+  for (const valid of [
     review,
-  );
+    { ...review, to: [], bcc: ["b@example.test"] },
+  ]) {
+    google.operationResponse = answer(valid);
+    assert.deepEqual(
+      (await writer.prepare({ requestId: OPERATION, proposal })).review,
+      valid,
+    );
+  }
   for (const malformed of [
     { ...review, from: "Owner <owner@example.test>" },
     { ...review, to: [] },
+    { ...review, bcc: ["ann..b@example.test"] },
+    { ...review, cc: Array(50).fill("b@example.test") },
     { ...review, to: ["ann..b@example.test"] },
     { ...review, cc: "ann@example.test" },
     { ...review, subject: undefined },

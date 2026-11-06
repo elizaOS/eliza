@@ -2550,6 +2550,13 @@ export function createCloudRoutes({
         throw writeFailure("account_changed", 409);
       return value;
     };
+    const recipients = (review) => {
+      const lists = [review.to, review.cc, review.bcc].map((list) =>
+        mailAddresses(list),
+      );
+      const count = lists.reduce((sum, list) => sum + (list?.length ?? 0), 0);
+      return lists.every(Boolean) && count > 0 && count <= 50;
+    };
     const receipt = (value, requestId) => {
       if (
         value?.requestId !== requestId ||
@@ -2624,12 +2631,12 @@ export function createCloudRoutes({
           typeof review !== "object" ||
           Array.isArray(review) ||
           // A send review names what the owner confirms: who it is from and
-          // to, the subject and the names of the files.
+          // to (1 to 50 recipients in to, cc and bcc, as Cloud allows), the
+          // subject and the names of the files.
           (effect.kind === "send" &&
             (review.kind !== "send" ||
               !mailAddress(review.from) ||
-              !mailAddresses(review.to, true) ||
-              !mailAddresses(review.cc) ||
+              !recipients(review) ||
               typeof review.subject !== "string" ||
               ![review.attachments, review.forwardedAttachments].every(
                 (files) =>

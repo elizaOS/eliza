@@ -1,4 +1,4 @@
-// Import-free mail rules, so that a host renderer can use them as well.
+// Mail rules that a native host shares with Cloud's inbox review.
 
 /** Gmail labels reduced to the mailbox state that a reviewed change names:
  * Gmail's historyId, and whether the message is unread, in the inbox or in
