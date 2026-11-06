@@ -422,10 +422,10 @@ export function parsePseudoTagToolInvocations(
 	if (!text?.includes("<")) return [];
 	const calls: Array<{ name: string; params: Record<string, unknown> }> = [];
 	const blockRe =
-		/<([A-Z][A-Z0-9]*(?:_[A-Z0-9]+)+)>\s*(\{[\s\S]*?\})\s*<\/\1>/g;
+		/<([A-Z][A-Z0-9]*(?:_[A-Z0-9]+)+)>\s*(?:```(?:[jJ][sS][oO][nN])?\s*(\{[\s\S]*?\})\s*```|(\{[\s\S]*?\}))\s*<\/\1>/g;
 	for (const match of text.matchAll(blockRe)) {
 		try {
-			const parsed: unknown = JSON.parse(match[2]);
+			const parsed: unknown = JSON.parse(match[2] ?? match[3]);
 			if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) {
 				calls.push({
 					name: match[1],
