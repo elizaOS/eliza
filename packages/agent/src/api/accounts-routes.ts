@@ -287,6 +287,13 @@ interface PoolFacade {
     accessToken: string,
     opts?: { codexAccountId?: string; providerId?: string },
   ): Promise<void>;
+  /** Parks an account until `untilMs`, or a default backoff when not finite. */
+  markRateLimited(
+    accountId: string,
+    untilMs: number,
+    detail?: string,
+    opts?: { providerId?: string },
+  ): Promise<void>;
   sweepExpired?(providerId?: string): Promise<number>;
   /** Current hosts share one validated read across inventory projections. */
   readSnapshot?(): Pick<PoolFacade, "list" | "selectionState">;
@@ -774,6 +781,11 @@ async function probeCodingPlanKey(
   } finally {
     clearTimeout(timer);
   }
+}
+
+/** A probe status that is a verdict on the credential itself. */
+function probeProvesCredentialFailure(status: number): boolean {
+  return status >= 400 && status < 500 && status !== 429;
 }
 
 function healthForProbeStatus(status: number): LinkedAccountConfig["health"] {
@@ -1699,21 +1711,36 @@ async function handleRefreshUsage(
 
   if (direct) {
     const probe = await probeDirectApiKey(direct, accessToken);
-    const next: LinkedAccountConfig = {
-      ...linked,
-      health: probe.ok ? "ok" : healthForProbeStatus(probe.status),
-      healthDetail: {
-        lastChecked: Date.now(),
-        ...(probe.ok
-          ? {}
-          : { lastError: probe.error ?? `HTTP ${probe.status}` }),
-      },
-      usage: {
-        ...(linked.usage ?? {}),
-        refreshedAt: Date.now(),
-      },
-    };
-    await pool.upsert(next);
+    const lastError = probe.ok
+      ? undefined
+      : (probe.error ?? `HTTP ${probe.status}`);
+    let next: LinkedAccountConfig;
+    if (probe.ok || probeProvesCredentialFailure(probe.status)) {
+      next = {
+        ...linked,
+        health: probe.ok ? "ok" : healthForProbeStatus(probe.status),
+        healthDetail: {
+          lastChecked: Date.now(),
+          ...(lastError ? { lastError } : {}),
+        },
+        usage: {
+          ...(linked.usage ?? {}),
+          refreshedAt: Date.now(),
+        },
+      };
+      await pool.upsert(next);
+    } else if (probe.status === 429) {
+      // A 429 is a cooldown, not a verdict on the key: park the account with a
+      // reset clock so selection serves it again, as the keep-alive sweep does.
+      await pool.markRateLimited(accountId, Number.NaN, lastError, {
+        providerId,
+      });
+      next = pool.get(accountId, providerId) ?? linked;
+    } else {
+      // A provider outage or transport failure proves nothing about the key.
+      // Keep the current health so the only working credential stays exported.
+      next = linked;
+    }
     await syncDirectProviderCredentials(ctx, direct);
     json(res, { account: next, probe, source: "direct-probe" });
     return true;
