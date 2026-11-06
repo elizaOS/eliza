@@ -72,6 +72,80 @@ test("logout fences an authorization already in flight", async () => {
   }
 });
 
+test("the bundle exports the reducer and status mapping the gateway uses", async () => {
+  const directory = await mkdtemp(join(tmpdir(), "eliza-task-reducer-"));
+  const bundlePath = join(directory, "task-runtime.mjs");
+  buildTaskRuntime(bundlePath);
+  const { transitionInteractiveTask, taskErrorStatus } = await import(
+    (await import("node:url")).pathToFileURL(bundlePath).href
+  );
+  const gateway = await createTaskGateway({
+    bundlePath,
+    databasePath: join(directory, "journal.sqlite"),
+    credentialGate: async () => "account",
+    actuator: { capabilities: ["fill"] },
+    authorizeGoal: async (goalRef) => ({
+      id: "task-a",
+      goalRef,
+      authorization: {
+        decisionId: "grant",
+        policyRevision: "policy",
+        state: "active",
+        decidedAt: new Date().toISOString(),
+        revokedAt: null,
+      },
+      allowedCapabilities: ["fill"],
+      allowedOrigins: ["https://example.org"],
+    }),
+  });
+  const post = (path, value) =>
+    gateway.handle(
+      new Request(`http://localhost${path}`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(value),
+      }),
+    );
+  try {
+    assert.equal((await post("/tasks", { goalRef: "bill" })).status, 201);
+    const runtime = await gateway.forCurrentOwner();
+    const before = runtime.get("task-a");
+    // A refused request answers with the exported mapping of its code.
+    for (const response of [
+      await gateway.handle(new Request("http://localhost/tasks/task-b")),
+      await post("/tasks/task-a/pause", {
+        expectedRevision: before.revision + 1,
+      }),
+    ]) {
+      const { code } = await response.json();
+      assert.equal(response.status, taskErrorStatus(code));
+    }
+    assert.equal(taskErrorStatus("TASK_NOT_FOUND"), 404);
+    assert.equal(taskErrorStatus("TASK_CONFLICT"), 409);
+    // The gateway's pause is the exported reducer's pause step.
+    assert.equal(
+      (await post("/tasks/task-a/pause", { expectedRevision: before.revision }))
+        .status,
+      200,
+    );
+    const after = runtime.get("task-a");
+    const { task } = transitionInteractiveTask(
+      before,
+      {
+        owner: runtime.owner,
+        expectedRevision: before.revision,
+        now: after.updatedAt,
+      },
+      { type: "pause" },
+    );
+    assert.equal(after.status, "paused");
+    assert.deepEqual(after, task);
+  } finally {
+    await gateway.close();
+    await rm(directory, { recursive: true, force: true });
+  }
+});
+
 test("gateway consumes the shared native actuator with durable binding revisions and observed results", async () => {
   const directory = await mkdtemp(join(tmpdir(), "eliza-native-actuator-"));
   const bundlePath = join(directory, "task-runtime.mjs");

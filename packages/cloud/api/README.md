@@ -17,6 +17,22 @@ Worker and accounting hosts. Enroll an organization through the internal
 All policy writers must use the managed mutation service; the database rejects
 an unfenced change for an enrolled organization.
 
+Migration 0553 also rejects an unfenced policy write in a repeatable-read or
+serializable transaction with SQLSTATE `40001`. Restart that whole transaction
+at `READ COMMITTED`, or obtain a valid managed mutation permit in the same
+transaction for an organization-specific write. User standing and identity
+changes always need `READ COMMITTED`: an older snapshot can hide a newly issued
+key and its organization, even when every visible organization has a permit.
+An older snapshot can also hide first enrollment after an advisory lock;
+locking a missing authority row cannot make that snapshot current. PostgreSQL
+treats `READ UNCOMMITTED` as `READ COMMITTED`, so the guard accepts it too.
+Key association writes take shared user locks; standing and identity writes
+hold the same locks exclusively while discovering affected organizations.
+Canonical helpers acquire user locks before organization locks. Direct SQL
+that takes these locks in another order can be retried after a deadlock; it
+cannot skip the policy fence. Enroll a deployment only after its key and user
+policy writers use the managed mutation helpers.
+
 Bounded, direct Cerebras chat requests use the delegated path. The refill amount
 is a target, not a request limit: a larger request can claim the full available
 balance. Other operations retain primary admission and can reclaim idle funds.
@@ -156,9 +172,16 @@ callback. App IDs in Cloud and client IDs in Steward belong to different stores
 and must not be assumed interchangeable. No product repository is imported by
 these shared mechanisms.
 
-Before enabling a client, provision its own active, approved app with an active
-owner/organization, an exact allowed callback, and no live generated application
-API key. Use separate registrations in staging and production. Validate the public
+New platform clients use a dedicated, memberless publisher organization and an
+active, approved app with an exact allowed callback and no live generated app
+API key. The protected registration workflow authorizes provisioning; a login
+user does not own the publisher. Database guards prevent user membership and
+personal-account deletion from disabling or deleting that publisher. Existing
+registration-only apps can be moved with the workflow's reviewed publisher
+isolation operation while preserving their app UUID and customer grants. A
+historical creator is only optional audit metadata. Each customer's consent and
+credential remain bound to that customer's user and organization. Use separate
+registrations in staging and production. Validate the public
 `/api/v1/app-auth/mobile/config` response for that client/environment/return URL
 before shipping. The admin preflight allows an `app_url` homepage path on the
 registered HTTPS origin, while `allowed_origins` must contain the sole exact
@@ -182,7 +205,9 @@ Set `ELIZA_MOBILE_APP_AUTH_TARGET_CLIENT_ID` to select the same client for the
 standalone verifier. With the protected environment variables present, run
 `node packages/scripts/cloud/admin/verify-mobile-app-auth-registration.ts
 --skip-database --verify-live` to check its public metadata without a database read.
-Omitting the selector keeps the primary-client release check.
+Omitting the selector checks the primary client. Release gates use `--all-clients`
+to check the primary client and every enabled additional client, both in the
+database before deployment and through public metadata after deployment.
 
 ### App-owned managed Google returns
 
