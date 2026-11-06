@@ -38,6 +38,20 @@ export function createCommandHandler(api, { effects } = {}) {
         Number.isSafeInteger(Number(value)),
     });
   let processing = Promise.resolve();
+  // Requests still waiting for their turn in the queue, by ID, and the
+  // cancelled ones among them that were already answered.
+  const queued = new Map();
+  const answered = new Set();
+  const cancelledReply = (id) => ({
+    type: "result",
+    id,
+    ok: false,
+    error: {
+      kind: "STALE_REF",
+      message: "The request was cancelled before it took effect.",
+      reason: "request-cancelled",
+    },
+  });
 
   async function handle(message, sender, connectionCurrent) {
     let isCurrent = connectionCurrent;
@@ -45,17 +59,11 @@ export function createCommandHandler(api, { effects } = {}) {
     // A cancelled request is answered once it has stopped, so the host knows
     // that nothing of it is still on its way to the page ("cancel-reply").
     const stopped = () =>
-      request && cancelled.has(request.id) && connectionCurrent()
-        ? sender.send({
-            type: "result",
-            id: request.id,
-            ok: false,
-            error: {
-              kind: "STALE_REF",
-              message: "The request was cancelled before it took effect.",
-              reason: "request-cancelled",
-            },
-          })
+      request &&
+      cancelled.has(request.id) &&
+      !answered.has(request.id) &&
+      connectionCurrent()
+        ? sender.send(cancelledReply(request.id))
         : undefined;
     try {
       if (!isCurrent()) return;
@@ -303,12 +311,31 @@ export function createCommandHandler(api, { effects } = {}) {
       if (!isCurrent()) return Promise.resolve();
       // In-memory fencing occurs synchronously, even while persistence is pending.
       cancelled.add(message.id);
+      // A request still waiting for its turn has not started, so nothing of
+      // it can reach the page: answer now, not after the requests ahead of it.
+      const waiting = queued.get(message.id);
+      let early;
+      if (waiting?.isCurrent() && !answered.has(message.id)) {
+        answered.add(message.id);
+        early = waiting.sender.send(cancelledReply(message.id));
+      }
       return Promise.all([
+        early,
         guidance.cancel(message.id),
         api.storage.local.set({ [`request:${message.id}`]: "cancelled" }),
       ]);
     }
-    processing = processing.then(() => handle(message, sender, isCurrent));
+    const id = typeof message?.id === "string" ? message.id : null;
+    const entry = { sender, isCurrent };
+    if (id !== null) queued.set(id, entry);
+    processing = processing
+      .then(() => {
+        if (queued.get(id) === entry) queued.delete(id);
+        return handle(message, sender, isCurrent);
+      })
+      .finally(() => {
+        if (!queued.has(id)) answered.delete(id);
+      });
     const admitted = processing;
     processing = processing.catch(() => {});
     return admitted;
