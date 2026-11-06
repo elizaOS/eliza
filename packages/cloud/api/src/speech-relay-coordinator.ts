@@ -337,10 +337,7 @@ export class SpeechRelayCoordinator {
           const preparing = url.pathname === "/prepare";
           const input = (await request.json()) as SpeechRelayBootstrap;
           if (
-            !(
-              UUID.test(input.sessionId) ||
-              (!preparing && input.sessionId === this.state.id.toString())
-            ) ||
+            !UUID.test(input.sessionId) ||
             !/^[0-9a-f]{64}$/.test(input.tokenDigest) ||
             !Number.isFinite(input.expiresAt) ||
             input.expiresAt <= Date.now() ||
