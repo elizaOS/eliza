@@ -71,7 +71,6 @@ mock.module(`${lib}/utils/logger`, () => ({
   logger: { debug() {}, info() {}, warn() {}, error() {} },
 }));
 mock.module(`${lib}/services/inference-admission-gate`, () => ({
-  isInferenceAdmissionGateWarmingError: () => false,
 }));
 mock.module(`${lib}/services/inference-billing-fast-path`, () => ({
   InferenceBillingUnavailableError: class extends Error {},

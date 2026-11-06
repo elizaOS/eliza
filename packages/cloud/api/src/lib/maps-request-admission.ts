@@ -63,7 +63,10 @@ export async function admitMapsRequest(
   caller: MapsCaller,
   operation: MapsOperation,
 ): Promise<MapsCompletion> {
-  if (!hasInferenceRevocationBoundary() || !caller.credential)
+  if (
+    !hasInferenceRevocationBoundary(c.env as unknown as Record<string, unknown>) ||
+    !caller.credential
+  )
     throw new MapsAdmissionError(
       503,
       "maps_allowance_unconfigured",
