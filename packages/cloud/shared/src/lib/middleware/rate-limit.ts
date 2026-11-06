@@ -381,7 +381,7 @@ export async function enforceMcpOrganizationRateLimit(
 
 /**
  * #9899 Tier-3: in-isolate decision lease for the non-Worker Redis
- * compatibility path, gated behind `INFERENCE_HOT_PATH_CACHES`. Cache-only
+ * compatibility path. Cache-only
  * Worker inference returns through the Durable Object branch above and never
  * reaches this structure. The lease serves repeat Node-process decisions for
  * the same (org, endpoint) from memory, bounded by a local budget, and falls
