@@ -23,6 +23,10 @@ export interface RecordedTranscriptionOptions {
   authorize: () => Promise<void>;
   encode: (blob: Blob) => Promise<string>;
   transcribe: (audioBase64: string, mimeType: string) => Promise<unknown>;
+  /** Asked when the recording stops. A result other than undefined (the `transcribe` shape,
+   * `{ text }`) is the final transcription, and the recording is not encoded or transcribed.
+   * Undefined, or no option, keeps the default: encode, then `transcribe`. */
+  finalTranscript?: () => Promise<unknown>;
   preview: (
     stream: MediaStream,
     receive: (blob: Blob) => Promise<void>,
@@ -237,15 +241,20 @@ export class RecordedTranscriptionController {
   private async finalize(s: Recording, mimeType: string): Promise<void> {
     try {
       if (this.current !== s) return;
-      if (s.bytes > this.options.maximumBytes)
-        throw new RecordedTranscriptionError("too-large");
-      if (!s.bytes) throw new RecordedTranscriptionError("empty-audio");
-      const blob = new Blob(s.chunks, { type: mimeType });
-      s.chunks.length = 0;
-      const encoded = await this.options.encode(blob);
+      const host = this.options.finalTranscript;
+      let result = host ? await host() : undefined;
       if (this.current !== s) return;
-      const result = await this.options.transcribe(encoded, mimeType);
-      if (this.current !== s) return;
+      if (result === undefined) {
+        if (s.bytes > this.options.maximumBytes)
+          throw new RecordedTranscriptionError("too-large");
+        if (!s.bytes) throw new RecordedTranscriptionError("empty-audio");
+        const blob = new Blob(s.chunks, { type: mimeType });
+        s.chunks.length = 0;
+        const encoded = await this.options.encode(blob);
+        if (this.current !== s) return;
+        result = await this.options.transcribe(encoded, mimeType);
+        if (this.current !== s) return;
+      }
       const text = (result as { text?: unknown } | null)?.text;
       if (typeof text !== "string" || !text.trim())
         throw new RecordedTranscriptionError("empty-transcript");
