@@ -1160,9 +1160,10 @@ const ENUMERATED_DELETE_VERB_RE =
 /** Where the sentence stops naming deletions ("..., then remind me to pay rent"). */
 const ENUMERATED_DELETE_CLAUSE_END_RE = /[.;!?]|\bthen\b|\bafter that\b/;
 
-/** Words that may sit between named titles in the list itself. */
+/** Words that may open the list or sit between named titles in it
+ * ("delete all of the following todos: A, B and C"). */
 const ENUMERATED_DELETE_LIST_GLUE_RE =
-  /^(?:\s+|[,:&]|\band\b|\bthe\b|\bmy\b|\bthese\b|\bthose\b|\bboth\b|\b(?:todo|task|reminder|item|habit|routine|one)s?\b)*/;
+  /^(?:\s+|[,:&]|\band\b|\bthe\b|\bmy\b|\bthese\b|\bthose\b|\bboth\b|\ball\b|\bof\b|\bfollowing\b|\bnamed\b|\bcalled\b|\blisted\b|\b(?:todo|task|reminder|item|habit|routine|one)s?\b)*/;
 
 /** True when `key` starts at `index` of `text` and ends on a word boundary. */
 function phraseAt(text: string, key: string, index: number): boolean {

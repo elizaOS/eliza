@@ -212,6 +212,16 @@ it.each([
     remaining: ["Call mom", "Call mom about dinner", "Rent"],
   },
   {
+    text: "delete all todos: dentist and parent teacher meeting",
+    deleted: 2,
+    remaining: ["Call mom", "Call mom about dinner", "Rent"],
+  },
+  {
+    text: "delete the following: dentist and parent teacher meeting",
+    deleted: 2,
+    remaining: ["Call mom", "Call mom about dinner", "Rent"],
+  },
+  {
     text: "remind me to pay rent, then delete dentist and parent teacher meeting",
     deleted: 2,
     remaining: ["Call mom", "Call mom about dinner", "Rent"],
