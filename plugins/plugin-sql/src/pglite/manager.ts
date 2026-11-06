@@ -17,6 +17,7 @@ import { logger } from "@elizaos/core";
 import type { IDatabaseClientManager } from "../types";
 import { createPgliteInitError, PGLITE_ERROR_CODES } from "./errors";
 import { initdbSnapshotPath, readInitdbSnapshot } from "./initdb-snapshot";
+import { isMemoryDataDir, withMemorySettings } from "./memory-settings";
 
 type PglitePidFileStatus =
   | "missing"
@@ -110,6 +111,10 @@ export class PGliteClientManager implements IDatabaseClientManager<PGlite> {
   // bounding the false-positive blast radius. See isLockActive.
   private static readonly LOCK_STALE_MS = 7 * 24 * 60 * 60 * 1000;
   private static readonly PID_REUSE_GRACE_MS = 5_000;
+  // Single-user Postgres never checkpoints by itself, so an in-memory WAL
+  // grows until close. Check it once a minute; act after one WAL segment.
+  private static readonly MEMORY_MAINTENANCE_INTERVAL_MS = 60_000;
+  private static readonly MEMORY_MAINTENANCE_WAL_BYTES = 16 * 1024 * 1024;
 
   private client: PGlite;
   private options: PGliteOptions;
@@ -127,6 +132,8 @@ export class PGliteClientManager implements IDatabaseClientManager<PGlite> {
     | undefined;
   private lockFd: number | null = null;
   private lockPath: string | null = null;
+  private maintenanceTimer: ReturnType<typeof setInterval> | null = null;
+  private maintenanceRunning = false;
 
   constructor(options: PGliteOptions) {
     this.options = options;
@@ -140,6 +147,51 @@ export class PGliteClientManager implements IDatabaseClientManager<PGlite> {
       // same-process retry would self-deadlock on its own (still-running) PID.
       this.releaseDataDirLock();
       throw err;
+    }
+    if (this.isMemoryDatabase()) {
+      this.maintenanceTimer = setInterval(() => {
+        void this.runMemoryMaintenance().catch((error) => {
+          // A tick that overlaps close() fails on the closed client.
+          if (this.shuttingDown) return;
+          logger.warn(
+            { src: "plugin:sql", error: this.getErrorText(error) },
+            "pglite: in-memory maintenance failed"
+          );
+        });
+      }, PGliteClientManager.MEMORY_MAINTENANCE_INTERVAL_MS);
+      this.maintenanceTimer.unref?.();
+    }
+  }
+
+  private isMemoryDatabase(): boolean {
+    const dataDir = (this.options as { dataDir?: unknown }).dataDir;
+    return dataDir === ":memory:" || isMemoryDataDir(dataDir);
+  }
+
+  /**
+   * For an in-memory database: once a WAL segment has been written since the
+   * last checkpoint, VACUUM so deleted rows (retention sweeps) can be reused,
+   * then CHECKPOINT so the old WAL segments are freed. Returns whether it ran.
+   */
+  public async runMemoryMaintenance(): Promise<boolean> {
+    if (!this.isMemoryDatabase() || this.shuttingDown || this.maintenanceRunning) {
+      return false;
+    }
+    this.maintenanceRunning = true;
+    try {
+      await this.client.waitReady;
+      const { rows } = await this.client.query<{ bytes: number | string | bigint }>(
+        "SELECT pg_wal_lsn_diff(pg_current_wal_lsn(), redo_lsn)::bigint AS bytes FROM pg_control_checkpoint()"
+      );
+      if (Number(rows[0]?.bytes ?? 0) < PGliteClientManager.MEMORY_MAINTENANCE_WAL_BYTES) {
+        return false;
+      }
+      if (this.shuttingDown) return false;
+      await this.client.exec("VACUUM");
+      await this.client.exec("CHECKPOINT");
+      return true;
+    } finally {
+      this.maintenanceRunning = false;
     }
   }
 
@@ -291,6 +343,10 @@ export class PGliteClientManager implements IDatabaseClientManager<PGlite> {
   public async close(): Promise<void> {
     if (!this.closePromise) {
       this.shuttingDown = true;
+      if (this.maintenanceTimer) {
+        clearInterval(this.maintenanceTimer);
+        this.maintenanceTimer = null;
+      }
       this.closePromise = this.withLifecycleLock(async () => {
         await this.closeInternal();
       });
@@ -340,6 +396,7 @@ export class PGliteClientManager implements IDatabaseClientManager<PGlite> {
       options = { ...options, loadDataDir: snapshot };
       logger.debug({ src: "plugin:sql" }, "pglite: starting from the bundled initdb snapshot");
     }
+    options = withMemorySettings(options);
     if (process.env.ELIZA_PGLITE_DISABLE_EXTENSIONS === "1") {
       return new PGlite(options);
     }
