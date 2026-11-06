@@ -512,7 +512,16 @@ export interface ChatGenerateOptions {
   /** Internal host timer begun before room admission; never read from a request body. */
   inferenceTimer?: InferenceTurnTimer;
   onChunk?: (chunk: string, origin?: ChatStreamTextOrigin) => void;
-  onSnapshot?: (text: string, origin?: ChatStreamTextOrigin) => void;
+  /**
+   * Replaces the streamed text. `revision` marks a new model attempt (retry,
+   * repair or failover) whose text restarts the reply: consumers must replace
+   * even a strict prefix of what they already hold.
+   */
+  onSnapshot?: (
+    text: string,
+    origin?: ChatStreamTextOrigin,
+    revision?: boolean,
+  ) => void;
   /**
    * Called once the authoritative generation result is settled, before the
    * room's post-delivery bookkeeping is drained. Realtime transports can use
@@ -2604,6 +2613,7 @@ async function generateChatResponseWithTiming(
     const emitSnapshot = (
       text: string,
       origin: ChatStreamTextOrigin = "model",
+      revision = false,
     ): void => {
       if (!text) return;
       // Skip when the snapshot matches the current responseText exactly:
@@ -2613,7 +2623,7 @@ async function generateChatResponseWithTiming(
       responseText = text;
       if (opts?.onSnapshot) {
         markFirstVisibleReply();
-        opts.onSnapshot(text, origin);
+        opts.onSnapshot(text, origin, revision);
       }
     };
     const claimStreamSource = (
@@ -2629,10 +2639,13 @@ async function generateChatResponseWithTiming(
       }
       return activeStreamSource === source;
     };
+    // The model attempt whose accumulation the stream currently carries.
+    let activeStreamRevision: number | undefined;
     const appendIncomingText = (
       chunk: string,
       accumulated?: string,
       origin: ChatStreamTextOrigin = "model",
+      streamRevision?: number,
     ): void => {
       // StreamChunkCallback defines `chunk` as a delta. Structured extractors
       // additionally provide their authoritative accumulation, which lets this
@@ -2643,12 +2656,26 @@ async function generateChatResponseWithTiming(
         emitChunk(chunk, origin);
         return;
       }
+      // A new revision is a new model attempt (retry, repair, failover): its
+      // accumulation restarts the reply. An older one is a superseded attempt.
+      let revised = false;
+      if (streamRevision !== undefined) {
+        if (
+          activeStreamRevision !== undefined &&
+          streamRevision < activeStreamRevision
+        )
+          return;
+        revised =
+          activeStreamRevision !== undefined &&
+          streamRevision !== activeStreamRevision;
+        activeStreamRevision = streamRevision;
+      }
       if (accumulated === responseText) return;
       if (accumulated.startsWith(responseText)) {
         emitChunk(accumulated.slice(responseText.length), origin);
         return;
       }
-      emitSnapshot(accumulated, origin);
+      emitSnapshot(accumulated, origin, revised);
     };
     const captureCallbackBaseline = (): void => {
       if (preCallbackText === null) {
@@ -2927,6 +2954,7 @@ async function generateChatResponseWithTiming(
                           chunk: string,
                           _messageId?: string,
                           accumulated?: string,
+                          streamRevision?: number,
                         ) => {
                           if (!chunk) return;
                           if (isInternalStructuredStreamText(chunk)) {
@@ -2942,7 +2970,12 @@ async function generateChatResponseWithTiming(
                             return;
                           }
                           if (!claimStreamSource("onStreamChunk")) return;
-                          appendIncomingText(chunk, accumulated);
+                          appendIncomingText(
+                            chunk,
+                            accumulated,
+                            "model",
+                            streamRevision,
+                          );
                         }
                       : undefined,
                   },

@@ -6082,7 +6082,7 @@ async function streamConversationMessage(
                 provisional: origin === "action_callback",
               });
             },
-            onSnapshot: (text, origin) => {
+            onSnapshot: (text, origin, revision) => {
               if (!text) return;
               assertCurrentGenerationOwner();
               const connectionClosed =
@@ -6095,8 +6095,10 @@ async function streamConversationMessage(
               // closing punctuation while the same visible field is still
               // streaming. Do not shrink the user-visible token stream for
               // prefix-equivalent snapshots; later longer snapshots/deltas still
-              // advance normally.
+              // advance normally. A new model attempt (revision) restarts the
+              // reply, so it replaces even a prefix: later deltas extend it.
               if (
+                !revision &&
                 text.length < streamedText.length &&
                 streamedText.startsWith(text)
               ) {
