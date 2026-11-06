@@ -5,6 +5,7 @@
  * layer and the autonomous loops.
  */
 import { logger } from "@elizaos/core";
+import { ApiRequestError } from "twitter-api-v2";
 
 export enum TwitterErrorType {
   AUTH = "AUTH",
@@ -56,6 +57,17 @@ const RETRYABLE_NETWORK_CODES = new Set([
 function nestedProviderError(error: unknown): unknown {
   if (error instanceof TwitterError && error.originalError !== undefined) {
     return error.originalError;
+  }
+  if (error instanceof ApiRequestError) {
+    // twitter-api-v2 keeps the socket error (ECONNRESET, ...) in the
+    // non-enumerable `_options.error`; its `requestError` getter reads
+    // `_options.requestError`, which the library never sets.
+    const options = (
+      error as unknown as {
+        _options?: { error?: unknown; requestError?: unknown };
+      }
+    )._options;
+    return options?.requestError ?? options?.error;
   }
   if (typeof error !== "object" || error === null || !("cause" in error)) {
     return undefined;
