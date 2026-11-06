@@ -91,7 +91,7 @@ function guide({
   };
   let read: { observation: TaskObservation; snapshot: unknown } | null = null;
   let observed = 0;
-  const browser = { clicks: 0 };
+  const browser = { clicks: 0, text: "Press to see the news." };
   const actuator = {
     capabilities: ["browser.click"],
     async quiesce() {
@@ -116,7 +116,7 @@ function guide({
           documentId: "doc-a",
           inputRevision: 1,
           title: "Library",
-          text: "Press to see the news.",
+          text: browser.text,
           elements: [
             {
               tag: "button",
@@ -196,9 +196,12 @@ function guide({
     taskId,
     workflow,
     browser,
-    /** Hold the next `kind` call made under a newer epoch than now. */
-    hold(kind: Hold) {
-      armedAt = runtime.get(taskId).epoch;
+    /**
+     * Hold the next `kind` call made under a newer epoch than now, or with
+     * `now`, the next one in this epoch too.
+     */
+    hold(kind: Hold, { now = false } = {}) {
+      armedAt = runtime.get(taskId).epoch - (now ? 1 : 0);
       const hold = gate();
       holds.set(kind, hold);
       return hold;
@@ -328,6 +331,41 @@ describe("a yes to a guided step", () => {
     expect(g.browser.clicks).toBe(1);
   });
 
+  it("survives the guide's own new binding when the page changed before the press", async () => {
+    const g = guide({ ask: true });
+    await g.workflow.refresh();
+    g.workflow.acknowledge("ask:show-news");
+    const offer = await g.workflow.refresh();
+    const reading = g.hold("observe");
+    const dispatch = g.workflow.executeAction(offer.offerKey);
+    await reading.reached;
+    // The page changes while the guide reads it under its new binding, so
+    // it plans again without pressing.
+    g.browser.text = "Press to see today's news.";
+    reading.open();
+    expect(await dispatch).toMatchObject({ kind: "agent-action" });
+    expect(g.browser.clicks).toBe(0);
+  });
+
+  it("from a question asked before a new epoch is ignored", async () => {
+    const g = guide({ ask: true });
+    await g.workflow.refresh();
+    const askedIn = g.runtime.get(g.taskId).epoch;
+    await g.stop();
+    const paused = g.runtime.get(g.taskId);
+    await g.runtime.observe(g.taskId, paused.revision, true);
+    // A late yes to the question asked before her Stop and Resume.
+    g.workflow.acknowledge("ask:show-news", { epoch: askedIn });
+    expect(await g.workflow.refresh()).toMatchObject({
+      kind: "person-check",
+      key: "ask:show-news",
+    });
+    const askedNow = g.runtime.get(g.taskId).epoch;
+    g.workflow.acknowledge("ask:show-news", { epoch: askedNow });
+    expect((await g.workflow.refresh()).kind).toBe("agent-action");
+    expect(g.browser.clicks).toBe(0);
+  });
+
   it("does not outlive her Stop", async () => {
     const g = guide({ ask: true });
     await g.workflow.refresh();
@@ -355,6 +393,24 @@ describe("a yes to a guided step", () => {
     expect(
       g.runtime.get(g.taskId).operations.map((operation) => operation.status),
     ).toEqual(["succeeded"]);
+  });
+
+  it("waits for a background page read instead of cancelling it to press", async () => {
+    const g = guide();
+    const offer = await g.workflow.refresh();
+    const reading = g.hold("observe", { now: true });
+    const background = g.workflow.refresh();
+    await reading.reached;
+    expect(await g.workflow.executeAction(offer.offerKey)).toMatchObject({
+      kind: "blocked",
+      reasonCode: "task-busy",
+    });
+    expect(g.browser.clicks).toBe(0);
+    reading.open();
+    const fresh = await background;
+    expect(fresh.kind).toBe("agent-action");
+    await g.workflow.executeAction(fresh.offerKey);
+    expect(g.browser.clicks).toBe(1);
   });
 
   it("a planning answer never authorizes the press", async () => {
