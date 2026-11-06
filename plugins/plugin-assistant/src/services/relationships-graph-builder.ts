@@ -1652,7 +1652,7 @@ function matchesQuery(
   query: RelationshipsGraphQuery,
 ): boolean {
   const platform = asString(query.platform);
-  if (platform && !summary.platforms.includes(platform)) {
+  if (platform && !summary.platforms.includes(normalizePlatform(platform))) {
     return false;
   }
   const search = asString(query.search)?.toLowerCase();
