@@ -253,6 +253,8 @@ export class InvitesService {
     ) {
       await apiKeysService.deactivateByUserAndOrganization(userId, previousOrganizationId);
       await apiKeysService.invalidateInferenceContextForUser(userId);
+      const { releaseDepartedMemberCredentials } = await import("./member-departure-credentials");
+      await releaseDepartedMemberCredentials(userId, previousOrganizationId);
     }
 
     // The old key is scoped to the org they left; invite accept must not return

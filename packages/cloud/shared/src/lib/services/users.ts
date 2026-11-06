@@ -649,6 +649,9 @@ export class UsersService {
     return runWithBoundPersonalDeliveryProjectionFences(previousRoutingIdentities, async () => {
       if (user.organization_id) {
         await setInferenceSubjectActive(user.organization_id, id, false, "membership");
+        // Before the move, so a failure leaves the member in place to retry.
+        const { releaseDepartedMemberCredentials } = await import("./member-departure-credentials");
+        await releaseDepartedMemberCredentials(id, user.organization_id);
       }
 
       let slug = generatePersonalOrgSlug(user);
