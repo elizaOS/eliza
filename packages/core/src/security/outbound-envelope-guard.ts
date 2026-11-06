@@ -90,10 +90,10 @@ export function guardOutboundEnvelopeText(
 }
 
 /**
- * Gate attachment text at a delivery seam. Both voice paths in
- * `services/message.ts` deliver the spoken sentence as `attachment.text` on a
- * callback whose top-level `text` is empty — a text-only guard waves the
- * armor through inside the attachment. Attachments whose text carries
+ * Gate attachment text at a delivery seam. A callback can carry text only in
+ * `attachment.text` (for example a voice attachment) while its top-level
+ * `text` is empty — a text-only guard waves the armor through inside the
+ * attachment. Attachments whose text carries
  * envelope material are dropped (there is no honest partial form of a leaked
  * attachment) and each drop is reported; clean input returns the same array
  * reference so callers can cheaply detect "nothing blocked".
