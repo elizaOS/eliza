@@ -160,9 +160,15 @@ public class ElizaSurfaceManagerPlugin: CAPPlugin, CAPBridgedPlugin, WKNavigatio
             call.reject("createSurface requires an explicit storage policy (isolated|shared)")
             return
         }
-        // Only Android draws a page below the host WebView.
-        if let layer = call.getString("layer"), layer != "above-host" {
-            call.reject("createSurface layer \(layer) is not supported on iOS", "UNSUPPORTED")
+        switch NativeBrowserSurfaceLayer.parse(call.options["layer"]) {
+        case .aboveHost:
+            break
+        case .unsupported:
+            // Only Android draws a page below the host WebView.
+            call.reject("createSurface layer below-host is not supported on iOS", "UNSUPPORTED")
+            return
+        case .invalid:
+            call.reject("createSurface layer must be above-host or below-host")
             return
         }
         guard let identity = identity(call, operation: "createSurface") else { return }
