@@ -24,6 +24,9 @@ const { pooledCredentials, pooledCredentialUsage } = await import(
 );
 const platformSchema = await import("../../db/schemas/platform-credentials");
 const appsSchema = await import("../../db/schemas/apps");
+const { agentSandboxes } = await import("../../db/schemas/agent-sandboxes");
+const { userCharacters } = await import("../../db/schemas/user-characters");
+const { readManagedAgentDiscordBinding } = await import("./eliza-agent-config");
 const { pooledCredentialsRepository } = await import("../../db/repositories/pooled-credentials");
 const { releaseDepartedMemberCredentials } = await import("./member-departure-credentials");
 
@@ -37,6 +40,8 @@ beforeAll(async () => {
       pooledCredentialUsage,
       ...platformSchema,
       ...appsSchema,
+      userCharacters,
+      agentSandboxes,
     } as never,
     dbWrite as never,
   );
@@ -86,6 +91,29 @@ async function seedLinkedIn(userId: string): Promise<string> {
   return (row as { id: string }).id;
 }
 
+async function seedDiscordBoundAgent(adminElizaUserId: string): Promise<string> {
+  const [row] = await dbWrite
+    .insert(agentSandboxes)
+    .values({
+      organization_id: ORG,
+      user_id: STAYING,
+      status: "stopped",
+      agent_config: {
+        __agentManagedDiscord: {
+          mode: "cloud-managed",
+          guildId: `guild-${adminElizaUserId}`,
+          guildName: "Guild",
+          adminDiscordUserId: `discord-${adminElizaUserId}`,
+          adminDiscordUsername: "admin",
+          adminElizaUserId,
+          connectedAt: "2026-11-01T00:00:00.000Z",
+        },
+      },
+    } as never)
+    .returning();
+  return (row as { id: string }).id;
+}
+
 test("a departing member's contributed key and linked connection leave with them", async () => {
   const theirs = await dbWrite
     .insert(pooledCredentials)
@@ -110,6 +138,8 @@ test("a departing member's contributed key and linked connection leave with them
     } as never)
     .returning();
   const linked = await seedLinkedIn(LEAVING);
+  const leavingGuildAgent = await seedDiscordBoundAgent(LEAVING);
+  const stayingGuildAgent = await seedDiscordBoundAgent(STAYING);
 
   // The step detachFromOrganization and the invite-accept leave path run.
   await releaseDepartedMemberCredentials(LEAVING, ORG);
@@ -124,4 +154,15 @@ test("a departing member's contributed key and linked connection leave with them
     .from(platformSchema.platformCredentials)
     .where((await import("drizzle-orm")).eq(platformSchema.platformCredentials.id, linked));
   expect(connection?.status).toBe("revoked");
+  const bindingOf = async (agentId: string) => {
+    const [agent] = await dbWrite
+      .select({ agent_config: agentSandboxes.agent_config })
+      .from(agentSandboxes)
+      .where((await import("drizzle-orm")).eq(agentSandboxes.id, agentId));
+    return readManagedAgentDiscordBinding(agent?.agent_config as Record<string, unknown> | null);
+  };
+  // The org agent bound to the departing member's guild is unbound; the one
+  // the staying member bound is kept.
+  expect(await bindingOf(leavingGuildAgent)).toBeNull();
+  expect((await bindingOf(stayingGuildAgent))?.adminElizaUserId).toBe(STAYING);
 });

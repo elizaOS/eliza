@@ -6,13 +6,20 @@
  * contributed to the team pool are removed (the pool would keep billing their
  * provider account), and connections they linked themselves (for example a
  * personal LinkedIn) are revoked (the organization could keep posting as them,
- * and after they leave nobody in Cloud can see or remove the connection).
+ * and after they leave nobody in Cloud can see or remove the connection). An
+ * organization agent they bound to their own Discord guild is unbound (the
+ * gateway routes that guild's messages by the linking member's Discord id, so
+ * they could keep driving the agent on the organization's credits).
  */
 
 import { and, eq } from "drizzle-orm";
 import { dbWrite } from "../../db/client";
+import { agentSandboxesRepository } from "../../db/repositories/agent-sandboxes";
 import { pooledCredentialsRepository } from "../../db/repositories/pooled-credentials";
 import { platformCredentials } from "../../db/schemas/platform-credentials";
+import { managedAgentDiscordService } from "./agent-managed-discord";
+import { discordAutomationService } from "./discord-automation";
+import { readManagedAgentDiscordBinding } from "./eliza-agent-config";
 import { oauthService } from "./oauth";
 import { removePooledCredential } from "./team-credential-pool/service";
 
@@ -47,5 +54,18 @@ export async function releaseDepartedMemberCredentials(
     );
   for (const connection of linked) {
     await oauthService.revokeConnection({ organizationId, connectionId: connection.id });
+  }
+
+  for (const sandbox of await agentSandboxesRepository.listByOrganization(organizationId)) {
+    const binding = readManagedAgentDiscordBinding(
+      sandbox.agent_config as Record<string, unknown> | null,
+    );
+    if (binding?.adminElizaUserId !== userId) continue;
+    await managedAgentDiscordService.disconnectAgent({
+      agentId: sandbox.id,
+      organizationId,
+      configured: discordAutomationService.isOAuthConfigured(),
+      applicationId: discordAutomationService.getApplicationId(),
+    });
   }
 }
