@@ -18,7 +18,42 @@ const ABBREVIATIONS = new Set([
 	"etc",
 	"e.g",
 	"i.e",
+	// Initialisms: "U.S." must not end a sentence.
+	"u.s",
+	"u.k",
+	"u.s.a",
+	"ph.d",
+	"b.a",
+	"m.d",
 	...TIME_ABBREVIATIONS,
+]);
+
+// Abbreviations that take a number ("No. 5", "Vol. 3"). These are NOT in
+// ABBREVIATIONS on purpose: a sentence can genuinely end with one
+// ("No. I disagree completely."), so only a following digit suppresses
+// the boundary (see nextMeaningfulChar below).
+const NUMBER_TAKING_ABBREVIATIONS = new Set([
+	// Month abbreviations, digit-gated like No./Vol.: "Jan. 2024" must not
+	// end a sentence, but "It happened in Dec. It was cold." must.
+	"jan",
+	"feb",
+	"mar",
+	"apr",
+	"jun",
+	"jul",
+	"aug",
+	"sep",
+	"sept",
+	"oct",
+	"nov",
+	"dec",
+	"no",
+	"vol",
+	"fig",
+	"pp",
+	"sec",
+	"ch",
+	"eq",
 ]);
 
 const UNSPACED_SENTENCE_END = new Set(["。", "？", "！"]);
@@ -39,6 +74,25 @@ const BOUNDARY_FOLLOWERS = new Set([
 	"】",
 ]);
 const TRAILING_CLOSERS = "\"'\u201D\u2019)]}」』）］｝】";
+
+function isDigit(ch: string | undefined): boolean {
+	return ch !== undefined && ch >= "0" && ch <= "9";
+}
+
+/**
+ * First character that carries meaning at or after `from`, skipping
+ * whitespace and sentence closers. Used to decide whether a number-taking
+ * abbreviation continues into a number ("No. 5") instead of ending the
+ * sentence.
+ */
+function nextMeaningfulChar(text: string, from: number): string | undefined {
+	for (let i = from; i < text.length; i += 1) {
+		const ch = text[i];
+		if (/\s/.test(ch) || TRAILING_CLOSERS.includes(ch)) continue;
+		return ch;
+	}
+	return undefined;
+}
 
 function isAsciiWordChar(ch: string): boolean {
 	return (
@@ -87,6 +141,11 @@ export function createFirstSentenceScanner(): FirstSentenceScanner {
 				normalizedWord: string;
 				sawCloser: boolean;
 				unspaced: boolean;
+				// Set when a number-taking abbreviation ("No.") is followed
+				// only by whitespace/closers at the end of a chunk: the next
+				// chunk decides digit (suppress) or not (complete at the
+				// stored boundary).
+				numberDeferred?: boolean;
 		  }
 		| undefined;
 
@@ -94,45 +153,68 @@ export function createFirstSentenceScanner(): FirstSentenceScanner {
 		push(chunk: string, endOfInput = false): number | undefined {
 			if (completeAt !== undefined) return completeAt;
 			if (pendingBoundary && (chunk.length > 0 || endOfInput)) {
-				if (!ABBREVIATIONS.has(pendingBoundary.normalizedWord)) {
-					let closerOffset = 0;
-					if (pendingBoundary.unspaced && !pendingBoundary.sawCloser) {
+				if (pendingBoundary.numberDeferred) {
+					// The period was already followed by space/closers in the
+					// previous chunk, so the stored boundary is final: a
+					// following digit suppresses it, anything else confirms it.
+					if (
+						NUMBER_TAKING_ABBREVIATIONS.has(
+							pendingBoundary.normalizedWord,
+						) &&
+						isDigit(nextMeaningfulChar(chunk, 0))
+					) {
+						pendingBoundary = undefined;
+					} else {
+						completeAt = pendingBoundary.boundary;
+						return completeAt;
+					}
+				} else {
+					const numberContinues =
+						NUMBER_TAKING_ABBREVIATIONS.has(pendingBoundary.normalizedWord) &&
+						isDigit(nextMeaningfulChar(chunk, 0));
+					if (
+						!numberContinues &&
+						!ABBREVIATIONS.has(pendingBoundary.normalizedWord)
+					) {
+						let closerOffset = 0;
+						if (pendingBoundary.unspaced && !pendingBoundary.sawCloser) {
+							while (
+								closerOffset < chunk.length &&
+								SENTENCE_END.has(chunk[closerOffset])
+							) {
+								closerOffset += 1;
+							}
+							pendingBoundary.boundary += closerOffset;
+							scanned += closerOffset;
+						}
+						const terminatorOffset = closerOffset;
 						while (
 							closerOffset < chunk.length &&
-							SENTENCE_END.has(chunk[closerOffset])
+							TRAILING_CLOSERS.includes(chunk[closerOffset])
 						) {
 							closerOffset += 1;
 						}
-						pendingBoundary.boundary += closerOffset;
-						scanned += closerOffset;
+						if (closerOffset > terminatorOffset) {
+							pendingBoundary.boundary += closerOffset - terminatorOffset;
+							pendingBoundary.sawCloser = true;
+							scanned += closerOffset - terminatorOffset;
+						}
+						if (closerOffset === chunk.length) {
+							if (!endOfInput) return undefined;
+							completeAt = pendingBoundary.boundary;
+							return completeAt;
+						}
+						if (
+							pendingBoundary.unspaced ||
+							pendingBoundary.sawCloser ||
+							isBoundaryFollower(chunk[closerOffset])
+						) {
+							completeAt = pendingBoundary.boundary;
+							return completeAt;
+						}
 					}
-					const terminatorOffset = closerOffset;
-					while (
-						closerOffset < chunk.length &&
-						TRAILING_CLOSERS.includes(chunk[closerOffset])
-					) {
-						closerOffset += 1;
-					}
-					if (closerOffset > terminatorOffset) {
-						pendingBoundary.boundary += closerOffset - terminatorOffset;
-						pendingBoundary.sawCloser = true;
-						scanned += closerOffset - terminatorOffset;
-					}
-					if (closerOffset === chunk.length) {
-						if (!endOfInput) return undefined;
-						completeAt = pendingBoundary.boundary;
-						return completeAt;
-					}
-					if (
-						pendingBoundary.unspaced ||
-						pendingBoundary.sawCloser ||
-						isBoundaryFollower(chunk[closerOffset])
-					) {
-						completeAt = pendingBoundary.boundary;
-						return completeAt;
-					}
+					pendingBoundary = undefined;
 				}
-				pendingBoundary = undefined;
 			}
 
 			for (let offset = 0; offset < chunk.length; offset += 1) {
@@ -175,7 +257,15 @@ export function createFirstSentenceScanner(): FirstSentenceScanner {
 					const word = lastWord.endsWith(".")
 						? lastWord.slice(0, -1)
 						: lastWord;
-					if (char !== "." || !ABBREVIATIONS.has(word.toLowerCase())) {
+					const normalizedWord = word.toLowerCase();
+					const numberContinues =
+						char === "." &&
+						NUMBER_TAKING_ABBREVIATIONS.has(normalizedWord) &&
+						isDigit(nextMeaningfulChar(chunk, offset + 1));
+					if (
+						!numberContinues &&
+						(char !== "." || !ABBREVIATIONS.has(normalizedWord))
+					) {
 						let boundary = offset + 1;
 						if (UNSPACED_SENTENCE_END.has(char)) {
 							while (
@@ -198,6 +288,24 @@ export function createFirstSentenceScanner(): FirstSentenceScanner {
 								normalizedWord: char === "." ? word.toLowerCase() : "",
 								sawCloser: boundary > terminatorBoundary,
 								unspaced: UNSPACED_SENTENCE_END.has(char),
+							};
+							break;
+						}
+						if (
+							!endOfInput &&
+							char === "." &&
+							NUMBER_TAKING_ABBREVIATIONS.has(normalizedWord) &&
+							nextMeaningfulChar(chunk, boundary) === undefined
+						) {
+							// The period is followed only by whitespace/closers
+							// so far: defer the decision to the next chunk,
+							// which may still bring a digit ("No. " + "5 ...").
+							pendingBoundary = {
+								boundary: scanned + boundary,
+								normalizedWord,
+								sawCloser: boundary > terminatorBoundary,
+								unspaced: false,
+								numberDeferred: true,
 							};
 							break;
 						}
