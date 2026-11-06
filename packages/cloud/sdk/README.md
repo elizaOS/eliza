@@ -36,6 +36,16 @@ renderer input. The host remains responsible for origin admission and authentica
 requests before this route handler. Native enrollment keeps its own registered
 application identity. Document runtimes are reviewed host-owned artifacts.
 
+A host that must know why an account signed out passes
+`credentialRevocation: {onRevoked, status}`. When Cloud refuses the stored key at the identity check (`GET /api/v1/user` answers 401),
+`await onRevoked({key})` runs inside the credential critical section, before the
+key is cleared, and only while that key is still stored and the account epoch
+has not changed. If it throws, the key stays and `/cloud/account/access` answers
+`unavailable`, so the next check tries again. A 401 from any other request
+clears the key as before and calls nothing. Each signed-out access answer reads
+`status()`; when it says `revoked: true`, the answer is
+`{state: "signed_out", revoked: true, localDataPending}`.
+
 This Node source entrypoint is separate from the browser-safe root SDK. Run `bun run --cwd packages/cloud/sdk test:native-host` for transport and
 private-file tests with synthetic provider responses. Consumer tests cover
 product voice, privacy, account races and installed payload dependency closure.

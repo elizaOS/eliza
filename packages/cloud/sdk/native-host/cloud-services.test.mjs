@@ -830,6 +830,111 @@ test("a saved pending sign-in that becomes unparseable reports account recovery,
   }
 });
 
+test("a host revocation port records a refused stored key before it is cleared", async (t) => {
+  const directory = await mkdtemp(join(tmpdir(), "cloud-revocation-"));
+  t.after(() => rm(directory, { recursive: true, force: true }));
+  const store = createFileCredentialStore(join(directory, "credential"));
+  const ledger = { revoked: false, localDataPending: false, seen: [] };
+  let failRecord = false;
+  const users = new Set(["key-a"]),
+    requests = [];
+  let refuseLimits = false,
+    holdUser = null,
+    userAsked = () => {};
+  const routes = createCloudRoutes({
+    hostPolicy: policy,
+    credentialStore: store,
+    speechVoice: { voiceId: "voice", modelId: "model" },
+    credentialRevocation: {
+      onRevoked: async ({ key }) => {
+        // Inside the critical section: the refused key is still stored.
+        ledger.seen.push([key, await store.read()]);
+        if (failRecord) throw Error("Ledger unavailable");
+        Object.assign(ledger, { revoked: true, localDataPending: true });
+      },
+      status: () => ledger,
+    },
+    fetchImpl: async (url, init) => {
+      const path = new URL(url).pathname,
+        key = init.headers.Authorization?.slice("Bearer ".length);
+      requests.push(path);
+      if (path === "/api/v1/user") {
+        userAsked();
+        await holdUser;
+        return users.has(key)
+          ? Response.json({ id: "user" })
+          : Response.json({}, { status: 401 });
+      }
+      if (path === "/api/v1/billing/limits")
+        return Response.json({}, { status: refuseLimits ? 401 : 200 });
+      throw Error("Unexpected provider request");
+    },
+  });
+  const server = http.createServer((req, res) =>
+    routes(req, res, new URL(req.url, "http://localhost")),
+  );
+  server.listen(0, "127.0.0.1");
+  await once(server, "listening");
+  t.after(() => {
+    server.closeAllConnections();
+    server.close();
+  });
+  const base = `http://127.0.0.1:${server.address().port}`;
+  const access = async () =>
+    (await fetch(`${base}/cloud/account/access`)).json();
+  await store.write("key-a");
+  assert.deepEqual(await access(), { state: "active" });
+  // A billing refusal clears the key, as before, but names no revocation.
+  refuseLimits = true;
+  assert.deepEqual(await access(), { state: "signed_out" });
+  assert.equal(await store.read(), null);
+  refuseLimits = false;
+  // A check that her own sign-out overtakes is not a revocation.
+  await store.write("key-a");
+  users.clear();
+  let release;
+  holdUser = new Promise((resolve) => {
+    release = resolve;
+  });
+  const asking = new Promise((resolve) => {
+    userAsked = resolve;
+  });
+  const overtaken = fetch(`${base}/cloud/account/access`);
+  await asking;
+  userAsked = () => {};
+  const logout = await fetch(`${base}/cloud/logout`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: "{}",
+  });
+  assert.equal(logout.status, 200);
+  release();
+  holdUser = null;
+  assert.equal((await overtaken).status, 409);
+  assert.deepEqual(ledger.seen, []);
+  // Signed out elsewhere: the host records it while the key is still stored.
+  await store.write("key-a");
+  failRecord = true;
+  assert.deepEqual(await access(), { state: "unavailable" });
+  assert.equal(await store.read(), "key-a", "Unrecorded: the key stays");
+  failRecord = false;
+  const revoked = {
+    state: "signed_out",
+    revoked: true,
+    localDataPending: true,
+  };
+  assert.deepEqual(await access(), revoked);
+  assert.deepEqual(ledger.seen, [
+    ["key-a", "key-a"],
+    ["key-a", "key-a"],
+  ]);
+  assert.equal(await store.read(), null);
+  // Later answers still say why, without asking Cloud again.
+  const asked = requests.length;
+  assert.deepEqual(await access(), revoked);
+  assert.equal(requests.length, asked);
+});
+
 test("a JSON-null saved pending sign-in stays benign across cloud routes", async () => {
   const routes = createCloudRoutes({
     hostPolicy: policy,
