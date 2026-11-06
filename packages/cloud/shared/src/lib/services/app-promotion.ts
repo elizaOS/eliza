@@ -600,27 +600,54 @@ Return ONLY valid JSON, no markdown.`;
       ? new Date(startDate.getTime() + config.duration * 24 * 60 * 60 * 1000)
       : undefined;
 
-    const campaign = await advertisingService.createCampaign({
-      organizationId,
-      adAccountId: config.adAccountId,
-      name: `${app.name} - Promotion Campaign`,
-      objective: config.objective,
-      budgetType: config.budgetType,
-      budgetAmount: config.budget,
-      bidStrategy: config.bidStrategy,
-      optimizationGoal: config.optimizationGoal,
-      startDate,
-      endDate,
-      appId: app.id,
-      audienceSegmentId: config.audienceSegmentId,
-      targeting:
-        !config.audienceSegmentId && config.targetLocations?.length
-          ? { locations: config.targetLocations }
-          : undefined,
-    });
+    let campaign: Awaited<ReturnType<typeof advertisingService.createCampaign>>;
+    try {
+      campaign = await advertisingService.createCampaign({
+        organizationId,
+        adAccountId: config.adAccountId,
+        name: `${app.name} - Promotion Campaign`,
+        objective: config.objective,
+        budgetType: config.budgetType,
+        budgetAmount: config.budget,
+        bidStrategy: config.bidStrategy,
+        optimizationGoal: config.optimizationGoal,
+        startDate,
+        endDate,
+        appId: app.id,
+        audienceSegmentId: config.audienceSegmentId,
+        targeting:
+          !config.audienceSegmentId && config.targetLocations?.length
+            ? { locations: config.targetLocations }
+            : undefined,
+      });
+    } catch (error) {
+      logger.error("[AppPromotion] Ad campaign creation failed", {
+        appId: app.id,
+        error: extractErrorMessage(error),
+      });
+      return { success: false, error: extractErrorMessage(error) };
+    }
 
     if (content) {
-      await this.createDefaultCreative(organizationId, campaign.id, app, content);
+      try {
+        await this.createDefaultCreative(organizationId, campaign.id, app, content);
+      } catch (error) {
+        // The campaign exists and holds its budget. Report it with the creative
+        // failure instead of failing the whole promotion: a failed request
+        // makes the client retry, and each retry creates and funds another
+        // campaign.
+        logger.error("[AppPromotion] Ad creative creation failed", {
+          appId: app.id,
+          campaignId: campaign.id,
+          error: extractErrorMessage(error),
+        });
+        return {
+          success: false,
+          campaignId: campaign.id,
+          campaignName: campaign.name,
+          error: `Campaign ${campaign.name} was created, but its creative was refused: ${extractErrorMessage(error)}`,
+        };
+      }
     }
 
     return {
