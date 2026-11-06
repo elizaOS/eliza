@@ -13,7 +13,9 @@ import android.view.Gravity
 import android.view.InputDevice
 import android.view.MotionEvent
 import android.view.ViewGroup
+import android.view.WindowInsets
 import android.view.WindowManager
+import android.view.inputmethod.InputMethodManager
 import android.webkit.WebView
 import android.widget.FrameLayout
 import androidx.test.ext.junit.runners.AndroidJUnit4
@@ -35,6 +37,9 @@ class BelowHostWebViewInstrumentedTest {
     private lateinit var site: WebView
     private lateinit var host: WebView
     private lateinit var page: OccludingSurfaceLayout
+
+    /** Drags the drag source started; touched only on the main thread. */
+    private var dragsStarted = 0
 
     @After
     fun close() {
@@ -117,8 +122,10 @@ class BelowHostWebViewInstrumentedTest {
                 android.view.View(context).apply {
                     setBackgroundColor(Color.YELLOW)
                     setOnTouchListener { view, event ->
-                        if (event.actionMasked == MotionEvent.ACTION_DOWN) {
+                        if (event.actionMasked == MotionEvent.ACTION_DOWN &&
                             view.startDragAndDrop(ClipData.newPlainText("text", "dropped"), android.view.View.DragShadowBuilder(view), null, 0)
+                        ) {
+                            dragsStarted++
                         }
                         true
                     }
@@ -215,10 +222,32 @@ class BelowHostWebViewInstrumentedTest {
         assertEquals("1", js(host, "drops"))
     }
 
+    /**
+     * Closes the soft keyboard the focused page input opened and waits until it is gone.
+     * On a short screen it covers the drag source, so the press would reach the keyboard.
+     */
+    private fun hideKeyboard() {
+        val keyboard = context.getSystemService(InputMethodManager::class.java)
+        instrumentation.runOnMainSync { keyboard.hideSoftInputFromWindow(root.windowToken, 0) }
+        val end = SystemClock.uptimeMillis() + 5_000
+        while (true) {
+            var shown = true
+            instrumentation.runOnMainSync { shown = root.rootWindowInsets?.isVisible(WindowInsets.Type.ime()) != false }
+            if (!shown) break
+            check(SystemClock.uptimeMillis() < end) { "the soft keyboard did not close" }
+            SystemClock.sleep(100)
+        }
+        instrumentation.waitForIdleSync()
+        SystemClock.sleep(300)
+    }
+
     /** Presses the drag source, moves to [to] in window pixels and lifts. */
     private fun drag(to: Pair<Int, Int>) {
+        hideKeyboard()
         val origin = IntArray(2)
         instrumentation.runOnMainSync { root.getLocationOnScreen(origin) }
+        var startedBefore = 0
+        instrumentation.runOnMainSync { startedBefore = dragsStarted }
         val down = SystemClock.uptimeMillis()
         fun send(action: Int, x: Int, y: Int) {
             val event = MotionEvent.obtain(down, SystemClock.uptimeMillis(), action, (origin[0] + x).toFloat(), (origin[1] + y).toFloat(), 0)
@@ -228,6 +257,9 @@ class BelowHostWebViewInstrumentedTest {
         }
         send(MotionEvent.ACTION_DOWN, 40, 560)
         SystemClock.sleep(500)
+        var started = 0
+        instrumentation.runOnMainSync { started = dragsStarted }
+        assertEquals("the press on the drag source started a drag", startedBefore + 1, started)
         for (step in 1..10) {
             send(MotionEvent.ACTION_MOVE, 40 + (to.first - 40) * step / 10, 560 + (to.second - 560) * step / 10)
             SystemClock.sleep(50)
