@@ -89,7 +89,7 @@ test("a stale revision is 412 precondition_failed", async () => {
     await del({ "if-match": ETAG }),
   ]) {
     expect(response.status).toBe(412);
-    expect(await response.json()).toEqual({
+    expect((await response.json()) as unknown).toEqual({
       error: "The event changed since it was read.",
       code: "precondition_failed",
     });

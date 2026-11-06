@@ -81,7 +81,7 @@ test("binds the authenticated owner, stores the connection and invalidates cache
   const response = await post({ serverAuthCode: "4/0AeaYSHnative" });
   expect(response.status).toBe(200);
   expect(response.headers.get("cache-control")).toBe("no-store");
-  expect(await response.json()).toEqual({
+  expect((await response.json()) as unknown).toEqual({
     connected: true,
     connectionId: "conn-1",
     email: "owner@example.com",
