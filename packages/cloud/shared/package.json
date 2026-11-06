@@ -787,7 +787,7 @@
     "jose": "^6.0.0",
     "libphonenumber-js": "^1.13.14",
     "nanoid": "^6.0.0",
-    "nodemailer": "^10.0.12",
+    "nodemailer": "^10.1.4",
     "pg": "^8.23.1",
     "redis": "^5.0.0",
     "ssh2": "^1.17.0",
