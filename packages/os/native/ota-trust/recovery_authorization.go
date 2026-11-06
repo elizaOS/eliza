@@ -215,6 +215,10 @@ func EvaluatePreparedForCommit(directory, admissionDirectory, identity string, p
 	return decision, nil
 }
 
+// commitDecision reads the rollout window from the prepared descriptor. The
+// lane floor keeps only a hash of a newer rollout revision at the same
+// sequence, so a later pause or earlier expiry at that sequence does not stop
+// an already prepared commit; revocations and newer sequences do.
 func commitDecision(d releaseDescriptor, floor admissionFloor, policy commitPolicy) string {
 	starts, _ := releaseTime(d.Rollout.Starts)
 	expires, _ := releaseTime(d.Rollout.Expires)
