@@ -2549,6 +2549,8 @@ async function settleStreamingAbortReservation(params: {
   billingSource: PricingBillingSource;
   estimatedInputTokens: number;
   deliveredText: string;
+  /** Tool-call argument text already streamed to the client. */
+  deliveredToolInput: string;
   webSearchEnabled?: boolean;
   steps: readonly StepResult<ToolSet>[];
   settleReservation: (
@@ -2564,7 +2566,10 @@ async function settleStreamingAbortReservation(params: {
   if (params.webSearchEnabled) return await params.settleUnknown();
 
   const finishedStepUsage = summarizeFinishedStepUsage(params.steps);
-  const deliveredOutputTokens = estimateTokens(params.deliveredText);
+  // Streamed tool-call arguments are model output the client already has.
+  const deliveredOutputTokens = estimateTokens(
+    params.deliveredText + params.deliveredToolInput,
+  );
   const inputTokens = Math.max(
     params.estimatedInputTokens,
     finishedStepUsage?.inputTokens ?? 0,
@@ -3080,6 +3085,8 @@ async function tryPassthroughStreamingRequest(params: {
       billingSource: params.billingSource,
       estimatedInputTokens: params.estimatedInputTokens,
       deliveredText: tail.deliveredText,
+      // The pass-through path never carries tools.
+      deliveredToolInput: "",
       steps: [],
       settleReservation,
       settleUnknown: params.settleUnknown,
@@ -3263,6 +3270,7 @@ async function handleStreamingRequest(
   const billingAffiliateCode =
     pooledCredential && !useMonetizedAppBilling ? null : affiliateCode;
   let deliveredText = "";
+  let deliveredToolInput = "";
   let deliveredProviderOutput = false;
   let streamingSettlementPromise: Promise<CreditReconciliationResult | null> | null =
     null;
@@ -3307,6 +3315,7 @@ async function handleStreamingRequest(
           billingSource,
           estimatedInputTokens,
           deliveredText,
+          deliveredToolInput,
           webSearchEnabled: Object.keys(webSearchOptions).length > 0,
           steps,
           settleReservation,
@@ -3603,6 +3612,7 @@ async function handleStreamingRequest(
               part.id,
               (toolCallArgsDelivered.get(part.id) ?? 0) + part.delta.length,
             );
+            deliveredToolInput += part.delta;
             enqueue(
               encoder.encode(
                 `data: ${JSON.stringify({
@@ -3676,6 +3686,7 @@ async function handleStreamingRequest(
                 })}\n\n`,
               ),
             );
+            deliveredToolInput += toOpenAIArguments(part.input);
             finishReason = "tool_calls";
             continue;
           }

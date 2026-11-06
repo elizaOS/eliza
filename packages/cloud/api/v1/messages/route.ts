@@ -1481,6 +1481,8 @@ async function settleStreamingAbortReservation(params: {
   requestId: string;
   estimatedInputTokens: number;
   deliveredText: string;
+  /** Tool-use input JSON already streamed to the client. */
+  deliveredToolInput: string;
   steps: readonly FinishedStepUsageSource[];
   settleReservation: (
     actualCost: number,
@@ -1489,7 +1491,10 @@ async function settleStreamingAbortReservation(params: {
   billingReservation?: CreditReservation;
 }): Promise<CreditReconciliationResult | null> {
   const finishedStepUsage = summarizeFinishedStepUsage(params.steps);
-  const deliveredOutputTokens = estimateTokens(params.deliveredText);
+  // Streamed tool-use input is model output the client already has.
+  const deliveredOutputTokens = estimateTokens(
+    params.deliveredText + params.deliveredToolInput,
+  );
   const inputTokens = Math.max(
     params.estimatedInputTokens,
     finishedStepUsage?.inputTokens ?? 0,
@@ -1610,6 +1615,7 @@ async function handleStream(
   const provider = getProviderFromModel(model);
   const messageId = `msg_${crypto.randomUUID().replace(/-/g, "").slice(0, 24)}`;
   let deliveredText = "";
+  let deliveredToolInput = "";
   let providerOutputObserved = false;
   let streamingSettlementPromise: Promise<CreditReconciliationResult | null> | null =
     null;
@@ -1657,6 +1663,7 @@ async function handleStream(
           requestId,
           estimatedInputTokens,
           deliveredText,
+          deliveredToolInput,
           steps,
           settleReservation,
           settleUnknownReservation,
@@ -1962,6 +1969,7 @@ async function handleStream(
                     },
                   }),
                 );
+                deliveredToolInput += part.delta;
               }
               break;
             }
@@ -1978,16 +1986,18 @@ async function handleStream(
               const state = blockState.get(part.toolCallId);
 
               if (state && !state.sawInputDelta) {
+                const input = JSON.stringify(part.input ?? {});
                 controller.enqueue(
                   sse("content_block_delta", {
                     type: "content_block_delta",
                     index,
                     delta: {
                       type: "input_json_delta",
-                      partial_json: JSON.stringify(part.input ?? {}),
+                      partial_json: input,
                     },
                   }),
                 );
+                deliveredToolInput += input;
                 state.sawInputDelta = true;
               }
 
