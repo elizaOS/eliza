@@ -60,12 +60,27 @@ function repeatDueAt(task: Task, atomicWake: boolean): number {
  * This is the old fixed tick, so no task runs later than before.
  */
 const MIN_TICK_MS = 1000;
-/** Default longest sleep with a non-empty queue. Rows written by another process are seen within this time. */
+/**
+ * Default longest sleep with a non-empty queue. A queue row written without a
+ * runtime task write (another process sharing the database) is seen within
+ * this time, not within 1 s as with the old fixed poll. Multi-process hosts
+ * should use the task-scheduler daemon or set TASK_TICK_MAX_MS=1000.
+ */
 const DEFAULT_MAX_TICK_MS = 60_000;
 /** Largest delay setTimeout accepts. */
 const MAX_TIMEOUT_MS = 2_147_483_647;
-/** Runtime setting that overrides the longest sleep (ms, MIN_TICK_MS to MAX_TIMEOUT_MS). */
+/**
+ * Runtime setting that overrides the longest sleep (ms, MIN_TICK_MS to
+ * MAX_TIMEOUT_MS). 1000 keeps the old 1 s poll.
+ */
 export const TASK_TICK_MAX_MS_SETTING = "TASK_TICK_MAX_MS";
+/**
+ * The system clock checks the wall clock this often during a long sleep, with
+ * no query. Timers count monotonic time, which stops while the device is
+ * suspended and ignores wall-clock changes; this check keeps an overdue task
+ * within 1 s of resume or of a clock jump, as with the old poll.
+ */
+export const WALL_CLOCK_CHECK_MS = 1000;
 
 function readMaxTickMs(runtime: IAgentRuntime): number {
 	const raw = runtime.getSetting(TASK_TICK_MAX_MS_SETTING);
@@ -87,12 +102,8 @@ function readMaxTickMs(runtime: IAgentRuntime): number {
 /** Opaque handle returned by an injected task-service timer implementation. */
 export type TaskServiceTimerHandle = unknown;
 
-/**
- * Time boundary used by TaskService. Production uses the system clock and
- * timeout APIs; deterministic hosts can supply a virtual clock without
- * replacing task persistence, validation, or worker execution.
- */
-export interface TaskServiceClock {
+/** A one-shot timer clock. `setTimeout` fires once, at or after now() + delayMs. */
+export interface TaskServiceTimeoutClock {
 	now(): number;
 	setTimeout(
 		callback: () => Promise<void>,
@@ -101,14 +112,74 @@ export interface TaskServiceClock {
 	clearTimeout(handle: TaskServiceTimerHandle): void;
 }
 
-const systemTaskServiceClock: TaskServiceClock = {
+/** @deprecated The old repeating-timer clock shape; give setTimeout/clearTimeout instead. */
+export interface TaskServiceIntervalClock {
+	now(): number;
+	setInterval(
+		callback: () => Promise<void>,
+		intervalMs: number,
+	): TaskServiceTimerHandle;
+	clearInterval(handle: TaskServiceTimerHandle): void;
+}
+
+/**
+ * Time boundary used by TaskService. Production uses the system clock and
+ * timeout APIs; deterministic hosts can supply a virtual clock without
+ * replacing task persistence, validation, or worker execution. The old
+ * setInterval/clearInterval shape still works and is used one shot at a time.
+ */
+export type TaskServiceClock =
+	| TaskServiceTimeoutClock
+	| TaskServiceIntervalClock;
+
+function toTimeoutClock(clock: TaskServiceClock): TaskServiceTimeoutClock {
+	if ("setTimeout" in clock) return clock;
+	return {
+		now: () => clock.now(),
+		setTimeout: (callback, delayMs) => {
+			let fired = false;
+			const handle = clock.setInterval(async () => {
+				if (fired) return;
+				fired = true;
+				clock.clearInterval(handle);
+				await callback();
+			}, delayMs);
+			return handle;
+		},
+		clearTimeout: (handle) => clock.clearInterval(handle),
+	};
+}
+
+/**
+ * Fire `callback` once Date.now() reaches now + delayMs. Sleeps in pieces of
+ * at most WALL_CLOCK_CHECK_MS so a suspend or a wall-clock jump forward
+ * delays it by at most one piece.
+ */
+export const systemTaskServiceClock: TaskServiceTimeoutClock = {
 	now: () => Date.now(),
-	setTimeout: (callback, delayMs) =>
-		setTimeout(() => {
-			void callback();
-		}, delayMs),
-	clearTimeout: (handle) =>
-		clearTimeout(handle as ReturnType<typeof setTimeout>),
+	setTimeout: (callback, delayMs) => {
+		const target = Date.now() + delayMs;
+		const handle: { native?: ReturnType<typeof setTimeout> } = {};
+		const step = () => {
+			const left = target - Date.now();
+			if (left <= 0) {
+				handle.native = undefined;
+				void callback();
+				return;
+			}
+			handle.native = setTimeout(step, Math.min(left, WALL_CLOCK_CHECK_MS));
+		};
+		handle.native = setTimeout(
+			step,
+			Math.max(0, Math.min(delayMs, WALL_CLOCK_CHECK_MS)),
+		);
+		return handle;
+	},
+	clearTimeout: (handle) => {
+		const h = handle as { native?: ReturnType<typeof setTimeout> };
+		if (h.native !== undefined) clearTimeout(h.native);
+		h.native = undefined;
+	},
 };
 
 /**
@@ -127,7 +198,7 @@ export class TaskService extends Service {
 	private localTimer = false;
 	private maxTickMs = DEFAULT_MAX_TICK_MS;
 	private activeTick: Promise<void> | null = null;
-	private readonly clock: TaskServiceClock;
+	private readonly clock: TaskServiceTimeoutClock;
 	/** Tracks task IDs currently being executed to prevent overlapping runs. WHY: blocking tasks must not run again until current run finishes. */
 	private executingTasks: Set<string> = new Set();
 	/** Tracks in-flight task promises so stop() can await a clean drain before runtime.close(). */
@@ -137,7 +208,7 @@ export class TaskService extends Service {
 	/**
 	 * Service construction time (epoch-ms). A missing worker inside
 	 * {@link TaskService.ORPHAN_GRACE_MS} of this moment is treated as "not
-	 * registered YET" (boot ordering: the 1s tick can start before every plugin
+	 * registered YET" (boot ordering: the first tick can start before every plugin
 	 * has registered its workers), not as an orphan. WHY: without the grace, a
 	 * healthy task whose plugin registers a beat later was wrongly quarantined —
 	 * repeat tasks auto-paused, one-shots DELETED — and the first tick emitted
@@ -162,7 +233,7 @@ export class TaskService extends Service {
 		clock: TaskServiceClock = systemTaskServiceClock,
 	) {
 		super(runtime);
-		this.clock = clock;
+		this.clock = toTimeoutClock(clock);
 		this.startedAt = clock.now();
 	}
 
@@ -337,6 +408,9 @@ export class TaskService extends Service {
 	 * MIN_TICK_MS when a task is already due, capped at now + maxTickMs.
 	 * Paused, quarantined and invalid tasks never run from a tick, so they are
 	 * left out; a resume or fix is a task write, and that calls markDirty().
+	 * The rows are the ones read before this tick runs them, so a task that runs
+	 * now is still "due" here and gets one more check MIN_TICK_MS later; that
+	 * check sees its new lastRan and sleeps until its next run.
 	 */
 	private nextWakeAt(tasks: Task[]): number {
 		const now = this.clock.now();
@@ -431,7 +505,7 @@ export class TaskService extends Service {
 					continue;
 				}
 				// Orphaned task: no worker registered in THIS build. Self-heal instead
-				// of re-erroring every 1s tick (the TASK_WORKER_MISSING → TASK_TICK_FAILED
+				// of re-erroring every tick (the TASK_WORKER_MISSING → TASK_TICK_FAILED
 				// loop that narrated into chat 9×). Emit the diagnostic ONCE per orphan.
 				if (!this.quarantinedOrphans.has(task.id)) {
 					await this.quarantineOrphanTask(task, errors);
@@ -501,7 +575,7 @@ export class TaskService extends Service {
 	 * and can be un-paused/inspected by an operator); non-repeat orphans are
 	 * DELETED (a one-shot with no worker can never run — keeping it would re-fail
 	 * every tick with no backoff). Marks the id quarantined and emits the
-	 * diagnostic ONCE. WHY once: without the mark, every 1s tick re-emitted
+	 * diagnostic ONCE. WHY once: without the mark, every tick re-emitted
 	 * TASK_WORKER_MISSING which the RECENT_ERRORS provider + repeat-escalation
 	 * narrated into the owner's chat repeatedly (the observed 9× slop). A best-
 	 * effort persistence failure is reported (once) but still marks quarantined
@@ -1138,7 +1212,8 @@ export class TaskService extends Service {
 	/**
 	 * Called after a task write. Wakes the local timer within MIN_TICK_MS (the old
 	 * tick bound) so a new or changed task is seen. When the daemon is running,
-	 * notifies it instead.
+	 * notifies it instead. Hosts with their own resume or time-change signal may
+	 * call it too; the system clock already re-reads the wall clock each second.
 	 */
 	markDirty(): void {
 		if (getTaskSchedulerAdapter() != null) {

@@ -463,3 +463,154 @@ it("TASK_TICK_MAX_MS caps the sleep and an invalid value fails at start", async 
 		await f.cleanup();
 	}
 });
+
+it("registering a missing worker wakes the timer and resumes an orphan-paused task", async () => {
+	const f = await createTestRuntime({ characterName: "WakeWorker" });
+	const timer = virtualTimer(T);
+	const service = new TaskService(f.runtime, timer.clock);
+	let runs = 0;
+	try {
+		await useTaskService(f, service);
+		const id = await f.runtime.createTask({
+			name: "LATE_WORKER",
+			tags: ["queue", "repeat"],
+			metadata: {
+				updatedAt: T - 5000,
+				updateInterval: 1000,
+				paused: true,
+				orphanedNoWorker: true,
+			},
+		});
+		service.startTimer();
+		await timer.fire();
+		// Only a paused task: the timer sleeps to the cap.
+		expect(timer.armedAt()).toBe(timer.now + 60000);
+
+		f.runtime.registerTaskWorker({
+			name: "LATE_WORKER",
+			execute: async () => {
+				runs++;
+				return undefined;
+			},
+		});
+		expect(timer.armedAt()).toBe(timer.now + 1000);
+		await timer.fire();
+		expect((await f.runtime.getTask(id))?.metadata?.paused).toBe(false);
+		await timer.fire();
+		expect(runs).toBe(1);
+	} finally {
+		await service.stop();
+		await f.cleanup();
+	}
+});
+
+it("a timer that fires during a running tick re-arms after it", async () => {
+	const f = await createTestRuntime({ characterName: "WakeBusy" });
+	const timer = virtualTimer(T);
+	const service = new TaskService(f.runtime, timer.clock);
+	try {
+		await useTaskService(f, service);
+		const gate = latch();
+		const entered = latch();
+		vi.spyOn(f.runtime, "getTasks").mockImplementationOnce(async () => {
+			entered.resolve();
+			await gate.promise;
+			return [];
+		});
+		service.startTimer();
+		const run = service.runDueTasks();
+		await entered.promise;
+		await timer.fire();
+		expect(timer.armedAt()).toBeNull();
+		gate.resolve();
+		await run;
+		await Promise.resolve();
+		expect(timer.armedAt()).toBe(timer.now + 1000);
+	} finally {
+		await service.stop();
+		await f.cleanup();
+	}
+});
+
+it("a failed queue query retries in one second", async () => {
+	const f = await createTestRuntime({ characterName: "WakeFail" });
+	const timer = virtualTimer(T);
+	const service = new TaskService(f.runtime, timer.clock);
+	try {
+		await useTaskService(f, service);
+		const reportError = vi
+			.spyOn(f.runtime, "reportError")
+			.mockImplementation(() => undefined);
+		vi.spyOn(f.runtime, "getTasks").mockRejectedValueOnce(Error("db busy"));
+		service.startTimer();
+		await timer.fire();
+		expect(reportError).toHaveBeenCalledWith(
+			"TaskService.timer",
+			expect.objectContaining({ code: "TASK_QUERY_FAILED" }),
+			expect.anything(),
+		);
+		expect(timer.armedAt()).toBe(timer.now + 1000);
+	} finally {
+		await service.stop();
+		await f.cleanup();
+	}
+});
+
+it("stop clears the timer and later task writes do not re-arm it", async () => {
+	const f = await createTestRuntime({ characterName: "WakeStop" });
+	const timer = virtualTimer(T);
+	const service = new TaskService(f.runtime, timer.clock);
+	try {
+		await useTaskService(f, service);
+		service.startTimer();
+		expect(timer.armedAt()).toBe(T + 1000);
+		await service.stop();
+		expect(timer.armedAt()).toBeNull();
+		await f.runtime.createTask({
+			name: "AFTER_STOP",
+			tags: ["queue"],
+			metadata: {},
+		});
+		expect(timer.armedAt()).toBeNull();
+	} finally {
+		await f.cleanup();
+	}
+});
+
+it("the old setInterval clock shape still drives the timer one shot at a time", async () => {
+	const f = await createTestRuntime({ characterName: "WakeLegacy" });
+	const timer = virtualTimer(T);
+	const cleared: unknown[] = [];
+	const service = new TaskService(f.runtime, {
+		now: timer.clock.now,
+		setInterval: timer.clock.setTimeout,
+		clearInterval: (handle) => {
+			cleared.push(handle);
+			timer.clock.clearTimeout(handle);
+		},
+	});
+	let runs = 0;
+	try {
+		await useTaskService(f, service);
+		f.runtime.registerTaskWorker({
+			name: "LEGACY",
+			execute: async () => {
+				runs++;
+				return undefined;
+			},
+		});
+		service.startTimer();
+		await f.runtime.createTask({
+			name: "LEGACY",
+			tags: ["queue"],
+			metadata: {},
+		});
+		await timer.fire();
+		expect(runs).toBe(1);
+		// The interval is cleared when it first fires.
+		expect(cleared.length).toBeGreaterThan(0);
+	} finally {
+		await service.stop();
+		await f.cleanup();
+	}
+});
