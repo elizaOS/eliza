@@ -1160,10 +1160,12 @@ const ENUMERATED_DELETE_VERB_RE =
 /** Where the sentence stops naming deletions ("..., then remind me to pay rent"). */
 const ENUMERATED_DELETE_CLAUSE_END_RE = /[.;!?]|\bthen\b|\bafter that\b/;
 
-/** Words that may open the list or sit between named titles in it
- * ("delete all of the following todos: A, B and C"). */
+/** One word or separator that may open the list or sit between named titles
+ * in it ("delete all of the following todos: A, B and C"). A stored title is
+ * always tried first, so a title that starts with one of these words ("All
+ * hands", "The weekly sync") is still read as a title. */
 const ENUMERATED_DELETE_LIST_GLUE_RE =
-  /^(?:\s+|[,:&]|\band\b|\bthe\b|\bmy\b|\bthese\b|\bthose\b|\bboth\b|\ball\b|\bof\b|\bfollowing\b|\bnamed\b|\bcalled\b|\blisted\b|\b(?:todo|task|reminder|item|habit|routine|one)s?\b)*/;
+  /^(?:\s+|[,:&]|(?:and|the|my|these|those|both|all|of|following|named|called|listed|(?:todo|task|reminder|item|habit|routine|one)s?)(?![\p{L}\p{N}]))/u;
 
 /** True when `key` starts at `index` of `text` and ends on a word boundary. */
 function phraseAt(text: string, key: string, index: number): boolean {
@@ -1206,10 +1208,13 @@ async function resolveEnumeratedDeleteTargets(
   const targets: LifeOpsDefinitionRecord[] = [];
   let index = 0;
   while (index < list.length) {
-    index +=
-      ENUMERATED_DELETE_LIST_GLUE_RE.exec(list.slice(index))?.[0].length ?? 0;
     const key = keys.find((candidate) => phraseAt(list, candidate, index));
-    if (!key) break;
+    if (!key) {
+      const glue = ENUMERATED_DELETE_LIST_GLUE_RE.exec(list.slice(index));
+      if (!glue) break;
+      index += glue[0].length;
+      continue;
+    }
     const records = byTitle.get(key) ?? [];
     // A named title matching more than one record keeps the disambiguation ask.
     if (records.length !== 1) return [];

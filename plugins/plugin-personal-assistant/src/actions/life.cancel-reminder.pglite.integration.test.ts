@@ -193,7 +193,12 @@ it("archives the selected reminder and preserves its plan, occurrence history, a
   ]);
 });
 
-it.each([
+it.each<{
+  text: string;
+  deleted: number;
+  remaining: string[];
+  extra?: string[];
+}>([
   {
     // "rent" is a substring of "parent" and "call mom" a phrase of the longer
     // title; neither was named. The later clause names nothing to delete.
@@ -222,13 +227,25 @@ it.each([
     remaining: ["Call mom", "Call mom about dinner", "Rent"],
   },
   {
+    // Titles that start with a list word are still read as titles.
+    text: "delete all hands and dentist and the weekly sync and my taxes",
+    extra: ["All hands", "The weekly sync", "My taxes"],
+    deleted: 4,
+    remaining: [
+      "Call mom",
+      "Call mom about dinner",
+      "Parent teacher meeting",
+      "Rent",
+    ],
+  },
+  {
     text: "remind me to pay rent, then delete dentist and parent teacher meeting",
     deleted: 2,
     remaining: ["Call mom", "Call mom about dinner", "Rent"],
   },
 ])(
   "an enumerated delete removes only the listed titles: $text",
-  async ({ text, deleted, remaining }) => {
+  async ({ text, deleted, remaining, extra = [] }) => {
     const seeded = (
       await Promise.all(
         [
@@ -237,6 +254,7 @@ it.each([
           "Parent teacher meeting",
           "Call mom",
           "Call mom about dinner",
+          ...extra,
         ].map((title) => seed(title)),
       )
     ).map((entry) => entry.definition.id);
