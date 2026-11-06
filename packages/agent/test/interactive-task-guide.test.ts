@@ -422,11 +422,24 @@ describe("a yes to a guided step", () => {
     const g = guide({ authorizeAction: () => true });
     const offer = await g.workflow.refresh();
     expect(offer.kind).toBe("agent-action");
+    // The old contract is named, not mistaken for a missing target.
+    await expect(g.workflow.executeAction(offer.offerKey)).rejects.toThrow(
+      /return context\.authorize\(\)/,
+    );
+    expect(g.browser.clicks).toBe(0);
+    expect(g.runtime.get(g.taskId).operations).toEqual([]);
+  });
+
+  it("a dispatch answer other than the grant is no target", async () => {
+    const g = guide({
+      authorizeAction: (_input, context) =>
+        context.phase === "plan" ? true : { offer: "forged" },
+    });
+    const offer = await g.workflow.refresh();
     expect(await g.workflow.executeAction(offer.offerKey)).toMatchObject({
       kind: "blocked",
       reasonCode: "no-target",
     });
     expect(g.browser.clicks).toBe(0);
-    expect(g.runtime.get(g.taskId).operations).toEqual([]);
   });
 });
