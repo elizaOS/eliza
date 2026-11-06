@@ -253,7 +253,7 @@ const DEFAULT_MFA_MAX_AGE_MS = 5 * 60_000;
 const ENCRYPTED_IMPORT_SESSION_TTL_MS = 10 * 60_000;
 const ENCRYPTED_IMPORT_MAX_CIPHERTEXT_BYTES = 4096;
 
-type EncryptedImportSession = {
+export type EncryptedImportSession = {
   id: string;
   tenantId: string;
   agentId: string;
@@ -302,43 +302,60 @@ function encryptedImportSessionStoreKey(id: string): string {
   return `vault-agent:${id}`;
 }
 
-function parseStoredEncryptedImportSession(
+/**
+ * The stored import session exists but cannot be decrypted (key-store rotation,
+ * a torn write, corrupted ciphertext). Distinct from an absent session: the
+ * submit route must not report it as "invalid or expired".
+ */
+export class VaultEncryptedImportSessionUnreadableError extends Error {
+  constructor(cause: unknown) {
+    super("Stored vault import session could not be decrypted");
+    this.name = "VaultEncryptedImportSessionUnreadableError";
+    this.cause = cause;
+  }
+}
+
+export function parseStoredEncryptedImportSession(
   raw: string | null,
 ): EncryptedImportSession | null {
   if (!raw) return null;
+  let parsed: Partial<EncryptedImportSession>;
   try {
-    const parsed =
-      decryptImportSessionJson<Partial<EncryptedImportSession>>(raw);
-    const createdAt = parsed.createdAt;
-    const expiresAt = parsed.expiresAt;
-    if (
-      !isNonEmptyString(parsed.id) ||
-      !isNonEmptyString(parsed.tenantId) ||
-      !isNonEmptyString(parsed.agentId) ||
-      (parsed.chain !== "evm" && parsed.chain !== "solana") ||
-      !isNonEmptyString(parsed.privateKey) ||
-      !isNonEmptyString(parsed.publicKey) ||
-      typeof createdAt !== "number" ||
-      !Number.isSafeInteger(createdAt) ||
-      typeof expiresAt !== "number" ||
-      !Number.isSafeInteger(expiresAt)
-    ) {
-      return null;
-    }
-    return {
-      id: parsed.id,
-      tenantId: parsed.tenantId,
-      agentId: parsed.agentId,
-      chain: parsed.chain,
-      createdBy: typeof parsed.createdBy === "string" ? parsed.createdBy : null,
-      privateKey: parsed.privateKey,
-      publicKey: parsed.publicKey,
-      createdAt,
-      expiresAt,
-    };
-  } catch {
+    parsed = decryptImportSessionJson<Partial<EncryptedImportSession>>(raw);
+  } catch (error) {
+    // The bytes are present but no longer decrypt: a key-store rotation, a torn
+    // write or corrupted ciphertext. Throwing keeps that server fault out of
+    // the "session is invalid or expired" 400 the submit route returns for a
+    // genuinely absent session.
+    throw new VaultEncryptedImportSessionUnreadableError(error);
+  }
+  const createdAt = parsed.createdAt;
+  const expiresAt = parsed.expiresAt;
+  if (
+    !isNonEmptyString(parsed.id) ||
+    !isNonEmptyString(parsed.tenantId) ||
+    !isNonEmptyString(parsed.agentId) ||
+    (parsed.chain !== "evm" && parsed.chain !== "solana") ||
+    !isNonEmptyString(parsed.privateKey) ||
+    !isNonEmptyString(parsed.publicKey) ||
+    typeof createdAt !== "number" ||
+    !Number.isSafeInteger(createdAt) ||
+    typeof expiresAt !== "number" ||
+    !Number.isSafeInteger(expiresAt)
+  ) {
     return null;
   }
+  return {
+    id: parsed.id,
+    tenantId: parsed.tenantId,
+    agentId: parsed.agentId,
+    chain: parsed.chain,
+    createdBy: typeof parsed.createdBy === "string" ? parsed.createdBy : null,
+    privateKey: parsed.privateKey,
+    publicKey: parsed.publicKey,
+    createdAt,
+    expiresAt,
+  };
 }
 
 async function createEncryptedImportSession(input: {
