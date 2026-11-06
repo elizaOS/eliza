@@ -153,8 +153,29 @@ explicit callback action, target package, journal and executor. Rejected worker
 submission finishes the broadcast and leaves durable reconciliation to the host.
 Transaction, immutable/framework session and optional package identity must match;
 success/failure hints never substitute for installed-identity and live-session
-readback, and user-action intents are never launched. The Android contract uses
-real PackageInstaller sessions; hosts must also qualify actual installation,
+readback, and user-action intents are never launched. A reported candidate
+fault (an invalid, conflicting or incompatible APK) quarantines a candidate at
+once, and a fault reported while the session is still listed is kept until it is
+gone. A gone session with no report waits `UpdateJournal.OUTCOME_UNKNOWN_WAIT_MS`
+of observed uptime for a late callback, then releases the plan for a later
+attempt. Every release counts, whatever its cause (a retryable report, no report,
+or our own session abandoned uncommitted, such as a commit that keeps throwing):
+after `MAX_INSTALL_ATTEMPTS_PER_CANDIDATE` releases of the same candidate in a row
+it is quarantined. A candidate that installs clears the count, and the journal is
+written as version 4 again. `InstallReadback` abandons our own session only when the platform
+reports it uncommitted (API 29 and later) and the journal has waited long enough:
+on API 31 and later a sealed session reads uncommitted until the platform has
+verified the APK, so a candidate session must stay uncommitted for
+`InstallReadback.UNCOMMITTED_ABANDON_WAIT_MS` of observed uptime, even when the
+host's install timeout is shorter, and a recovery session, attempted only once, is
+kept until the host's install timeout. Hosts must run
+`PackageInstallCoordinator.reconcilePending` periodically (for example from a job)
+while `UpdateJournal.awaitingInstaller` holds: only it counts the observed time
+that times out a stalled session and releases a gone one with no report, and until
+then the journal admits no other plan. A
+committed or unknown session is never abandoned and is left to install or to
+expire on the platform. The Android
+contract uses real PackageInstaller sessions; hosts must also qualify actual installation,
 callback delivery, process death and cached recovery with their signed fixtures.
 
 ### Local runtime health sampling
@@ -273,6 +294,17 @@ cleanup and cancellation between startup stages.
 same verified immutable bundle preparation path. Hosts retain asset names,
 required library lists, storage layout and inventory format; presence does not
 establish integrity or readiness.
+`prepare` and `prepareFromAsset` hash every file on every launch.
+`prepareSealed` and `prepareSealedFromAsset` let a host start sooner. After a full
+SHA-256 check they write a seal to `<root>/.seals/<release>`, outside the release.
+The seal holds the size, mtime, ctime, inode, mode and owner of each listed file and
+native library. While these values match and the seal is under 24 hours old, the
+launch skips the hash and returns `Prepared.deferred`. The host must then call
+`Prepared.verify()` off the startup path and stop the runtime if it throws. A
+missing, changed, unreadable, old or future seal makes the store hash before it
+returns. The seal is not keyed, so code running as the app user can forge it. Only
+`verify()` catches that, and the runtime may run tampered code until it does.
+`Prepared.sealed` is false when no seal could be written; the next launch then hashes first.
 
 Source-checkout consumers can use `scripts/updater-contract-fixtures.mjs` to stage
 or run the five portable updater contracts in their adapter namespace. This keeps
@@ -331,6 +363,14 @@ close the broker when the launch retires. Retain the database writer lease;
 keys for existing databases must fail, never trigger creation. An interrupted
 mutation may have committed even if its response is refused or lost; do not
 blindly retry destructive operations.
+
+A host that refuses to adopt a launch's key into an account that already has
+its own key can keep that launch's slot apart as a stranded slot. It then
+implements `readStranded` and `completeStranded(expectedKeyId)`. The gateway
+reads the stranded key, merges its rows into the bound database, and only after
+that commit calls `completeStranded`, which erases the slot if it still holds
+that generation. The merge must be idempotent, because a stop can come between
+the commit and the erase. The defaults report no stranded slot.
 
 `createLocalTaskDataKeyStore` is the private native-process client. It validates
 versioned key material and returns `{id, bytes}`; erase the byte array after use.

@@ -78,7 +78,9 @@ and deleted once Android releases it. `createSurface({ ..., profileKey })` inste
 selects one persistent profile per owner and key (for example a signed-in account), so
 website sign-ins survive. `purgeProfiles({ profileKey })` removes it at once and closes
 its surfaces (`surfaceClosed`); `purgeProfiles({ idleMs })` removes keyed profiles idle
-for that long. `clearSurfaceStorage` signs one isolated surface out of every website.
+for that long. `purgeProfiles({ all: true })` removes every surface profile of any owner,
+closes their surfaces and resolves `clean` once no purged profile holds a cookie.
+`clearSurfaceStorage` signs one isolated surface out of every website.
 
 `captureSurface` returns a JPEG of the visible page, about 1024 px on the long edge, for
 a vision fallback. Before the copy it covers password, `cc-*`, `one-time-code` and other
@@ -205,7 +207,14 @@ its document ID. Closing, hiding, navigation, or owner reconciliation interrupts
 pending work. Activity pause also fences control and keeps the page for Resume.
 Hiding or pausing requires a fresh snapshot before the next input. A lost effect reply reports an uncertain outcome; observe before
 continuing and never automatically replay the effect. This API currently covers
-the main frame's DOM commands, not child frames or coordinate input.
+the main frame's DOM commands, not child frames or coordinate input. After a task
+effect, `BrowserEffectWatch` applies the Chromium network watch's rule to every
+request `shouldInterceptRequest` sees, from any frame; task snapshots report it as
+`effectViolation` and `effectWatch`. WebView names no request type, so only an
+image or stylesheet load (by its `Accept` header) is a passive cross-site read;
+beacons and other cross-site reads count within the 30-second window. WebView
+never shows it WebSocket, service-worker or WebRTC traffic, so `unseen` names
+those.
 
 `bun run --cwd plugins/plugin-native-browser-surface test:control` uses
 `ELIZA_BROWSER_EXECUTABLE` to test the generated channel in a real Chromium

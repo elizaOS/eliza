@@ -44,6 +44,13 @@ public final class CalendarEventOptions {
   try { ZoneId.of(value); } catch (RuntimeException invalid) { throw new IllegalArgumentException("Choose a valid time zone"); }
   return value;
  }
+ /**
+  * The device zone for a timed event, or UTC when Android names it in a form zone() refuses (for
+  * example "GMT" or "GMT+05:00"). DTSTART and DTEND are instants, so only the stored zone changes.
+  */
+ public static String defaultZone() {
+  try { return zone(java.util.TimeZone.getDefault().getID()); } catch (IllegalArgumentException unnamed) { return "UTC"; }
+ }
  /** FREQ plus optional INTERVAL, BYDAY (weekly) and one of COUNT or UNTIL. Returned unchanged. */
  public static String rrule(String value, boolean allDay) {
   if (value == null || value.isEmpty()) return "";
