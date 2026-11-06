@@ -1503,7 +1503,7 @@ export async function handleChatCompletionsPOST(
                 error: {
                   message: "Rate limiter is unavailable. Retry shortly.",
                   type: "service_unavailable",
-                  code: "service_unavailable",
+                  code: "rate_limit_unavailable",
                 },
               },
               { status: 503, headers: { "Retry-After": "1" } },
