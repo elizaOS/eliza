@@ -75,11 +75,25 @@ public final class VoiceBundleAssetsTest {
         Path second = apk(temp, "second.apk", assets, context, "asr/model.gguf", 65536L);
         VoiceBundleAssets.install(context);
         check(Files.readString(asr).equals(region(second, 65536, length)), "region file follows the APK");
-        // The APK bytes must match the manifest.
-        Files.write(second, new byte[70000]);
-        context.getAssets().stored.put(VoiceBundleAssets.ASSET_ROOT + "/asr/model.gguf", new Object[]{second.toString(), 1024L});
+        // An update with the same manifest is not hashed again: junk bytes in the moved APK still link.
+        Path moved = temp.resolve("moved.apk").toAbsolutePath();
+        Files.write(moved, new byte[70000]);
+        context.getAssets().stored.put(VoiceBundleAssets.ASSET_ROOT + "/asr/model.gguf", new Object[]{moved.toString(), 1024L});
+        VoiceBundleAssets.install(context);
+        check(Files.readString(asr).equals(region(moved, 1024, length)), "same manifest: region file rewritten without hashing");
+        // Without a verified stamp the APK bytes must match the manifest.
+        Path stamp = asr.getParent().getParent().resolve("installed-manifest.json");
+        Files.delete(stamp);
+        context.getAssets().stored.put(VoiceBundleAssets.ASSET_ROOT + "/asr/model.gguf", new Object[]{moved.toString(), 2048L});
         rejected(context);
-        check(Files.readString(asr).equals(region(second, 65536, length)), "failed check keeps the region file");
+        check(Files.readString(asr).equals(region(moved, 1024, length)), "failed check keeps the region file");
+        // A changed manifest hashes again.
+        manifest(assets, "in-place model bytes");
+        Files.writeString(stamp, "older manifest");
+        rejected(context);
+        apk(temp, "second.apk", assets, context, "asr/model.gguf", 65536L);
+        VoiceBundleAssets.install(context);
+        check(Files.readString(asr).equals(region(second, 65536, length)), "changed manifest hashes and links");
         // Without the meta-data the model is copied again, replacing the region file.
         context.info.metaData.remove(VoiceBundleAssets.MODELS_IN_PLACE_METADATA);
         VoiceBundleAssets.install(context);

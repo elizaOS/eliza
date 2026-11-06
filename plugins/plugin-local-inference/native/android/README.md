@@ -284,8 +284,11 @@ aligns those entries to 16 bytes, and sets the application meta-data
 libelizainference region file (`tools/file-region` in the fork) in place of each
 uncompressed `.gguf` or `.lex` under `asr/` or `tts/`. That file names the
 asset's offset and length in the APK, and the native loaders map those bytes
-directly. The installer hashes the bytes in the APK, again after an update moves
-them. It still copies compressed or unaligned entries, the VAD model and the
+directly. The installer hashes the bytes in the APK once per bundle manifest.
+After an app update with the same manifest it only rewrites the region files for
+the new APK path, since the package manager has checked the APK's signature. The
+agent's ASR check (`asr-provenance.ts`) reads the GGUF header through a region
+file too. It still copies compressed or unaligned entries, the VAD model and the
 eSpeak NG data. A region bundle needs a libelizainference built from a fork
 commit with region-file support.
 

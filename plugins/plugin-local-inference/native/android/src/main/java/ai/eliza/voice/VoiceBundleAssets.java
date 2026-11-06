@@ -39,7 +39,7 @@ import org.json.JSONObject;
  * APK stores uncompressed at a 16-byte-aligned offset is not copied: its
  * installed path holds a libelizainference region file that names the bytes
  * in the APK, and the native loaders map them from there. The bytes are hashed
- * in the APK instead. Any other file, and every file without the meta-data, is
+ * in the APK instead, once per manifest. Any other file, and every file without the meta-data, is
  * copied. Only a libelizainference with region-file support can load such a
  * bundle.
  */
@@ -253,9 +253,11 @@ public final class VoiceBundleAssets {
     }
 
     /**
-     * Writes the region file for an APK asset. The asset's bytes are hashed when
-     * the manifest or the asset's place in the APK (for example after an app
-     * update) changed since the last verified install.
+     * Writes the region file for an APK asset. The asset's bytes are hashed only
+     * when the manifest changed since the last verified install. With the same
+     * manifest (for example an app update, which moves the APK) the package
+     * manager has already checked the APK's signature, and the manifest pins the
+     * bytes, so only the region file is rewritten, as the copy path skips work.
      */
     private static void link(File target, Region region, boolean verified, String sha, String relative)
             throws IOException {
@@ -264,7 +266,7 @@ public final class VoiceBundleAssets {
                 && Arrays.equals(read(new FileInputStream(target), text.length), text)) {
             return;
         }
-        if (!sha.equals(sha256(region.apk, region.offset, region.length))) {
+        if (!verified && !sha.equals(sha256(region.apk, region.offset, region.length))) {
             throw new IOException("Voice asset checksum mismatch: " + relative);
         }
         File parent = target.getParentFile();
