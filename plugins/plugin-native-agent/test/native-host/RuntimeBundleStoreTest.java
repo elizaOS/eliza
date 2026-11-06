@@ -4,6 +4,7 @@ import java.io.*;
 import java.nio.channels.FileChannel;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.*;
+import java.nio.file.attribute.FileTime;
 import java.security.MessageDigest;
 import java.util.*;
 
@@ -56,6 +57,54 @@ public final class RuntimeBundleStoreTest {
       name -> "inventory".equals(name) ? new ByteArrayInputStream(inventory) : source(assets).open(name),
       root.resolve("native"), SYNC, "eliza-runtime-v1");
   }
+  private static List<String> launch(Path root, Map<String, byte[]> assets, long now) throws Exception {
+    List<String> seen = new ArrayList<>();
+    RuntimeBundleStore.prepare(root.resolve("versions"), manifest(assets), source(assets), root.resolve("native"), new RuntimeBundleStore.Durability() {
+      public void syncDirectory(Path path) throws IOException { SYNC.syncDirectory(path); }
+      public long now() { return now; }
+    }, seen::add);
+    return seen;
+  }
+  private static boolean hashed(List<String> seen) { return seen.contains("release-verified") && !seen.contains("release-sealed"); }
+  /** A launch skips hashing only while every file keeps the metadata sealed after its last full hash. */
+  private static void sealedRelease(Path suite, Map<String, byte[]> next) throws Exception {
+    Path root = Files.createDirectory(suite.resolve("sealed")); libraries(root);
+    long day = 24L * 60 * 60 * 1000, t = 1_000_000_000L;
+    check(launch(root, next, t).contains("published"), "First launch extracts and hashes");
+    Path release = root.resolve("versions").resolve(hash(manifest(next))), bundle = release.resolve("bundle");
+    check(Files.isRegularFile(release.resolve(".verified")), "Verified extraction writes a seal");
+    check(launch(root, next, t + 1).equals(List.of("release-sealed")), "Unchanged release skips the hash");
+
+    Files.setLastModifiedTime(bundle.resolve("agent-bundle.js"), FileTime.fromMillis(t));
+    check(hashed(launch(root, next, t + 2)), "Changed mtime forces a full hash");
+    check(launch(root, next, t + 3).equals(List.of("release-sealed")), "A passing full hash renews the seal");
+
+    Files.delete(release.resolve(".verified"));
+    check(hashed(launch(root, next, t + 4)), "Missing seal forces a full hash");
+    Files.writeString(release.resolve(".verified"), "eliza-runtime-seal-v1\nforged\n");
+    check(hashed(launch(root, next, t + 5)), "Unreadable seal forces a full hash");
+    check(hashed(launch(root, next, t + 5 + day + 1)), "An old seal forces a full hash");
+    check(hashed(launch(root, next, t)), "A seal from the future forces a full hash");
+
+    // Same size and restored mtime still change ctime, so tampering is hashed and refused.
+    Path file = bundle.resolve("gateway/bootstrap.mjs");
+    FileTime mtime = Files.getLastModifiedTime(file);
+    byte[] original = Files.readAllBytes(file), forged = original.clone(); forged[0] ^= 1;
+    Thread.sleep(5); Files.write(file, forged); Files.setLastModifiedTime(file, mtime);
+    rejects(() -> launch(root, next, t + 6));
+    Files.write(file, original);
+    check(hashed(launch(root, next, t + 7)), "Restored release hashes before it is sealed again");
+    Files.writeString(file, "longer tampered content");
+    rejects(() -> launch(root, next, t + 8));
+    Files.write(file, original); launch(root, next, t + 9);
+
+    Path library = root.resolve("native/libeliza_bun.so");
+    byte[] libraryBytes = Files.readAllBytes(library), wrong = libraryBytes.clone(); wrong[0] ^= 1;
+    Thread.sleep(5); Files.write(library, wrong);
+    rejects(() -> launch(root, next, t + 10));
+    Files.write(library, libraryBytes);
+    check(hashed(launch(root, next, t + 11)), "Replaced native library forces a full hash");
+  }
   public static void main(String[] args) throws Exception {
     if (args.length == 3 && args[0].equals("crash")) {
       Path root = Path.of(args[1]); Map<String, byte[]> next = assets("new", false);
@@ -81,6 +130,8 @@ public final class RuntimeBundleStoreTest {
     rejects(() -> prepare(normal, next)); Files.delete(newBundle.resolve("extra.js"));
     Files.writeString(newBundle.resolve("agent-bundle.js"), "tampered"); rejects(() -> prepare(normal, next));
     check(Files.readString(oldBundle.resolve("agent-bundle.js")).startsWith("old"), "Corruption must not alter old release");
+
+    sealedRelease(suite, next);
 
     for (String boundary : new String[]{"staging-created", "file-chunk", "file-synced", "before-marker", "before-publish", "published"}) {
       Path root = Files.createDirectory(suite.resolve(boundary)); libraries(root); Path prior = prepare(root, old);

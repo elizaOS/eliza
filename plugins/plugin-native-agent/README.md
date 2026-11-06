@@ -270,6 +270,10 @@ cleanup and cancellation between startup stages.
 same verified immutable bundle preparation path. Hosts retain asset names,
 required library lists, storage layout and inventory format; presence does not
 establish integrity or readiness.
+After a full SHA-256 check, the store writes a `.verified` seal into the release.
+The seal holds the size, mtime, ctime, inode, mode and owner of each listed file and
+native library. A later launch checks only these values while the seal is under 24
+hours old. A missing, changed, old or future seal makes the store hash every file again.
 
 Source-checkout consumers can use `scripts/updater-contract-fixtures.mjs` to stage
 or run the five portable updater contracts in their adapter namespace. This keeps

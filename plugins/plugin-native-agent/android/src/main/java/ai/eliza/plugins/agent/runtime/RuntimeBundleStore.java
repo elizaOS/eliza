@@ -18,10 +18,17 @@ public class RuntimeBundleStore {
   public interface Durability {
     void syncDirectory(Path directory) throws IOException;
     default long usableSpace(Path directory) throws IOException { return directory.toFile().getUsableSpace(); }
+    default long now() { return System.currentTimeMillis(); }
   }
   public interface Faults { void boundary(String name) throws IOException; }
   private static final Faults NONE = name -> {};
   private static final LinkOption NOFOLLOW = LinkOption.NOFOLLOW_LINKS;
+  // A seal records file metadata after a full hash so a later launch can skip it.
+  // ctime and inode cannot be set back by an app, so a write or replacement shows.
+  // A same-uid writer can rewrite the seal; the age limit bounds that window.
+  private static final String SEAL = ".verified", SEAL_FORMAT = "eliza-runtime-seal-v1";
+  private static final long SEAL_MAX_AGE_MS = 24L * 60 * 60 * 1000;
+  private static final String STAMP = "unix:size,lastModifiedTime,ctime,ino,dev,mode,uid,nlink";
 
   private static final class Entry {
     final String kind, hash, source, destination;
@@ -73,12 +80,24 @@ public class RuntimeBundleStore {
     try (FileChannel channel = FileChannel.open(lockPath, StandardOpenOption.CREATE, StandardOpenOption.WRITE, NOFOLLOW);
          FileLock lock = channel.lock()) {
       if (!lock.isValid()) throw new IOException("Runtime extraction lock unavailable");
-      for (Entry entry : entries) if ("native".equals(entry.kind)) verify(nativeLibraries.resolve(entry.source), entry);
       Path release = root.resolve(identity);
       if (Files.exists(release, NOFOLLOW)) {
-        verifyTree(release, entries, identity);
+        // Stamp before hashing: a write during the hash then fails the next seal check.
+        String stamps = stamps(release, entries, nativeLibraries);
+        long now = durability.now();
+        if (stamps != null && sealed(release, identity, stamps, now)) {
+          verifyNatives(entries, nativeLibraries, false);
+          verifyTree(release, entries, identity, false);
+          faults.boundary("release-sealed");
+          return release.resolve("bundle");
+        }
+        verifyNatives(entries, nativeLibraries, true);
+        verifyTree(release, entries, identity, true);
+        faults.boundary("release-verified");
+        seal(release, identity, stamps, now);
         return release.resolve("bundle");
       }
+      verifyNatives(entries, nativeLibraries, true);
       // A process killed mid-extraction leaves only these private, unreferenced trees.
       try (DirectoryStream<Path> children = Files.newDirectoryStream(root, ".staging-*")) {
         for (Path child : children) if (child.getFileName().toString().matches("\\.staging-[a-f0-9-]{36}")) removeTree(child);
@@ -118,11 +137,13 @@ public class RuntimeBundleStore {
         restrict(marker); out.write(identity.getBytes(StandardCharsets.US_ASCII)); out.getFD().sync();
       }
       durability.syncDirectory(staging);
-      verifyTree(staging, entries, identity);
+      String stamps = stamps(staging, entries, nativeLibraries);
+      verifyTree(staging, entries, identity, true);
       faults.boundary("before-publish");
       Files.move(staging, release, StandardCopyOption.ATOMIC_MOVE);
       durability.syncDirectory(root);
       faults.boundary("published");
+      seal(release, identity, stamps, durability.now());
       return release.resolve("bundle");
     }
   }
@@ -174,7 +195,57 @@ public class RuntimeBundleStore {
     Path current = root;
     for (Path part : root.relativize(directory)) { current = current.resolve(part); privateDirectory(current); }
   }
-  private static void verifyTree(Path directory, List<Entry> entries, String identity) throws IOException {
+  private static void verifyNatives(List<Entry> entries, Path nativeLibraries, boolean hash) throws IOException {
+    for (Entry entry : entries) if ("native".equals(entry.kind)) verify(nativeLibraries.resolve(entry.source), entry, hash);
+  }
+  /** Digest of every listed file's metadata, or null when the platform cannot report ctime and inode. */
+  private static String stamps(Path release, List<Entry> entries, Path nativeLibraries) {
+    StringBuilder out = new StringBuilder();
+    try {
+      stamp(out, ".complete", release.resolve(".complete"));
+      for (Entry entry : entries) {
+        if ("asset".equals(entry.kind)) stamp(out, entry.destination, release.resolve(entry.destination));
+        else stamp(out, entry.source, nativeLibraries.resolve(entry.source));
+      }
+    } catch (IOException | UnsupportedOperationException | IllegalArgumentException unavailable) {
+      // error-policy:J4 no stamps selects the full hash, which reports the real failure.
+      return null;
+    }
+    return digest(out.toString().getBytes(StandardCharsets.UTF_8));
+  }
+  private static void stamp(StringBuilder out, String name, Path file) throws IOException {
+    Map<String, Object> values = Files.readAttributes(file, STAMP, NOFOLLOW);
+    out.append(name);
+    for (String key : new String[]{"size", "lastModifiedTime", "ctime", "ino", "dev", "mode", "uid", "nlink"}) {
+      Object value = values.get(key);
+      if (value == null) throw new UnsupportedOperationException(key);
+      out.append('\t').append(value);
+    }
+    out.append('\n');
+  }
+  private static String sealText(String identity, String stamps, long verifiedAt) {
+    return SEAL_FORMAT + "\n" + identity + "\n" + verifiedAt + "\n" + stamps + "\n";
+  }
+  private static boolean sealed(Path release, String identity, String stamps, long now) throws IOException {
+    Path seal = release.resolve(SEAL);
+    if (!Files.isRegularFile(seal, NOFOLLOW) || Files.size(seal) > 256) return false;
+    String[] lines = new String(Files.readAllBytes(seal), StandardCharsets.US_ASCII).split("\n", -1);
+    if (lines.length != 5 || !lines[2].matches("0|[1-9][0-9]{0,17}")) return false;
+    long verifiedAt = Long.parseLong(lines[2]);
+    return now >= verifiedAt && now - verifiedAt <= SEAL_MAX_AGE_MS
+      && sealText(identity, stamps, verifiedAt).equals(String.join("\n", lines));
+  }
+  private static void seal(Path release, String identity, String stamps, long verifiedAt) throws IOException {
+    Path seal = release.resolve(SEAL);
+    Files.deleteIfExists(seal);
+    if (stamps == null) return;
+    try (FileChannel out = FileChannel.open(seal, StandardOpenOption.CREATE_NEW, StandardOpenOption.WRITE, NOFOLLOW)) {
+      restrict(seal);
+      out.write(java.nio.ByteBuffer.wrap(sealText(identity, stamps, verifiedAt).getBytes(StandardCharsets.US_ASCII)));
+      out.force(true);
+    }
+  }
+  private static void verifyTree(Path directory, List<Entry> entries, String identity, boolean hash) throws IOException {
     if (!Files.isDirectory(directory, NOFOLLOW)) throw new IOException("Invalid runtime release directory");
     Path marker = directory.resolve(".complete");
     if (!Files.isRegularFile(marker, NOFOLLOW) || Files.size(marker) != 64 || !identity.equals(new String(Files.readAllBytes(marker), StandardCharsets.US_ASCII))) throw new IOException("Runtime is incomplete");
@@ -183,7 +254,7 @@ public class RuntimeBundleStore {
       Path file = directory.resolve(entry.destination);
       Path parent = file.getParent();
       while (!parent.equals(directory)) { if (!Files.isDirectory(parent, NOFOLLOW)) throw new IOException("Invalid runtime parent"); parent = parent.getParent(); }
-      verify(file, entry); expected.add(entry.destination);
+      verify(file, entry, hash); expected.add(entry.destination);
     }
     verifyNames(directory, directory, expected);
   }
@@ -191,18 +262,20 @@ public class RuntimeBundleStore {
     try (DirectoryStream<Path> files = Files.newDirectoryStream(directory)) {
       for (Path file : files) {
         if (Files.isDirectory(file, NOFOLLOW)) verifyNames(root, file, expected);
+        else if (root.equals(directory) && file.getFileName().toString().equals(SEAL)) continue;
         else if (!Files.isRegularFile(file, NOFOLLOW) || !expected.remove(root.relativize(file).toString().replace(File.separatorChar, '/'))) throw new IOException("Unexpected runtime file");
       }
     }
     if (root.equals(directory) && !expected.isEmpty()) throw new IOException("Missing runtime file");
   }
-  private static void verify(Path file, Entry entry) throws IOException {
+  private static void verify(Path file, Entry entry, boolean hash) throws IOException {
     if (!Files.isRegularFile(file, NOFOLLOW) || Files.size(file) != entry.size) throw new IOException("Runtime file length mismatch");
-    MessageDigest hash = sha256();
+    if (!hash) return;
+    MessageDigest digest = sha256();
     try (InputStream input = Files.newInputStream(file, NOFOLLOW)) {
       byte[] buffer = new byte[65536]; int count; long total = 0;
-      while ((count = input.read(buffer)) != -1) { total += count; if (total > entry.size) throw new IOException("Runtime file grew during verification"); hash.update(buffer, 0, count); }
-      if (total != entry.size || !entry.hash.equals(hex(hash.digest()))) throw new IOException("Runtime file integrity mismatch");
+      while ((count = input.read(buffer)) != -1) { total += count; if (total > entry.size) throw new IOException("Runtime file grew during verification"); digest.update(buffer, 0, count); }
+      if (total != entry.size || !entry.hash.equals(hex(digest.digest()))) throw new IOException("Runtime file integrity mismatch");
     }
   }
   private static void syncTree(Path directory, Durability durability) throws IOException {
