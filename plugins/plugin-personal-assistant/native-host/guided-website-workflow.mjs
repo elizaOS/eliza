@@ -534,14 +534,16 @@ export class GuidedWebsiteWorkflow {
    * The person answered a stop-and-ask question. A yes to a step covers one
    * dispatch of that step in the current epoch: the dispatch uses it up,
    * and a Stop, a resume or any other new epoch clears it. Her answer about
-   * forms sent on the website holds for the task.
+   * forms sent on the website holds for the task. A host that passes the
+   * `epoch` the question was asked in has a late or repeated yes to an older
+   * question ignored, so it can never arm the step again.
    */
-  acknowledge(key) {
+  acknowledge(key, { epoch } = {}) {
+    const current = this.runtime.get(this.taskId).epoch;
+    if (epoch !== undefined && epoch !== current) return;
     this.acknowledged.set(
       key,
-      key.startsWith(MANUAL_ACTIVITY)
-        ? null
-        : this.runtime.get(this.taskId).epoch,
+      key.startsWith(MANUAL_ACTIVITY) ? null : current,
     );
   }
   /** Drops each yes given in another epoch than `epoch`. */
@@ -1033,10 +1035,19 @@ export class GuidedWebsiteWorkflow {
       this.grant.selector !== offer.selector ||
       this.grant.action !== offer.action.split(".")[0]
     ) {
-      // A new target needs a new epoch. The task stays active: only her
-      // Stop pauses it, and a Stop meanwhile fails the observe below.
+      // A new target needs a new epoch. The task stays active: the guide
+      // never pauses for a binding, and a Stop meanwhile fails the observe
+      // below.
       const epoch = task.epoch;
-      task = this.runtime.rebind(task.id, task.revision);
+      try {
+        task = this.runtime.rebind(task.id, task.revision);
+      } catch (error) {
+        // A page read is still running (a background refresh). The guide never
+        // cancels it to press: nothing is pressed, and its fresh offer follows.
+        if (error?.code === "TASK_BUSY")
+          return blocked(this.words.changed, "task-busy");
+        throw error;
+      }
       await this.runtime.settle?.(task.id);
       // The guide's own new binding keeps her yes; her Stop never does.
       for (const [key, given] of this.acknowledged)
