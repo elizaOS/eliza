@@ -719,6 +719,21 @@ app.post("/", async (c) => {
         settleReservation,
         settleUnknown: settleUnknownReservation,
       });
+    // One terminal decision for an abort, a provider error mid-stream and a
+    // stream teardown: a known refusal releases the hold; otherwise bill the
+    // delivered output when it is larger than the reservation, else keep the
+    // admitted estimate. The settlers are first-call-wins, so every terminal
+    // must make the same decision or the first one to run freezes a wrong one.
+    const settleStreamTerminal = (error?: unknown) =>
+      settleOffResponsePath(executionCtx, async () => {
+        if (error !== undefined && isKnownUnacceptedProviderError(error)) {
+          await refundAnonymousMessageSlot?.();
+          await settleReservation?.(0);
+        } else {
+          await commitAnonymousMessageSlot?.();
+          await settleAbortedStream();
+        }
+      });
     const result = streamText({
       model: languageModel,
       onChunk: ({ chunk }) => {
@@ -877,10 +892,7 @@ app.post("/", async (c) => {
         });
       },
       onAbort: async () => {
-        await settleOffResponsePath(executionCtx, async () => {
-          await commitAnonymousMessageSlot?.();
-          await settleAbortedStream();
-        });
+        await settleStreamTerminal();
         logger.info("chat-api", "Aborted chat stream", {
           requestId,
           userId: user.id,
@@ -888,15 +900,7 @@ app.post("/", async (c) => {
         });
       },
       onError: async ({ error }: { error: unknown }) => {
-        await settleOffResponsePath(executionCtx, async () => {
-          if (isKnownUnacceptedProviderError(error)) {
-            await refundAnonymousMessageSlot?.();
-            await settleReservation?.(0);
-          } else {
-            await commitAnonymousMessageSlot?.();
-            await settleUnknownReservation?.();
-          }
-        });
+        await settleStreamTerminal(error);
         logger.error("chat-api", "Stream provider error", {
           requestId,
           userId: user.id,
@@ -918,18 +922,6 @@ app.post("/", async (c) => {
     // Every settler here is first-call-wins idempotent and the anonymous
     // commit/refund is single-flighted, so a callback that already settled
     // makes this a no-op.
-    const settleStreamTeardown = (error?: unknown) =>
-      settleOffResponsePath(executionCtx, async () => {
-        if (error !== undefined && isKnownUnacceptedProviderError(error)) {
-          await refundAnonymousMessageSlot?.();
-          await settleReservation?.(0);
-        } else {
-          // Same terminal decision as onAbort: bill the delivered output, and
-          // keep the admitted estimate only when nothing was delivered.
-          await commitAnonymousMessageSlot?.();
-          await settleAbortedStream();
-        }
-      });
     const upstreamReader = streamResponse.body.getReader();
     const guardedBody = new ReadableStream<Uint8Array>({
       async pull(controller) {
@@ -941,7 +933,7 @@ app.post("/", async (c) => {
             controller.enqueue(next.value);
           }
         } catch (error) {
-          await settleStreamTeardown(error);
+          await settleStreamTerminal(error);
           logger.error("chat-api", "UI-message stream failed mid-flight", {
             requestId,
             error: error instanceof Error ? error.message : String(error),
@@ -955,7 +947,7 @@ app.post("/", async (c) => {
         try {
           await upstreamReader.cancel(reason);
         } finally {
-          await settleStreamTeardown();
+          await settleStreamTerminal();
         }
       },
     });
