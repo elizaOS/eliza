@@ -108,14 +108,13 @@ export function stripMediaDeliveryPreamble(text: string): string {
   for (const prefix of MEDIA_DELIVERY_PREAMBLES) {
     if (!lower.startsWith(prefix)) continue;
     let cursor = prefix.length;
-    if (
-      cursor < text.length &&
-      !/\s/u.test(text[cursor]) &&
-      text[cursor] !== ":"
-    )
-      continue;
     while (cursor < text.length && /\s/u.test(text[cursor])) cursor += 1;
+    // A preamble is a lead-in only when it ends its clause: the text ends, a
+    // colon introduces what follows, or the preamble is a sentence of its
+    // own ("done."). "Here are three…" or "Here you go! …" start a sentence
+    // the user still reads, so cutting the preamble would garble it.
     if (text[cursor] === ":") cursor += 1;
+    else if (cursor < text.length && !prefix.endsWith(".")) continue;
     while (cursor < text.length && /\s/u.test(text[cursor])) cursor += 1;
     return text.slice(cursor);
   }
