@@ -2,7 +2,7 @@
 
 import { createHash, randomUUID } from "node:crypto";
 import { ElizaError } from "@elizaos/core";
-import { and, asc, eq, gt, inArray, isNull, sql } from "drizzle-orm";
+import { and, asc, eq, gt, inArray, isNotNull, isNull, sql } from "drizzle-orm";
 import { observeConfiguredCancellation } from "../../lib/services/configured-schedule-cancellation";
 import { validatePeriodEndCancellationObservation } from "../../lib/services/stripe-period-end-cancellation";
 import { resolveSubscriptionLifecycleBinding } from "../../lib/services/subscription-lifecycle-provider-binding";
@@ -23,6 +23,7 @@ import {
   billingSubscriptionCommands,
   billingSubscriptionRenewalReviews,
 } from "../schemas/subscription-billing-operations";
+import { webhookEvents } from "../schemas/webhook-events";
 import { readConfiguredCancellationAuthority } from "./configured-schedule-cancellation-authority";
 import {
   lockCurrentOrganizationSubscription,
@@ -153,6 +154,7 @@ async function settleStrandedCancellation(
     .select({
       cancelAtPeriodEnd: billingSubscriptions.cancel_at_period_end,
       pendingPlanKey: billingSubscriptions.pending_plan_key,
+      stripeSubscriptionId: billingSubscriptions.stripe_subscription_id,
     })
     .from(billingSubscriptions)
     .where(
@@ -165,6 +167,22 @@ async function settleStrandedCancellation(
     .for("update");
   if (!subscription || subscription.pendingPlanKey !== null) return false;
   if (subscription.cancelAtPeriodEnd === (command.kind === "cancel")) return false;
+  // The row is a mirror: a Stripe event for this subscription still waiting in
+  // the delivery outbox may carry the effect, so the command stays uncertain.
+  const [undelivered] = await tx
+    .select({ id: webhookEvents.id })
+    .from(webhookEvents)
+    .where(
+      and(
+        eq(webhookEvents.provider, "stripe"),
+        isNotNull(webhookEvents.delivery_payload),
+        isNull(webhookEvents.delivery_completed_at),
+        isNull(webhookEvents.delivery_dead_lettered_at),
+        sql`${webhookEvents.delivery_payload} #>> '{event,data,object,id}' = ${subscription.stripeSubscriptionId}`,
+      ),
+    )
+    .limit(1);
+  if (undelivered) return false;
   const [settled] = await tx
     .update(billingSubscriptionCommands)
     .set({
@@ -429,6 +447,21 @@ export async function claimCancellation(
     if (command.status !== "PREPARED" && command.status !== "OUTCOME_UNKNOWN") return null;
     const now = await readPostLockDatabaseNow(tx);
     if (command.lease_expires_at !== null && command.lease_expires_at > now) return null;
+    // A command fenced by an isolate older than 0554 has no dispatch time, after
+    // that migration's backfill. Its request was sent inside an earlier lease,
+    // and every earlier lease has ended by now, so its settle window starts here:
+    // later than the real dispatch and so never too early.
+    const stampedDispatch =
+      command.status === "OUTCOME_UNKNOWN" &&
+      command.cancellation_dispatch_state === "started" &&
+      command.cancellation_dispatched_at === null;
+    if (stampedDispatch) {
+      await tx
+        .update(billingSubscriptionCommands)
+        .set({ cancellation_dispatched_at: now, updated_at: now })
+        .where(eq(billingSubscriptionCommands.id, command.id));
+      command.cancellation_dispatched_at = now;
+    }
     let source: Awaited<ReturnType<typeof currentSource>>;
     try {
       source = await currentSource(
@@ -449,6 +482,8 @@ export async function claimCancellation(
         return null;
       }
       if (await settleStrandedCancellation(tx, input.organizationId, command, now)) return null;
+      // Keep the window start just recorded instead of rolling it back.
+      if (stampedDispatch) return null;
       throw error;
     }
     const [projection] = await tx

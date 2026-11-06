@@ -347,3 +347,122 @@ test("an uncertain cancel whose renewed subscription already shows the target st
   });
   expect(await row(first.commandId)).toMatchObject({ status: "OUTCOME_UNKNOWN" });
 }, 120_000);
+
+async function dispatchedAt(id: string) {
+  const result = await client
+    .getPgliteClientForTests()
+    .query<{ cancellation_dispatched_at: Date | null }>(
+      "SELECT cancellation_dispatched_at FROM billing_subscription_commands WHERE id=$1",
+      [id],
+    );
+  return result.rows[0]?.cancellation_dispatched_at ?? null;
+}
+/** A command an isolate older than 0554 fenced after that migration's backfill ran. */
+async function forgetDispatchTime(id: string) {
+  await client
+    .getPgliteClientForTests()
+    .query("UPDATE billing_subscription_commands SET cancellation_dispatched_at=NULL WHERE id=$1", [
+      id,
+    ]);
+}
+
+test("a command an old isolate fenced without a dispatch time starts its window at recovery and settles after it", async () => {
+  const f = await seed();
+  updateImpl = async () => {
+    throw stripeRefusal();
+  };
+  const first = await service.submitOrganizationSubscriptionCancellation(f.input, session);
+  expect(first.status).toBe("OUTCOME_UNKNOWN");
+  await forgetDispatchTime(first.commandId);
+  await age(first.commandId, "provider_started_at");
+
+  updateImpl = async () => {
+    throw new Error("A dispatched command must never be sent again");
+  };
+  expect(await service.recoverOrganizationSubscriptionCancellations(5)).toMatchObject({
+    failed: 0,
+    pending: 1,
+  });
+  expect(await dispatchedAt(first.commandId)).not.toBeNull();
+
+  await age(first.commandId, "cancellation_dispatched_at");
+  expect(await service.recoverOrganizationSubscriptionCancellations(5)).toMatchObject({
+    failed: 1,
+  });
+  expect(await row(first.commandId)).toMatchObject({
+    status: "FAILED",
+    error_code: "PROVIDER_EFFECT_ABSENT_AFTER_SETTLE",
+  });
+  expect(update).toHaveBeenCalledTimes(1);
+}, 120_000);
+
+test("a stale command an old isolate fenced without a dispatch time keeps the window start and settles after it", async () => {
+  const f = await seed();
+  updateImpl = async () => {
+    throw stripeRefusal();
+  };
+  const first = await service.submitOrganizationSubscriptionCancellation(f.input, session);
+  await renew(f.input.organizationId, f.input.subscriptionId);
+  await forgetDispatchTime(first.commandId);
+  await age(first.commandId, "provider_started_at");
+
+  expect(await service.recoverOrganizationSubscriptionCancellations(5)).toMatchObject({
+    failed: 0,
+    pending: 1,
+  });
+  expect(await dispatchedAt(first.commandId)).not.toBeNull();
+
+  await age(first.commandId, "cancellation_dispatched_at");
+  expect(await service.recoverOrganizationSubscriptionCancellations(5)).toMatchObject({
+    failed: 1,
+  });
+  expect(await row(first.commandId)).toMatchObject({
+    status: "FAILED",
+    error_code: "SUBSCRIPTION_CHANGED_EFFECT_ABSENT_AFTER_SETTLE",
+  });
+}, 120_000);
+
+test("a stale command stays uncertain while a Stripe event for its subscription waits in the outbox", async () => {
+  const f = await seed();
+  updateImpl = async () => {
+    throw stripeRefusal();
+  };
+  const first = await service.submitOrganizationSubscriptionCancellation(f.input, session);
+  await renew(f.input.organizationId, f.input.subscriptionId);
+  await age(first.commandId, "cancellation_dispatched_at");
+  const eventId = `evt_${randomUUID().replaceAll("-", "")}`;
+  const pg = client.getPgliteClientForTests();
+  await pg.query(
+    "INSERT INTO webhook_events(event_id,provider,event_type,payload_hash,delivery_payload) VALUES ($1,'stripe','customer.subscription.updated',$2,$3::jsonb)",
+    [
+      eventId,
+      "a".repeat(64),
+      JSON.stringify({
+        kind: "stripe.event",
+        eventId,
+        eventType: "customer.subscription.updated",
+        event: {
+          id: eventId,
+          type: "customer.subscription.updated",
+          data: { object: { id: f.source.stripe_subscription_id, cancel_at_period_end: true } },
+        },
+        receivedAt: Date.now(),
+      }),
+    ],
+  );
+  expect(await service.recoverOrganizationSubscriptionCancellations(5)).toMatchObject({
+    failed: 0,
+  });
+  expect(await row(first.commandId)).toMatchObject({ status: "OUTCOME_UNKNOWN" });
+
+  await pg.query("UPDATE webhook_events SET delivery_completed_at=now() WHERE event_id=$1", [
+    eventId,
+  ]);
+  expect(await service.recoverOrganizationSubscriptionCancellations(5)).toMatchObject({
+    failed: 1,
+  });
+  expect(await row(first.commandId)).toMatchObject({
+    status: "FAILED",
+    error_code: "SUBSCRIPTION_CHANGED_EFFECT_ABSENT_AFTER_SETTLE",
+  });
+}, 120_000);
