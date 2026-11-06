@@ -107,6 +107,41 @@ describe("VoiceProfileStore persistence", () => {
     ).rejects.toThrow();
     expect(existsSync(victimPath)).toBe(true);
   });
+
+  it("evicts the oldest heard-once cluster created at the attribution confidence", async () => {
+    const capped = new VoiceProfileStore({
+      rootDir: tmpRoot,
+      hotCacheSize: 1,
+      coldDiskMax: 2,
+    });
+    await capped.init();
+    // VoiceAttributionPipeline creates every unmatched cluster with
+    // entityId null and confidence 0.5.
+    const created = [];
+    for (const centroid of [
+      unit([1, 0, 0, 0]),
+      unit([0, 1, 0, 0]),
+      unit([0, 0, 1, 0]),
+    ]) {
+      created.push(
+        await capped.createProfile({
+          centroid,
+          embeddingModel: MODEL,
+          entityId: null,
+          confidence: 0.5,
+          durationMs: 1200,
+        }),
+      );
+    }
+
+    const kept = (await capped.list()).map((profile) => profile.profileId);
+    expect(kept).toEqual([created[1].profileId, created[2].profileId]);
+    expect(
+      existsSync(
+        path.join(tmpRoot, "profiles", `${created[0].profileId}.json`),
+      ),
+    ).toBe(false);
+  });
 });
 
 describe("VoiceProfileStore.mergeProfiles", () => {
