@@ -10,11 +10,6 @@ import (
 	"syscall"
 )
 
-// admissionStateVersion 2 added Refreshed. A stored version 1 state still
-// reads, as never refreshed, which is stale until the next fetch; the next
-// write stores version 2.
-const admissionStateVersion = 2
-
 type admissionFloor struct {
 	Sequence int64    `json:"sequence"`
 	Revision int64    `json:"revision"`
@@ -23,8 +18,11 @@ type admissionFloor struct {
 	Rollout  string   `json:"rollout"`
 	Revoked  []string `json:"revoked"`
 	// Refreshed is the trusted lower bound of the last descriptor fetched and
-	// authenticated for this lane. Commit freshness is measured against it.
-	Refreshed int64 `json:"refreshed"`
+	// authenticated for this lane. Commit freshness is measured against it. It
+	// is kept in refreshed.json, not in admission.json, so the version 1 state
+	// stays readable by a build from before refreshes were recorded: a host
+	// whose updater updates itself can recover to such a build.
+	Refreshed int64 `json:"-"`
 }
 type admissionState struct {
 	Version      int64                     `json:"version"`
@@ -35,26 +33,6 @@ type admissionState struct {
 type admissionEnvelope struct {
 	State admissionState `json:"state"`
 	Hash  string         `json:"hash"`
-}
-
-// The version 1 shapes, without Refreshed. Their hash covers these exact fields.
-type admissionFloorV1 struct {
-	Sequence int64    `json:"sequence"`
-	Revision int64    `json:"revision"`
-	Security int64    `json:"security"`
-	Core     string   `json:"core"`
-	Rollout  string   `json:"rollout"`
-	Revoked  []string `json:"revoked"`
-}
-type admissionStateV1 struct {
-	Version      int64                       `json:"version"`
-	Repository   string                      `json:"repository"`
-	Distribution string                      `json:"distribution"`
-	Lanes        map[string]admissionFloorV1 `json:"lanes"`
-}
-type admissionEnvelopeV1 struct {
-	State admissionStateV1 `json:"state"`
-	Hash  string           `json:"hash"`
 }
 
 // InitializeAdmissionState is an explicit provisioning operation. It refuses
@@ -74,7 +52,7 @@ func InitializeAdmissionState(directory, repository, distribution string) error 
 				return errors.New("admission enrollment already has state")
 			}
 		}
-		state := admissionState{Version: admissionStateVersion, Repository: repository, Distribution: distribution, Lanes: map[string]admissionFloor{}}
+		state := admissionState{Version: 1, Repository: repository, Distribution: distribution, Lanes: map[string]admissionFloor{}}
 		return saveAdmission(directory, state, nil)
 	})
 }
@@ -154,7 +132,12 @@ func evaluateRememberedRelease(directory string, descriptor, deviceJSON []byte, 
 			return errors.New("rollout revision equivocation")
 		}
 		state.Lanes[device.Channel] = admissionFloor{Sequence: d.Sequence, Revision: rollout.Revision, Security: d.SecurityFloor, Core: coreHash, Rollout: rolloutHash, Revoked: rollout.Revoked, Refreshed: max(floor.Refreshed, fetchedLower)}
-		return saveAdmission(directory, *state, nil)
+		if e = saveAdmission(directory, *state, nil); e != nil || fetchedLower <= floor.Refreshed {
+			return e
+		}
+		// After the floors: a crash between the two writes leaves the refresh
+		// older than it was, which is stale, never fresher.
+		return saveRefreshes(directory, *state)
 	})
 	if err != nil {
 		return nil, err
@@ -198,57 +181,85 @@ func readAdmission(directory string) (*admissionState, error) {
 	if err != nil {
 		return nil, err
 	}
-	// Dispatch on the stored version, not on whether the version 2 decode
-	// fails: a version 1 state with no lanes (as InitializeAdmissionState
-	// wrote it before Refreshed existed) decodes and hashes the same under
-	// both shapes.
 	var envelope admissionEnvelope
 	if err = decodeAdmission(data, &envelope); err != nil {
-		legacy, e := readAdmissionV1(data)
-		if e != nil {
-			return nil, err
-		}
-		envelope = *legacy
-	} else if digest, e := admissionHash(envelope.State); e != nil || digest != envelope.Hash {
+		return nil, err
+	}
+	digest, err := admissionHash(envelope.State)
+	if err != nil || digest != envelope.Hash {
 		return nil, errors.New("admission state checksum mismatch")
-	} else if envelope.State.Version == 1 {
-		legacy, e := readAdmissionV1(data)
-		if e != nil {
-			return nil, e
-		}
-		envelope = *legacy
 	}
 	s := envelope.State
-	if s.Version != admissionStateVersion || !matches(s.Repository, repositoryPattern) || !contains([]string{"launcher", "standalone"}, s.Distribution) || len(s.Lanes) > 2 {
+	if s.Version != 1 || !matches(s.Repository, repositoryPattern) || !contains([]string{"launcher", "standalone"}, s.Distribution) || len(s.Lanes) > 2 {
 		return nil, errors.New("invalid admission enrollment state")
 	}
 	for channel, floor := range s.Lanes {
-		if !contains([]string{"stable", "beta"}, channel) || !bounded(floor.Sequence, 1, safeInteger) || !bounded(floor.Revision, 1, safeInteger) || !bounded(floor.Security, 1, 2147483647) || !validHex(floor.Core) || !validHex(floor.Rollout) || !stringList(floor.Revoked, 0, 4096, validHex) || !bounded(floor.Refreshed, 0, safeInteger) {
+		if !contains([]string{"stable", "beta"}, channel) || !bounded(floor.Sequence, 1, safeInteger) || !bounded(floor.Revision, 1, safeInteger) || !bounded(floor.Security, 1, 2147483647) || !validHex(floor.Core) || !validHex(floor.Rollout) || !stringList(floor.Revoked, 0, 4096, validHex) {
 			return nil, errors.New("invalid remembered admission floor")
 		}
 	}
+	readRefreshes(directory, &s)
 	return &s, nil
 }
 
-// readAdmissionV1 checks a version 1 state against its own hash and returns it
-// as version 2 with every lane never refreshed.
-func readAdmissionV1(data []byte) (*admissionEnvelope, error) {
-	var legacy admissionEnvelopeV1
-	if err := decodeAdmission(data, &legacy); err != nil {
-		return nil, err
+type refreshState struct {
+	Version      int64            `json:"version"`
+	Repository   string           `json:"repository"`
+	Distribution string           `json:"distribution"`
+	Lanes        map[string]int64 `json:"lanes"`
+}
+type refreshEnvelope struct {
+	State refreshState `json:"state"`
+	Hash  string       `json:"hash"`
+}
+
+// readRefreshes sets each lane's Refreshed from refreshed.json. A missing,
+// unsafe, corrupt or mismatched file reads as never refreshed: that is stale,
+// so the commit waits for a fetch, and the fetch rewrites the file.
+func readRefreshes(directory string, s *admissionState) {
+	name := filepath.Join(directory, "refreshed.json")
+	stat, err := os.Lstat(name)
+	if err != nil || !stat.Mode().IsRegular() || stat.Size() > maxBytes {
+		return
 	}
-	digest, err := admissionHash(legacy.State)
-	if err != nil || digest != legacy.Hash {
-		return nil, errors.New("admission state checksum mismatch")
+	data, err := os.ReadFile(name)
+	if err != nil {
+		return
 	}
-	if legacy.State.Version != 1 {
-		return nil, errors.New("invalid admission enrollment state")
+	var envelope refreshEnvelope
+	if decodeAdmission(data, &envelope) != nil {
+		return
 	}
-	state := admissionState{Version: admissionStateVersion, Repository: legacy.State.Repository, Distribution: legacy.State.Distribution, Lanes: map[string]admissionFloor{}}
-	for channel, floor := range legacy.State.Lanes {
-		state.Lanes[channel] = admissionFloor{Sequence: floor.Sequence, Revision: floor.Revision, Security: floor.Security, Core: floor.Core, Rollout: floor.Rollout, Revoked: floor.Revoked}
+	r := envelope.State
+	if digest, e := admissionHash(r); e != nil || digest != envelope.Hash || r.Version != 1 || r.Repository != s.Repository || r.Distribution != s.Distribution {
+		return
 	}
-	return &admissionEnvelope{State: state}, nil
+	for _, refreshed := range r.Lanes {
+		if !bounded(refreshed, 1, safeInteger) {
+			return
+		}
+	}
+	for channel, floor := range s.Lanes {
+		floor.Refreshed = r.Lanes[channel]
+		s.Lanes[channel] = floor
+	}
+}
+func saveRefreshes(directory string, s admissionState) error {
+	r := refreshState{Version: 1, Repository: s.Repository, Distribution: s.Distribution, Lanes: map[string]int64{}}
+	for channel, floor := range s.Lanes {
+		if floor.Refreshed > 0 {
+			r.Lanes[channel] = floor.Refreshed
+		}
+	}
+	hash, err := admissionHash(r)
+	if err != nil {
+		return err
+	}
+	data, err := json.Marshal(refreshEnvelope{State: r, Hash: hash})
+	if err != nil {
+		return err
+	}
+	return writePrivate(directory, "refreshed", data, nil)
 }
 func saveAdmission(directory string, state admissionState, fault func(string)) error {
 	hash, err := admissionHash(state)
@@ -259,7 +270,12 @@ func saveAdmission(directory string, state admissionState, fault func(string)) e
 	if err != nil {
 		return err
 	}
-	temporary := filepath.Join(directory, "admission.tmp")
+	return writePrivate(directory, "admission", data, fault)
+}
+
+// writePrivate durably replaces name.json in directory through name.tmp.
+func writePrivate(directory, name string, data []byte, fault func(string)) error {
+	temporary := filepath.Join(directory, name+".tmp")
 	if stat, e := os.Lstat(temporary); e == nil {
 		if !stat.Mode().IsRegular() {
 			return errors.New("unsafe admission temporary file")
@@ -290,7 +306,7 @@ func saveAdmission(directory string, state admissionState, fault func(string)) e
 	if fault != nil {
 		fault("before-rename")
 	}
-	if err = os.Rename(temporary, filepath.Join(directory, "admission.json")); err != nil {
+	if err = os.Rename(temporary, filepath.Join(directory, name+".json")); err != nil {
 		return err
 	}
 	dir, err := os.Open(directory)
