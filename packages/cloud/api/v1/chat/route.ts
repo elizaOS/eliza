@@ -87,15 +87,18 @@ type ChatBillingContext = Parameters<typeof billUsage>[0];
 
 /**
  * Settle a stream the client closed before the provider finished. The client
- * already holds every delivered token, so bill the input estimate plus the
- * delivered output, the way /v1/chat/completions settles an abort. The
- * admitted 500-token estimate is only the fallback when nothing was delivered
- * or billing the delivered text fails; billing at the estimate alone let a
- * client read any amount of output and pay for 500 tokens.
+ * already holds every delivered token. When it received more output than the
+ * admission reserved, bill the input estimate plus the delivered output, the
+ * way /v1/chat/completions settles an abort. Otherwise keep the admitted
+ * estimate, which covers provider work that was not delivered (for example
+ * reasoning before the first visible token). Billing at the estimate alone
+ * let a client read any amount of output and pay for 500 tokens.
  */
 async function settleChatStreamAbort(params: {
   billingContext: ChatBillingContext;
   estimatedInputTokens: number;
+  /** Output tokens the admission reserved for this request. */
+  admittedOutputTokens: number;
   deliveredText: string;
   billingReservation: CreditReservation | undefined;
   settleReservation:
@@ -105,7 +108,10 @@ async function settleChatStreamAbort(params: {
   settleUnknown: (() => Promise<unknown>) | null | undefined;
 }): Promise<void> {
   const outputTokens = estimateTokens(params.deliveredText);
-  if (outputTokens <= 0 || !params.settleReservation) {
+  if (
+    outputTokens <= params.admittedOutputTokens ||
+    !params.settleReservation
+  ) {
     await params.settleUnknown?.();
     return;
   }
@@ -707,6 +713,7 @@ app.post("/", async (c) => {
       settleChatStreamAbort({
         billingContext: abortBillingContext,
         estimatedInputTokens,
+        admittedOutputTokens: estimatedOutputTokens,
         deliveredText,
         billingReservation,
         settleReservation,
@@ -715,7 +722,9 @@ app.post("/", async (c) => {
     const result = streamText({
       model: languageModel,
       onChunk: ({ chunk }) => {
-        if (chunk.type === "text-delta") deliveredText += chunk.text;
+        // Reasoning streams to the client and is billed as output too.
+        if (chunk.type === "text-delta" || chunk.type === "reasoning-delta")
+          deliveredText += chunk.text;
       },
       system:
         "Powered by elizaOS. Provide clear, accurate, and helpful responses about AI agents, development, and technology.",

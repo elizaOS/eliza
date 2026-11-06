@@ -79,6 +79,7 @@ test("an aborted stream is billed for the output it delivered", async () => {
   await __chatStreamSettlementTestHooks.settleChatStreamAbort({
     billingContext,
     estimatedInputTokens: 20,
+    admittedOutputTokens: 500,
     deliveredText,
     billingReservation: undefined,
     settleReservation: async (amount) => {
@@ -106,6 +107,7 @@ test("an abort before any output keeps the admitted estimate", async () => {
   await __chatStreamSettlementTestHooks.settleChatStreamAbort({
     billingContext,
     estimatedInputTokens: 20,
+    admittedOutputTokens: 500,
     deliveredText: "",
     billingReservation: undefined,
     settleReservation: async (amount) => {
@@ -120,3 +122,44 @@ test("an abort before any output keeps the admitted estimate", async () => {
   expect(charges).toEqual([]);
   expect(unknownSettlements).toBe(1);
 });
+
+test.each([
+  // A thinking request reserves its reasoning budget; a short visible answer
+  // must not settle below that reservation.
+  {
+    label: "a short answer under a large reservation",
+    deliveredChars: 680,
+    admittedOutputTokens: 12_096,
+  },
+  {
+    label: "a long answer still under the reservation",
+    deliveredChars: 19_200,
+    admittedOutputTokens: 20_096,
+  },
+])(
+  "an abort keeps the reservation for $label",
+  async ({ deliveredChars, admittedOutputTokens }) => {
+    const { __chatStreamSettlementTestHooks } = await import(
+      "../v1/chat/route"
+    );
+    const charges: number[] = [];
+    let unknownSettlements = 0;
+    await __chatStreamSettlementTestHooks.settleChatStreamAbort({
+      billingContext,
+      estimatedInputTokens: 20,
+      admittedOutputTokens,
+      deliveredText: "x".repeat(deliveredChars),
+      billingReservation: undefined,
+      settleReservation: async (amount) => {
+        charges.push(amount);
+        return null;
+      },
+      settleUnknown: async () => {
+        unknownSettlements += 1;
+        return null;
+      },
+    });
+    expect(charges).toEqual([]);
+    expect(unknownSettlements).toBe(1);
+  },
+);
