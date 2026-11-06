@@ -132,6 +132,7 @@ export type {
 export interface AppMobileAuthRevocationMutation {
   app: App | undefined;
   revokedKeyHashes: string[];
+  revokedKeys: { id: string; organizationId: string }[];
 }
 
 const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
@@ -804,7 +805,7 @@ export class AppsRepository {
     const mutation = await dbWrite.transaction(async (tx) => {
       const [existing] = await tx.select().from(apps).where(eq(apps.id, id)).for("update");
       if (!existing) {
-        return { existing: undefined, updated: undefined, revokedKeyHashes: [] };
+        return { existing: undefined, updated: undefined, revokedKeyHashes: [], revokedKeys: [] };
       }
       const [updated] = await tx
         .update(apps)
@@ -821,7 +822,11 @@ export class AppsRepository {
 
       await tx.delete(mobileAppAuthGrants).where(eq(mobileAppAuthGrants.app_id, id));
       const credentials = await tx
-        .select({ keyHash: apiKeys.key_hash })
+        .select({
+          id: apiKeys.id,
+          organizationId: apiKeys.organization_id,
+          keyHash: apiKeys.key_hash,
+        })
         .from(apiKeys)
         .where(eq(apiKeys.source_app_id, id))
         .for("update");
@@ -842,6 +847,7 @@ export class AppsRepository {
         existing,
         updated,
         revokedKeyHashes: credentials.map((credential) => credential.keyHash),
+        revokedKeys: credentials.map(({ id, organizationId }) => ({ id, organizationId })),
       };
     });
 
@@ -851,7 +857,11 @@ export class AppsRepository {
         invalidateAppCacheEntries(id, mutation.updated.api_key_id, mutation.updated.slug),
       ]);
     }
-    return { app: mutation.updated, revokedKeyHashes: mutation.revokedKeyHashes };
+    return {
+      app: mutation.updated,
+      revokedKeyHashes: mutation.revokedKeyHashes,
+      revokedKeys: mutation.revokedKeys,
+    };
   }
 
   async prepareDeleteWithMobileAuthRevocation(
@@ -878,7 +888,11 @@ export class AppsRepository {
         await tx.delete(mobileAppAuthGrants).where(eq(mobileAppAuthGrants.app_id, id));
       }
       const credentials = await tx
-        .select({ keyHash: apiKeys.key_hash })
+        .select({
+          id: apiKeys.id,
+          organizationId: apiKeys.organization_id,
+          keyHash: apiKeys.key_hash,
+        })
         .from(apiKeys)
         .where(eq(apiKeys.source_app_id, id))
         .for("update");
@@ -898,6 +912,7 @@ export class AppsRepository {
       return {
         inactive,
         revokedKeyHashes: credentials.map((credential) => credential.keyHash),
+        revokedKeys: credentials.map(({ id, organizationId }) => ({ id, organizationId })),
       };
     });
 
@@ -906,7 +921,11 @@ export class AppsRepository {
     } else {
       await invalidateAppCacheEntries(id);
     }
-    return { app: mutation.inactive, revokedKeyHashes: mutation.revokedKeyHashes };
+    return {
+      app: mutation.inactive,
+      revokedKeyHashes: mutation.revokedKeyHashes,
+      revokedKeys: mutation.revokedKeys,
+    };
   }
 
   /** Permanently removes only an app whose mobile authorization is already revoked. */
