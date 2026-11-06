@@ -161,7 +161,7 @@ export function buildTaskRuntime(
         )
           ? "\nexport * from './plugins/plugin-browser/src/native-surface-target.ts';"
           : "") +
-        `\nexport * from './packages/agent/src/services/sqlite-message-interaction-session-store.ts';\nexport * from './packages/core/src/${interactionSources.sessions}.ts';\nexport * from './plugins/plugin-browser/src/native-socket-target.ts';\nexport * from './plugins/plugin-browser/src/task-actuator.ts';\nexport * from './plugins/plugin-google-workspace/src/task-code-resolver.ts';`,
+        `\nexport * from './packages/agent/src/services/sqlite-message-interaction-session-store.ts';\nexport * from './packages/core/src/${interactionSources.sessions}.ts';\nexport * from './plugins/plugin-browser/src/native-socket-target.ts';\nexport * from './plugins/plugin-browser/src/task-actuator.ts';\nexport * from './plugins/plugin-google-workspace/src/task-code-resolver.ts';\nexport { transitionInteractiveTask } from './packages/core/src/messaging/interactive-task.ts';`,
     );
     fs.mkdirSync(path.dirname(output), { recursive: true });
     execFileSync(

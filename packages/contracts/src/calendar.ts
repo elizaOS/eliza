@@ -819,6 +819,7 @@ export const CALENDAR_READ_ACTIONS = {
   feed: "CALENDAR_FEED",
   next_event: "CALENDAR_NEXT_EVENT",
   search_events: "CALENDAR_SEARCH_EVENTS",
+  read_selected: "CALENDAR_READ_SELECTED",
   check_availability: "CALENDAR_CHECK_AVAILABILITY",
   propose_times: "CALENDAR_PROPOSE_TIMES",
 } as const;
@@ -855,9 +856,30 @@ export function isCalendarReadFailureCode(
   );
 }
 
+/** Host-validated verbatim filter source. A historical referent is a lookup key, not a fresh read. */
+export type CalendarReadFilterEvidence = {
+  query: string;
+  quote: string;
+  origin: "current" | "referent";
+  sourceMessageId: string;
+  sourceActorId: string;
+  sourceRoomId: string;
+  sourceCreatedAt: number;
+};
+
 export type CalendarReadBinding = {
   intentId: string;
   operation: keyof typeof CALENDAR_READ_ACTIONS;
+  filterEvidence?: CalendarReadFilterEvidence[];
+  /** Host-bound current-turn canonical selection; never supplied by the model. */
+  selectedTarget?: {
+    id: string;
+    revision: string;
+    accountId: string;
+    sourceRevision: string;
+  };
+  /** Prerequisites authorize lookup only, never completion of a requested read. */
+  purpose?: "requested_read" | "mutation_prerequisite";
   /** Conditional applicability remains the existing planner's semantic judgment. */
   execution: "required" | "conditional";
   sourceMessageId: string;

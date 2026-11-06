@@ -175,6 +175,7 @@ async function withMutationAudit<T>(
   audit: ApiKeyMutationAudit<T> | undefined,
   outerTx?: DbTransaction,
   organizationIds: string[] = [],
+  userLockIds: string[] = [],
 ): Promise<T> {
   const run = async (tx: DbTransaction): Promise<T> => {
     const outcome = await mutate(tx);
@@ -182,8 +183,8 @@ async function withMutationAudit<T>(
     return outcome;
   };
   return outerTx
-    ? withInferencePolicyMutationInTransaction(outerTx, { organizationIds }, run)
-    : withInferencePolicyMutation({ organizationIds }, run);
+    ? withInferencePolicyMutationInTransaction(outerTx, { organizationIds, userLockIds }, run)
+    : withInferencePolicyMutation({ organizationIds, userLockIds }, run);
 }
 
 export interface MobileCredentialSummary {
@@ -462,6 +463,7 @@ export class ApiKeysService {
       audit,
       tx,
       [data.organization_id],
+      [data.user_id],
     );
 
     return {
@@ -482,20 +484,23 @@ export class ApiKeysService {
   ): Promise<{ apiKey: ApiKey; plainKey: string; usage: ApiKeyUsage }> {
     // Encrypt outside the transaction so KMS work does not hold the policy lock.
     const { apiKey, plainKey } = await this.buildApiKeyInsert({ ...data, user_created: true });
-    return withInferencePolicyMutation({ organizationIds: [data.organization_id] }, async (tx) => {
-      await lockOrganizationPolicy(tx, data.organization_id);
-      const policy = await readOrganizationQuotaPolicyInTransaction(tx, data.organization_id);
-      const limit = Number(requireOrganizationResourceLimit(policy, "apiKeys"));
-      const used = await countUserCreatedKeys(tx, data.organization_id);
-      if (used >= limit) throw new ApiKeyLimitExceededError(data.organization_id, used, limit);
-      const created = await apiKeysRepository.create(apiKey, tx);
-      await audit?.(tx, created);
-      return {
-        apiKey: created,
-        plainKey,
-        usage: { used: used + 1, limit, remaining: Math.max(limit - used - 1, 0) },
-      };
-    });
+    return withInferencePolicyMutation(
+      { organizationIds: [data.organization_id], userLockIds: [data.user_id] },
+      async (tx) => {
+        await lockOrganizationPolicy(tx, data.organization_id);
+        const policy = await readOrganizationQuotaPolicyInTransaction(tx, data.organization_id);
+        const limit = Number(requireOrganizationResourceLimit(policy, "apiKeys"));
+        const used = await countUserCreatedKeys(tx, data.organization_id);
+        if (used >= limit) throw new ApiKeyLimitExceededError(data.organization_id, used, limit);
+        const created = await apiKeysRepository.create(apiKey, tx);
+        await audit?.(tx, created);
+        return {
+          apiKey: created,
+          plainKey,
+          usage: { used: used + 1, limit, remaining: Math.max(limit - used - 1, 0) },
+        };
+      },
+    );
   }
 
   /** Reads the organization's API-key usage against its plan ceiling. */
@@ -565,76 +570,85 @@ export class ApiKeysService {
       is_active: true,
     });
 
-    await withInferencePolicyMutation({ organizationIds: [organizationId] }, async (tx) => {
-      // Keep lock acquisition in its own statement. Under READ COMMITTED, a
-      // waiter gets a fresh snapshot for the conditional INSERT after the lock
-      // holder commits. Folding lock + existence check into one statement
-      // would preserve the pre-wait snapshot and could mint a duplicate.
-      await tx.execute(
-        sql`SELECT pg_advisory_xact_lock(hashtext(${`default_api_key:${userId}:${organizationId}`}))`,
-      );
-
-      const now = new Date();
-      const usableDefaultKey = tx
-        .select({ id: apiKeys.id })
-        .from(apiKeys)
-        .where(
-          and(
-            eq(apiKeys.user_id, userId),
-            eq(apiKeys.organization_id, organizationId),
-            eq(apiKeys.name, "Default API Key"),
-            eq(apiKeys.is_active, true),
-            isNull(apiKeys.deleted_at),
-            or(isNull(apiKeys.expires_at), gt(apiKeys.expires_at, now)),
-          ),
+    await withInferencePolicyMutation(
+      { organizationIds: [organizationId], userLockIds: [userId] },
+      async (tx) => {
+        // Keep lock acquisition in its own statement. Under READ COMMITTED, a
+        // waiter gets a fresh snapshot for the conditional INSERT after the lock
+        // holder commits. Folding lock + existence check into one statement
+        // would preserve the pre-wait snapshot and could mint a duplicate.
+        await tx.execute(
+          sql`SELECT pg_advisory_xact_lock(hashtext(${`default_api_key:${userId}:${organizationId}`}))`,
         );
 
-      // Drizzle's INSERT ... SELECT requires every insertable column in schema
-      // order. Supplying the table's defaults explicitly keeps this one
-      // statement equivalent to values(apiKey), while NOT EXISTS performs the
-      // post-lock readiness check and conditional insert in the same snapshot.
-      await tx.insert(apiKeys).select(
-        tx
-          .select({
-            id: sql<string>`${apiKey.id}::uuid`.as("id"),
-            name: sql<string>`${apiKey.name}::text`.as("name"),
-            description: sql<string | null>`${apiKey.description ?? null}::text`.as("description"),
-            key_hash: sql<string>`${apiKey.key_hash}::text`.as("key_hash"),
-            key_prefix: sql<string>`${apiKey.key_prefix}::text`.as("key_prefix"),
-            key_ciphertext: sql<string | null>`${apiKey.key_ciphertext ?? null}::text`.as(
-              "key_ciphertext",
+        const now = new Date();
+        const usableDefaultKey = tx
+          .select({ id: apiKeys.id })
+          .from(apiKeys)
+          .where(
+            and(
+              eq(apiKeys.user_id, userId),
+              eq(apiKeys.organization_id, organizationId),
+              eq(apiKeys.name, "Default API Key"),
+              eq(apiKeys.is_active, true),
+              isNull(apiKeys.deleted_at),
+              or(isNull(apiKeys.expires_at), gt(apiKeys.expires_at, now)),
             ),
-            key_nonce: sql<string | null>`${apiKey.key_nonce ?? null}::text`.as("key_nonce"),
-            key_auth_tag: sql<string | null>`${apiKey.key_auth_tag ?? null}::text`.as(
-              "key_auth_tag",
-            ),
-            key_kms_key_id: sql<string | null>`${apiKey.key_kms_key_id ?? null}::text`.as(
-              "key_kms_key_id",
-            ),
-            key_kms_key_version: sql<
-              number | null
-            >`${apiKey.key_kms_key_version ?? null}::integer`.as("key_kms_key_version"),
-            organization_id: sql<string>`${apiKey.organization_id}::uuid`.as("organization_id"),
-            user_id: sql<string>`${apiKey.user_id}::uuid`.as("user_id"),
-            source_app_id: sql<string | null>`${apiKey.source_app_id ?? null}::uuid`.as(
-              "source_app_id",
-            ),
-            rate_limit: sql<number>`${apiKey.rate_limit ?? 1000}::integer`.as("rate_limit"),
-            is_active: sql<boolean>`${apiKey.is_active ?? true}::boolean`.as("is_active"),
-            usage_count: sql<number>`${apiKey.usage_count ?? 0}::integer`.as("usage_count"),
-            expires_at: sql<Date | null>`${apiKey.expires_at ?? null}::timestamp`.as("expires_at"),
-            last_used_at: sql<Date | null>`${apiKey.last_used_at ?? null}::timestamp`.as(
-              "last_used_at",
-            ),
-            created_at: sql<Date>`NOW()`.as("created_at"),
-            updated_at: sql<Date>`NOW()`.as("updated_at"),
-            deleted_at: sql<Date | null>`${apiKey.deleted_at ?? null}::timestamp`.as("deleted_at"),
-            user_created: sql<boolean>`false`.as("user_created"),
-          })
-          .from(sql`(SELECT 1) AS singleton`)
-          .where(notExists(usableDefaultKey)),
-      );
-    });
+          );
+
+        // Drizzle's INSERT ... SELECT requires every insertable column in schema
+        // order. Supplying the table's defaults explicitly keeps this one
+        // statement equivalent to values(apiKey), while NOT EXISTS performs the
+        // post-lock readiness check and conditional insert in the same snapshot.
+        await tx.insert(apiKeys).select(
+          tx
+            .select({
+              id: sql<string>`${apiKey.id}::uuid`.as("id"),
+              name: sql<string>`${apiKey.name}::text`.as("name"),
+              description: sql<string | null>`${apiKey.description ?? null}::text`.as(
+                "description",
+              ),
+              key_hash: sql<string>`${apiKey.key_hash}::text`.as("key_hash"),
+              key_prefix: sql<string>`${apiKey.key_prefix}::text`.as("key_prefix"),
+              key_ciphertext: sql<string | null>`${apiKey.key_ciphertext ?? null}::text`.as(
+                "key_ciphertext",
+              ),
+              key_nonce: sql<string | null>`${apiKey.key_nonce ?? null}::text`.as("key_nonce"),
+              key_auth_tag: sql<string | null>`${apiKey.key_auth_tag ?? null}::text`.as(
+                "key_auth_tag",
+              ),
+              key_kms_key_id: sql<string | null>`${apiKey.key_kms_key_id ?? null}::text`.as(
+                "key_kms_key_id",
+              ),
+              key_kms_key_version: sql<
+                number | null
+              >`${apiKey.key_kms_key_version ?? null}::integer`.as("key_kms_key_version"),
+              organization_id: sql<string>`${apiKey.organization_id}::uuid`.as("organization_id"),
+              user_id: sql<string>`${apiKey.user_id}::uuid`.as("user_id"),
+              source_app_id: sql<string | null>`${apiKey.source_app_id ?? null}::uuid`.as(
+                "source_app_id",
+              ),
+              rate_limit: sql<number>`${apiKey.rate_limit ?? 1000}::integer`.as("rate_limit"),
+              is_active: sql<boolean>`${apiKey.is_active ?? true}::boolean`.as("is_active"),
+              usage_count: sql<number>`${apiKey.usage_count ?? 0}::integer`.as("usage_count"),
+              expires_at: sql<Date | null>`${apiKey.expires_at ?? null}::timestamp`.as(
+                "expires_at",
+              ),
+              last_used_at: sql<Date | null>`${apiKey.last_used_at ?? null}::timestamp`.as(
+                "last_used_at",
+              ),
+              created_at: sql<Date>`NOW()`.as("created_at"),
+              updated_at: sql<Date>`NOW()`.as("updated_at"),
+              deleted_at: sql<Date | null>`${apiKey.deleted_at ?? null}::timestamp`.as(
+                "deleted_at",
+              ),
+              user_created: sql<boolean>`false`.as("user_created"),
+            })
+            .from(sql`(SELECT 1) AS singleton`)
+            .where(notExists(usableDefaultKey)),
+        );
+      },
+    );
   }
 
   /**
@@ -693,6 +707,10 @@ export class ApiKeysService {
           ...(existing ? [existing.organization_id] : []),
           ...(data.organization_id ? [data.organization_id] : []),
         ],
+        userLockIds: [
+          ...(existing ? [existing.user_id] : []),
+          ...(data.user_id ? [data.user_id] : []),
+        ],
       },
       (tx) => apiKeysRepository.update(id, data, tx),
     );
@@ -724,6 +742,7 @@ export class ApiKeysService {
       audit,
       undefined,
       existing ? [existing.organization_id] : [],
+      existing ? [existing.user_id] : [],
     );
     if (existing) {
       await this.invalidateCache(existing.key_hash);
@@ -772,6 +791,7 @@ export class ApiKeysService {
       audit,
       undefined,
       [existing.organization_id],
+      [existing.user_id],
     );
     await this.invalidateCache(existing.key_hash);
     return { apiKey, plainKey };
@@ -1086,15 +1106,22 @@ export class ApiKeysService {
     tx: DbTransaction | undefined,
     fn: (tx: DbTransaction | undefined) => Promise<T>,
   ): Promise<T> {
-    if (getCloudAwareEnv().INFERENCE_FUNDED_BUDGET_ADMISSION !== "true") return fn(tx);
+    if (
+      getCloudAwareEnv().INFERENCE_FUNDED_BUDGET_ADMISSION !== "true" &&
+      getCloudAwareEnv().INFERENCE_RATE_POLICY_ADMISSION !== "true"
+    )
+      return fn(tx);
     const run = async (inner: DbTransaction) => {
       const rows = await inner
-        .select({ organization_id: apiKeys.organization_id })
+        .select({ organization_id: apiKeys.organization_id, user_id: apiKeys.user_id })
         .from(apiKeys)
         .where(eq(apiKeys.name, name));
       return withInferencePolicyMutationInTransaction(
         inner,
-        { organizationIds: rows.map((row) => row.organization_id) },
+        {
+          organizationIds: rows.map((row) => row.organization_id),
+          userLockIds: rows.map((row) => row.user_id),
+        },
         fn,
       );
     };

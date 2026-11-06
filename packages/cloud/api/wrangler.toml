@@ -789,7 +789,6 @@ ELIZA_ONBOARDING_LOGIN_APP_URL = "https://staging.eliza.app"
 # identity. The protected deployment workflow verifies both before publishing.
 ELIZA_MOBILE_APP_AUTH_ENABLED = "true"
 ELIZA_MOBILE_APP_AUTH_APP_ID = "689a1597-85e7-43ca-b000-8c6392d79465"
-NEXT_PUBLIC_NETWORK = "base"
 NEXT_PUBLIC_SOLANA_RPC_URL = "https://api.mainnet-beta.solana.com"
 GITHUB_ORG_NAME = "eliza-cloud-apps"
 GITHUB_TEMPLATE_REPO = "eliza-cloud-apps/cloud-apps-template"
@@ -798,7 +797,6 @@ APP_BILLING_ENVIRONMENT = "test"
 APP_BILLING_UI_ORIGIN = "https://cloud-staging.eliza.app"
 # Staging canary. Set false for an immediate rollback to the full app router.
 THIN_INFERENCE_ENTRY_ENABLED = "true"
-DATABASE_REGION = "na"
 PAYOUT_TESTNET = "true"
 # Warm-pool claim half (#16961). Staging enablement is the next step of that
 # issue's dependency chain but is sequenced behind draining the residual
@@ -882,6 +880,8 @@ INFERENCE_PASSTHROUGH_EMBEDDINGS = "true"
 VOICE_REALTIME_WS_ENABLED = "true"
 # Speech-only streaming is qualified in staging before production promotion.
 VOICE_SPEECH_RELAY_ENABLED = "true"
+# Enable only with the matching backend/client retirement protocol release.
+VOICE_SPEECH_RETIREMENT_PROOF_ENABLED = "true"
 VOICE_SPEECH_END_TIMEOUT_MS = "1280"
 VOICE_REALTIME_CARTESIA_VOICE_ID = "db6b0ed5-d5d3-463d-ae85-518a07d3c2b4"
 VOICE_REALTIME_ELIZA_ENDPOINT = "https://api-staging.eliza.app"
@@ -891,7 +891,6 @@ VOICE_REALTIME_ELIZA_MODEL = "qwen-3.8-27b"
 ELIZA_TTS_FISH_ENABLED = "false"
 FISH_AUDIO_DATA_GOVERNANCE_APPROVED = "false"
 
-FORCE_REDIS_EVENTS = "false"
 R2_PUBLIC_HOST = "blob-staging.eliza.app"
 SQL_HEAVY_PAYLOAD_STORAGE = "r2"
 SQL_HEAVY_PAYLOAD_MIN_BYTES = "0"
@@ -1227,6 +1226,8 @@ INFERENCE_PASSTHROUGH_EMBEDDINGS = "true"
 VOICE_REALTIME_WS_ENABLED = "true"
 # Promote this setting only with the matching staged speech contract proof.
 VOICE_SPEECH_RELAY_ENABLED = "true"
+# Enable only with the matching backend/client retirement protocol release.
+VOICE_SPEECH_RETIREMENT_PROOF_ENABLED = "true"
 VOICE_SPEECH_END_TIMEOUT_MS = "1280"
 ELIZA_TTS_FISH_ENABLED = "false"
 FISH_AUDIO_DATA_GOVERNANCE_APPROVED = "false"
