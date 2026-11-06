@@ -192,6 +192,45 @@ type preRefreshEnvelope struct {
 	Hash  string          `json:"hash"`
 }
 
+// A device provisioned by a build from before refreshes were recorded, and
+// never ratcheted since, holds exactly {version:1, lanes:{}}. It still reads,
+// admits, and stays readable by that older build after the ratchet.
+func TestRememberedAdmissionReadsEmptyPreRefreshState(t *testing.T) {
+	dir, v := rememberedFixture(t)
+	legacy := preRefreshState{Version: 1, Repository: "example-org/example-app", Distribution: "launcher", Lanes: map[string]preRefreshFloor{}}
+	hash, err := admissionHash(legacy)
+	if err != nil {
+		t.Fatal(err)
+	}
+	data, err := json.Marshal(preRefreshEnvelope{State: legacy, Hash: hash})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err = os.WriteFile(filepath.Join(dir, "admission.json"), data, 0600); err != nil {
+		t.Fatal(err)
+	}
+	if stored, err := readAdmission(dir); err != nil || len(stored.Lanes) != 0 {
+		t.Fatalf("empty pre-refresh state: %+v %v", stored, err)
+	}
+	var policy admissionPolicy
+	if err = json.Unmarshal(v.Policy, &policy); err != nil {
+		t.Fatal(err)
+	}
+	if result, err := evaluateRememberedRelease(dir, v.Release, v.Device, policy, policy.Lower); err != nil || result.Decision != "eligible" {
+		t.Fatalf("empty pre-refresh state: %+v %v", result, err)
+	}
+	if data, err = os.ReadFile(filepath.Join(dir, "admission.json")); err != nil {
+		t.Fatal(err)
+	}
+	var old preRefreshEnvelope
+	if err = decodeAdmission(data, &old); err != nil {
+		t.Fatal("an older build cannot decode the state:", err)
+	}
+	if digest, _ := admissionHash(old.State); old.State.Version != 1 || digest != old.Hash || len(old.State.Lanes) != 1 {
+		t.Fatalf("an older build refuses the state: %+v", old)
+	}
+}
+
 func TestRefreshKeepsAdmissionStateReadableByOlderBuilds(t *testing.T) {
 	dir, v := rememberedFixture(t)
 	var policy admissionPolicy

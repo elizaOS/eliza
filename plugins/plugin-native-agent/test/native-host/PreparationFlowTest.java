@@ -69,8 +69,7 @@ public final class PreparationFlowTest {
   Fake lost=new Fake();lost.current=at(UpdateJournal.Phase.RECOVERY_READY);lost.failAt="recoveryDecision";rejects(lost::run);check(lost.calls.equals(List.of("recoveryDecision")));
   // A commit refreshes no earlier than its run began and commits within the run bound.
   CommitFreshness run=CommitFreshness.forActivation(5_000);
-  check(run.refreshedAfterLowerMs==5_000-CommitFreshness.MAX_COMMIT_STALENESS_MS&&run.commitByUpperMs==5_000+CommitFreshness.MAX_ACTIVATION_RUN_MS);
-  check(CommitFreshness.MAX_COMMIT_STALENESS_MS==0&&CommitFreshness.MAX_ACTIVATION_RUN_MS==600_000);
+  check(run.refreshedAfterLowerMs==5_000&&run.commitByUpperMs==605_000);
   check(CommitFreshness.forActivation(1).refreshedAfterLowerMs==1&&CommitFreshness.UNBOUNDED.refreshedAfterLowerMs==0&&CommitFreshness.UNBOUNDED.commitByUpperMs==0);
   for(long start:new long[]{0,-1,QualifiedClockAnchor.MAX})
    try{CommitFreshness.forActivation(start);throw new AssertionError("Bad activation start accepted");}catch(IllegalArgumentException expected){assertions++;}
