@@ -78,11 +78,16 @@ describe("free-text time-zone scan ignores ordinary words", () => {
     "find slots while I'm in eastern Europe next week",
     "remind me about my morning PT tomorrow",
     "I ran three times in Central Park this week",
-    // A full region word after "in" and a preposition is a place or a team
-    // unless a calendar word or a clock time follows the preposition.
+    // A region word or abbreviation after "in" and a preposition is a place
+    // or a team unless a calendar word or a clock time follows the
+    // preposition (CT and MT are also Connecticut and Montana).
     "lunch in Central for the team next week",
     "meet in Eastern at the HQ",
     "hike in Mountain on Saturday morning",
+    "lunch in PT for the team next week",
+    "meet in ET at the HQ",
+    "hike in MT on Saturday morning",
+    "find slots while I'm in CT for the weekend",
   ])("infers no zone from %j", (sentence) => {
     expect(extractExplicitTimeZoneFromText(sentence)).toBeNull();
     expect(inferTimeZoneFromLocationText(sentence)).toBeNull();
@@ -119,7 +124,9 @@ describe("free-text time-zone scan reads a zone where the text names one", () =>
     ["schedule in Pacific for next week", "America/Los_Angeles"],
     ["find three slots with Ryan while I'm in ET", "America/New_York"],
     ["the review is in Pacific at 3pm", "America/Los_Angeles"],
-    ["the standup is in ET on Monday", "America/New_York"],
+    ["the review is in PT at 3pm", "America/Los_Angeles"],
+    ["schedule in PT for next week", "America/Los_Angeles"],
+    ["the standup is in ET next Monday", "America/New_York"],
   ])("reads %j as %s", (sentence, timeZone) => {
     expect(extractExplicitTimeZoneFromText(sentence)).toBe(timeZone);
   });

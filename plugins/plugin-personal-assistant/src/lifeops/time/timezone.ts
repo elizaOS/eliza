@@ -127,17 +127,6 @@ const TIME_PHRASE_WORDS = new Set([
   "saturday",
   "sunday",
 ]);
-// A full region word is also a place or a team name ("lunch in Central for
-// the team", "meet in Eastern at the HQ", "hike in Mountain on Saturday").
-// After "in", a preposition after it starts a time phrase only before a
-// calendar word or a clock time ("in Pacific for next week", "in Pacific at
-// 3pm").
-const PROSE_REGION_WORDS = new Set([
-  "pacific",
-  "mountain",
-  "central",
-  "eastern",
-]);
 
 const IANA_TIME_ZONE_PATTERN = /\b([A-Za-z]+(?:\/[A-Za-z0-9_+-]+)+)\b/g;
 
@@ -242,15 +231,12 @@ function followsZoneWord(tokens: readonly string[], index: number): boolean {
 
 /**
  * Whether `tokens[index]` starts a time phrase after a region word that
- * follows "in", or the text ends there. After a full region word
- * (`regionWord`), a preposition counts only before a calendar word or a
- * clock time.
+ * follows "in", or the text ends there. A region word or abbreviation is also
+ * a place or a team name ("lunch in Central for the team", "meet in ET at the
+ * HQ", "I'm in CT for the weekend"), so a preposition counts only before a
+ * calendar word or a clock time ("in Pacific for next week", "in PT at 3pm").
  */
-function startsTimePhrase(
-  tokens: readonly string[],
-  index: number,
-  regionWord: boolean,
-): boolean {
+function startsTimePhrase(tokens: readonly string[], index: number): boolean {
   const next = tokens[index];
   if (next === undefined) {
     return true;
@@ -258,7 +244,7 @@ function startsTimePhrase(
   if (!TIME_PHRASE_WORDS.has(next)) {
     return false;
   }
-  if (!regionWord || !TIME_PHRASE_PREPOSITIONS.has(next)) {
+  if (!TIME_PHRASE_PREPOSITIONS.has(next)) {
     return true;
   }
   return (
@@ -292,12 +278,7 @@ function phraseNamesZone(
     isClockTimeToken(tokens, index - 1) ||
     followsZoneWord(tokens, index) ||
     (tokens[index - 1] === "in" &&
-      (place ||
-        startsTimePhrase(
-          tokens,
-          index + size,
-          size === 1 && PROSE_REGION_WORDS.has(tokens[index] ?? ""),
-        )))
+      (place || startsTimePhrase(tokens, index + size)))
   );
 }
 
