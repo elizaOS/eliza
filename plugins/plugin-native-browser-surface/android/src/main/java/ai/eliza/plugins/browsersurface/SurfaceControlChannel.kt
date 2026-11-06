@@ -65,8 +65,14 @@ internal class SurfaceControlChannel(
                 it.documentId == incomingDocument && it.sequence == data.optLong("sequence", -1)
             }?.let { watched ->
                 watchedEffect = null
-                data.optJSONObject("result")?.optJSONObject("watchHandoff")
-                    ?.let { effects.report(watched.scope, handoffOf(it)) }
+                // The earlier watch's handoff goes to the earlier effect alone (effect-watch.mjs).
+                data.optJSONObject("result")?.let { reply ->
+                    reply.optJSONObject("watchHandoff")?.let { handoff ->
+                        val previous = reply.optJSONObject("previousWatchHandoff")
+                        effects.report(watched.scope, handoffOf(handoff),
+                            previous?.optString("scope"), previous?.let { handoffOf(it) })
+                    }
+                }
             }
             val request = pending ?: return@addWebMessageListener
             if (incomingDocument != request.documentId || data.optLong("sequence", -1) != request.sequence) {
@@ -85,6 +91,7 @@ internal class SurfaceControlChannel(
                 val error = result.optJSONObject("error")
                 val handoff = result.optJSONObject("watchHandoff")
                 result.remove("watchHandoff")
+                result.remove("previousWatchHandoff")
                 if (error != null) {
                     // Refused before the page acted: the earlier watch still holds. An uncertain
                     // outcome may have acted, so its watch stays, as in the Chromium host.

@@ -630,7 +630,10 @@ test("a task snapshot reports the network watch and never forwards the page's ha
   const calls = [];
   const effects = {
     arm: () => () => {},
-    close: (tabId) => calls.push(["close", tabId]),
+    close: (tabId) => {
+      calls.push(["close", tabId]);
+      return () => calls.push(["reopen", tabId]);
+    },
     read: (...args) => {
       calls.push(["read", ...args]);
       return "request";
@@ -676,6 +679,32 @@ test("a task snapshot reports the network watch and never forwards the page's ha
     () => true,
   );
   assert.deepEqual(calls.at(-1), ["close", 1]);
+  // A navigation the browser refuses leaves the page, and its watch, as it
+  // was: the tab turns out to show a browser page by the time it would run.
+  let gets = 0;
+  f.api.tabs.get = async () => ({
+    url: gets++ === 0 ? `${binding.origin}/form` : "chrome://settings",
+    status: "complete",
+  });
+  await handler(
+    {
+      type: "command",
+      id: "go2",
+      command: {
+        subaction: "navigate",
+        id: "1",
+        url: `${binding.origin}/next`,
+        taskContext: context(binding),
+      },
+    },
+    f.sender,
+    () => true,
+  );
+  assert.equal(f.replies.at(-1).ok, false);
+  assert.deepEqual(calls.slice(-2), [
+    ["close", 1],
+    ["reopen", 1],
+  ]);
 });
 
 test("a task effect's result hands the network watch its handoff and is never judged", async () => {
@@ -695,6 +724,7 @@ test("a task effect's result hands the network watch its handoff and is never ju
     consentedUrls: [`${binding.origin}/done`],
     expected: { url: `${binding.origin}/done`, method: "POST", exact: true },
   };
+  const previous = { scope: "1", presses: [5], activatedAt: null };
   // Every page script answers as a page that accepted and ran the fill.
   f.api.scripting = {
     executeScript: async () => [
@@ -710,6 +740,7 @@ test("a task effect's result hands the network watch its handoff and is never ju
           completed: false,
           requiresReadback: true,
           watchHandoff: handoff,
+          previousWatchHandoff: previous,
         },
       },
     ],
@@ -752,9 +783,10 @@ test("a task effect's result hands the network watch its handoff and is never ju
   const reply = f.replies.at(-1);
   assert.equal(reply.ok, true, JSON.stringify(reply));
   assert.equal("watchHandoff" in reply.result, false);
+  assert.equal("previousWatchHandoff" in reply.result, false);
   assert.equal("effectViolation" in reply.result, false);
   assert.deepEqual(calls, [
     ["arm", 1, "fill"],
-    ["report", 1, "1", handoff],
+    ["report", 1, "1", handoff, previous],
   ]);
 });

@@ -5,14 +5,25 @@
  *
  * After a task effect, a request the page starts before the person takes
  * over is a violation when it is not a GET or HEAD, is a WebSocket, or opens
- * another window; after a click, also a GET to another site (row C10). A
- * top-level GET navigation is left to the in-page watch and the navigation
- * gate, which already allow a click on a link to open that link, redirects
- * included. The one commit a grant consents is let through once, and so are
- * the redirect hops of that request. The watch lasts until the binding
- * expires, the next task effect, the host's own navigation, or the main frame
- * commits another document, after which nothing from the watched document
- * can run.
+ * another window; after a click, also a fetch, XHR or frame GET to another
+ * site (row C10). A top-level GET navigation is left to the in-page watch and
+ * the navigation gate, which already allow a click on a link to open that
+ * link, redirects included. The one commit a grant consents is let through
+ * once, and so are the redirect hops of that request. The watch lasts until
+ * the binding expires, the next task effect, the host's own navigation, or
+ * the main frame commits another document, after which nothing from the
+ * watched document can run.
+ *
+ * Real sites keep talking to other sites on their own: analytics beacons,
+ * CDN images, scripts and fonts, ad pixels. Nothing ties such a request to
+ * the task's effect, so the watch counts what the effect plausibly caused:
+ * a beacon or report to another site is never a violation, a cross-site
+ * image, font, stylesheet, script or media read is not one either (it reads;
+ * the page could send it without the effect), and any other cross-site
+ * request counts only within CROSS_SITE_WINDOW_MS of the effect. Writes to
+ * the page's own site, a top-level POST, WebSockets to its own site and
+ * windows count for the whole watch, so a page that writes to its own site on
+ * a timer (a session keep-alive POST) still pauses the task.
  *
  * It cannot see everything a page's script can do. `unseen` names what it
  * misses, and snapshots say so.
@@ -43,32 +54,56 @@ export function sameSite(host, pageHost) {
 
 const reads = (request) => ["GET", "HEAD"].includes(request.method);
 
+/** How long after an effect a request to another site can be its doing. */
+export const CROSS_SITE_WINDOW_MS = 30000;
+// Fire-and-forget telemetry: sendBeacon, <a ping> and CSP reports.
+const TELEMETRY = ["ping", "csp_report"];
+// Reads that load what the page shows or runs.
+const PASSIVE = ["image", "imageset", "font", "stylesheet", "script", "media"];
+
 /**
- * True when a request is one a task effect may not set off unseen. A GET to
+ * True when a request is one a task effect may not set off unseen.
+ * `sinceEffect` is how long after the effect the request started. A GET to
  * another site counts only after a click: a fill, select or scroll often
  * loads images or suggestions from another site, and sends nothing she did
  * not see unless it writes.
  */
-export function violates(request, pageOrigin, subaction = "click") {
-  if (request.type === "window" || request.type === "websocket") return true;
-  if (!reads(request)) return true;
-  if (request.type === "main_frame" || subaction !== "click") return false;
+export function violates(
+  request,
+  pageOrigin,
+  subaction = "click",
+  sinceEffect = 0,
+) {
+  if (request.type === "window") return true;
+  let crossSite;
   try {
-    return !sameSite(
+    crossSite = !sameSite(
       new URL(request.url).hostname,
       new URL(pageOrigin).hostname,
     );
   } catch {
-    return true;
+    crossSite = true;
   }
+  if (
+    crossSite &&
+    request.type !== "main_frame" &&
+    (TELEMETRY.includes(request.type) || sinceEffect > CROSS_SITE_WINDOW_MS)
+  )
+    return false;
+  if (request.type === "websocket" || !reads(request)) return true;
+  if (request.type === "main_frame" || subaction !== "click") return false;
+  return crossSite && !PASSIVE.includes(request.type);
 }
 
 // Her press, or her activated control, hands the page over to her, as in
 // the in-page watch: anything after her first activated control, or within
 // 1.5 s of a press.
-const byPerson = (at, watch) =>
-  at >= watch.activatedAt ||
-  watch.presses.some((press) => at - press >= 0 && at - press <= 1500);
+const byPerson = (at, watch) => {
+  if (at >= watch.activatedAt) return true;
+  for (const press of watch.presses)
+    if (at - press >= 0 && at - press <= 1500) return true;
+  return false;
+};
 
 const withoutHash = (url, base) => {
   const parsed = new URL(url, base);
@@ -120,14 +155,23 @@ export function createNetworkWatch({ now = () => Date.now() } = {}) {
       watch.violation = request.type === "window" ? "window" : "request";
     }
   };
+  // The effect before this watch's own, once nothing more about it can
+  // arrive: its verdict carries into this binding's watch.
+  const settlePrevious = (watch) => {
+    const previous = watch.previous;
+    if (!previous) return;
+    watch.previous = null;
+    settle(previous);
+    watch.violation ??= previous.violation;
+  };
   // What the page saw of the person and of the granted commit. The page's
   // reports only add to a grant the host issued; without one they excuse
-  // nothing.
+  // nothing. The page sends all its presses each time; a Set keeps each once.
   const merge = (watch, handoff) => {
     if (!handoff || typeof handoff !== "object") return;
     if (Array.isArray(handoff.presses))
       for (const press of handoff.presses)
-        if (Number.isFinite(press)) watch.presses.push(press);
+        if (Number.isFinite(press)) watch.presses.add(press);
     if (Number.isFinite(handoff.activatedAt))
       watch.activatedAt = Math.min(watch.activatedAt, handoff.activatedAt);
     if (!watch.grant) return;
@@ -156,8 +200,10 @@ export function createNetworkWatch({ now = () => Date.now() } = {}) {
       subaction = "click",
     ) {
       const previous = watches.get(tabId);
-      // What the earlier effect set off is judged now, not dropped.
-      if (previous) settle(previous);
+      // The earlier effect is judged once this effect's result hands over
+      // what the page saw of her since the last read (report), or at the next
+      // read; one before it gets no later report and is judged now.
+      if (previous) settlePrevious(previous);
       const target = commitGrant?.requestTarget;
       const watch = {
         origin,
@@ -166,8 +212,9 @@ export function createNetworkWatch({ now = () => Date.now() } = {}) {
         startedAt: now(),
         expiresAt,
         closedAt: Number.POSITIVE_INFINITY,
+        hostClosedAt: Number.POSITIVE_INFINITY,
         candidates: [],
-        presses: [],
+        presses: new Set(),
         activatedAt: Number.POSITIVE_INFINITY,
         excused: new Set(),
         // The one commit the host's grant consents, by every address it may
@@ -189,6 +236,7 @@ export function createNetworkWatch({ now = () => Date.now() } = {}) {
         // A violation stays reported for the rest of this binding.
         violation:
           previous?.scope === guidanceScope ? previous.violation : null,
+        previous: previous?.scope === guidanceScope ? previous : null,
       };
       watches.set(tabId, watch);
       return () => {
@@ -197,10 +245,23 @@ export function createNetworkWatch({ now = () => Date.now() } = {}) {
         else watches.delete(tabId);
       };
     },
-    /** Ends collection: the host navigated, or a new document committed. */
-    close(tabId, at = now()) {
+    /**
+     * Ends collection: a new document committed, or (`host`) the host's own
+     * navigation is about to run. A host close returns a reopen for when the
+     * navigation was refused and the page stayed; a commit stays closed.
+     */
+    close(tabId, at = now(), { host = false } = {}) {
       const watch = watches.get(tabId);
-      if (watch) watch.closedAt = Math.min(watch.closedAt, at);
+      if (!watch) return () => {};
+      if (!host) {
+        watch.closedAt = Math.min(watch.closedAt, at);
+        return () => {};
+      }
+      const hostClosedAt = watch.hostClosedAt;
+      watch.hostClosedAt = Math.min(watch.hostClosedAt, at);
+      return () => {
+        watch.hostClosedAt = hostClosedAt;
+      };
     },
     forget(tabId) {
       watches.delete(tabId);
@@ -213,7 +274,13 @@ export function createNetworkWatch({ now = () => Date.now() } = {}) {
         request.at < watch.startedAt ||
         request.at >= watch.expiresAt ||
         request.at >= watch.closedAt ||
-        !violates(request, watch.origin, watch.subaction)
+        request.at >= watch.hostClosedAt ||
+        !violates(
+          request,
+          watch.origin,
+          watch.subaction,
+          request.at - watch.startedAt,
+        )
       )
         return;
       watch.candidates.push(request);
@@ -226,11 +293,18 @@ export function createNetworkWatch({ now = () => Date.now() } = {}) {
     },
     /**
      * Adds what the page reports (watchHandoff) to this binding's watch
-     * without judging: a task effect's own result.
+     * without judging: a task effect's own result. `previousHandoff` is what
+     * the page's earlier watch saw up to this effect (her presses since the
+     * last read); it goes to the earlier effect's watch alone, which is then
+     * judged, so her press can never excuse this effect's requests.
      */
-    report(tabId, guidanceScope, handoff) {
+    report(tabId, guidanceScope, handoff, previousHandoff) {
       const watch = watches.get(tabId);
-      if (watch && watch.scope === guidanceScope) merge(watch, handoff);
+      if (!watch || watch.scope !== guidanceScope) return;
+      if (watch.previous && previousHandoff?.scope === watch.previous.scope)
+        merge(watch.previous, previousHandoff);
+      settlePrevious(watch);
+      merge(watch, handoff);
     },
     /**
      * The violation for this binding, if any, judged after adding what the
@@ -239,6 +313,7 @@ export function createNetworkWatch({ now = () => Date.now() } = {}) {
     read(tabId, guidanceScope, handoff) {
       const watch = watches.get(tabId);
       if (!watch || watch.scope !== guidanceScope) return null;
+      settlePrevious(watch);
       merge(watch, handoff);
       settle(watch);
       return watch.violation;
@@ -255,10 +330,16 @@ export function createNetworkWatch({ now = () => Date.now() } = {}) {
 export function applyEffectWatch(effects, command, result) {
   const scope = command.taskPolicy?.guidanceScope;
   if (WATCHED_EFFECTS.includes(command.subaction) && result) {
-    const { watchHandoff } = result;
+    const { watchHandoff, previousWatchHandoff } = result;
     delete result.watchHandoff;
+    delete result.previousWatchHandoff;
     if (effects && scope !== undefined)
-      effects.report(Number(command.id), scope, watchHandoff);
+      effects.report(
+        Number(command.id),
+        scope,
+        watchHandoff,
+        previousWatchHandoff,
+      );
     return;
   }
   for (const frame of result?.frames || []) {
@@ -281,6 +362,9 @@ export function applyEffectWatch(effects, command, result) {
 /** The Chromium extension's watch, fed by webRequest and webNavigation. */
 export function createEffectWatch(api) {
   const watch = createNetworkWatch();
+  // Each tab's top-level origin, so a service worker's request is not pinned
+  // on the task tab while another tab of that site may have sent it.
+  const tabOrigins = new Map();
   api.webRequest.onBeforeRequest.addListener(
     (details) => {
       const request = {
@@ -295,10 +379,15 @@ export function createEffectWatch(api) {
         return;
       }
       // A service worker's request belongs to no tab. Count it against every
-      // tab watching the site the worker serves.
-      if (typeof details.initiator === "string")
-        for (const tabId of watch.tabsOn(details.initiator))
-          watch.observe(tabId, request);
+      // tab watching the site the worker serves, unless a tab the watch does
+      // not follow is on that site too: the request may be the person's,
+      // from that tab.
+      if (typeof details.initiator !== "string") return;
+      const watching = watch.tabsOn(details.initiator);
+      for (const [tabId, tabOrigin] of tabOrigins)
+        if (tabOrigin === details.initiator && !watching.includes(tabId))
+          return;
+      for (const tabId of watching) watch.observe(tabId, request);
     },
     { urls: ["<all_urls>"] },
   );
@@ -312,8 +401,17 @@ export function createEffectWatch(api) {
     }),
   );
   api.webNavigation.onCommitted.addListener((details) => {
-    if (details.frameId === 0) watch.close(details.tabId, details.timeStamp);
+    if (details.frameId !== 0) return;
+    watch.close(details.tabId, details.timeStamp);
+    try {
+      tabOrigins.set(details.tabId, new URL(details.url).origin);
+    } catch {
+      tabOrigins.delete(details.tabId);
+    }
   });
-  api.tabs.onRemoved.addListener((tabId) => watch.forget(tabId));
+  api.tabs.onRemoved.addListener((tabId) => {
+    tabOrigins.delete(tabId);
+    watch.forget(tabId);
+  });
   return watch;
 }

@@ -205,8 +205,11 @@ continuing and never automatically replay the effect. This API currently covers
 the main frame's DOM commands, not child frames or coordinate input. After a task
 effect, `BrowserEffectWatch` applies the Chromium network watch's rule to every
 request `shouldInterceptRequest` sees, from any frame; task snapshots report it as
-`effectViolation` and `effectWatch`. WebView never shows it WebSocket,
-service-worker or WebRTC traffic, so `unseen` names those.
+`effectViolation` and `effectWatch`. WebView names no request type, so only an
+image or stylesheet load (by its `Accept` header) is a passive cross-site read;
+beacons and other cross-site reads count within the 30-second window. WebView
+never shows it WebSocket, service-worker or WebRTC traffic, so `unseen` names
+those.
 
 `bun run --cwd plugins/plugin-native-browser-surface test:control` uses
 `ELIZA_BROWSER_EXECUTABLE` to test the generated channel in a real Chromium

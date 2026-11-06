@@ -34,11 +34,25 @@ public final class BrowserEffectWatchTest {
     // shouldInterceptRequest reports every frame's requests, so the frame is not an input.
     check("request".equals(after("https://pay.other.example/charge", "POST", 10)), "cross-site POST from any frame");
     check("request".equals(after(ORIGIN + "/api/pay", "POST", 10)), "same-site POST before its response");
-    check("request".equals(after("https://track.other.example/p.gif?amount=84", "GET", 10)), "cross-site image");
+    check("request".equals(after("https://track.other.example/p?amount=84", "GET", 10)), "cross-site fetch read");
     check("request".equals(after(ORIGIN + "/api/pay", "put", 45000)), "a request after the old 30 s window");
     check(after(ORIGIN + "/api/balance", "GET", 10) == null, "own-site GET");
     check(after("https://api.bank.example/rates", "HEAD", 10) == null, "sibling host of the page's site");
     check(after("https://pay.other.example/charge", "POST", 61000) == null, "after the binding expires");
+
+    // A real site's own third-party traffic: CDN images and styles, and anything to another
+    // site long after the effect, is not the effect's doing.
+    long t = System.currentTimeMillis();
+    BrowserEffectWatch site = new BrowserEffectWatch();
+    site.arm(ORIGIN, "1", "click", t, t + 3600000, false, null, null);
+    site.observe("https://cdn.other.example/logo.png", "GET", false, t + 10,
+        "image/avif,image/webp,image/apng,image/*,*/*;q=0.8");
+    site.observe("https://cdn.other.example/a.css", "GET", false, t + 10, "text/css,*/*;q=0.1");
+    site.observe("https://www.google-analytics.com/g/collect", "POST", false, t + 40000, "*/*");
+    site.observe("https://ads.other.example/frame", "GET", false, t + 40000, "text/html");
+    check(site.read("1", NONE) == null, "a site's own third-party traffic");
+    site.observe("https://pay.other.example/charge", "POST", false, t + 20000, "*/*");
+    check("request".equals(site.read("1", NONE)), "a cross-site POST soon after the effect");
 
     // A link the click follows, to another site, also through a redirect: the page's own
     // watch and the navigation gate govern top-level navigation. A main-frame POST is not one.
@@ -93,6 +107,28 @@ public final class BrowserEffectWatchTest {
     method.arm(ORIGIN, "1", "click", now, now + 60000, true, "/api/slow", "POST");
     method.observe(ORIGIN + "/api/slow", "DELETE", false, now + 10);
     check("request".equals(method.read("1", NONE)), "another method is not the granted request");
+
+    // Her press after the last read and before the next effect reaches the earlier effect
+    // through the next effect's result, and only that effect.
+    BrowserEffectWatch hers = new BrowserEffectWatch();
+    hers.arm(ORIGIN, "1", "click", now, now + 60000, false, null, null);
+    check(hers.read("1", NONE) == null, "a clean read");
+    hers.observe(ORIGIN + "/pay", "POST", false, now + 3100);
+    hers.arm(ORIGIN, "1", "fill", now + 4000, now + 60000, false, null, null);
+    hers.report("1", NONE, "1", handoff(new long[] {now + 3000}, null));
+    check(hers.read("1", NONE) == null, "her press before the next effect is hers");
+    BrowserEffectWatch next = new BrowserEffectWatch();
+    next.arm(ORIGIN, "1", "click", now, now + 60000, false, null, null);
+    next.arm(ORIGIN, "1", "fill", now + 4000, now + 60000, false, null, null);
+    next.observe(ORIGIN + "/pay", "POST", false, now + 5000);
+    next.report("1", NONE, "1", handoff(new long[] {now + 4900}, now + 4900));
+    check("request".equals(next.read("1", NONE)), "her earlier press never excuses the next effect");
+    BrowserEffectWatch refused = new BrowserEffectWatch();
+    refused.arm(ORIGIN, "1", "click", now, now + 60000, false, null, null);
+    refused.observe(ORIGIN + "/pay", "POST", false, now + 3100);
+    refused.cancel(refused.arm(ORIGIN, "1", "fill", now + 4000, now + 60000, false, null, null));
+    check(refused.read("1", handoff(new long[] {now + 3000}, null)) == null,
+        "a refused effect leaves the earlier watch unjudged");
 
     BrowserEffectWatch closed = new BrowserEffectWatch();
     closed.arm(ORIGIN, "1", "click", now, now + 60000, false, null, null);

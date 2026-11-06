@@ -300,6 +300,10 @@ export function pageCommand(command, snapshotId, validateOnly = false) {
   };
   // A control whose effect the browser defines, whatever the page's words.
   // A link to the page it is on (href="#") runs only the page's handlers.
+  // A disclosure ([aria-expanded]) or tab ([role=tab]) is the page's own
+  // claim, not the browser's: a heuristic, since its script may still send
+  // something. A submit button never gets here (it is denied above), and the
+  // network watch reports what such a control sends.
   const inert = (node) => {
     if (
       node.matches(
@@ -1224,6 +1228,7 @@ export function pageCommand(command, snapshotId, validateOnly = false) {
       globalThis[grantKey] = { document, used: new Set() };
     globalThis[grantKey].used.add(grant.grantId);
   }
+  let previousWatchHandoff;
   if (
     policy &&
     ["click", "fill", "select", "scroll"].includes(command.subaction)
@@ -1266,7 +1271,12 @@ export function pageCommand(command, snapshotId, validateOnly = false) {
     // which is reported), a second submit, another form, another origin, any
     // other own-site request and every other page change, same-document
     // address changes included, are still stopped or recorded as above.
-    globalThis[watchKey]?.stop();
+    const prior = globalThis[watchKey];
+    prior?.stop();
+    // What the earlier watch saw of her up to now. Her press since the last
+    // snapshot reaches the network watch's earlier effect only this way.
+    if (prior?.scope !== undefined)
+      previousWatchHandoff = { scope: prior.scope, ...handoffOf(prior) };
     const anchor =
       command.subaction === "click" ? node.closest("a[href]") : null;
     let personAt = Number.NEGATIVE_INFINITY;
@@ -1900,6 +1910,7 @@ export function pageCommand(command, snapshotId, validateOnly = false) {
     ...(effectWatch?.scope === policy?.guidanceScope && effectWatch
       ? { watchHandoff: handoffOf(effectWatch) }
       : {}),
+    ...(previousWatchHandoff ? { previousWatchHandoff } : {}),
   };
 }
 

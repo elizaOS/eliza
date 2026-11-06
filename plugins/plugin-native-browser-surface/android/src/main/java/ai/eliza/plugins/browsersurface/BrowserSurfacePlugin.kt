@@ -785,7 +785,8 @@ class ElizaSurfaceManagerPlugin : Plugin() {
                 override fun shouldInterceptRequest(view: WebView, request: WebResourceRequest): WebResourceResponse? {
                     val now = System.currentTimeMillis()
                     if (!interceptNavigation || !request.isForMainFrame) {
-                        effects.observe(request.url.toString(), request.method, request.isForMainFrame, now)
+                        effects.observe(request.url.toString(), request.method, request.isForMainFrame, now,
+                            request.requestHeaders?.get("Accept"))
                         return null
                     }
                     val target = request.url.toString()

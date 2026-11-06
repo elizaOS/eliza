@@ -89,14 +89,15 @@ export function createCommandHandler(api, { effects } = {}) {
             command.subaction,
           );
         // The host's own navigation is not something the page did.
-        else if (command.subaction !== "snapshot") effects.close(tabId);
+        else if (command.subaction !== "snapshot")
+          cancelWatch = effects.close(tabId, Date.now(), { host: true });
       } else if (
         effects &&
         ["navigate", "back", "forward", "reload", "close"].includes(
           command.subaction,
         )
       )
-        effects.close(tabId);
+        cancelWatch = effects.close(tabId, Date.now(), { host: true });
       let result;
       try {
         try {
@@ -107,7 +108,8 @@ export function createCommandHandler(api, { effects } = {}) {
             isCurrent,
           );
         } catch (error) {
-          // Refused before the page acted: the earlier watch still holds.
+          // Refused before the page acted (a stale ref, or a navigation the
+          // policy blocked): the earlier watch still holds.
           if (
             error instanceof BridgeError &&
             error.kind !== "UNCERTAIN_OUTCOME"

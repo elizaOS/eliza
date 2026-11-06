@@ -38,6 +38,14 @@ const pages = {
     `<script>go.onclick=()=>open("http://other.test:PORT/child")</script>`,
   ),
   "/read": page(`<script>go.onclick=()=>fetch("/api/balance")</script>`),
+  "/fetch-cross": page(
+    `<script>go.onclick=()=>fetch("http://other.test:PORT/api/q?amount=84",{mode:"no-cors"})</script>`,
+  ),
+  // What a real site sends to other sites around a click: an analytics
+  // beacon, a CDN image, script and stylesheet, and an ad pixel.
+  "/analytics": page(
+    `<script>go.onclick=()=>{navigator.sendBeacon("http://other.test:PORT/g/collect","v=2");new Image().src="http://other.test:PORT/cdn/logo.png";new Image().src="http://other.test:PORT/px.gif?ev=click";const s=document.createElement("script");s.src="http://other.test:PORT/cdn/app.js";document.head.append(s);const l=document.createElement("link");l.rel="stylesheet";l.href="http://other.test:PORT/cdn/a.css";document.head.append(l)}</script>`,
+  ),
   // A granted form POST that loads a page, and a granted fetch whose
   // response is slow.
   "/granted-form": `<form action="/done" method="post"><button id="go">Show details</button></form>`,
@@ -231,7 +239,10 @@ try {
   const cases = [
     ["/frame-cross", "request", `POST other.test:${port}/api/pay`],
     ["/frame-same", "request", `POST bank.test:${port}/api/pay`],
-    ["/image", "request", `GET other.test:${port}/p.gif?amount=84`],
+    // An image reads; a fetch to another site after a click is the click's.
+    ["/image", null, `GET other.test:${port}/p.gif?amount=84`],
+    ["/fetch-cross", "request", `GET other.test:${port}/api/q?amount=84`],
+    ["/analytics", null, `POST other.test:${port}/g/collect`],
     ["/socket", "request", `UPGRADE bank.test:${port}/socket`],
     ["/window", "window", `GET other.test:${port}/child`],
     ["/read", null, `GET bank.test:${port}/api/balance`],
@@ -248,6 +259,28 @@ try {
   await tab.waitForTimeout(600);
   assert.ok(received.includes(`POST other.test:${port}/api/pay`));
   assert.equal(await verdict(), null);
+  // Her press after the last read, and the next task effect with no read in
+  // between: the press reaches the earlier effect through the next result.
+  // A key press leaves the snapshot fresh (a pointer press would not).
+  await taskClick("/hers");
+  const read = await snapshot();
+  assert.equal(read.value.effectViolation ?? null, null);
+  const posted = received.length;
+  await tab.focus("#mine");
+  await tab.keyboard.press("Enter");
+  await tab.waitForTimeout(600);
+  assert.ok(received.slice(posted).includes(`POST other.test:${port}/api/pay`));
+  const { value: again } = await run({
+    subaction: "click",
+    snapshotId: read.id,
+    nodeId: read.value.elements.find(
+      (element) => element.targetSelector === "#go",
+    ).id,
+    taskPolicy: policy(),
+  });
+  assert.equal(again.dispatched, true, JSON.stringify(again));
+  assert.equal("previousWatchHandoff" in again, false);
+  assert.equal(await verdict(), null, "her press before the next effect");
   // The commit she said yes to. A form POST whose page load is read in the
   // new document, which has no record of the click.
   await taskClick("/granted-form", 800, {});
@@ -287,7 +320,7 @@ try {
     assert.equal(await verdict(), "request");
   }
   console.log(
-    `network watch: ok (frames, cross-site, image, WebSocket, window, own-site GET, her press, granted form page load, granted fetch in flight, links and redirects, top-level POST${late ? ", after 30 s" : ""})`,
+    `network watch: ok (frames, cross-site, image, cross-site fetch, a site's analytics and CDN, WebSocket, window, own-site GET, her press, her press before the next effect, granted form page load, granted fetch in flight, links and redirects, top-level POST${late ? ", after 30 s" : ""})`,
   );
 } catch (error) {
   failed = true;

@@ -457,24 +457,34 @@ The page sees only its own document's completed requests, so the extension
 also watches the network (`src/effect-watch.mjs`, `webRequest` with `ws` and
 `wss` host access). From each task fill, click, select or scroll, every request
 the tab starts, in any frame and at its start, is a violation (`request`) when
-it is not a GET or HEAD or is a WebSocket; after a click, also a GET to another
-site. A window the page opens is `window`. A top-level GET navigation is left to
-the page's own watch and the navigation gate, so a click that follows a link,
-also through a redirect to another site, is not one; a top-level POST is. A
-service worker's request counts against tabs on its site. Requests within the
-handoff rule above are hers. A commit grant lets its one commit through at
-request start, matched by the grant's `requestTarget` or by the address the
-page reports in the click result (the granted form's action, or the consented
-commit), and its redirect hops with it; without a grant, nothing the page
-reports excuses a request. What one effect set off is judged when the next one
-starts. The watch ends when the binding
+it is not a GET or HEAD or is a WebSocket; after a click, also a fetch, XHR or
+frame GET to another site. A window the page opens is `window`. A top-level GET
+navigation is left to the page's own watch and the navigation gate, so a click
+that follows a link, also through a redirect to another site, is not one; a
+top-level POST is. Real sites talk to other sites on their own, so a beacon or
+CSP report to another site, and a cross-site image, font, stylesheet, script or
+media load, are never violations, and any other request to another site counts
+only within 30 seconds of the effect (`CROSS_SITE_WINDOW_MS`). A service
+worker's request counts against tabs on its site, unless another tab the watch
+does not follow is on that site. Requests within the handoff rule above are
+hers. A commit grant lets its one commit through at request start, matched by
+the grant's `requestTarget` or by the address the page reports in the click
+result (the granted form's action, or the consented commit), and its redirect
+hops with it; without a grant, nothing the page reports excuses a request. What
+one effect set off is judged when the next effect's result arrives, with the
+presses the page's earlier watch saw up to then, or at the next snapshot. The
+watch ends when the binding
 expires, at the next task effect, at the host's own navigation, or when the main
 frame commits another document. Task snapshots then report `effectWatch:
 { frames: "all", unseen }`; `unseen` names what it cannot see (WebRTC). Her
 presses inside a child frame are not seen, so her requests there count as the
-helper's: the task pauses rather than missing a commit. A page that keeps
-sending cross-site or POST requests (analytics) after a helper action pauses
-the task the same way. Run `node --conditions=eliza-source
+helper's: the task pauses rather than missing a commit. A page that writes to
+its own site on a timer after a helper action (a session keep-alive POST, its
+own analytics endpoint), or sends a cross-site fetch or POST within 30 seconds
+of it, pauses the task the same way; a cross-site write after those 30 seconds
+is not seen. The disclosure (`aria-expanded`) and tab (`role=tab`) controls the
+money-page click rule allows are the page's own claims, so that rule is a
+heuristic. Run `node --conditions=eliza-source
 packages/os/browser/scripts/test-network-watch.mjs` for the real Chromium
 check of each request kind (add `--skip-late` to skip the 31-second case).
 

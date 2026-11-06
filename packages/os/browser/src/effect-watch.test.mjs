@@ -50,23 +50,40 @@ test("after a task effect, each kind of request the page sets off is seen at its
     ],
     // A same-site POST from a frame, before any response.
     [{ url: `${origin}/api/pay`, method: "POST", frameId: 2 }, "request"],
-    // A cross-site image beacon.
-    [
-      { url: "https://track.other.example/p.gif?amount=84", type: "image" },
-      "request",
-    ],
+    // A cross-site fetch read after a click.
+    [{ url: "https://track.other.example/p?amount=84" }, "request"],
     // A same-site WebSocket.
     [{ url: "wss://bank.example/socket", type: "websocket" }, "request"],
-    // A ping or beacon.
+    // A ping or beacon to the page's own site.
     [{ url: `${origin}/log`, method: "POST", type: "ping" }, "request"],
+    // A cross-site WebSocket and POST within the window after the effect.
+    [{ url: "wss://chat.other.example/", type: "websocket" }, "request"],
+    [
+      {
+        url: "https://pay.other.example/charge",
+        method: "POST",
+        timeStamp: Date.now() + 20000,
+      },
+      "request",
+    ],
     // A cross-site sub-frame load.
     [
       { url: "https://other.example/frame", type: "sub_frame", frameId: 4 },
       "request",
     ],
-    // A request long after the old 30 second window.
+    // A request to the page's own site long after the old 30 second window.
     [
       { url: `${origin}/late`, method: "PUT", timeStamp: Date.now() + 45000 },
+      "request",
+    ],
+    // A top-level POST to another site, at any time.
+    [
+      {
+        url: "https://pay.other.example/done",
+        method: "POST",
+        type: "main_frame",
+        timeStamp: Date.now() + 45000,
+      },
       "request",
     ],
     // A same-site GET of the page's own site, also from a sibling host.
@@ -78,6 +95,51 @@ test("after a task effect, each kind of request the page sets off is seen at its
     f.watch.arm(1, f.policy);
     f.request(details);
     assert.equal(f.watch.read(1, "1", undefined), expected, details.url);
+  }
+});
+
+test("a real site's own third-party traffic is not the effect's doing", () => {
+  // An analytics beacon, CDN loads and an ad pixel right after a click, and
+  // cross-site traffic long after it: what every real bill or bank page
+  // sends, and none of it the click's commit.
+  const traffic = [
+    {
+      url: "https://www.google-analytics.com/g/collect?v=2",
+      method: "POST",
+      type: "ping",
+    },
+    { url: "https://cdn.jsdelivr.net/npm/x/logo.png", type: "image" },
+    { url: "https://cdn.other.example/app.js", type: "script" },
+    { url: "https://fonts.gstatic.com/s/a.woff2", type: "font" },
+    { url: "https://cdn.other.example/a.css", type: "stylesheet" },
+    { url: "https://px.ads.other.example/p.gif?ev=click", type: "image" },
+    {
+      url: "https://csp.other.example/report",
+      method: "POST",
+      type: "csp_report",
+    },
+    {
+      url: "https://api.segment.example/v1/t",
+      method: "POST",
+      timeStamp: Date.now() + 40000,
+    },
+    {
+      url: "https://ads.other.example/frame",
+      type: "sub_frame",
+      frameId: 5,
+      timeStamp: Date.now() + 40000,
+    },
+    {
+      url: "wss://chat.other.example/",
+      type: "websocket",
+      timeStamp: Date.now() + 40000,
+    },
+  ];
+  for (const subaction of ["click", "scroll"]) {
+    const f = fixture();
+    f.watch.arm(1, { ...f.policy, expiresAt: Date.now() + 3600000 }, subaction);
+    for (const details of traffic) f.request(details);
+    assert.equal(f.watch.read(1, "1"), null, subaction);
   }
 });
 
@@ -100,6 +162,37 @@ test("a service worker's request counts against the tab watching its site", () =
     method: "POST",
   });
   assert.equal(other.watch.read(1, "1"), null);
+  // Another tab of the same site may have sent it: hers, not the task's.
+  const shared = fixture();
+  shared.listeners.committed({
+    tabId: 1,
+    frameId: 0,
+    url: `${origin}/bill`,
+    timeStamp: Date.now() - 10,
+  });
+  shared.listeners.committed({
+    tabId: 2,
+    frameId: 0,
+    url: `${origin}/home`,
+    timeStamp: Date.now() - 10,
+  });
+  shared.watch.arm(1, shared.policy);
+  shared.request({
+    tabId: -1,
+    initiator: origin,
+    url: `${origin}/sw/pay`,
+    method: "POST",
+  });
+  assert.equal(shared.watch.read(1, "1"), null);
+  // Once that tab is gone, it counts again.
+  shared.listeners.removed(2);
+  shared.request({
+    tabId: -1,
+    initiator: origin,
+    url: `${origin}/sw/pay`,
+    method: "POST",
+  });
+  assert.equal(shared.watch.read(1, "1"), "request");
 });
 
 test("a window the page opens is a violation", () => {
@@ -283,19 +376,114 @@ test("after a fill, select or scroll, a cross-site read is not a violation but a
       assert.equal(write.watch.read(1, "1"), "request", subaction);
     }
   }
-  // After a click the cross-site read is one.
+  // After a click a cross-site fetch read is one; an image is not.
   const click = fixture();
   click.watch.arm(1, click.policy, "click");
   click.request({ url: "https://cdn.other.example/a.png", type: "image" });
+  assert.equal(click.watch.read(1, "1"), null);
+  click.request({ url: "https://suggest.other.example/q?x=1" });
   assert.equal(click.watch.read(1, "1"), "request");
 });
 
-test("what an earlier effect set off is judged when the next effect arms", () => {
+test("what an earlier effect set off is judged when the next effect's result arrives", () => {
   const f = fixture();
   f.watch.arm(1, f.policy, "click");
   f.request({ url: "https://other.example/x", method: "POST" });
   f.watch.arm(1, f.policy, "click");
   assert.equal(f.watch.read(1, "1"), "request");
+  // Also when that result never arrives (an uncertain outcome).
+  const lost = fixture();
+  lost.watch.arm(1, lost.policy, "click");
+  lost.request({ url: "https://other.example/x", method: "POST" });
+  lost.watch.arm(1, lost.policy, "fill");
+  lost.watch.arm(1, lost.policy, "fill");
+  assert.equal(lost.watch.read(1, "1"), "request");
+});
+
+test("her press after the last read, before the next effect, is still hers", () => {
+  const t = Date.now();
+  // Task click, a clean read, then she presses Pay and the page POSTs; the
+  // agent fills next with no read in between. The fill's result carries the
+  // earlier page watch's presses.
+  const f = fixture();
+  f.watch.arm(1, f.policy, "click");
+  assert.equal(f.watch.read(1, "1", { presses: [] }), null);
+  f.request({ url: `${origin}/pay`, method: "POST", timeStamp: t + 3100 });
+  f.watch.arm(1, f.policy, "fill");
+  f.watch.report(
+    1,
+    "1",
+    { presses: [] },
+    { scope: "1", presses: [t + 3000], activatedAt: null },
+  );
+  assert.equal(f.watch.read(1, "1", { presses: [] }), null);
+  // Her press reaches the earlier effect alone: it never excuses the next
+  // effect's own requests, also not through her activated control.
+  const next = fixture();
+  next.watch.arm(1, next.policy, "click");
+  next.watch.arm(1, next.policy, "fill");
+  next.request({ url: `${origin}/pay`, method: "POST", timeStamp: t + 5000 });
+  next.watch.report(
+    1,
+    "1",
+    { presses: [] },
+    { scope: "1", presses: [t + 4900], activatedAt: t + 4900 },
+  );
+  assert.equal(next.watch.read(1, "1", { presses: [] }), "request");
+  // Another binding's page watch excuses nothing here.
+  const other = fixture();
+  other.watch.arm(1, other.policy, "click");
+  other.request({ url: `${origin}/pay`, method: "POST", timeStamp: t + 3100 });
+  other.watch.arm(1, other.policy, "fill");
+  other.watch.report(
+    1,
+    "1",
+    { presses: [] },
+    { scope: "2", presses: [t + 3000] },
+  );
+  assert.equal(other.watch.read(1, "1"), "request");
+  // A refused next effect leaves the earlier watch unjudged, so the next
+  // read still takes her press into account.
+  const refused = fixture();
+  refused.watch.arm(1, refused.policy, "click");
+  refused.request({
+    url: `${origin}/pay`,
+    method: "POST",
+    timeStamp: t + 3100,
+  });
+  refused.watch.arm(1, refused.policy, "fill")();
+  assert.equal(refused.watch.read(1, "1", { presses: [t + 3000] }), null);
+});
+
+test("a host navigation the browser refused leaves the watch open; a commit does not", () => {
+  const f = fixture();
+  f.watch.arm(1, f.policy, "click");
+  const reopen = f.watch.close(1, Date.now(), { host: true });
+  reopen();
+  f.request({
+    url: `${origin}/pay`,
+    method: "POST",
+    timeStamp: Date.now() + 5,
+  });
+  assert.equal(f.watch.read(1, "1"), "request");
+  const committed = fixture();
+  committed.watch.arm(1, committed.policy, "click");
+  const reopenCommitted = committed.watch.close(1, Date.now(), {
+    host: true,
+  });
+  committed.listeners.committed({
+    tabId: 1,
+    frameId: 0,
+    url: `${origin}/next`,
+    timeStamp: Date.now(),
+  });
+  reopenCommitted();
+  committed.request({
+    url: `${origin}/pay`,
+    method: "POST",
+    timeStamp: Date.now() + 5,
+  });
+  assert.equal(committed.watch.read(1, "1"), null);
 });
 
 test("a task effect's result only reports its handoff; a snapshot's main frame is judged", () => {
@@ -309,7 +497,12 @@ test("a task effect's result only reports its handoff; a snapshot's main frame i
   };
   const taskPolicy = { guidanceScope: "1" };
   const handoff = { presses: [1], consentedUrls: [] };
-  const clicked = { dispatched: true, watchHandoff: handoff };
+  const previous = { scope: "1", presses: [0] };
+  const clicked = {
+    dispatched: true,
+    watchHandoff: handoff,
+    previousWatchHandoff: previous,
+  };
   applyEffectWatch(
     effects,
     { id: "1", subaction: "click", taskPolicy },
@@ -328,7 +521,7 @@ test("a task effect's result only reports its handoff; a snapshot's main frame i
     snapshot,
   );
   assert.deepEqual(calls, [
-    ["report", 1, "1", handoff],
+    ["report", 1, "1", handoff, previous],
     ["read", 1, "1", handoff],
   ]);
   assert.deepEqual(snapshot.frames, [
@@ -340,7 +533,11 @@ test("a task effect's result only reports its handoff; a snapshot's main frame i
     { frameId: 2 },
   ]);
   // No task: the handoff is still taken out, and nothing is judged.
-  const plain = { dispatched: true, watchHandoff: handoff };
+  const plain = {
+    dispatched: true,
+    watchHandoff: handoff,
+    previousWatchHandoff: previous,
+  };
   applyEffectWatch(undefined, { id: "1", subaction: "click" }, plain);
   assert.deepEqual(plain, { dispatched: true });
 });

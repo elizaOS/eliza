@@ -4,7 +4,9 @@ import java.net.URI;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
+import java.util.LinkedHashSet;
 import java.util.List;
+import java.util.Set;
 import java.util.Locale;
 
 /**
@@ -15,13 +17,20 @@ import java.util.Locale;
  * A main-frame GET navigation is left to the page's own watch and the navigation gate. The one
  * commit a grant consents is let through once, known from the grant and from the page's click
  * result, so it never waits for the page to see the request complete. The watch lasts until
- * the binding expires, the next task effect or a new main-frame document. Thread-safe:
- * requests arrive on a network thread, commands on the main thread.
+ * the binding expires, the next task effect or a new main-frame document. As in effect-watch.mjs,
+ * a request to another site that is not a top-level navigation counts only within
+ * {@link #CROSS_SITE_WINDOW_MS} of the effect, and a cross-site image or stylesheet read never
+ * (known by its Accept header; the WebView names no request type), so a site's own analytics and
+ * CDN traffic do not pause the task. Thread-safe: requests arrive on a network thread, commands
+ * on the main thread.
  */
 public final class BrowserEffectWatch {
     /** What shouldInterceptRequest never sees. */
     public static final List<String> UNSEEN =
             Collections.unmodifiableList(Arrays.asList("websocket", "service-worker", "webrtc"));
+
+    /** How long after an effect a request to another site can be its doing. */
+    public static final long CROSS_SITE_WINDOW_MS = 30000;
 
     /** What the page reports of the person and of the granted commit (its watchHandoff). */
     public static final class Handoff {
@@ -49,11 +58,15 @@ public final class BrowserEffectWatch {
         final String url;
         final String method;
         final long at;
+        /** An image or stylesheet load: it reads what the page shows. */
+        final boolean passive;
 
-        Request(String url, String method, long at) {
+        Request(String url, String method, long at, String accept) {
             this.url = url;
             this.method = method.toUpperCase(Locale.ROOT);
             this.at = at;
+            String type = accept == null ? "" : accept.trim().toLowerCase(Locale.ROOT);
+            this.passive = type.startsWith("image/") || type.startsWith("text/css");
         }
     }
 
@@ -78,15 +91,18 @@ public final class BrowserEffectWatch {
         final long expiresAt;
         long closedAt = Long.MAX_VALUE;
         final List<Request> candidates = new ArrayList<>();
-        final List<Long> presses = new ArrayList<>();
+        /** The page sends all its presses each time; a set keeps each once. */
+        final Set<Long> presses = new LinkedHashSet<>();
         long activatedAt = Long.MAX_VALUE;
         /** Null without a grant: then nothing the page reports excuses a request. */
         final List<Allowed> granted;
         boolean grantSpent;
         String violation;
+        /** The earlier effect of this binding, judged once this effect's result arrives. */
+        Watch previous;
 
         Watch(String origin, String scope, boolean click, long startedAt, long expiresAt,
-                List<Allowed> granted, String violation) {
+                List<Allowed> granted, String violation, Watch previous) {
             this.origin = origin;
             this.scope = scope;
             this.click = click;
@@ -94,6 +110,7 @@ public final class BrowserEffectWatch {
             this.expiresAt = expiresAt;
             this.granted = granted;
             this.violation = violation;
+            this.previous = previous;
         }
     }
 
@@ -108,15 +125,17 @@ public final class BrowserEffectWatch {
     public synchronized Object arm(String origin, String scope, String subaction, long now, long expiresAt,
             boolean granted, String targetUrl, String targetMethod) {
         Watch previous = watch;
-        // What the earlier effect set off is judged now, not dropped.
-        if (previous != null) settle(previous);
+        // The earlier effect is judged once this effect's result hands over what the page saw of
+        // her since the last read (report), or at the next read; one before it is judged now.
+        if (previous != null) settlePrevious(previous);
+        boolean sameBinding = previous != null && previous.scope.equals(scope);
         List<Allowed> allowed = null;
         if (granted) {
             allowed = new ArrayList<>();
             if (targetUrl != null) allowed.add(new Allowed(resolve(origin, targetUrl), targetMethod, true));
         }
         watch = new Watch(origin, scope, "click".equals(subaction), now, expiresAt, allowed,
-                previous != null && previous.scope.equals(scope) ? previous.violation : null);
+                sameBinding ? previous.violation : null, sameBinding ? previous : null);
         return new Object[] {watch, previous};
     }
 
@@ -133,7 +152,12 @@ public final class BrowserEffectWatch {
 
     /** One request at its start, from any frame. */
     public synchronized void observe(String url, String method, boolean mainFrame, long at) {
-        Request request = new Request(url, method == null ? "GET" : method, at);
+        observe(url, method, mainFrame, at, null);
+    }
+
+    /** One request at its start, with its Accept header, which tells an image or style load. */
+    public synchronized void observe(String url, String method, boolean mainFrame, long at, String accept) {
+        Request request = new Request(url, method == null ? "GET" : method, at, accept);
         if (watch == null || request.at < watch.startedAt || request.at >= watch.expiresAt
                 || request.at >= watch.closedAt || !violates(request, mainFrame, watch)) return;
         watch.candidates.add(request);
@@ -141,15 +165,39 @@ public final class BrowserEffectWatch {
 
     /** Adds what a task effect's own result reports, without judging. */
     public synchronized void report(String scope, Handoff handoff) {
-        if (watch != null && watch.scope.equals(scope)) merge(watch, handoff);
+        report(scope, handoff, null, null);
+    }
+
+    /**
+     * Adds what a task effect's own result reports, without judging. {@code previous} is what
+     * the page's earlier watch (of binding {@code previousScope}) saw up to this effect; it goes
+     * to the earlier effect's watch alone, which is then judged, so her press never excuses this
+     * effect's requests.
+     */
+    public synchronized void report(String scope, Handoff handoff, String previousScope, Handoff previous) {
+        if (watch == null || !watch.scope.equals(scope)) return;
+        if (watch.previous != null && previous != null && watch.previous.scope.equals(previousScope))
+            merge(watch.previous, previous);
+        settlePrevious(watch);
+        merge(watch, handoff);
     }
 
     /** The violation for this binding, judged after adding what the page reports. */
     public synchronized String read(String scope, Handoff handoff) {
         if (watch == null || !watch.scope.equals(scope)) return null;
+        settlePrevious(watch);
         merge(watch, handoff);
         settle(watch);
         return watch.violation;
+    }
+
+    /** The effect before this watch's own: its verdict carries into this binding's watch. */
+    private static void settlePrevious(Watch watch) {
+        Watch previous = watch.previous;
+        if (previous == null) return;
+        watch.previous = null;
+        settle(previous);
+        if (watch.violation == null) watch.violation = previous.violation;
     }
 
     private static void merge(Watch watch, Handoff handoff) {
@@ -175,15 +223,18 @@ public final class BrowserEffectWatch {
     }
 
     private static boolean violates(Request request, boolean mainFrame, Watch watch) {
-        if (!request.method.equals("GET") && !request.method.equals("HEAD")) return true;
-        if (mainFrame || !watch.click) return false;
+        boolean crossSite;
         try {
             String host = new URI(request.url).getHost();
             String page = new URI(watch.origin).getHost();
-            return host == null || page == null || !sameSite(host, page);
+            crossSite = host == null || page == null || !sameSite(host, page);
         } catch (Exception error) {
-            return true;
+            crossSite = true;
         }
+        if (crossSite && !mainFrame && request.at - watch.startedAt > CROSS_SITE_WINDOW_MS) return false;
+        if (!request.method.equals("GET") && !request.method.equals("HEAD")) return true;
+        if (mainFrame || !watch.click) return false;
+        return crossSite && !request.passive;
     }
 
     /** As effect-watch.mjs: the last two or three host labels match. */
