@@ -147,13 +147,18 @@ transport is for downstream consumers without that server.
   records that decision next to the pin as `spanish.release_override`, and
   `packages/scripts/verify-voice-product-release.ts` fails a bundled voice
   with a `PENDING` or `BLOCKED` status that no such override names. To turn
-  the voice off, set `spanish.enabled` to false in `inputs.json`, the one
-  switch: the build then neither converts nor bundles the GGUF or its notices,
-  the manifest has no `voices`, `speechLanguages()` is `["en"]`, Gradle refuses
-  a bundle that still carries it, and the release gate refuses a catalog that
-  lists it. Its G2P is eSpeak NG `es` (misaki `EspeakG2P`), so it needs
-  `es_dict` and `lang/roa/es` in the bundle's eSpeak NG data (the fork pins
-  them, so they ship either way; the English G2P never reads them). It loads
+  the voice off for every consumer, set `spanish.enabled` to false in
+  `inputs.json`; the release gate then also refuses a catalog that lists it.
+  A product that only admits English can instead build with `--languages en`
+  and set `ext.elizaParadeeLanguages = 'en'` before applying `consumer.gradle`.
+  This excludes the Spanish model, notices and eSpeak language data without
+  changing another product's default. The build receipt records `productLanguages`;
+  Gradle rejects a different selection, extra voices or changed pinned bytes.
+  `--languages en,es` requires Spanish to be enabled by the pinned inputs.
+  With no explicit selection, the existing pinned language set remains the default.
+  Language selection does not grant model approval or device qualification.
+  Spanish G2P uses eSpeak NG `es` (misaki `EspeakG2P`), which needs `es_dict`
+  and `lang/roa/es`. It loads
   into its own libelizainference voice slot (ABI 20) of the same context:
   `InferenceSession.synthesize(text, speed, "es")`,
   `InferenceSession.speechLanguages()`, `VoiceAssets.Bundle.openVoice("es")` or
