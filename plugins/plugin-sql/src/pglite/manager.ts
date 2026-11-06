@@ -19,6 +19,38 @@ import { createPgliteInitError, PGLITE_ERROR_CODES } from "./errors";
 import { initdbSnapshotPath, readInitdbSnapshot } from "./initdb-snapshot";
 import { isMemoryDataDir, withMemorySettings } from "./memory-settings";
 
+// User tables to VACUUM, and whether each has an HNSW or IVFFlat index.
+const MAINTENANCE_TABLES_SQL = `
+SELECT format('%I.%I', n.nspname, c.relname) AS name,
+  EXISTS (
+    SELECT 1 FROM pg_index i
+    JOIN pg_class ic ON ic.oid = i.indexrelid
+    JOIN pg_am am ON am.oid = ic.relam
+    WHERE i.indrelid = c.oid AND am.amname IN ('hnsw', 'ivfflat')
+  ) AS ann
+FROM pg_class c
+JOIN pg_namespace n ON n.oid = c.relnamespace
+WHERE c.relkind IN ('r', 'm')
+  AND n.nspname NOT IN ('pg_catalog', 'information_schema')
+  AND n.nspname NOT LIKE 'pg_toast%'
+  AND n.nspname NOT LIKE 'pg_temp%'
+ORDER BY 1`;
+
+const textEncoder = new TextEncoder();
+
+/**
+ * Sends one statement as a protocol message. PGlite's query() and exec()
+ * wait for the query lock, so they cannot be used inside runExclusive.
+ */
+async function execSimple(client: PGlite, sql: string): Promise<void> {
+  const body = textEncoder.encode(`${sql}\0`);
+  const message = new Uint8Array(5 + body.length);
+  message[0] = 0x51; // 'Q'
+  new DataView(message.buffer).setInt32(1, 4 + body.length);
+  message.set(body, 5);
+  await client.execProtocol(message);
+}
+
 type PglitePidFileStatus =
   | "missing"
   | "active"
@@ -170,8 +202,9 @@ export class PGliteClientManager implements IDatabaseClientManager<PGlite> {
 
   /**
    * For an in-memory database: once a WAL segment has been written since the
-   * last checkpoint, VACUUM so deleted rows (retention sweeps) can be reused,
-   * then CHECKPOINT so the old WAL segments are freed. Returns whether it ran.
+   * last checkpoint, VACUUM the user tables so deleted rows (retention sweeps)
+   * can be reused, then CHECKPOINT so the old WAL segments are freed. Returns
+   * whether it ran. It skips the pass while a transaction is open.
    */
   public async runMemoryMaintenance(): Promise<boolean> {
     if (!this.isMemoryDatabase() || this.shuttingDown || this.maintenanceRunning) {
@@ -179,17 +212,41 @@ export class PGliteClientManager implements IDatabaseClientManager<PGlite> {
     }
     this.maintenanceRunning = true;
     try {
-      await this.client.waitReady;
-      const { rows } = await this.client.query<{ bytes: number | string | bigint }>(
+      const client = this.client;
+      await client.waitReady;
+      if (client.isInTransaction()) return false;
+      const { rows } = await client.query<{ bytes: number | string | bigint }>(
         "SELECT pg_wal_lsn_diff(pg_current_wal_lsn(), redo_lsn)::bigint AS bytes FROM pg_control_checkpoint()"
       );
       if (Number(rows[0]?.bytes ?? 0) < PGliteClientManager.MEMORY_MAINTENANCE_WAL_BYTES) {
         return false;
       }
-      if (this.shuttingDown) return false;
-      await this.client.exec("VACUUM");
-      await this.client.exec("CHECKPOINT");
-      return true;
+      const tables = await client.query<{ name: string; ann: boolean }>(MAINTENANCE_TABLES_SQL);
+      const started = performance.now();
+      // Hold PGlite's query lock for the whole pass so no statement from the
+      // agent can open a transaction in the middle of it.
+      const ran = await client.runExclusive(async () => {
+        if (this.shuttingDown || client.isInTransaction()) return false;
+        for (const { name, ann } of tables.rows) {
+          // Cleaning an HNSW index after deletes can take tens of seconds and
+          // blocks every query, so tables with one skip index cleanup. Their
+          // heap space is still freed.
+          await execSimple(client, `VACUUM ${ann ? "(INDEX_CLEANUP OFF) " : ""}${name}`);
+        }
+        await execSimple(client, "CHECKPOINT");
+        return true;
+      });
+      if (ran) {
+        logger.debug(
+          {
+            src: "plugin:sql",
+            tables: tables.rows.length,
+            ms: Math.round(performance.now() - started),
+          },
+          "pglite: in-memory maintenance pass"
+        );
+      }
+      return ran;
     } finally {
       this.maintenanceRunning = false;
     }
