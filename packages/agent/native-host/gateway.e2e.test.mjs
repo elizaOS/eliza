@@ -1060,6 +1060,9 @@ async function streamHarness({ messageStream, ...options } = {}) {
     onTurn: async () => {},
     requests: [],
     closed: [],
+    // null: the `done` frame; an object: that frame instead; "none": no frame.
+    terminal: null,
+    gateCalls: 0,
   };
   const upstream = http.createServer(async (req, res) => {
     let raw = "";
@@ -1097,6 +1100,9 @@ async function streamHarness({ messageStream, ...options } = {}) {
     }
     await state.beforeFrame(state.tokens.length);
     if (res.destroyed) return;
+    if (state.terminal === "none") return res.end();
+    if (state.terminal)
+      return res.end(`data: ${JSON.stringify(state.terminal)}\n\n`);
     res.write(
       `data: ${JSON.stringify({ type: "token", fullText: text, provisional: true })}\n\n`,
     );
@@ -1113,6 +1119,7 @@ async function streamHarness({ messageStream, ...options } = {}) {
     token: "upstream-authority",
     inboundToken: "host-authority",
     credentialGate: async () => {
+      state.gateCalls++;
       if (state.owner instanceof Error) throw state.owner;
       return state.owner;
     },
@@ -1148,13 +1155,20 @@ async function streamHarness({ messageStream, ...options } = {}) {
     if (started.status !== 200) return started;
     const events = [];
     let cursor = 0;
-    for (;;) {
-      const pulled = await pull(started.body.streamId, cursor);
-      if (pulled.status !== 200) return { ...pulled, events };
-      events.push(...pulled.body.events);
-      cursor = pulled.body.cursor;
-      if (pulled.body.done)
-        return { status: 200, body: pulled.body.message, events };
+    let pulls = 0;
+    try {
+      for (;;) {
+        const pulled = await pull(started.body.streamId, cursor);
+        if (pulled.status !== 200) return { ...pulled, events };
+        events.push(...pulled.body.events);
+        cursor = pulled.body.cursor;
+        pulls++;
+        if (pulled.body.done)
+          return { status: 200, body: pulled.body.message, events, pulls };
+      }
+    } finally {
+      // A client frees its stream slot after the turn.
+      await cancel(started.body.streamId);
     }
   };
   return {
@@ -1265,6 +1279,7 @@ test("streamed replies are cancelled, expire and stay inside their limits", asyn
     messageStream: {
       idleMs: 300,
       holdMs: 100,
+      coalesceMs: 20,
       maxStreams: 1,
       maxBufferedChars: 12,
     },
@@ -1310,6 +1325,15 @@ test("streamed replies are cancelled, expire and stay inside their limits", asyn
           hostPolicy: policy,
           token: "t",
           messageStream: { holdMs: 5000, idleMs: 5000 },
+        }),
+      TypeError,
+    );
+    assert.throws(
+      () =>
+        createLocalAgentGateway({
+          hostPolicy: policy,
+          token: "t",
+          messageStream: { coalesceMs: 2000, holdMs: 2000 },
         }),
       TypeError,
     );
@@ -1498,6 +1522,110 @@ test("account rotation and reset end a stream without its remaining text", async
     }
   } finally {
     gate.resolve();
+    await harness.close();
+  }
+});
+
+test("a pull collects text to a phrase, one pull waits per stream, one account check per pull", async () => {
+  const harness = await streamHarness({
+    messageStream: { coalesceMs: 400, holdMs: 1500 },
+  });
+  const { state, start, pull, cancel } = harness;
+  const gates = [0, 1, 2, 3, 4].map(() => Promise.withResolvers());
+  try {
+    assert.equal((await harness.post("/conversations")).status, 200);
+    // A burst and its done frame come back in one pull, without the hold.
+    let before = Date.now();
+    const burst = await harness.streamed();
+    assert.ok(Date.now() - before < 1000);
+    assert.deepEqual(
+      burst.events.map(({ seq }) => seq),
+      [1, 2, 3, 4],
+    );
+    assert.equal(burst.pulls, 1);
+    // Text that ends a phrase answers before the collection window ends.
+    state.tokens = ["Hi", " there.", " More"];
+    state.beforeFrame = (index) => gates[index].promise;
+    const { streamId } = (await start()).body;
+    const phrase = pull(streamId, 0);
+    gates[0].resolve();
+    await new Promise((resolve) => setTimeout(resolve, 50));
+    before = Date.now();
+    gates[1].resolve();
+    assert.deepEqual((await phrase).body.events, [
+      { seq: 1, text: "Hi" },
+      { seq: 2, text: " there." },
+    ]);
+    assert.ok(Date.now() - before < 300);
+    // A second waiting pull answers the first one at once.
+    const older = pull(streamId, 2);
+    await new Promise((resolve) => setTimeout(resolve, 50));
+    before = Date.now();
+    const newer = pull(streamId, 2);
+    assert.deepEqual((await older).body, {
+      events: [],
+      cursor: 2,
+      done: false,
+    });
+    assert.ok(Date.now() - before < 300);
+    const settled = await Promise.race([
+      newer.then(() => "answered"),
+      new Promise((resolve) => setTimeout(resolve, 100, "waiting")),
+    ]);
+    assert.equal(settled, "waiting");
+    gates[2].resolve();
+    assert.deepEqual((await newer).body.events, [{ seq: 3, text: " More" }]);
+    // Each pull checks the account once.
+    const calls = state.gateCalls;
+    let pulls = 0;
+    let cursor = 3;
+    gates[3].resolve();
+    for (;;) {
+      const { body } = await pull(streamId, cursor);
+      pulls++;
+      cursor = body.cursor;
+      if (body.done) break;
+    }
+    // One check per pull and one for the final reply.
+    assert.equal(state.gateCalls - calls, pulls + 1);
+    assert.equal((await cancel(streamId)).status, 200);
+    assert.equal(state.gateCalls - calls, pulls + 1);
+  } finally {
+    for (const gate of gates) gate.resolve();
+    await harness.close();
+  }
+});
+
+test("agent failures after the stream opens become 502, unlike the buffered status", async () => {
+  const harness = await streamHarness();
+  const { state } = harness;
+  try {
+    assert.equal((await harness.post("/conversations")).status, 200);
+    state.terminal = {
+      type: "error",
+      message: "Idempotency key reused",
+      code: "IDEMPOTENCY_CONFLICT",
+    };
+    const conflict = await harness.streamed();
+    assert.equal(conflict.status, 502);
+    assert.deepEqual(conflict.body, {
+      error: "Idempotency key reused",
+      code: "IDEMPOTENCY_CONFLICT",
+    });
+    state.terminal = { type: "error" };
+    assert.deepEqual((await harness.streamed()).body, {
+      error: "Local agent unavailable",
+    });
+    // A stream that ends without its done frame has no reply.
+    state.terminal = "none";
+    assert.deepEqual(
+      await harness.streamed().then(({ status, body }) => ({ status, body })),
+      {
+        status: 502,
+        body: { error: "Local agent unavailable" },
+      },
+    );
+  } finally {
     await harness.close();
   }
 });

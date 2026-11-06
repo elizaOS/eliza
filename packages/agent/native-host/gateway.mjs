@@ -18,15 +18,22 @@ const messageStreamPath = new RegExp(
   `^/conversations/(${uuid})/messages/stream/(start|pull|cancel)$`,
 );
 const STREAM_LIMITS = {
-  // Unfinished or unreleased streams one account may hold at once.
-  maxStreams: 4,
+  // Unfinished or unreleased streams one account may hold at once. Each one
+  // can hold one waiting pull, and so one native bridge worker.
+  maxStreams: 2,
   // Text the renderer has not yet confirmed with a later pull cursor.
   maxBufferedChars: 256 * 1024,
   // A stream nobody pulls for this long is cancelled and released.
   idleMs: 30000,
   // A pull with nothing new waits at most this long before it answers.
-  holdMs: 8000,
+  holdMs: 2000,
+  // New text waits this long for more before a pull answers, unless it ends
+  // a phrase or reaches PHRASE_CHARS. Speech starts per phrase, not per token.
+  coalesceMs: 150,
 };
+const PHRASE_CHARS = 120;
+const phraseEnd =
+  /[.!?;:,\n\u3001\u3002\uff01\uff0c\uff1f]["')\]\u201d\u2019]*\s*$/u;
 // The fixed error body of an expected refusal, kept apart from upstream fields.
 const refusalBody = Symbol("refusalBody");
 const refusal = (status, body) =>
@@ -148,10 +155,11 @@ export function createLocalAgentGateway({
     Object.values(limits).some(
       (value) => !Number.isSafeInteger(value) || value < 1,
     ) ||
+    limits.coalesceMs >= limits.holdMs ||
     limits.holdMs >= limits.idleMs
   )
     throw new TypeError(
-      "messageStream limits must be positive integers, holdMs < idleMs",
+      "messageStream limits must be positive integers, coalesceMs < holdMs < idleMs",
     );
   if (
     !hostPolicy ||
@@ -342,9 +350,33 @@ export function createLocalAgentGateway({
   // text it has not seen yet. A pull cursor also confirms the text before it,
   // which is then released.
   const streams = new Map();
+  // At most one pull waits on a stream: a newer pull answers the older one.
   const wake = (stream) => {
-    for (const resolve of stream.waiters) resolve();
-    stream.waiters.clear();
+    const waiter = stream.waiter;
+    stream.waiter = null;
+    waiter?.();
+  };
+  const holdPull = (stream, ms, signal) =>
+    new Promise((resolve) => {
+      const timer = setTimeout(finish, ms);
+      function finish() {
+        clearTimeout(timer);
+        signal.removeEventListener("abort", finish);
+        if (stream.waiter === finish) stream.waiter = null;
+        resolve();
+      }
+      stream.waiter = finish;
+      signal.addEventListener("abort", finish);
+    });
+  // Unsent text is ready at a phrase end, at PHRASE_CHARS, or after coalesceMs.
+  const phraseDelay = (stream) => {
+    const last = stream.events.at(-1);
+    if (
+      stream.chars >= PHRASE_CHARS ||
+      phraseEnd.test(last.text ?? last.fullText)
+    )
+      return 0;
+    return stream.events[0].at + limits.coalesceMs - Date.now();
   };
   const settleStream = (stream, outcome) => {
     if (stream.outcome) return;
@@ -370,7 +402,7 @@ export function createLocalAgentGateway({
   };
   const pushStreamEvent = (stream, event) => {
     stream.seq++;
-    stream.events.push({ seq: stream.seq, ...event });
+    stream.events.push({ seq: stream.seq, ...event, at: Date.now() });
     stream.chars += (event.text ?? event.fullText).length;
     if (stream.chars > limits.maxBufferedChars)
       throw refusal(503, {
@@ -449,7 +481,8 @@ export function createLocalAgentGateway({
       acknowledged: 0,
       chars: 0,
       outcome: null,
-      waiters: new Set(),
+      waiter: null,
+      latestPull: 0,
       timer: null,
     };
     // Reserved before the agent call, so parallel starts share the limit.
@@ -485,7 +518,7 @@ export function createLocalAgentGateway({
       if (!opened) dropStream(stream);
     }
   };
-  const streamFor = async (conversationId, input, keys) => {
+  const streamFor = (conversationId, input, keys) => {
     if (
       Object.keys(input).length !== keys.length ||
       !keys.every((key) => Object.hasOwn(input, key)) ||
@@ -500,7 +533,6 @@ export function createLocalAgentGateway({
         code: "MESSAGE_STREAM_NOT_FOUND",
         error: message("error24"),
       });
-    await ensureStreamCurrent(stream);
     return stream;
   };
   // Text of one account never reaches another, nor survives a reset.
@@ -513,10 +545,7 @@ export function createLocalAgentGateway({
     }
   };
   const pullStream = async (conversationId, input, requestSignal) => {
-    const stream = await streamFor(conversationId, input, [
-      "streamId",
-      "cursor",
-    ]);
+    const stream = streamFor(conversationId, input, ["streamId", "cursor"]);
     if (input.cursor > stream.seq)
       throw refusal(400, { error: message("error23") });
     if (input.cursor < stream.acknowledged)
@@ -530,43 +559,43 @@ export function createLocalAgentGateway({
       const event = stream.events.shift();
       stream.chars -= (event.text ?? event.fullText).length;
     }
-    if (
+    const pullId = ++stream.latestPull;
+    wake(stream);
+    const deadline = Date.now() + limits.holdMs;
+    while (
       !stream.outcome &&
-      stream.seq === input.cursor &&
+      streams.has(stream.id) &&
+      stream.latestPull === pullId &&
       !requestSignal.aborted
     ) {
-      let timer;
-      let onAbort;
-      await new Promise((resolve) => {
-        stream.waiters.add(resolve);
-        timer = setTimeout(resolve, limits.holdMs);
-        onAbort = resolve;
-        requestSignal.addEventListener("abort", onAbort);
-      });
-      clearTimeout(timer);
-      requestSignal.removeEventListener("abort", onAbort);
-      if (!streams.has(stream.id))
-        throw refusal(404, {
-          code: "MESSAGE_STREAM_NOT_FOUND",
-          error: message("error24"),
-        });
-      await ensureStreamCurrent(stream);
-      touchStream(stream);
+      let wait = deadline - Date.now();
+      if (stream.events.length) wait = Math.min(wait, phraseDelay(stream));
+      if (wait <= 0) break;
+      await holdPull(stream, wait, requestSignal);
     }
+    if (!streams.has(stream.id))
+      throw refusal(404, {
+        code: "MESSAGE_STREAM_NOT_FOUND",
+        error: message("error24"),
+      });
+    // One account check per pull, just before any text leaves the gateway.
+    await ensureStreamCurrent(stream);
+    touchStream(stream);
     if (stream.outcome && stream.outcome.status !== 200) return stream.outcome;
     const finished = stream.outcome !== null;
     return {
       status: 200,
       body: {
-        events: [...stream.events],
+        events: stream.events.map(({ at: _at, ...event }) => event),
         cursor: stream.seq,
         done: finished,
         ...(finished ? { message: stream.outcome.body } : {}),
       },
     };
   };
+  // Cancel needs no account check: it only discards, as a failed check does.
   const cancelStream = async (conversationId, input) => {
-    dropStream(await streamFor(conversationId, input, ["streamId"]));
+    dropStream(streamFor(conversationId, input, ["streamId"]));
     return { status: 200, body: { cancelled: true } };
   };
 
