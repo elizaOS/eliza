@@ -35,6 +35,8 @@ interface State {
 const BAD_PREPARE = [
 	"staleEpoch",
 	"staleObs",
+	"otherObsId",
+	"staleInput",
 	"wrongAuth",
 	"badCap",
 	"expired",
@@ -240,10 +242,12 @@ function proposal(
 		id,
 		taskId: bad === "wrongTask" ? "task-2" : t.id,
 		epoch: bad === "staleEpoch" ? (t.epoch > 0 ? t.epoch - 1 : 1) : t.epoch,
-		observationId: t.observation?.id ?? "none",
+		observationId:
+			bad === "otherObsId" ? "view-other" : (t.observation?.id ?? "none"),
 		observationVersion:
 			bad === "staleObs" ? (version > 0 ? version - 1 : 1) : version,
-		inputRevision: t.observation?.inputRevision ?? 0,
+		inputRevision:
+			(t.observation?.inputRevision ?? 0) + (bad === "staleInput" ? 1 : 0),
 		targetRef: "button",
 		capability: bad === "badCap" ? "type" : "click",
 		authorizationId: bad === "wrongAuth" ? "other" : "grant",
@@ -425,7 +429,9 @@ describe("interactive task reducer conformance", () => {
 		expect({ states: states.size, edges, alphabet: ALPHABET.length }).toEqual({
 			states: 1015,
 			edges: 6603,
-			alphabet: 55,
+			alphabet: 59,
 		});
-	});
+		// About 12 s under bun and 40 s under vitest on an idle machine; the
+		// default timeouts are far shorter, and a loaded CI host is slower still.
+	}, 180_000);
 });

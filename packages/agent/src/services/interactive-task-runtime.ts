@@ -508,7 +508,20 @@ export class InteractiveTaskRuntime {
           expectedRevision: fence.revision,
           now: this.now(),
         },
-        { type: "reconcile", operationId, ...result },
+        // Copy only the outcome: a readback reply must not set other fields.
+        result.status === "unknown"
+          ? {
+              type: "reconcile",
+              operationId,
+              status: "unknown",
+              evidenceRef: result.evidenceRef,
+            }
+          : {
+              type: "reconcile",
+              operationId,
+              status: result.status,
+              evidenceRef: result.evidenceRef,
+            },
       ).task;
     } finally {
       this.pending.delete(id);

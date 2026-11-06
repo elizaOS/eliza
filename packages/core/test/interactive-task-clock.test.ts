@@ -132,6 +132,52 @@ describe("interactive task clock", () => {
 		expect(run(paused, T + 7, { type: "cancel" }).task.updatedAt).toBe(T + 7);
 	});
 
+	it("accepts a view stamped at task time while the clock is behind", () => {
+		const view = (version: number, observedAt: number) => ({
+			id: `view-${version}`,
+			pageId: "page",
+			origin: A,
+			version,
+			inputRevision: 0,
+			observedAt,
+		});
+		let task = createInteractiveTask({
+			id: "task-1",
+			owner,
+			goalRef: "goal",
+			now: T,
+			authorization: {
+				decisionId: "grant",
+				policyRevision: "policy",
+				decidedAt: new Date(T).toISOString(),
+				state: "active",
+				revokedAt: null,
+			},
+			allowedCapabilities: ["click"],
+			allowedOrigins: [A],
+		});
+		task = run(task, T + 20, {
+			type: "observe",
+			observation: view(1, T + 20),
+		}).task;
+		task = run(task, T + 1, {
+			type: "observe",
+			observation: view(2, T + 20),
+		}).task;
+		expect(task.observation?.version).toBe(2);
+		task = run(task, T + 1, { type: "pause" }).task;
+		task = run(task, T + 1, {
+			type: "resume",
+			observation: view(3, T + 20),
+		}).task;
+		expect(task.status).toBe("active");
+		expect(task.updatedAt).toBe(T + 20);
+		// Still later than task time is still from the future.
+		expect(() =>
+			run(task, T + 1, { type: "observe", observation: view(4, T + 21) }),
+		).toThrow("Observation is from the future");
+	});
+
 	it("never revives an action that expired against the stored time", () => {
 		let task = createInteractiveTask({
 			id: "task-1",

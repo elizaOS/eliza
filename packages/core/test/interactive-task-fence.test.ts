@@ -46,7 +46,9 @@ const OP_STATES: OpState[] = [
 	"cancelled",
 	"unknown",
 ];
-const EPOCHS = [0, 1, 2];
+// Two epochs already give an operation that is behind, level with and ahead
+// of its task; a third only multiplies the run time.
+const EPOCHS = [0, 1];
 const OBSERVED = [0, 1, 2];
 const OFFERED = [1, 2, 3];
 const A = "https://a.example";
@@ -408,14 +410,16 @@ describe("interactive task fence at the storage boundary", () => {
 			}
 		}
 		expect(disagreements.slice(0, 10)).toEqual([]);
-		// Pinned so a narrower domain or a weaker invariant fails review. Before the
-		// fence was part of validation, 20,799 of these documents validated.
+		// Pinned so a narrower domain or a weaker invariant fails review. Without
+		// the fence check in validation, 7,746 of these documents validate.
 		expect({ documentCount, valid, accepted }).toEqual({
-			documentCount: 147_852,
-			valid: 18_951,
-			accepted: 116_256,
+			documentCount: 45_000,
+			valid: 7_114,
+			accepted: 43_676,
 		});
-	}, 120_000);
+		// About 10 s under bun on an idle machine and 30 s at a load average of 30;
+		// the generous limit keeps a loaded CI host from failing it on time alone.
+	}, 180_000);
 
 	it("refuses a stored pending action planned against an older view", () => {
 		const fresh: Doc = {
@@ -446,10 +450,52 @@ describe("interactive task fence at the storage boundary", () => {
 			status: "active",
 			ops: { ...fresh.ops, a: { state: "prepared", epoch: 1, version: 2 } },
 		});
-		prepared.observation = null;
-		expect(() => validateInteractiveTask(prepared)).toThrow(
+		expect(accepts(prepared)).toBe(true);
+		const withoutView = structuredClone(prepared);
+		withoutView.observation = null;
+		expect(() => validateInteractiveTask(withoutView)).toThrow(
 			"Pending operation no longer matches its task",
 		);
+		// The domain above keeps these fields fixed, so each is checked here, on
+		// a prepared and on a dispatched operation.
+		const tampered: [string, (task: InteractiveTask) => void][] = [
+			[
+				"observationId",
+				(task) => (task.operations[0].proposal.observationId = "obs-other"),
+			],
+			[
+				"inputRevision",
+				(task) => (task.operations[0].proposal.inputRevision = 1),
+			],
+			[
+				"authorizationId",
+				(task) => (task.operations[0].proposal.authorizationId = "decision-2"),
+			],
+			[
+				"capability",
+				(task) => (task.operations[0].proposal.capability = "type"),
+			],
+			[
+				"task inputRevision",
+				(task) => {
+					if (task.observation) task.observation.inputRevision = 1;
+				},
+			],
+			[
+				"task decisionId",
+				(task) => (task.authorization.decisionId = "decision-2"),
+			],
+			["task capabilities", (task) => (task.allowedCapabilities = ["type"])],
+		];
+		for (const base of [prepared, concrete(fresh)])
+			for (const [field, tamper] of tampered) {
+				const task = structuredClone(base);
+				tamper(task);
+				expect(
+					() => validateInteractiveTask(task),
+					`${base.operations[0].status} ${field}`,
+				).toThrow("Pending operation no longer matches its task");
+			}
 	});
 
 	it("keeps evidence only on an operation that ran", () => {
