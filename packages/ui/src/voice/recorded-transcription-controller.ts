@@ -23,9 +23,13 @@ export interface RecordedTranscriptionOptions {
   authorize: () => Promise<void>;
   encode: (blob: Blob) => Promise<string>;
   transcribe: (audioBase64: string, mimeType: string) => Promise<unknown>;
-  /** Asked when the recording stops. A result other than undefined (the `transcribe` shape,
-   * `{ text }`) is the final transcription, and the recording is not encoded or transcribed.
-   * Undefined, or no option, keeps the default: encode, then `transcribe`. */
+  /** Asked once the recorder stops, whatever stopped it (finish, pause, time or size limit).
+   * The microphone is released, but the preview capture stays open and previews keep being
+   * delivered (as non-final text) until this settles, so the host can take a last snapshot
+   * of the whole utterance here, for example `await capture.snapshot()`. A result other than
+   * undefined (the `transcribe` shape, `{ text }`) is the final transcription, and the
+   * recording is not encoded or transcribed. Undefined, or no option, keeps the default:
+   * encode, then `transcribe`. */
   finalTranscript?: () => Promise<unknown>;
   preview: (
     stream: MediaStream,
@@ -90,14 +94,15 @@ export class RecordedTranscriptionController {
     this.phase = phase;
     this.options.changed({ phase, error });
   }
-  private release(s: Recording): void {
-    s.previews = false;
+  /** `keepLive` leaves the preview capture open (and previews on) for `finalTranscript`. */
+  private release(s: Recording, keepLive = false): void {
+    if (!keepLive) s.previews = false;
     clearTimeout(s.timer);
-    const live = s.live,
+    const live = keepLive ? undefined : s.live,
       endpoint = s.endpoint,
       recorder = s.recorder,
       stream = s.stream;
-    s.live = undefined;
+    if (!keepLive) s.live = undefined;
     s.endpoint = undefined;
     s.recorder = undefined;
     s.stream = undefined;
@@ -125,7 +130,7 @@ export class RecordedTranscriptionController {
   finish(): void {
     const s = this.current;
     if (s?.recorder?.state === "recording") {
-      s.previews = false;
+      if (!this.options.finalTranscript) s.previews = false;
       try {
         s.recorder.stop();
       } catch (error) {
@@ -196,7 +201,7 @@ export class RecordedTranscriptionController {
         if (!active() || s.ended) return;
         s.ended = true;
         const mimeType = recorder.mimeType;
-        this.release(s);
+        this.release(s, Boolean(this.options.finalTranscript));
         this.publish("transcribing");
         void this.finalize(s, mimeType);
       };
@@ -242,7 +247,17 @@ export class RecordedTranscriptionController {
     try {
       if (this.current !== s) return;
       const host = this.options.finalTranscript;
-      let result = host ? await host() : undefined;
+      let result: unknown;
+      if (host) {
+        try {
+          result = await host();
+        } finally {
+          s.previews = false;
+          const live = s.live;
+          s.live = undefined;
+          if (live) safely(live);
+        }
+      }
       if (this.current !== s) return;
       if (result === undefined) {
         if (s.bytes > this.options.maximumBytes)
