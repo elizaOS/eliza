@@ -172,10 +172,21 @@ for (const [targetAbi, bunTarget] of [
   });
 
 test("stub plugins must be package names", () => {
-  assert.throws(
-    () => buildConsumerAndroidRuntime({ stubPlugins: "googleapis" }),
-    /stub plugins must be a list/,
-  );
+  for (const stubPlugins of [
+    "googleapis",
+    ["googleapis,three"],
+    ["three "],
+    ["./x"],
+    ["pkg/../other"],
+    [""],
+    [1],
+  ])
+    assert.throws(
+      // No source or output: the check runs before either is touched.
+      () => buildConsumerAndroidRuntime({ stubPlugins }),
+      /stub plugins must be a list/,
+      JSON.stringify(stubPlugins),
+    );
 });
 
 test("unsupported runtime ABI fails before reading source or creating output", () => {
@@ -183,4 +194,14 @@ test("unsupported runtime ABI fails before reading source or creating output", (
     () => buildConsumerAndroidRuntime({ targetAbi: "riscv64" }),
     /ABI must be/,
   );
+});
+
+test("stub plugin rule matches the mobile build's parser", () => {
+  const rule = (file) =>
+    fs
+      .readFileSync(new URL(file, import.meta.url), "utf8")
+      .match(/const BARE_SPECIFIER =\s*(\/.+\/i);/)?.[1];
+  const here = rule("./consumer-android-runtime.mjs");
+  assert.ok(here);
+  assert.equal(here, rule("../../../agent/scripts/mobile-stub-plugins.ts"));
 });

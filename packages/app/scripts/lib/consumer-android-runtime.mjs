@@ -8,6 +8,9 @@ import {
   inspectDevelopmentRuntime,
 } from "./committed-source.mjs";
 
+const BARE_SPECIFIER =
+  /^(?:@[a-z0-9][a-z0-9._-]*\/)?[a-z0-9][a-z0-9._-]*(?:\/[a-z0-9._@-]+)*$/i;
+
 /**
  * Build a pinned mobile payload; the consumer supplies skills and gateway composition.
  * `stubPlugins` names packages the consumer never loads; the bundle omits them
@@ -28,9 +31,16 @@ export function buildConsumerAndroidRuntime({
     throw new ConsumerSourceError(
       "Consumer runtime ABI must be arm64-v8a or x86_64",
     );
+  // Same rule as parseMobileStubPlugins (packages/agent/scripts/mobile-stub-plugins.ts),
+  // checked before any source read or output, so provenance names what was stubbed.
   if (
     !Array.isArray(stubPlugins) ||
-    stubPlugins.some((name) => typeof name !== "string" || !name)
+    stubPlugins.some(
+      (name) =>
+        typeof name !== "string" ||
+        !BARE_SPECIFIER.test(name) ||
+        name.split("/").some((part) => part === "." || part === ".."),
+    )
   )
     throw new ConsumerSourceError(
       "Consumer stub plugins must be a list of package names",
