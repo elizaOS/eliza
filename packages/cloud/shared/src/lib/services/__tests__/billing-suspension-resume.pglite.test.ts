@@ -20,6 +20,7 @@ import { getTableConfig } from "drizzle-orm/pg-core";
 import { agentBackupObjects } from "../../../db/schemas/agent-backup-catalog";
 import { agentComputeFunding } from "../../../db/schemas/agent-compute-funding";
 import { agentComputeStopIntents } from "../../../db/schemas/agent-compute-stop-intents";
+import { organizationPolicyAudit } from "../../../db/schemas/organization-policy-audit";
 import { agentNodeIncarnationHistories } from "../../../db/schemas/agent-node-incarnation-histories";
 import {
   agentBackupCatalogAuthorities,
@@ -116,6 +117,7 @@ beforeAll(async () => {
     ["billing_subscriptions", billingSubscriptions],
     ["billing_subscription_revisions", billingSubscriptionRevisions],
     ["organization_subscription_authorities", organizationSubscriptionAuthorities],
+    ["organization_policy_audit", organizationPolicyAudit],
     ["subscription_allowance_periods", subscriptionAllowancePeriods],
     ["org_rate_limit_overrides", orgRateLimitOverrides],
     ["organization_config", organizationConfig],
