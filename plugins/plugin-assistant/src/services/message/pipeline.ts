@@ -169,7 +169,10 @@ import {
   withActionResultsForPrompt,
   withContextRoutingValues,
 } from "./response-state.ts";
-import { replyClaimsInProgressWork } from "./side-effect-claims.ts";
+import {
+  replyClaimsInProgressWork,
+  replyIsClaimSafeAcknowledgment,
+} from "./side-effect-claims.ts";
 import {
   getSourceReplyRendering,
   sourceReplyAssertionText,
@@ -1049,10 +1052,19 @@ export async function runV5MessageRuntimeStage1(
       const visibleProgress = sanitizeUserVisibleModelOutput(earlyReplyText);
       earlyReplyText =
         visibleProgress.kind === "text" ? visibleProgress.text : "";
-      // A pending draft is not a read result. Only whole-reply progress can
-      // precede tools; answer-like text (including progress plus an answer)
-      // waits for the normal grounded final path. Never fabricate a substitute.
-      if (!replyClaimsInProgressWork(earlyReplyText)) earlyReplyText = "";
+      // A pending draft is not a read result. The transient acknowledgement
+      // keeps the model's forward-looking wording; the durable early reply
+      // stays whole-reply progress. Answer-like text (including progress plus
+      // an answer) waits for the normal grounded final path. Never fabricate a
+      // substitute.
+      if (
+        !(
+          args.onPlanningAcknowledgment
+            ? replyIsClaimSafeAcknowledgment
+            : replyClaimsInProgressWork
+        )(earlyReplyText)
+      )
+        earlyReplyText = "";
       const earlyReplyEgressDecision = evaluatePlannedReplyEgress({
         currentScope: {
           agentId: args.runtime.agentId,
@@ -1134,13 +1146,22 @@ export async function runV5MessageRuntimeStage1(
           // refresh RECENT_MESSAGES only when an early reply actually
           // changed history. An empty refresh set means maximum reuse;
           // planner-only context-gated providers still run because they
-          // are not cached yet.
+          // are not cached yet. With discovery on, the planner and evaluator
+          // see only discoveryText for providers Stage 1 did not load, and
+          // restoreProviderContext composes their complete text again.
           await args.runtime.composeState(
             args.message,
             plannerProviderNames,
             true,
             false,
             earlyReplySent ? ["RECENT_MESSAGES"] : [],
+            {
+              deferredReferenceProviders: providerDiscoveryEnabled
+                ? plannerProviderNames.filter(
+                    (name) => !loadedContextProviders.includes(name),
+                  )
+                : [],
+            },
           )
         : args.state;
     const selectedContextRoutingState =

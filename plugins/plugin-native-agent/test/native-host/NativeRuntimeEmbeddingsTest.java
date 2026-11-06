@@ -48,6 +48,24 @@ public final class NativeRuntimeEmbeddingsTest {
     NativeRuntimeEmbeddings.apply("cloud", libs, files, cloud);
     check(cloud.equals(admittedCloud()));
 
+    // A Cloud-profile package with admitted direct keys uses local embeddings only.
+    Map<String, String> direct = admittedCloud();
+    direct.put("ELIZA_PROVIDER", "cerebras");
+    NativeRuntimeEmbeddings.apply("cloud", libs, files, direct);
+    check("1".equals(direct.get("ELIZA_LOCAL_EMBEDDING_ENABLED")));
+    check("false".equals(direct.get("ELIZA_DISABLE_LOCAL_EMBEDDINGS")));
+    check("false".equals(direct.get("ELIZAOS_CLOUD_USE_EMBEDDINGS")));
+    check(model.getAbsolutePath().equals(direct.get("ELIZA_LOCAL_EMBEDDING_MODEL_PATH")));
+    check("384".equals(direct.get("ELIZA_LOCAL_EMBEDDING_DIMENSIONS")));
+    check(!direct.containsKey("ELIZAOS_CLOUD_EMBEDDING_MODEL"));
+
+    // A Cloud provider selection still retains its admitted remote embedding route.
+    Map<String, String> selectedCloud = admittedCloud();
+    selectedCloud.put("ELIZA_PROVIDER", "elizacloud");
+    Map<String, String> expectedCloud = new HashMap<>(selectedCloud);
+    NativeRuntimeEmbeddings.apply("cloud", libs, files, selectedCloud);
+    check(selectedCloud.equals(expectedCloud));
+
     // Each missing local input leaves embeddings unavailable, never Cloud.
     for (File asset : new File[] {model, engine, jni}) {
       check(asset.delete());
@@ -61,6 +79,15 @@ public final class NativeRuntimeEmbeddingsTest {
       check(!env.containsKey("ELIZA_LOCAL_EMBEDDING_MODEL_PATH"));
       check(!env.containsKey("ELIZA_LOCAL_EMBEDDING_DIMENSIONS"));
       check(!env.containsKey("ELIZAOS_CLOUD_EMBEDDING_MODEL"));
+      Map<String, String> missingDirect = admittedCloud();
+      missingDirect.put("ELIZA_PROVIDER", "cerebras");
+      missingDirect.put("ELIZA_LOCAL_EMBEDDING_MODEL_PATH", "stale-model");
+      NativeRuntimeEmbeddings.apply("cloud", libs, files, missingDirect);
+      check("0".equals(missingDirect.get("ELIZA_LOCAL_EMBEDDING_ENABLED")));
+      check("true".equals(missingDirect.get("ELIZA_DISABLE_LOCAL_EMBEDDINGS")));
+      check("false".equals(missingDirect.get("ELIZAOS_CLOUD_USE_EMBEDDINGS")));
+      check(!missingDirect.containsKey("ELIZA_LOCAL_EMBEDDING_MODEL_PATH"));
+      check(!missingDirect.containsKey("ELIZAOS_CLOUD_EMBEDDING_MODEL"));
       check(asset.createNewFile());
     }
 
