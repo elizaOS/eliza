@@ -1202,6 +1202,136 @@ test("a task record from another version does not stop the gateway", async (t) =
   );
 });
 
+test("a host extension's save is noted, so an answer after an account change is a 409", async (t) => {
+  const directory = await mkdtemp(join(tmpdir(), "eliza-task-extension-save-"));
+  const bundlePath = join(directory, "task-runtime.mjs");
+  buildTaskRuntime(bundlePath);
+  t.after(() => rm(directory, { recursive: true, force: true }));
+  let run = 0;
+  // Each extension route saves (or not) the way a host route does, then the
+  // account changes before its own last check, as in the bill routes.
+  const attempt = async (path) => {
+    let account = "account-a";
+    const gateway = await createTaskGateway({
+      bundlePath,
+      databasePath: join(directory, `journal-${++run}.sqlite`),
+      credentialGate: async () => account,
+      actuator: { capabilities: ["fill"] },
+      authorizeGoal: async () => grant("task-a"),
+      extensionFactory: ({ db }) => {
+        db.exec("CREATE TABLE IF NOT EXISTS notes (owner TEXT NOT NULL)");
+        return async (request, { owner, runtime, authenticate }) => {
+          const { pathname } = new URL(request.url);
+          if (pathname === "/tasks/runtime-save")
+            runtime.control("task-a", runtime.get("task-a").revision, "pause");
+          else if (pathname === "/tasks/db-save")
+            db.prepare("INSERT INTO notes (owner) VALUES (?)").run(
+              owner.actorId,
+            );
+          else if (pathname === "/tasks/no-save")
+            db.prepare("UPDATE notes SET owner = owner WHERE 0").run();
+          else return;
+          account = "account-b";
+          const current = await authenticate();
+          if (current.actorId !== owner.actorId)
+            return Response.json(
+              { code: "TASK_UNAUTHORIZED" },
+              { status: 401 },
+            );
+          return Response.json({ saved: true });
+        };
+      },
+    });
+    try {
+      (await gateway.forCurrentOwner()).create(grant("task-a"));
+      const response = await send(gateway, "POST", path, {});
+      return { status: response.status, code: (await response.json()).code };
+    } finally {
+      await gateway.close();
+    }
+  };
+  for (const path of ["/tasks/runtime-save", "/tasks/db-save"])
+    assert.deepEqual(
+      await attempt(path),
+      { status: 409, code: "TASK_ACCOUNT_CHANGED" },
+      path,
+    );
+  assert.deepEqual(await attempt("/tasks/no-save"), {
+    status: 401,
+    code: "TASK_UNAUTHORIZED",
+  });
+});
+
+test("the owner record routes read bodies and answer storage failures as the core routes do", async (t) => {
+  const directory = await mkdtemp(join(tmpdir(), "eliza-task-record-routes-"));
+  const bundlePath = join(directory, "task-runtime.mjs");
+  buildTaskRuntime(bundlePath);
+  const databasePath = join(directory, "journal.sqlite");
+  const gateway = await createTaskGateway({
+    bundlePath,
+    databasePath,
+    credentialGate: async () => "account-a",
+  });
+  t.after(async () => {
+    await gateway.close();
+    await rm(directory, { recursive: true, force: true });
+  });
+  const post = (headers, body) =>
+    gateway.handle(
+      new Request("http://localhost/tasks/task-a/acknowledge-unreadable", {
+        method: "POST",
+        headers,
+        body,
+      }),
+    );
+  // A cross-origin simple POST cannot reach an owner action.
+  const plain = await post({ "Content-Type": "text/plain" }, "{}");
+  assert.equal(plain.status, 400);
+  assert.equal((await plain.json()).code, "TASK_INVALID");
+  const large = await post(
+    { "Content-Type": "application/json" },
+    `{"padding":"${"x".repeat(4096)}"}`,
+  );
+  assert.equal(large.status, 400);
+  assert.equal(
+    (await post({ "Content-Type": "application/json" }, "{}")).status,
+    404,
+  );
+  // A storage failure is a 503, never a thrown request or a conflict.
+  const db = new DatabaseSync(databasePath);
+  db.exec("DROP TABLE interactive_task_quarantine_v1");
+  db.close();
+  const listed = await send(gateway, "GET", "/tasks/current/unreadable");
+  assert.equal(listed.status, 503);
+  assert.equal((await listed.json()).code, "TASK_UNAVAILABLE");
+  const released = await post({ "Content-Type": "application/json" }, "{}");
+  assert.equal(released.status, 503);
+  assert.equal((await released.json()).code, "TASK_UNAVAILABLE");
+  // Put the table back so the gateway can close.
+  const restore = new DatabaseSync(databasePath);
+  restore.exec(
+    "CREATE TABLE interactive_task_quarantine_v1 (task_id TEXT PRIMARY KEY NOT NULL, owner_key TEXT NOT NULL, reason TEXT NOT NULL, quarantined_at INTEGER NOT NULL, acknowledged_at INTEGER)",
+  );
+  restore.close();
+});
+
+test("two closes at once close the database once", async (t) => {
+  const directory = await mkdtemp(join(tmpdir(), "eliza-task-close-twice-"));
+  const bundlePath = join(directory, "task-runtime.mjs");
+  buildTaskRuntime(bundlePath);
+  t.after(() => rm(directory, { recursive: true, force: true }));
+  const gateway = await createTaskGateway({
+    bundlePath,
+    databasePath: join(directory, "journal.sqlite"),
+    credentialGate: async () => "account-a",
+  });
+  const results = await Promise.allSettled([gateway.close(), gateway.close()]);
+  assert.deepEqual(
+    results.map(({ status, reason }) => reason?.message ?? status),
+    ["fulfilled", "fulfilled"],
+  );
+});
+
 /**
  * Conformance of the owner fence: one account change at the k-th credential
  * read of a request, for every route and every k the request reaches.

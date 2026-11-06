@@ -1,3 +1,4 @@
+import { AsyncLocalStorage } from "node:async_hooks";
 import { createHash } from "node:crypto";
 import { readFile } from "node:fs/promises";
 import { pathToFileURL } from "node:url";
@@ -10,8 +11,8 @@ const ACKNOWLEDGE_ROUTE = new RegExp(
   `^/tasks/(${TASK_ID})/acknowledge-(unknown|unreadable)$`,
 );
 const UNREADABLE_ROUTE = "/tasks/current/unreadable";
-/** The runtime methods the core task routes save through. */
-const CORE_SAVES = new Set(["create", "control", "observe"]);
+/** The largest owner-route body, as for the core task routes. */
+const MAX_BODY = 2048;
 
 const answer = (status, value) => Response.json(value, { status });
 const unauthorized = () => answer(401, { code: "TASK_UNAUTHORIZED" });
@@ -76,10 +77,55 @@ export async function createTaskGateway({
     databaseProvider,
     requireEncryption: requireEncryptedDatabase,
   });
-  const store = new SqliteInteractiveTaskStore(db);
-  const choiceStore = new SqliteMessageInteractionSessionStore(db);
+  // The request being answered, so each save made while answering it, by a
+  // core route, an owner route or a host extension, through the task runtime
+  // or the database, is noted on that request. Saves the owner fence and
+  // recovery make run outside it: they are not the request's.
+  const requestScope = new AsyncLocalStorage();
+  const outsideRequest = (work) => requestScope.exit(work);
+  // Rows this connection has inserted, updated or deleted. The drivers are
+  // synchronous, so nothing else runs between two reads of it.
+  const changeCount = db.prepare("SELECT total_changes() AS n");
+  /** Run `write`, and note it on the current request if it changed a row. */
+  const noted = (write) => {
+    const scope = requestScope.getStore();
+    if (!scope || scope.committed) return write();
+    const before = changeCount.get().n;
+    try {
+      return write();
+    } finally {
+      // A count that cannot be read is taken as a change.
+      let changed = true;
+      try {
+        changed = changeCount.get().n !== before;
+      } catch {}
+      if (changed) scope.committed = true;
+    }
+  };
+  const statementFor = (statement) =>
+    new Proxy(statement, {
+      get(target, key) {
+        const value = Reflect.get(target, key);
+        if (typeof value !== "function") return value;
+        if (!["run", "get", "all"].includes(key)) return value.bind(target);
+        return (...args) => noted(() => value.apply(target, args));
+      },
+    });
+  const trackedDb = new Proxy(db, {
+    get(target, key) {
+      const value = Reflect.get(target, key);
+      if (typeof value !== "function") return value;
+      if (key === "prepare")
+        return (...args) => statementFor(value.apply(target, args));
+      if (key === "exec")
+        return (...args) => noted(() => value.apply(target, args));
+      return value.bind(target);
+    },
+  });
+  const store = new SqliteInteractiveTaskStore(trackedDb);
+  const choiceStore = new SqliteMessageInteractionSessionStore(trackedDb);
   const extension = extensionFactory?.({
-    db,
+    db: trackedDb,
     store,
     choiceStore,
     InteractiveTaskChoices,
@@ -140,7 +186,7 @@ export async function createTaskGateway({
     if (result.revoke)
       for (const runtime of runtimes.values())
         try {
-          revoke(runtime);
+          outsideRequest(() => revoke(runtime));
         } catch (error) {
           errors.push(error);
         }
@@ -210,11 +256,15 @@ export async function createTaskGateway({
             return task;
           },
         }) || adapter;
-      runtime = new InteractiveTaskRuntime({
-        owner,
-        store,
-        actuator: ownedActuator,
-      });
+      // Recovery is not a save of the request that first meets the account.
+      runtime = outsideRequest(
+        () =>
+          new InteractiveTaskRuntime({
+            owner,
+            store,
+            actuator: ownedActuator,
+          }),
+      );
       runtimes.set(owner.actorId, runtime);
     }
     return runtime;
@@ -228,22 +278,71 @@ export async function createTaskGateway({
     initialOwner = null;
   }
   if (initialOwner) runtimeFor(initialOwner);
+  /** A JSON object body, read as the core task routes read one: JSON
+   * content type only, so a cross-origin simple POST is refused, and at most
+   * MAX_BODY bytes. */
+  async function jsonBody(request) {
+    if (
+      !/^application\/json(?:\s*;|$)/i.test(
+        request.headers.get("content-type") ?? "",
+      )
+    )
+      return undefined;
+    const reader = request.body?.getReader();
+    if (!reader) return undefined;
+    const chunks = [];
+    let size = 0;
+    try {
+      for (;;) {
+        const next = await reader.read();
+        if (next.done) break;
+        size += next.value.byteLength;
+        if (size > MAX_BODY) {
+          await reader.cancel();
+          return undefined;
+        }
+        chunks.push(next.value);
+      }
+    } finally {
+      reader.releaseLock();
+    }
+    const bytes = new Uint8Array(size);
+    let offset = 0;
+    for (const chunk of chunks) {
+      bytes.set(chunk, offset);
+      offset += chunk.byteLength;
+    }
+    try {
+      return JSON.parse(
+        new TextDecoder("utf-8", { fatal: true }).decode(bytes),
+      );
+    } catch {
+      return undefined;
+    }
+  }
+  /** A task error answered as the core task routes answer it. */
+  function taskError(error) {
+    if (error instanceof NativeHostError) throw error;
+    // The core routes answer 503 for an error that is not a task error.
+    if (typeof error?.code !== "string" || !error.code.startsWith("TASK_"))
+      return answer(503, { code: "TASK_UNAVAILABLE" });
+    return answer(taskErrorStatus(error.code), { code: error.code });
+  }
   /** Owner routes for records the task runtime keeps but cannot resolve. */
   async function recordRoute(request, runtime, commit) {
     const { pathname } = new URL(request.url);
     if (pathname === UNREADABLE_ROUTE && request.method === "GET")
-      return answer(200, { records: runtime.unreadable() });
+      try {
+        return answer(200, { records: runtime.unreadable() });
+      } catch (error) {
+        return taskError(error);
+      }
     const match = ACKNOWLEDGE_ROUTE.exec(pathname);
     if (!match) return null;
     if (request.method !== "POST")
       return answer(405, { code: "TASK_METHOD_NOT_ALLOWED" });
     const [, id, kind] = match;
-    let input;
-    try {
-      input = await request.json();
-    } catch {
-      return answer(400, { code: "TASK_INVALID" });
-    }
+    const input = await jsonBody(request);
     const keys =
       input && typeof input === "object" && !Array.isArray(input)
         ? Object.keys(input)
@@ -267,10 +366,7 @@ export async function createTaskGateway({
       await runtime.settle(id);
       return answer(200, { revision: task.revision, status: task.status });
     } catch (error) {
-      if (error instanceof NativeHostError) throw error;
-      const code =
-        typeof error?.code === "string" ? error.code : "TASK_UNAVAILABLE";
-      return answer(taskErrorStatus(code), { code });
+      return taskError(error);
     }
   }
   async function handleRequest(request, scope) {
@@ -350,25 +446,9 @@ export async function createTaskGateway({
         { status: 503 },
       );
     // The core routes answer their own 401 when the account changed by their
-    // last read, which may come after their save. Note each save, so such an
-    // answer becomes a 409 and a 401 still means nothing was saved.
-    const saved = (result) => {
-      scope.committed = true;
-      return result;
-    };
-    const recording = new Proxy(runtime, {
-      get(target, key) {
-        const value = Reflect.get(target, key);
-        if (typeof value !== "function") return value;
-        if (!CORE_SAVES.has(key)) return value.bind(target);
-        return (...args) => {
-          const result = value.apply(target, args);
-          return result instanceof Promise ? result.then(saved) : saved(result);
-        };
-      },
-    });
+    // last read, which may come after their save. A noted save makes it a 409.
     const response = await createInteractiveTaskHandler({
-      runtime: recording,
+      runtime,
       authenticate: async () => {
         try {
           const current = await authenticate();
@@ -481,11 +561,13 @@ export async function createTaskGateway({
     async handle(request) {
       const scope = { owner: null, epoch: -1, committed: false };
       if (typeof onResponse !== "function")
-        return handleRequest(request, scope);
+        return requestScope.run(scope, () => handleRequest(request, scope));
       const started = performance.now();
       let response;
       try {
-        response = await handleRequest(request, scope);
+        response = await requestScope.run(scope, () =>
+          handleRequest(request, scope),
+        );
       } finally {
         try {
           await onResponse({
@@ -532,6 +614,8 @@ export async function createTaskGateway({
         ? step({ type: "revoke" })
         : step({ type: "close" });
       await settle(errors);
+      // Another close may have finished while this one settled.
+      if (databaseClosed) return;
       db.close();
       databaseClosed = true;
     },
