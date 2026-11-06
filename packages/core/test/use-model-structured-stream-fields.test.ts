@@ -93,6 +93,8 @@ const plainEnvelope = JSON.stringify({
 	intents: [],
 	replyText: reply,
 	facts: ["the user asked about Paris"],
+	// A later nested key with the stream field's name is not the reply.
+	relationships: [{ subject: "user", replyText: "INTERNAL NOTE" }],
 });
 
 it("streams a direct plain reply incrementally and nothing else", async () => {
@@ -117,7 +119,9 @@ it("streams a direct plain reply incrementally and nothing else", async () => {
 		{ shouldRespond: "RESPOND", contexts: ["simple"], intents: [] },
 	]);
 	for (const { chunk } of chunks) {
-		expect(chunk).not.toMatch(/shouldRespond|contexts|intents|facts|[{}"]/);
+		expect(chunk).not.toMatch(
+			/shouldRespond|contexts|intents|facts|INTERNAL|[{}"]/,
+		);
 	}
 	// The stream contract is runtime-only.
 	expect(handlerParams[0]).not.toHaveProperty("streamFields");

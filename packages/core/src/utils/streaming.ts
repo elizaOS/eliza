@@ -634,7 +634,8 @@ export class ResponseSkeletonStreamExtractor implements IStreamExtractor {
 			 * Decides once per attempt, when the first stream field starts, whether
 			 * it may stream. Receives the complete top-level envelope fields that
 			 * precede it, or `null` for unstructured prose. A denied (or
-			 * undecidable) attempt emits nothing. Requires `unordered`.
+			 * undecidable) attempt emits nothing; an allowed one streams only
+			 * that top-level value. Requires `unordered`.
 			 */
 			gate?: StructuredStreamGate;
 		},
@@ -934,6 +935,13 @@ export class ResponseSkeletonStreamExtractor implements IStreamExtractor {
 					return;
 				}
 				continue;
+			}
+			// A gated attempt streams only the top-level value its gate
+			// approved. Once that value closes, the rest of the envelope (where
+			// a nested key can repeat the field name) never streams.
+			if (this.config.gate && this.gateDecided) {
+				this.hold();
+				return;
 			}
 
 			const match = this.findNextStreamFieldStart(final);

@@ -703,8 +703,9 @@ export interface GenerateTextParams {
 	/**
 	 * Decides per attempt whether {@link streamFields} may stream, from the
 	 * complete envelope fields generated before the first of them (`null` for
-	 * unstructured prose output). Lets a caller stream only answers whose
-	 * routing is already settled. Runtime-only: never sent to providers.
+	 * unstructured prose output). An allowed attempt streams only that first
+	 * top-level value. Lets a caller stream only answers whose routing is
+	 * already settled. Runtime-only: never sent to providers.
 	 */
 	streamFieldGate?: StructuredStreamGate;
 	/**
