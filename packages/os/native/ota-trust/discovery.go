@@ -45,9 +45,14 @@ func (s *discoverySession) Close() {
 // Schedule persistence must succeed before any authenticated bytes are exposed.
 // A caller must still recheck channel generation during admission and commit.
 func (s *discoverySession) Run(scheduleDirectory, trustDirectory string, pinnedRoot []byte, metadataBase, channel, distribution string, generation int64) (*DiscoveryResult, error) {
-	return s.run(scheduleDirectory, trustDirectory, pinnedRoot, metadataBase, channel, distribution, generation, nil)
+	return s.run(scheduleDirectory, trustDirectory, pinnedRoot, metadataBase, channel, distribution, generation, false, nil)
 }
-func (s *discoverySession) run(scheduleDirectory, trustDirectory string, pinnedRoot []byte, metadataBase, channel, distribution string, generation int64, admit func([]byte, *TrustedTimeInterval, int64) (*AdmissionResult, error)) (*DiscoveryResult, error) {
+
+// refresh is true for a commit-freshness refresh of a prepared plan. Its
+// schedule keeps NotBefore, Retry-After and failure backoff but adds no
+// six-hour wait after a success, or a refresh in one run would leave the next
+// activation run unable to refresh and so unable to commit.
+func (s *discoverySession) run(scheduleDirectory, trustDirectory string, pinnedRoot []byte, metadataBase, channel, distribution string, generation int64, refresh bool, admit func([]byte, *TrustedTimeInterval, int64) (*AdmissionResult, error)) (*DiscoveryResult, error) {
 	s.mu.Lock()
 	if s.used || s.closed.Load() {
 		s.mu.Unlock()
@@ -96,7 +101,7 @@ func (s *discoverySession) run(scheduleDirectory, trustDirectory string, pinnedR
 	if err = narrowTimeFloor(finalTime, current.LowerMillis); err != nil {
 		return nil, err
 	}
-	finished, err := FinishDiscoveryInterval(scheduleDirectory, claim.Token, finalTime.LowerMillis, finalTime.UpperMillis, success, s.transport.RetryAfterMillis())
+	finished, err := finishScheduledWork(scheduleDirectory, claim.Token, finalTime.LowerMillis, finalTime.UpperMillis, success, s.transport.RetryAfterMillis(), refresh)
 	if err != nil {
 		return nil, err
 	}
@@ -128,6 +133,9 @@ func (s *discoverySession) run(scheduleDirectory, trustDirectory string, pinnedR
 // policyJSON's time must come from the qualified native clock. Device fields
 // must come from current supervisor observations, not renderer-provided JSON.
 func (s *discoverySession) RunAdmitted(scheduleDirectory, trustDirectory, admissionDirectory string, pinnedRoot []byte, metadataBase string, deviceJSON, policyJSON []byte, generation int64) (*DiscoveryResult, error) {
+	return s.runAdmitted(scheduleDirectory, trustDirectory, admissionDirectory, pinnedRoot, metadataBase, deviceJSON, policyJSON, generation, false)
+}
+func (s *discoverySession) runAdmitted(scheduleDirectory, trustDirectory, admissionDirectory string, pinnedRoot []byte, metadataBase string, deviceJSON, policyJSON []byte, generation int64, refresh bool) (*DiscoveryResult, error) {
 	var device admissionDevice
 	var policy admissionPolicy
 	if err := decodeAdmission(deviceJSON, &device); err != nil {
@@ -142,7 +150,7 @@ func (s *discoverySession) RunAdmitted(scheduleDirectory, trustDirectory, admiss
 	if err := validateAdmissionDevice(device); err != nil {
 		return nil, err
 	}
-	return s.run(scheduleDirectory, trustDirectory, pinnedRoot, metadataBase, device.Channel, device.Distribution, generation, func(descriptor []byte, bounds *TrustedTimeInterval, fetched int64) (*AdmissionResult, error) {
+	return s.run(scheduleDirectory, trustDirectory, pinnedRoot, metadataBase, device.Channel, device.Distribution, generation, refresh, func(descriptor []byte, bounds *TrustedTimeInterval, fetched int64) (*AdmissionResult, error) {
 		policy.Lower, policy.Upper = bounds.LowerMillis, bounds.UpperMillis
 		return evaluateRememberedRelease(admissionDirectory, descriptor, deviceJSON, policy, fetched)
 	})
@@ -167,7 +175,7 @@ func (s *discoverySession) RunPrepared(scheduleDirectory, trustDirectory, admiss
 		return nil, err
 	}
 	identity := ""
-	result, err := s.run(scheduleDirectory, trustDirectory, pinnedRoot, metadataBase, device.Channel, device.Distribution, generation, func(descriptor []byte, bounds *TrustedTimeInterval, fetched int64) (*AdmissionResult, error) {
+	result, err := s.run(scheduleDirectory, trustDirectory, pinnedRoot, metadataBase, device.Channel, device.Distribution, generation, false, func(descriptor []byte, bounds *TrustedTimeInterval, fetched int64) (*AdmissionResult, error) {
 		policy.Lower, policy.Upper = bounds.LowerMillis, bounds.UpperMillis
 		decision, e := evaluateRememberedRelease(admissionDirectory, descriptor, deviceJSON, policy, fetched)
 		if e != nil {
