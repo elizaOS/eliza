@@ -62,6 +62,7 @@ import android.widget.FrameLayout
 import androidx.core.view.ViewCompat
 import androidx.core.view.WindowInsetsCompat
 import androidx.lifecycle.Lifecycle
+import androidx.webkit.Profile
 import androidx.webkit.ProfileStore
 import androidx.webkit.WebViewCompat
 import androidx.webkit.WebViewFeature
@@ -521,27 +522,41 @@ class ElizaSurfaceManagerPlugin : Plugin() {
         profilePrefs.edit().putLong("used:$name", System.currentTimeMillis()).apply()
     }
 
-    /** Signs the profile out of every website now; the directory goes once Android releases it. */
-    private fun clearProfileData(name: String, done: (() -> Unit)? = null) {
+    /**
+     * Signs the profile out of every website now; the directory goes once Android releases it.
+     * `done` gets true when no cookie remains in the profile (or the profile is gone).
+     */
+    private fun clearProfileData(name: String, done: ((Boolean) -> Unit)? = null) {
         val profile = try {
             ProfileStore.getInstance().getProfile(name)
         } catch (error: RuntimeException) {
             // error-policy:J1 A profile that cannot be opened is left to the start-up purge.
             Log.w(TAG, "Could not open a Browser profile to clear it", error)
-            null
+            done?.invoke(false)
+            return
         }
         if (profile == null) {
-            done?.invoke()
+            done?.invoke(true)
             return
         }
         profile.webStorage.deleteAllData()
         profile.geolocationPermissions.clearAll()
-        profile.cookieManager.removeAllCookies { profile.cookieManager.flush(); done?.invoke() }
+        profile.cookieManager.removeAllCookies {
+            profile.cookieManager.flush()
+            done?.invoke(profileClean(name, profile))
+        }
     }
 
-    private fun retireProfile(name: String) {
+    /** No cookie remains. A profile deleted in the meantime holds none. */
+    private fun profileClean(name: String, profile: Profile): Boolean = try {
+        !profile.cookieManager.hasCookies()
+    } catch (error: RuntimeException) {
+        !ProfileStore.getInstance().allProfileNames.contains(name)
+    }
+
+    private fun retireProfile(name: String, done: ((Boolean) -> Unit)? = null) {
         retiredProfiles.add(name)
-        clearProfileData(name)
+        clearProfileData(name, done)
         deleteWhenReleased(name, 0)
     }
 
@@ -574,9 +589,27 @@ class ElizaSurfaceManagerPlugin : Plugin() {
         if (surface.profileKey == null) retireProfile(name) else touchProfile(name)
     }
 
-    private fun purgeKeyedProfile(name: String) {
+    private fun purgeKeyedProfile(name: String, done: ((Boolean) -> Unit)? = null) {
         profilePrefs.edit().putBoolean("purge:$name", true).remove("used:$name").apply()
-        retireProfile(name)
+        retireProfile(name, done)
+    }
+
+    /** Closes every surface on the profile, telling the host for each live one. */
+    private fun closeProfileSurfaces(name: String) {
+        for ((id, surface) in surfaces.entries.filter { it.value.profileName == name }) {
+            val live = isLive(surface)
+            dismissDialogs(surface)
+            surface.control?.interrupt("The website sign-ins were removed", navigation = true)
+            surface.container.visibility = View.GONE
+            surface.foregrounded = false
+            surface.webView.stopLoading()
+            (surface.container.parent as? ViewGroup)?.removeView(surface.container)
+            surface.container.removeView(surface.webView)
+            surface.webView.destroy()
+            surface.disposed = true
+            surfaces.remove(id)
+            if (live) notifyListeners("surfaceClosed", surfaceEvent(id, surface).apply { put("reason", "profile-purged") })
+        }
     }
 
     private fun isLive(surface: Surface): Boolean =
@@ -1517,42 +1550,51 @@ class ElizaSurfaceManagerPlugin : Plugin() {
     }
 
     /**
-     * Purges keyed profiles: one key at once (sign-out), or every keyed profile idle for at
-     * least `idleMs` that no open surface uses. Surfaces on a purged key close first.
+     * Purges profiles: one key at once (sign-out), every keyed profile idle for at least
+     * `idleMs` that no open surface uses, or (`all: true`) every keyed and ephemeral profile of
+     * any owner. Surfaces on a purged profile close first. `all` resolves after the cookies are
+     * removed, with `clean` true when no purged profile still holds a cookie.
      */
     @PluginMethod
     fun purgeProfiles(call: PluginCall) {
         val key = call.getString("profileKey")
         val idle = (call.data.opt("idleMs") as? Number)?.toDouble()
-        if ((key == null) == (idle == null) ||
+        val all = call.data.opt("all") == true
+        if (listOf(key != null, idle != null, all).count { it } != 1 ||
             (key != null && !BrowserProfilePolicy.validKey(key)) ||
             (idle != null && (!idle.isFinite() || !BrowserProfilePolicy.validIdle(idle.toLong())))) {
-            call.reject("purgeProfiles requires either a profileKey or an idleMs of at least one hour", "INVALID_REQUEST")
+            call.reject("purgeProfiles requires one of a profileKey, an idleMs of at least one hour, or all: true", "INVALID_REQUEST")
             return
         }
         activity.runOnUiThread {
             val identity = requireActiveIdentity(call, "purgeProfiles") ?: return@runOnUiThread
             if (!WebViewFeature.isFeatureSupported(WebViewFeature.MULTI_PROFILE)) {
-                call.resolve(JSObject().apply { put("purged", 0) })
+                call.resolve(JSObject().apply { put("purged", 0); if (all) put("clean", true) })
                 return@runOnUiThread
             }
             var purged = 0
+            if (all) {
+                val names = BrowserProfilePolicy.surfaceProfiles(ProfileStore.getInstance().allProfileNames)
+                names.forEach(::closeProfileSurfaces)
+                if (names.isEmpty()) {
+                    call.resolve(JSObject().apply { put("purged", 0); put("clean", true) })
+                    return@runOnUiThread
+                }
+                var pending = names.size
+                var clean = true
+                val cleared: (Boolean) -> Unit = { empty ->
+                    clean = clean && empty
+                    pending -= 1
+                    if (pending == 0) call.resolve(JSObject().apply { put("purged", names.size); put("clean", clean) })
+                }
+                for (name in names) {
+                    if (BrowserProfilePolicy.keyed(name)) purgeKeyedProfile(name, cleared) else retireProfile(name, cleared)
+                }
+                return@runOnUiThread
+            }
             if (key != null) {
                 val name = keyedProfileName(identity.owner, key)
-                for ((id, surface) in surfaces.entries.filter { it.value.profileName == name }) {
-                    val live = isLive(surface)
-                    dismissDialogs(surface)
-                    surface.control?.interrupt("The website sign-ins were removed", navigation = true)
-                    surface.container.visibility = View.GONE
-                    surface.foregrounded = false
-                    surface.webView.stopLoading()
-                    (surface.container.parent as? ViewGroup)?.removeView(surface.container)
-                    surface.container.removeView(surface.webView)
-                    surface.webView.destroy()
-                    surface.disposed = true
-                    surfaces.remove(id)
-                    if (live) notifyListeners("surfaceClosed", surfaceEvent(id, surface).apply { put("reason", "profile-purged") })
-                }
+                closeProfileSurfaces(name)
                 if (ProfileStore.getInstance().allProfileNames.contains(name)) {
                     purgeKeyedProfile(name)
                     purged = 1

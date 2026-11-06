@@ -426,15 +426,19 @@ export interface ElizaSurfaceManagerPlugin {
    * Android: delete keyed profiles. `profileKey` purges that key now and closes its
    * surfaces (`surfaceClosed`); use it on account sign-out. `idleMs` (at least one
    * hour) purges every keyed profile unused for that long that no surface has open.
+   * `all: true` purges every keyed and ephemeral profile of any owner and closes their
+   * surfaces; it resolves after the cookies are removed, with `clean` true when no
+   * purged profile still holds a cookie. Use it to sign the device out of every website.
    * Data is cleared at once; the profile directory goes once Android releases it.
    */
   purgeProfiles(
     options: SurfaceOwnerOptions &
       (
-        | { profileKey: string; idleMs?: never }
-        | { idleMs: number; profileKey?: never }
+        | { profileKey: string; idleMs?: never; all?: never }
+        | { idleMs: number; profileKey?: never; all?: never }
+        | { all: true; profileKey?: never; idleMs?: never }
       ),
-  ): Promise<{ purged: number }>;
+  ): Promise<{ purged: number; clean?: boolean }>;
   /**
    * Android 8+: masked screenshot of the visible foreground page for a vision
    * fallback. Rejects (`CAPTURE_MASK_FAILED`, `CAPTURE_STALE`, `CAPTURE_UNAVAILABLE`,
