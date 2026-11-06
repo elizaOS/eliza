@@ -27,7 +27,7 @@
  * whole-word queries and the `LIKE` fallback scans the cheap stored column, so
  * partial/substring recall degrades in speed, never in correctness.
  */
-import { logger } from "@elizaos/core";
+import { logger, SEARCH_FOLD_FROM, SEARCH_FOLD_STRIP, SEARCH_FOLD_TO } from "@elizaos/core";
 import { sql } from "drizzle-orm";
 import type { DatabaseBackend } from "./migration-service";
 import type { DrizzleDatabase } from "./types";
@@ -58,13 +58,14 @@ export async function messageSearchTableExists(db: DrizzleDatabase): Promise<boo
   return typeof row?.table_name === "string";
 }
 
-// Accent-folding map: each accented Latin letter → its ASCII base. `from` and
-// `to` are equal length; the three trailing chars in `from` (straight/curly
-// apostrophe, backtick) have no `to` counterpart and are therefore deleted by
-// translate() so "don't" folds to "dont".
-const ACCENT_FROM = "àáâãäåāăąèéêëēĕėęěìíîïĩīĭįòóôõöøōŏőùúûüũūŭůűñçćčšžýÿ";
-const ACCENT_TO = "aaaaaaaaaeeeeeeeeeiiiiiiiiooooooooouuuuuuuuuncccszyy";
-const STRIP_CHARS = "'’`";
+// Accent-folding map shared with core's `foldForSearch` (the in-memory and
+// SQLite search path), so every store folds a query identically. `from` and
+// `to` are equal length; the strip characters (straight/curly apostrophe,
+// backtick) have no `to` counterpart and are therefore deleted by translate()
+// so "don't" folds to "dont".
+const ACCENT_FROM = SEARCH_FOLD_FROM;
+const ACCENT_TO = SEARCH_FOLD_TO;
+const STRIP_CHARS = SEARCH_FOLD_STRIP;
 
 /** SQL string literal for `translate`'s `from` set, single-quotes doubled. */
 const FOLD_FROM_LITERAL = (ACCENT_FROM + STRIP_CHARS).replace(/'/g, "''");
@@ -82,13 +83,13 @@ export async function applyMessageSearchObjects(
   await db.execute(sql`
     CREATE OR REPLACE FUNCTION eliza_search_fold(t text)
     RETURNS text LANGUAGE sql IMMUTABLE PARALLEL SAFE STRICT AS $fold$
-      SELECT translate(lower(t), '${sql.raw(FOLD_FROM_LITERAL)}', '${sql.raw(ACCENT_TO)}')
+      SELECT translate(lower(normalize(t, NFC)), '${sql.raw(FOLD_FROM_LITERAL)}', '${sql.raw(ACCENT_TO)}')
     $fold$;
   `);
 
   // The searchable document: message body plus attachment titles/URLs, folded.
-  // The `translate(lower(...))` fold is inlined here rather than calling
-  // `eliza_search_fold` because a nested user-function call cannot be resolved
+  // The `translate(lower(normalize(..., NFC)))` fold is inlined here rather
+  // than calling `eliza_search_fold` because a nested user-function call cannot be resolved
   // when Postgres inlines this function into an expression index (it re-parses
   // the body with a restricted search_path). The map is kept identical to
   // `eliza_search_fold` by sourcing both from the same constants.
@@ -97,7 +98,7 @@ export async function applyMessageSearchObjects(
   await db.execute(sql`
     CREATE OR REPLACE FUNCTION eliza_message_search_document(content jsonb)
     RETURNS text LANGUAGE sql IMMUTABLE PARALLEL SAFE AS $doc$
-      SELECT translate(lower(
+      SELECT translate(lower(normalize(
         coalesce(content->>'text', '')
         || ' ' ||
         coalesce((
@@ -107,7 +108,7 @@ export async function applyMessageSearchObjects(
                  THEN content->'attachments' ELSE '[]'::jsonb END
           ) AS a
         ), '')
-      ), '${sql.raw(FOLD_FROM_LITERAL)}', '${sql.raw(ACCENT_TO)}')
+      , NFC)), '${sql.raw(FOLD_FROM_LITERAL)}', '${sql.raw(ACCENT_TO)}')
     $doc$;
   `);
 
