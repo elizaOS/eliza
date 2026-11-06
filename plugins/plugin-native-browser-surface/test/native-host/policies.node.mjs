@@ -104,7 +104,7 @@ test("browser login bindings are admitted by the password policy only for the bo
       ),
       path.join(
         secureStore,
-        "android/src/main/java/ai/eliza/plugins/securestore/nativeonly/PasswordFacets.java",
+        "android-nativeonly/src/main/java/ai/eliza/plugins/securestore/nativeonly/PasswordFacets.java",
       ),
       ...autofillConsumers.map((name) =>
         path.join(plugin, "test/native-host", `${name}.java`),
