@@ -90,7 +90,7 @@ import {
   DISCOVER_TOOLS_NAME,
   ElizaError,
   emitStreamingHook,
-  extractJsonObjects,
+  extractJsonObjectSpans,
   type FailureLike,
   flattenTrajectoryMessages,
   type GenerateTextResult,
@@ -4891,7 +4891,9 @@ export function parsePlannerOutput(raw: string | GenerateTextResult): {
   let textRecoveredCalls: PlannerToolCall[] = [];
   const embeddedToolCalls = parseEmbeddedToolCalls(raw.text);
   const embeddedObjectCount =
-    typeof raw.text === "string" ? extractJsonObjects(raw.text).length : 0;
+    typeof raw.text === "string"
+      ? extractNarratedJsonObjects(raw.text).length
+      : 0;
   if (
     embeddedToolCalls.length > 0 &&
     (nativeToolCalls.length === 0 || embeddedObjectCount > 1)
@@ -6881,6 +6883,20 @@ function parseTextToolCalls(value: unknown): PlannerToolCall[] {
 }
 
 /**
+ * Top-level JSON object regions in model text, read with the span scan so
+ * prose in front of an object — an unclosed `{` or a stray quote — never
+ * changes how that object is read. The brace-count scan in
+ * `extractJsonObjects` loses every object behind such prose, which dropped
+ * narrated tool calls whole and understated the object count the merge
+ * gate compares against.
+ */
+function extractNarratedJsonObjects(text: string): string[] {
+  return extractJsonObjectSpans(text).map(({ start, end }) =>
+    text.slice(start, end),
+  );
+}
+
+/**
  * Recover tool calls a weak model narrated as JSON text instead of — or in
  * addition to — native tool calls. gpt-oss-class models emit one
  * `{type, args}` object per intended call, concatenated
@@ -6894,7 +6910,7 @@ function parseEmbeddedToolCalls(text: string | undefined): PlannerToolCall[] {
     return [];
   }
   const calls: PlannerToolCall[] = [];
-  for (const objectText of extractJsonObjects(text)) {
+  for (const objectText of extractNarratedJsonObjects(text)) {
     const visibleOutput = sanitizeUserVisibleModelOutput(objectText);
     if (
       visibleOutput.kind !== "control" ||
