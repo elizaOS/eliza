@@ -43,6 +43,11 @@ that shares no other role's authority, and go-tuf counts each authorized key
 once, so a repeated signature or an aliased key cannot stand in for the second
 approval. Who holds those keys is the host's decision.
 
+Each trust session first removes the cached descriptor and interrupted
+temporary files, which hold no trust state, so a write torn by a crash cannot
+stop discovery. Torn trust metadata is refused, never reset, and discovery
+reports it as `Failure` `trust-cache` instead of an ordinary deferral.
+
 Hosts retain trust-root provisioning, signing authority, repository/package
 binding, update UI, permitted hardware and release/rollout policy. Native callers
 must independently recheck current device state and installation authority.

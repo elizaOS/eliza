@@ -21,6 +21,17 @@ import (
 
 const maxBytes int64 = 1024 * 1024
 
+// errTrustCache marks a trust cache that cannot be read or synced. Retrying the
+// network cannot repair it, so discovery reports it apart from a fetch failure.
+var errTrustCache = errors.New("OTA trust cache unusable")
+
+func trustCacheError(err error) error {
+	if err == nil {
+		return nil
+	}
+	return fmt.Errorf("%w: %w", errTrustCache, err)
+}
+
 // Response and Transport use gomobile-compatible types. Transport must enforce
 // TLS, host/DNS/redirect restrictions, deadlines and cancellation independently.
 type Response struct {
@@ -107,6 +118,9 @@ func FetchDescriptorInterval(privateDirectory string, pinnedRoot []byte, metadat
 		return nil, errors.New("trust cache already in use")
 	}
 	defer syscall.Flock(int(lock.Fd()), syscall.LOCK_UN)
+	if e = discardScratch(privateDirectory); e != nil {
+		return nil, e
+	}
 	// Refuse unsafe cached entries before the library reads any of them.
 	if e = syncCache(privateDirectory); e != nil {
 		return nil, e
@@ -114,27 +128,30 @@ func FetchDescriptorInterval(privateDirectory string, pinnedRoot []byte, metadat
 	clockBytes, clockErr := os.ReadFile(filepath.Join(privateDirectory, ".clock"))
 	if clockErr == nil {
 		floor, parseErr := strconv.ParseInt(string(clockBytes), 10, 64)
-		if parseErr != nil || !bounded(floor, 1, safeInteger) || trustedUpperMillis < floor {
-			return nil, errors.New("trusted time rollback or corruption")
+		if parseErr != nil || !bounded(floor, 1, safeInteger) {
+			return nil, trustCacheError(errors.New("trusted time floor corrupt"))
+		}
+		if trustedUpperMillis < floor {
+			return nil, errors.New("trusted time rollback")
 		}
 		trustedLowerMillis = max(trustedLowerMillis, floor)
 	} else if !os.IsNotExist(clockErr) {
-		return nil, clockErr
+		return nil, trustCacheError(clockErr)
 	}
 	root := pinnedRoot
 	cached, e := os.ReadFile(filepath.Join(privateDirectory, "root.json"))
 	if e == nil {
 		if os.IsNotExist(clockErr) {
-			return nil, errors.New("trusted time floor missing")
+			return nil, trustCacheError(errors.New("trusted time floor missing"))
 		}
 		root = cached
 	} else if !os.IsNotExist(e) {
-		return nil, e
+		return nil, trustCacheError(e)
 	} else {
 		entries, _ := os.ReadDir(privateDirectory)
 		for _, entry := range entries {
 			if strings.HasSuffix(entry.Name(), ".json") {
-				return nil, errors.New("trusted root missing from existing cache")
+				return nil, trustCacheError(errors.New("trusted root missing from existing cache"))
 			}
 		}
 	}
@@ -199,7 +216,39 @@ func FetchDescriptorInterval(privateDirectory string, pinnedRoot []byte, metadat
 	}
 	return data, nil
 }
+
+// discardScratch removes the cache files that hold no trust state, so that one
+// write torn by a crash cannot stop every later session: the descriptor, which
+// go-tuf writes in place and nothing reads back, and the temporaries of
+// interrupted metadata and clock writes. Only regular files are removed; any
+// other entry is left for syncCache to refuse. Trust metadata is never removed,
+// so a torn metadata file still fails closed.
+func discardScratch(directory string) error {
+	entries, err := os.ReadDir(directory)
+	if err != nil {
+		return trustCacheError(err)
+	}
+	for _, entry := range entries {
+		name := entry.Name()
+		if name != "descriptor.json" && !strings.HasPrefix(name, "tuf_tmp") && !strings.HasPrefix(name, "clock_tmp") {
+			continue
+		}
+		if !entry.Type().IsRegular() {
+			continue
+		}
+		if err = os.Remove(filepath.Join(directory, name)); err != nil && !os.IsNotExist(err) {
+			return trustCacheError(err)
+		}
+	}
+	return nil
+}
+
+// syncCache refuses unsafe or unparsable cache entries, then fsyncs every file
+// and the directory.
 func syncCache(directory string) error {
+	return trustCacheError(syncCacheEntries(directory))
+}
+func syncCacheEntries(directory string) error {
 	entries, err := os.ReadDir(directory)
 	if err != nil {
 		return err
