@@ -93,7 +93,7 @@ public final class UpdateJournalTest {
     rejects(()->rebootLoop.begin(plan("stable"),OLD,0));
     // Independently encode historical formats; do not derive them by trimming
     // the current writer, which can hide a format migration regression.
-    for(int version=1;version<=3;version++) {
+    for(int version=1;version<=4;version++) {
       Path oldFormat=directory.resolve("format-v"+version);UpdateJournal format=new UpdateJournal(oldFormat,SYNC);
       ByteArrayOutputStream legacyBody=new ByteArrayOutputStream();
       try(DataOutputStream out=new DataOutputStream(legacyBody)) {
@@ -101,11 +101,23 @@ public final class UpdateJournalTest {
         out.writeBoolean(true);out.writeUTF("release-11");out.writeUTF("stable");out.writeUTF("launcher");
         for(UpdateJournal.Identity identity:new UpdateJournal.Identity[]{OLD,NEW,RECOVERY}){out.writeLong(identity.code);out.writeUTF(identity.digest);}
         out.writeInt(0);if(version>=2){out.writeLong(100);out.writeLong(10);out.writeLong(100);}
+        if(version>=4)out.writeBoolean(false);
       }
       ByteArrayOutputStream legacyBytes=new ByteArrayOutputStream();byte[] body=legacyBody.toByteArray();legacyBytes.write(body);legacyBytes.write(java.security.MessageDigest.getInstance("SHA-256").digest(body));Files.write(oldFormat.resolve("journal"),legacyBytes.toByteArray());
       check(format.read().phase==UpdateJournal.Phase.COMMITTING);check(format.read().pendingMillis==(version==1?0:100));check(format.read().probation==null);
       format.observePending("release-11",4,10,200,1000);check(format.read().phase==UpdateJournal.Phase.COMMITTING);check(format.read().pendingMillis==(version==1?0:200));
+      check(format.read().reportedFailure==null);check(format.read().releasedCandidate.isEmpty());check(format.read().releases==0);
+      // With no install record the rewrite stays version 4, which an older
+      // updater still reads; a record moves it to version 5, and back once cleared.
       check(java.nio.ByteBuffer.wrap(Files.readAllBytes(oldFormat.resolve("journal"))).getInt(4)==4);
+      if(version==4) {
+        format.reconcileInstallerResult("release-11",4,OLD,true,null,UpdateJournal.InstallerFailure.CANDIDATE_REJECTED);
+        check(java.nio.ByteBuffer.wrap(Files.readAllBytes(oldFormat.resolve("journal"))).getInt(4)==5);
+        check(new UpdateJournal(oldFormat,SYNC).read().reportedFailure==UpdateJournal.InstallerFailure.CANDIDATE_REJECTED);
+        format.reconcileInstallerResult("release-11",4,NEW,false,null,null);
+        check(format.read().phase==UpdateJournal.Phase.PROBATION&&format.read().reportedFailure==null);
+        check(java.nio.ByteBuffer.wrap(Files.readAllBytes(oldFormat.resolve("journal"))).getInt(4)==4);
+      }
     }
     for(String boundary:new String[]{"before-sync","before-rename","published"}) {
       Path root=directory.resolve("timer-"+boundary);UpdateJournal death=new UpdateJournal(root,SYNC);
@@ -125,7 +137,7 @@ public final class UpdateJournalTest {
       check(callback.read().phase==UpdateJournal.Phase.SUPPORT);check(callback.read().reason.equals(reason));
       check(UpdateJournal.awaitingInstaller(callback.read()));
       callback=new UpdateJournal(directory.resolve("callback-"+reason),SYNC);
-      callback.reconcile("release-11",5,OLD,false);check(callback.read().phase==UpdateJournal.Phase.SUPPORT);
+      callback.reconcile("release-11",5,OLD,true);check(callback.read().phase==UpdateJournal.Phase.SUPPORT);
       callback.reconcile("release-11",5,NEW,false);check(callback.read().phase==UpdateJournal.Phase.PROBATION);
       callback.reconcileInstallerResult("release-11",5,OLD,false,reason);check(callback.read().phase==UpdateJournal.Phase.PROBATION);
       callback.localHealthFailed(callback.read(),NEW);callback.recovering("release-11",6);
@@ -163,15 +175,124 @@ public final class UpdateJournalTest {
     UpdateJournal badRecovery=new UpdateJournal(directory.resolve("bad-recovery"),SYNC);badRecovery.begin(plan("stable"),OLD,0);badRecovery.committing("release-11",1,0);badRecovery.reconcile(NEW,false);badRecovery.localHealthFailed(badRecovery.read(),NEW);badRecovery.recovering("release-11",2);badRecovery.reconcile(RECOVERY,false);badRecovery.localHealthFailed(badRecovery.read(),RECOVERY);check(badRecovery.read().phase==UpdateJournal.Phase.SUPPORT);
     check(badRecovery.read().quarantine.contains(RECOVERY.digest));check(!fail.read().quarantine.contains(RECOVERY.digest));
     badRecovery.setChannel("beta");badRecovery.setChannel("stable");check(badRecovery.read().quarantine.contains(RECOVERY.digest));
+    // A session lost or timed out with the baseline still running is released,
+    // never left in support for good; a live session or a recovery is kept.
+    for(String stall:new String[]{"install_timeout","install_clock_invalid","policy_blocked","user_action_required"}) {
+      UpdateJournal stalled=new UpdateJournal(directory.resolve("stalled-"+stall),SYNC);stalled.begin(plan("stable"),OLD,0);stalled.committing("release-11",3,0);
+      if(stall.equals("install_timeout")){stalled.observePending("release-11",3,10,0,1000);stalled.observePending("release-11",3,10,1000,1000);}
+      else if(stall.equals("install_clock_invalid")){stalled.observePending("release-11",3,10,500,1000);stalled.observePending("release-11",3,10,100,1000);}
+      else stalled.reconcileInstallerResult("release-11",3,OLD,true,stall);
+      check(stalled.read().reason.equals(stall));
+      stalled.reconcile("release-11",3,OLD,true);check(stalled.read().reason.equals(stall));
+      long generation=stalled.read().channelGeneration;
+      stalled.reconcile("release-11",3,OLD,false);check(stalled.read().reason.equals(UpdateJournal.OUTCOME_UNKNOWN));
+      stalled.observeOutcomeUnknown("release-11",3,10,0);stalled.observeOutcomeUnknown("release-11",3,10,UpdateJournal.OUTCOME_UNKNOWN_WAIT_MS);
+      check(stalled.read().phase==UpdateJournal.Phase.IDLE);check(stalled.read().plan==null);check(stalled.read().reason.equals("install_not_completed"));
+      check(stalled.read().quarantine.isEmpty());check(stalled.read().channelGeneration==generation);check(!UpdateJournal.awaitingInstaller(stalled.read()));
+      stalled.begin(plan("stable"),OLD,generation);check(stalled.read().phase==UpdateJournal.Phase.VERIFIED);
+    }
+    UpdateJournal stalledRecovery=new UpdateJournal(directory.resolve("stalled-recovery"),SYNC);stalledRecovery.begin(plan("stable"),OLD,0);stalledRecovery.committing("release-11",3,0);stalledRecovery.reconcile(NEW,false);
+    stalledRecovery.localHealthFailed(stalledRecovery.read(),NEW);stalledRecovery.recovering("release-11",4);stalledRecovery.observePending("release-11",4,10,0,1000);stalledRecovery.observePending("release-11",4,10,1000,1000);
+    stalledRecovery.reconcile("release-11",4,NEW,false);check(stalledRecovery.read().phase==UpdateJournal.Phase.SUPPORT);check(stalledRecovery.read().reason.equals("install_timeout"));
+    // A throw from the platform handoff after the durable intent is reported as
+    // such, so the coordinator keeps the session and readback decides.
+    UpdateJournal binder=new UpdateJournal(directory.resolve("binder"),SYNC);binder.begin(plan("stable"),OLD,0);
+    try{binder.committingWithAction("release-11",3,0,()->{throw new IllegalStateException("binder died");});throw new AssertionError("Handoff failure hidden");}
+    catch(UpdateJournal.HandoffFailed expected){check(expected.getCause() instanceof IllegalStateException);}
+    check(binder.read().phase==UpdateJournal.Phase.COMMITTING);
+    binder.reconcile("release-11",3,OLD,true);check(binder.read().phase==UpdateJournal.Phase.COMMITTING);
+    binder.reconcile("release-11",3,NEW,false);check(binder.read().phase==UpdateJournal.Phase.PROBATION);check(binder.read().quarantine.isEmpty());
+    UpdateJournal.Plan next=new UpdateJournal.Plan("release-13","stable","launcher",OLD,id(13,'d'),id(14,'e'));
+    UpdateJournal second=new UpdateJournal(directory.resolve("binder-unpublished"),SYNC);second.begin(next,OLD,0);
+    try{new UpdateJournal(directory.resolve("binder-unpublished"),SYNC,name->{if(name.equals("published"))throw new IOException("lost after rename");}).committingWithAction("release-13",3,0,()->{throw new AssertionError("Handoff ran after failed publish");});throw new AssertionError("Publish failure hidden");}
+    catch(UpdateJournal.HandoffFailed wrong){throw new AssertionError("Publish failure reported as handoff");}
+    catch(IOException expected){assertions++;}
+    // Only a reported candidate fault quarantines. A gone session with no report
+    // waits observed uptime, not readbacks, for a late callback, then releases.
+    UpdateJournal unreported=new UpdateJournal(directory.resolve("unreported"),SYNC);unreported.begin(plan("stable"),OLD,0);unreported.committing("release-11",3,0);
+    unreported.reconcile("release-11",3,OLD,false);check(unreported.read().reason.equals("install_outcome_unknown"));check(unreported.read().quarantine.isEmpty());check(UpdateJournal.awaitingInstaller(unreported.read()));
+    rejects(()->unreported.begin(plan("stable"),OLD,0));
+    unreported.reconcileInstallerResult("release-11",3,OLD,false,null,UpdateJournal.InstallerFailure.CANDIDATE_REJECTED);
+    check(unreported.read().phase==UpdateJournal.Phase.QUARANTINED);check(unreported.read().quarantine.contains(NEW.digest));check(!unreported.read().quarantine.contains(RECOVERY.digest));
+    UpdateJournal unanswered=new UpdateJournal(directory.resolve("unanswered"),SYNC);unanswered.begin(plan("stable"),OLD,0);unanswered.committing("release-11",3,0);
+    unanswered.reconcile("release-11",3,OLD,false);unanswered.reconcile("release-11",3,OLD,false);
+    check(unanswered.read().reason.equals(UpdateJournal.OUTCOME_UNKNOWN));check(unanswered.read().pendingMillis==0);
+    unanswered.observeOutcomeUnknown("wrong",3,10,0);unanswered.observeOutcomeUnknown("release-11",4,10,0);check(unanswered.read().reason.equals(UpdateJournal.OUTCOME_UNKNOWN));
+    unanswered.observeOutcomeUnknown("release-11",3,10,1000);unanswered.reconcile("release-11",3,OLD,false);
+    unanswered.observeOutcomeUnknown("release-11",3,10,UpdateJournal.OUTCOME_UNKNOWN_WAIT_MS-1000);check(unanswered.read().pendingMillis==UpdateJournal.OUTCOME_UNKNOWN_WAIT_MS-2000);
+    // A backward clock restarts the wait; a reboot counts only the new uptime.
+    unanswered.observeOutcomeUnknown("release-11",3,10,500);check(unanswered.read().pendingMillis==0);check(unanswered.read().reason.equals(UpdateJournal.OUTCOME_UNKNOWN));
+    unanswered.observeOutcomeUnknown("release-11",3,11,UpdateJournal.OUTCOME_UNKNOWN_WAIT_MS-1);check(unanswered.read().reason.equals(UpdateJournal.OUTCOME_UNKNOWN));
+    rejects(()->unanswered.observeOutcomeUnknown("release-11",3,-1,0));
+    unanswered.observeOutcomeUnknown("release-11",3,11,UpdateJournal.OUTCOME_UNKNOWN_WAIT_MS);
+    check(unanswered.read().phase==UpdateJournal.Phase.IDLE);check(unanswered.read().reason.equals("install_not_completed"));check(unanswered.read().quarantine.isEmpty());
+    for(UpdateJournal.InstallerFailure report:UpdateJournal.InstallerFailure.values()) {
+      UpdateJournal reported=new UpdateJournal(directory.resolve("reported-"+report),SYNC);reported.begin(plan("stable"),OLD,0);reported.committing("release-11",3,0);
+      // A live session outranks any report.
+      reported.reconcileInstallerResult("release-11",3,OLD,true,null,report);check(reported.read().phase==UpdateJournal.Phase.COMMITTING);
+      reported.reconcileInstallerResult("release-11",3,OLD,false,null,report);
+      boolean rejected=report==UpdateJournal.InstallerFailure.CANDIDATE_REJECTED;
+      check(reported.read().phase==(rejected?UpdateJournal.Phase.QUARANTINED:UpdateJournal.Phase.IDLE));check(reported.read().quarantine.isEmpty()!=rejected);
+      // A report while the session is listed survives a reopen and a timeout,
+      // and decides once the session is gone, even with no second report.
+      UpdateJournal early=new UpdateJournal(directory.resolve("reported-early-"+report),SYNC);early.begin(plan("stable"),OLD,0);early.committing("release-11",3,0);
+      early.reconcileInstallerResult("release-11",3,OLD,true,null,report);check(early.read().phase==UpdateJournal.Phase.COMMITTING);
+      early.reconcileInstallerResult("release-11",3,OLD,true,null,null);early.reconcileInstallerResult("release-11",3,OLD,true,null,UpdateJournal.InstallerFailure.RETRYABLE);
+      early.observePending("release-11",3,10,0,1000);early.observePending("release-11",3,10,1000,1000);check(early.read().reason.equals("install_timeout"));
+      early=new UpdateJournal(directory.resolve("reported-early-"+report),SYNC);check(early.read().reportedFailure==report);
+      early.reconcile("release-11",3,OLD,false);
+      check(early.read().phase==(rejected?UpdateJournal.Phase.QUARANTINED:UpdateJournal.Phase.IDLE));check(early.read().quarantine.isEmpty()!=rejected);check(early.read().reportedFailure==null);
+      UpdateJournal landed=new UpdateJournal(directory.resolve("reported-installed-"+report),SYNC);landed.begin(plan("stable"),OLD,0);landed.committing("release-11",3,0);
+      landed.reconcileInstallerResult("release-11",3,NEW,false,null,report);check(landed.read().phase==UpdateJournal.Phase.PROBATION);check(landed.read().quarantine.isEmpty());
+    }
+    // A candidate released MAX_INSTALL_ATTEMPTS_PER_CANDIDATE times in a row is
+    // quarantined, so a lasting block cannot commit the same plan for ever.
+    Path budgetRoot=directory.resolve("retry-budget");
+    for(int attempt=1;attempt<=UpdateJournal.MAX_INSTALL_ATTEMPTS_PER_CANDIDATE;attempt++) {
+      UpdateJournal budget=new UpdateJournal(budgetRoot,SYNC);budget.begin(plan("stable"),OLD,0);budget.committing("release-11",3,0);
+      budget.reconcileInstallerResult("release-11",3,OLD,false,null,UpdateJournal.InstallerFailure.RETRYABLE);
+      check(budget.read().releases==attempt);check(budget.read().releasedCandidate.equals(NEW.digest));
+      boolean spent=attempt==UpdateJournal.MAX_INSTALL_ATTEMPTS_PER_CANDIDATE;
+      check(budget.read().phase==(spent?UpdateJournal.Phase.QUARANTINED:UpdateJournal.Phase.IDLE));
+      check(budget.read().reason.equals(spent?UpdateJournal.RETRY_BUDGET_SPENT:UpdateJournal.INSTALL_RELEASED));check(budget.read().quarantine.contains(NEW.digest)==spent);
+    }
+    UpdateJournal budget=new UpdateJournal(budgetRoot,SYNC);rejects(()->budget.begin(plan("stable"),OLD,0));
+    UpdateJournal.Plan other=new UpdateJournal.Plan("release-13","stable","launcher",OLD,id(13,'d'),id(14,'e'));
+    budget.begin(other,OLD,0);budget.committing("release-13",4,0);budget.reconcileInstallerResult("release-13",4,OLD,false,null,UpdateJournal.InstallerFailure.RETRYABLE);
+    check(budget.read().phase==UpdateJournal.Phase.IDLE);check(budget.read().releases==1);check(budget.read().releasedCandidate.equals(other.candidate.digest));
+    // A candidate that installs ends its releases in a row: the record is
+    // cleared, the journal is written as version 4 again, and a later release
+    // of the same candidate counts from one.
+    Path clearedRoot=directory.resolve("retry-cleared");UpdateJournal cleared=new UpdateJournal(clearedRoot,SYNC);
+    for(int attempt=1;attempt<UpdateJournal.MAX_INSTALL_ATTEMPTS_PER_CANDIDATE;attempt++){cleared.begin(plan("stable"),OLD,0);cleared.committing("release-11",3,0);cleared.reconcileInstallerResult("release-11",3,OLD,false,null,UpdateJournal.InstallerFailure.RETRYABLE);}
+    check(cleared.read().releases==UpdateJournal.MAX_INSTALL_ATTEMPTS_PER_CANDIDATE-1);
+    check(java.nio.ByteBuffer.wrap(Files.readAllBytes(clearedRoot.resolve("journal"))).getInt(4)==5);
+    cleared.begin(plan("stable"),OLD,0);cleared.committing("release-11",3,0);cleared.reconcile("release-11",3,NEW,false);
+    check(cleared.read().phase==UpdateJournal.Phase.PROBATION);check(cleared.read().releases==0);check(cleared.read().releasedCandidate.isEmpty());
+    check(java.nio.ByteBuffer.wrap(Files.readAllBytes(clearedRoot.resolve("journal"))).getInt(4)==4);
+    cleared.installedHealthy(cleared.read(),NEW);check(new UpdateJournal(clearedRoot,SYNC).read().releases==0);
     UpdateJournal rejectedPair=new UpdateJournal(directory.resolve("rejected-pair"),SYNC);
-    rejectedPair.begin(plan("stable"),OLD,0);rejectedPair.committing("release-11",1,0);rejectedPair.reconcile(OLD,false);
+    rejectedPair.begin(plan("stable"),OLD,0);rejectedPair.committing("release-11",1,0);
+    rejectedPair.reconcileInstallerResult("release-11",1,OLD,false,null,UpdateJournal.InstallerFailure.CANDIDATE_REJECTED);
+    check(rejectedPair.read().phase==UpdateJournal.Phase.QUARANTINED);check(rejectedPair.read().quarantine.contains(NEW.digest));
     UpdateJournal.Plan quarantinedRecovery=new UpdateJournal.Plan("release-13","stable","launcher",OLD,id(13,'d'),id(14,'b'));
     rejects(()->rejectedPair.begin(quarantinedRecovery,OLD,0));
     Path lost=directory.resolve("lost");UpdateJournal loss=new UpdateJournal(lost,SYNC);loss.setChannel("beta");Files.delete(lost.resolve("journal"));rejects(loss::read);rejects(()->loss.setChannel("stable"));
     java.util.concurrent.atomic.AtomicBoolean cleanupOnLostJournal=new java.util.concurrent.atomic.AtomicBoolean(false);
     rejects(()->loss.withLockedSnapshot(state->cleanupOnLostJournal.set(true)));check(!cleanupOnLostJournal.get());
     Path interrupted=directory.resolve("first-write");UpdateJournal firstWrite=new UpdateJournal(interrupted,SYNC,name->{if(name.equals("before-sync"))throw new IOException("simulated first-write failure");});
-    rejects(()->firstWrite.setChannel("beta"));rejects(()->new UpdateJournal(interrupted,SYNC).read());
+    // A failed or full first write leaves a new device, never a missing journal.
+    rejects(()->firstWrite.setChannel("beta"));check(new UpdateJournal(interrupted,SYNC).read().revision==0);check(!Files.exists(interrupted.resolve("initialized")));
+    new UpdateJournal(interrupted,SYNC).setChannel("beta");check(new UpdateJournal(interrupted,SYNC).read().channel.equals("beta"));
+    Path unmarked=directory.resolve("marker-write");UpdateJournal markerWrite=new UpdateJournal(unmarked,SYNC,name->{if(name.equals("marker-before-rename"))throw new IOException("simulated full storage");});
+    rejects(()->markerWrite.setChannel("beta"));check(!Files.exists(unmarked.resolve("initialized")));
+    check(new UpdateJournal(unmarked,SYNC).read().channel.equals("beta"));check(Files.readAllBytes(unmarked.resolve("initialized")).length==1);
+    Files.delete(unmarked.resolve("journal"));rejects(()->new UpdateJournal(unmarked,SYNC).read());
+    for(String boundary:new String[]{"marker-before-sync","marker-before-rename"}) {
+      Path root=directory.resolve("first-"+boundary);
+      Process child=new ProcessBuilder(Path.of(System.getProperty("java.home"),"bin/java").toString(),"-cp",System.getProperty("java.class.path"),UpdateJournalTest.class.getName(),root.toString(),boundary).inheritIO().start();check(child.waitFor()==24);
+      check(new UpdateJournal(root,SYNC).read().channel.equals("beta"));check(Files.readAllBytes(root.resolve("initialized")).length==1);
+    }
     Path legacy=directory.resolve("legacy");UpdateJournal previous=new UpdateJournal(legacy,SYNC);previous.setChannel("beta");Files.delete(legacy.resolve("initialized"));check(previous.read().channel.equals("beta"));check(Files.exists(legacy.resolve("initialized")));
     UpdateJournal retention=new UpdateJournal(directory.resolve("retention"),SYNC);
     java.util.concurrent.atomic.AtomicBoolean validated=new java.util.concurrent.atomic.AtomicBoolean(false);
@@ -220,6 +341,6 @@ public final class UpdateJournalTest {
       check(new UpdateJournal(concurrent,SYNC).read().revision==16);
       check(new UpdateJournal(concurrent,SYNC).read().channelGeneration==1);
     } finally {pool.shutdownNow();}
-    System.out.println("UpdateJournal: "+assertions+" assertions passed; 9 real process-death boundaries");
+    System.out.println("UpdateJournal: "+assertions+" assertions passed; 11 real process-death boundaries");
   }
 }

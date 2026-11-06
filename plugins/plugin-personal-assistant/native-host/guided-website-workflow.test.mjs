@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import {
+  filled,
   GuidedWebsiteWorkflow,
   pageControls,
   pageView,
@@ -303,6 +304,14 @@ test("a lost record of her own pointed submit is asked about only off its page",
   // addresses; the same address loaded again with a new failure asks again.
   workflow.acknowledge(second.key);
   await steps(at("results/3?page=2", "doc-1", [id(1), id(2)], [details]));
+  // A host takes back an answer it gave: the same question is asked again.
+  assert.equal(workflow.withdrawAcknowledgement(second.key), true);
+  assert.equal(
+    (await asked(at("results/3?page=2", "doc-1", [id(1), id(2)]))).key,
+    second.key,
+  );
+  assert.equal(workflow.withdrawAcknowledgement(second.key), false);
+  workflow.acknowledge(second.key);
   const reloaded = await asked(at("results/2", "doc-1b", [id(3)]));
   assert.notEqual(reloaded.key, second.key);
   workflow.acknowledge(reloaded.key);
@@ -371,6 +380,53 @@ test("a lost record of her own pointed submit is asked about only off its page",
     (await asked(at("other", "doc-18", [id(16)]))).key,
     inEpoch.key,
   );
+});
+
+test("a ticked choice the browser marks sensitive counts as answered", async () => {
+  const task = {
+    id: "task-1",
+    revision: 1,
+    epoch: 1,
+    status: "active",
+    operations: [],
+    observation: { id: "observed" },
+  };
+  // A choice has no `hasInput`; the browser reports its checked state.
+  const choice = (checked) => ({
+    tag: "input",
+    type: "radio",
+    label: "Use a new bank account",
+    sensitive: "bank-account",
+    checked,
+    selector: "snap:0:0",
+  });
+  let current;
+  const workflow = new GuidedWebsiteWorkflow({
+    runtime: {
+      owner: { actorId: "owner" },
+      get: () => task,
+      observe: async () => {},
+    },
+    actuator: {
+      readObservation: () => ({
+        observation: task.observation,
+        snapshot: current,
+      }),
+      quiesce: async () => {},
+    },
+    taskId: task.id,
+    planStep: async () => ({ status: "wait", step: "Wait", message: "" }),
+  });
+  assert.equal(filled(choice(true)), true);
+  assert.equal(filled({ tag: "button" }), null);
+  current = { ...page("pay"), elements: [choice(true)] };
+  assert.equal(
+    pageView(current, pageControls(current)).protectedFields[0].filled,
+    true,
+  );
+  assert.equal((await workflow.refresh()).kind, "wait");
+  current = { ...page("pay"), elements: [choice(false)] };
+  assert.equal((await workflow.refresh()).category, "bank-account");
 });
 
 test("browser gap evidence that names submits is checked", async () => {

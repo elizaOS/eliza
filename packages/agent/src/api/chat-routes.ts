@@ -119,7 +119,11 @@ import {
   isNoResponsePlaceholder,
 } from "./chat-text-helpers.ts";
 import { enrichChatUiViewMetadata } from "./chat-view-metadata.ts";
-import { resolveClientChatAdminEntityId } from "./client-chat-admin.ts";
+import {
+  productUserChatEntityId,
+  resolveClientChatAdminEntityId,
+  resolveOwnerChatCallerRole,
+} from "./client-chat-admin.ts";
 import {
   extractAnthropicSystemAndLastUser,
   extractCompatTextContent,
@@ -2556,11 +2560,22 @@ async function generateChatResponseWithTiming(
     // `running_action`, not one per chunk) by tracking the last signature.
     let lastStatusSignature = "";
     let planningAcknowledgment: string | undefined;
+    // The latest transient label (the model acknowledgement, then each
+    // content-free activity) carries through later unlabeled phases. Hosts
+    // speak a labelled thinking status, so it inherits only the model's own
+    // acknowledgement, never an activity name.
+    let transientStatusLabel: string | undefined;
     const emitStatus = (status: ChatTurnStatus): void => {
       if (!opts?.onStatus) return;
-      const visibleStatus = planningAcknowledgment
-        ? { ...status, label: planningAcknowledgment }
-        : status;
+      if (status.label) transientStatusLabel = status.label;
+      const inheritedLabel =
+        status.kind === "thinking"
+          ? planningAcknowledgment
+          : transientStatusLabel;
+      const visibleStatus =
+        !status.label && inheritedLabel
+          ? { ...status, label: inheritedLabel }
+          : status;
       const signature = JSON.stringify(visibleStatus);
       if (signature === lastStatusSignature) return;
       lastStatusSignature = signature;
@@ -2885,8 +2900,20 @@ async function generateChatResponseWithTiming(
                           // One transient label survives tool phases without entering
                           // response text or durable terminal persistence.
                           planningAcknowledgment = text;
-                          emitStatus({ kind: "thinking" });
+                          emitStatus({ kind: "thinking", label: text });
                           markInference("chat:planning-acknowledgment");
+                        }
+                      : undefined,
+                    // Audience-checked, content-free activity names drive the
+                    // working indicator on every turn, owner-private included.
+                    onActivityStatus: opts?.onStatus
+                      ? ({ actionName, label }) => {
+                          if (generationAbortController.signal.aborted) return;
+                          emitStatus({
+                            kind: "running_tool",
+                            toolName: actionName,
+                            label,
+                          });
                         }
                       : undefined,
                     onSettledActionResult: (actionResult) => {
@@ -3717,14 +3744,22 @@ export async function ensureCompatChatConnection(
   roomId: UUID;
   worldId: UUID;
 }> {
-  const ownerPrincipal =
+  const ownerAuthenticated =
     principal.kind === "owner_session" || principal.kind === "owner_api_token";
-  const userId = ownerPrincipal
-    ? ensureAdminEntityIdForChat(state)
-    : (stringToUuid(
-        `${identityName}:${channelIdPrefix}:external:${principal.principalId}`,
-      ) as UUID);
-  const principalScopedRoomKey = ownerPrincipal
+  // ELIZA_CONVERSATION_CALLER_ROLE=USER: the owner credential carries an end
+  // user's chat, so the turn speaks as the product user at role USER (the same
+  // mapping as resolveConversationCaller in conversation-routes.ts).
+  const productUser =
+    ownerAuthenticated && resolveOwnerChatCallerRole() === "USER";
+  const ownerPrincipal = ownerAuthenticated && !productUser;
+  const userId = productUser
+    ? productUserChatEntityId()
+    : ownerPrincipal
+      ? ensureAdminEntityIdForChat(state)
+      : (stringToUuid(
+          `${identityName}:${channelIdPrefix}:external:${principal.principalId}`,
+        ) as UUID);
+  const principalScopedRoomKey = ownerAuthenticated
     ? roomKey
     : `${principal.kind}:${principal.principalId}:${roomKey}`;
   const roomId = stringToUuid(
@@ -3744,7 +3779,10 @@ export async function ensureCompatChatConnection(
     metadata: ownerPrincipal ? { ownership: { ownerId: userId } } : {},
   });
   if (!ownerPrincipal) {
-    if (principal.kind === "service_gateway" && principal.sessionRole) {
+    if (
+      productUser ||
+      (principal.kind === "service_gateway" && principal.sessionRole)
+    ) {
       await grantSessionUserWorldRole(runtime, worldId, userId);
     }
     return { userId, roomId, worldId };
@@ -3782,7 +3820,8 @@ export async function ensureCompatChatConnection(
 }
 /**
  * Grant-on-first-contact USER world membership for an authenticated
- * machine-session (paired-device) principal's minted external entity, so its
+ * machine-session (paired-device) principal's minted external entity, or for
+ * the product user under `ELIZA_CONVERSATION_CALLER_ROLE=USER`, so its
  * turns resolve at least the session's boundary role through
  * `checkSenderRole`/`resolveEntityRole` (which read `world.metadata.roles`).
  *

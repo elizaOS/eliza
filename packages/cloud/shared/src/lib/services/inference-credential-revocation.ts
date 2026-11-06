@@ -21,6 +21,9 @@ const CREDENTIAL_CHECK_TIMEOUT_MS = 1_500;
 // Lifecycle writes need time to reach the object and confirm durable
 // state; request-time credential checks retain their shorter failure budget.
 const LIFECYCLE_MUTATION_TIMEOUT_MS = 10_000;
+// A gate outage costs each key the full mutation timeout, so post-commit sweeps
+// overlap their keys to stay inside one invocation.
+const POST_COMMIT_REVOCATION_BATCH_SIZE = 10;
 
 export type InferenceCredentialCheck =
   | {
@@ -237,6 +240,29 @@ export async function revokeInferenceApiKey(
     kind: "api_key",
     credentialId: apiKeyId,
   });
+}
+
+/**
+ * Runs every post-commit revocation step for every item and reports the items
+ * with a rejected step. Once the database has committed, nothing selects these
+ * rows again, so a failure on one item must not cost the others their attempt.
+ */
+export async function settlePostCommitRevocations<T>(
+  items: readonly T[],
+  steps: (item: T) => Promise<unknown>[],
+): Promise<{ item: T; reasons: unknown[] }[]> {
+  const failures: { item: T; reasons: unknown[] }[] = [];
+  for (let start = 0; start < items.length; start += POST_COMMIT_REVOCATION_BATCH_SIZE) {
+    const batch = items.slice(start, start + POST_COMMIT_REVOCATION_BATCH_SIZE);
+    const settled = await Promise.all(batch.map((item) => Promise.allSettled(steps(item))));
+    settled.forEach((outcomes, index) => {
+      const reasons = outcomes.flatMap((outcome) =>
+        outcome.status === "rejected" ? [outcome.reason] : [],
+      );
+      if (reasons.length > 0) failures.push({ item: batch[index] as T, reasons });
+    });
+  }
+  return failures;
 }
 
 /** Disable or re-enable every credential belonging to a Cloud user in one org. */

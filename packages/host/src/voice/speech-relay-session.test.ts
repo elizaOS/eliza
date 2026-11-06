@@ -1,8 +1,9 @@
-import { expect, test } from "vitest";
+import { expect, test, vi } from "vitest";
 import {
   createSpeechRelaySession,
   parseSpeechRelayControl,
   SPEECH_RELAY_BUDGET,
+  SPEECH_RELAY_RENEW_LEAD_MS,
   type SpeechRelayIdentity,
   type SpeechRelayPorts,
 } from "./speech-relay-session";
@@ -12,6 +13,11 @@ const identity: SpeechRelayIdentity = {
   organizationId: "org-a",
   userId: "user-a",
   cloudSessionId: "session-a",
+};
+const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
+const until = async (read: () => boolean) => {
+  for (let n = 0; n < 100 && !read(); n++) await sleep(5);
+  expect(read()).toBe(true);
 };
 const tick = async () => {
   for (let n = 0; n < 12; n++) await Promise.resolve();
@@ -34,7 +40,6 @@ function harness(overrides: Partial<SpeechRelayPorts> = {}) {
   };
   const ports: SpeechRelayPorts = {
     enabled: true,
-    assertTtsAllowed: async () => {},
     now: () => now,
     usageStore: usage,
     usageLimits: { organizationDailyMinutes: 5, userDailyMinutes: 5 },
@@ -80,6 +85,7 @@ function harness(overrides: Partial<SpeechRelayPorts> = {}) {
         cancel: () => order.push("tts-cancel"),
       };
     },
+    confirmTtsTransportStopped: async () => "transport_closed",
     emit: (event) => events.push(event),
     onClosed: (promise) => {
       closures.push(promise);
@@ -383,7 +389,10 @@ test("a durable dispatch marker blocks the provider factory and revocation drops
   await expect(speech).rejects.toThrow("closed");
   await s.close();
   expect(f.order).not.toContain("tts-open");
-  expect(f.settled).toEqual([
+  expect(
+    f.settled,
+    `queued-before-dispatch receipt=${JSON.stringify(f.settled)}`,
+  ).toEqual([
     {
       pcmBytes: 0,
       ttsCharacters: 0,
@@ -479,34 +488,15 @@ test("canonical Ink semantic events pass with safe fields and one Sonic context 
   await s.close();
 });
 
-test("public-TTS policy denial occurs before paid TTS marker or provider dispatch", async () => {
+test("each phrase reaches Sonic with only the paid dispatch marker before it", async () => {
   const markers: string[] = [];
   const f = harness({
-    assertTtsAllowed: async () => {
-      throw Error("Content failed safety review");
-    },
-    reserveCredits: async () => ({
-      beforeProviderDispatch: async (kind) => {
-        markers.push(kind);
-      },
-      settle: async () => {},
-    }),
-  });
-  const session = await f.open();
-  await expect(
-    session.control({ t: "tts", id: "turn", text: "blocked" }),
-  ).rejects.toThrow("safety review");
-  expect(markers).toEqual(["stt"]);
-  expect(f.order).not.toContain("tts-open");
-  expect(f.order).not.toContain("tts-phrase");
-  await session.close();
-});
-test("each ordered phrase is moderated with bounded prior context before Sonic receives it", async () => {
-  const reviewed: string[] = [];
-  const f = harness({
-      assertTtsAllowed: async (text) => {
-        reviewed.push(text);
-      },
+      reserveCredits: async () => ({
+        beforeProviderDispatch: async (kind) => {
+          markers.push(kind);
+        },
+        settle: async () => {},
+      }),
     }),
     session = await f.open();
   await session.control({ t: "tts", id: "one", text: "hello " });
@@ -514,31 +504,569 @@ test("each ordered phrase is moderated with bounded prior context before Sonic r
   await session.control({ t: "finish", id: "one" });
   f.complete();
   await session.control({ t: "tts", id: "two", text: " again" });
-  expect(reviewed).toEqual(["hello ", "hello world", "hello world again"]);
+  expect(markers).toEqual(["stt", "tts", "tts", "tts"]);
   expect(f.order.filter((value) => value === "tts-phrase")).toHaveLength(3);
   await session.close();
 });
-test("Stop, owner change and phrase cancel during async moderation never dispatch a late phrase", async () => {
-  for (const mode of ["stop", "owner", "cancel"]) {
-    let resolve: () => void = () => {};
-    const f = harness({
-        assertTtsAllowed: () =>
-          new Promise<void>((r) => {
-            resolve = r;
-          }),
+
+test("a cancelled context never dispatches its later phrases", async () => {
+  const f = harness(),
+    session = await f.open();
+  await session.control({ t: "tts", id: "turn", text: "first" });
+  await session.control({ t: "cancel", id: "turn" });
+  // A late phrase for a cancelled context is dropped, not dispatched.
+  await session.control({ t: "tts", id: "turn", text: "late" });
+  expect(f.order.filter((value) => value === "tts-phrase")).toHaveLength(1);
+  await session.close();
+});
+
+// cloud-speech-relay-client createStream sends { t: "prepare", id } before any
+// text, then tts phrases, then finish or cancel for the same id.
+test("a prepare opens one Sonic context before text; its phrases, audio and finish reuse it", async () => {
+  const markers: string[] = [];
+  const f = harness({
+      reserveCredits: async () => ({
+        beforeProviderDispatch: async (kind) => {
+          markers.push(kind);
+        },
+        settle: async (receipt) => {
+          f.settled.push(receipt);
+        },
       }),
-      session = await f.open();
-    const pending = session.control({ t: "tts", id: "turn", text: "waiting" });
-    await tick();
-    expect(f.order).not.toContain("tts-open");
-    if (mode === "stop") await session.control({ t: "stop" });
-    else if (mode === "owner") f.replace();
-    else await session.control({ t: "cancel", id: "turn" });
-    resolve();
-    if (mode === "cancel") await pending;
-    else await expect(pending).rejects.toThrow();
-    expect(f.order).not.toContain("tts-open");
+    }),
+    s = await f.open(),
+    id = crypto.randomUUID();
+  await s.control({ t: "prepare", id });
+  expect(f.order.at(-1)).toBe("tts-open");
+  expect(f.order).not.toContain("tts-phrase");
+  expect(markers).toEqual(["stt", "tts"]);
+  await s.control({ t: "tts", id, text: "Hello there.", flush: true });
+  await s.control({ t: "tts", id, text: " Second." });
+  f.audio(new Uint8Array([1, 2]));
+  await s.control({ t: "finish", id });
+  f.complete();
+  expect(f.order.filter((row) => row === "tts-open")).toHaveLength(1);
+  expect(f.order.filter((row) => row === "tts-phrase")).toHaveLength(2);
+  expect(f.order.filter((row) => row === "tts-finish")).toHaveLength(1);
+  expect(f.events).toEqual([
+    { t: "audio", id, bytes: new Uint8Array([1, 2]) },
+    { t: "complete", id },
+  ]);
+  expect(f.closures).toEqual([]);
+  await s.close();
+  expect(f.settled).toEqual([
+    {
+      pcmBytes: 0,
+      ttsCharacters: 20,
+      providerMayHaveStarted: true,
+      dispatched: { stt: true, tts: true },
+      outcome: "unknown",
+      outcomes: { stt: "unknown", tts: "complete" },
+    },
+  ]);
+});
+test("a prepare then finish with no text completes cleanly and spends no text budget", async () => {
+  const f = harness(),
+    s = await f.open(),
+    id = crypto.randomUUID();
+  await s.control({ t: "prepare", id });
+  await s.control({ t: "finish", id });
+  f.complete();
+  expect(f.order.slice(-2)).toEqual(["tts-open", "tts-finish"]);
+  expect(f.order).not.toContain("tts-phrase");
+  expect(f.events).toEqual([{ t: "complete", id }]);
+  // The whole text budget is still available after the silent context.
+  for (let n = 0; n < 4; n++)
+    await s.control({ t: "tts", id: `phrase-${n}`, text: "x".repeat(1024) });
+  expect(f.closures).toEqual([]);
+  await s.close();
+  expect(f.settled).toMatchObject([{ ttsCharacters: 4096 }]);
+});
+test("cancel or stop after a prepare cancels the idle context and drops its late frames", async () => {
+  for (const mode of ["cancel", "stop"] as const) {
+    const f = harness(),
+      s = await f.open(),
+      id = crypto.randomUUID();
+    await s.control({ t: "prepare", id });
+    await s.control(mode === "cancel" ? { t: "cancel", id } : { t: "stop" });
+    if (mode === "cancel") {
+      // A late phrase or finish for the cancelled context is dropped.
+      expect(await s.control({ t: "tts", id, text: "late" })).toBe(false);
+      expect(await s.control({ t: "finish", id })).toBe(false);
+      expect(f.closures).toEqual([]);
+    }
+    await s.close();
+    f.audio(new Uint8Array([1, 2]));
+    f.complete();
+    expect(f.events).toEqual([]);
+    expect(f.order.filter((row) => row === "tts-cancel")).toHaveLength(1);
     expect(f.order).not.toContain("tts-phrase");
-    await session.close();
+    expect(f.settled).toMatchObject([{ ttsCharacters: 0 }]);
   }
 });
+test("a prepare follows the existing context id rules and limits", async () => {
+  const f = harness(),
+    s = await f.open();
+  // A repeated prepare, or text after it, reuses the live context.
+  await s.control({ t: "prepare", id: "live" });
+  await s.control({ t: "prepare", id: "live" });
+  await s.control({ t: "tts", id: "live", text: "hello" });
+  expect(f.order.filter((row) => row === "tts-open")).toHaveLength(1);
+  await s.control({ t: "finish", id: "live" });
+  // A finished context cannot be prepared again.
+  await expect(s.control({ t: "prepare", id: "live" })).rejects.toBeDefined();
+  await s.close();
+  const g = harness(),
+    t = await g.open();
+  await t.control({ t: "tts", id: "done", text: "hello" });
+  g.complete();
+  // A completed context cannot be prepared again.
+  await expect(t.control({ t: "prepare", id: "done" })).rejects.toBeDefined();
+  await t.close();
+  const h = harness(),
+    u = await h.open();
+  for (let n = 0; n < 64; n++) await u.control({ t: "prepare", id: `p-${n}` });
+  await expect(u.control({ t: "prepare", id: "p-64" })).rejects.toBeDefined();
+  await u.close();
+  expect(h.order.filter((row) => row === "tts-open")).toHaveLength(64);
+});
+test("a durable dispatch marker blocks the prepared provider factory and revocation drops it", async () => {
+  let releaseTts!: () => void;
+  const f = harness({
+    reserveCredits: async () => ({
+      beforeProviderDispatch: (kind) =>
+        kind === "stt"
+          ? Promise.resolve()
+          : new Promise<void>((resolve) => {
+              releaseTts = resolve;
+            }),
+      settle: async (receipt) => {
+        f.settled.push(receipt);
+      },
+    }),
+  });
+  const s = await f.open();
+  const preparing = s.control({ t: "prepare", id: "p" });
+  await tick();
+  expect(f.order).not.toContain("tts-open");
+  f.revoke();
+  releaseTts();
+  await expect(preparing).rejects.toThrow("closed");
+  await s.close();
+  expect(f.order).not.toContain("tts-open");
+  expect(f.settled).toMatchObject([{ dispatched: { stt: true, tts: false } }]);
+});
+
+const isExtended = (event: unknown) =>
+  (event as { t?: unknown }).t === "extended";
+/** Opens a two-window session whose renewal fires on the real clock in ~20 ms. */
+function renewing(overrides: Partial<SpeechRelayPorts> = {}) {
+  const extensions: number[] = [];
+  const f = harness({
+    maxWindows: 2,
+    expiresAt: 1_000 + SPEECH_RELAY_RENEW_LEAD_MS + 20,
+    extend: async (_scope, expiresAt) => {
+      extensions.push(expiresAt);
+      return expiresAt;
+    },
+    ...overrides,
+  });
+  return { ...f, extensions };
+}
+test("a renewable session takes another quota minute and reservation before its end moves", async () => {
+  const f = renewing(),
+    session = await f.open();
+  await until(() => f.events.some((event) => isExtended(event)));
+  expect(f.order.filter((step) => step === "credits")).toHaveLength(2);
+  expect(f.extensions).toEqual([1_000 + SPEECH_RELAY_BUDGET.durationMs]);
+  expect(f.events).toContainEqual({
+    t: "extended",
+    expiresAt: new Date(f.extensions[0]).toISOString(),
+  });
+  // The first end no longer retires the session.
+  f.advance(SPEECH_RELAY_RENEW_LEAD_MS + 30);
+  await session.control({ t: "tts", id: "turn-1", text: "still live" });
+  // Text beyond one window's budget is admitted once two windows are held.
+  for (let n = 0; n < 4; n++)
+    await session.control({ t: "tts", id: "turn-1", text: "x".repeat(1024) });
+  await session.close();
+  const shares = f.settled.map(
+    (receipt) => (receipt as { ttsCharacters: number }).ttsCharacters,
+  );
+  expect(shares).toEqual([SPEECH_RELAY_BUDGET.ttsCharacters, 10]);
+});
+test("a refused extension or quota keeps the original end and never emits a renewal", async () => {
+  for (const mode of ["extend", "quota", "credits"]) {
+    let reservations = 0;
+    const f = renewing(
+      mode === "extend"
+        ? { extend: async () => 0 }
+        : mode === "quota"
+          ? {
+              usageLimits: {
+                organizationDailyMinutes: 1,
+                userDailyMinutes: 1,
+              },
+            }
+          : {
+              reserveCredits: async () => {
+                if (reservations++) throw Error("declined");
+                return {
+                  beforeProviderDispatch: async () => {},
+                  settle: async () => {},
+                };
+              },
+            },
+    );
+    const session = await f.open();
+    await sleep(60);
+    expect(f.events.some((event) => isExtended(event))).toBe(false);
+    expect(f.extensions).toEqual([]);
+    if (mode === "credits") expect(f.order).toContain("quota-release");
+    if (mode === "quota")
+      expect(f.order.filter((step) => step === "credits")).toHaveLength(1);
+    f.advance(SPEECH_RELAY_RENEW_LEAD_MS + 30);
+    await expect(
+      session.control({ t: "tts", id: "late", text: "after end" }),
+    ).rejects.toMatchObject({ code: "expired" });
+  }
+});
+test("more than one window without an extension port is refused before admission", async () => {
+  const f = harness({ maxWindows: 2 });
+  await expect(f.open()).rejects.toMatchObject({ code: "identity" });
+  expect(f.order).toEqual([]);
+});
+const UNGRANTED = {
+  pcmBytes: 0,
+  ttsCharacters: 0,
+  providerMayHaveStarted: false,
+  dispatched: { stt: false, tts: false },
+};
+test("a refused extension releases its reservation and quota minute once, at zero", async () => {
+  const f = renewing({ extend: async () => 0 }),
+    session = await f.open();
+  await until(() => f.order.includes("quota-release"));
+  await tick();
+  // The renewal's reservation is settled to zero right away, never at full cost.
+  expect(f.settled).toEqual([UNGRANTED]);
+  await session.close();
+  expect(f.settled).toHaveLength(2);
+  expect(f.settled[1]).toMatchObject({ dispatched: { stt: true } });
+  expect(f.order.filter((step) => step === "settle")).toHaveLength(2);
+  expect(f.order.filter((step) => step === "quota-release")).toHaveLength(1);
+});
+test("closing while an extension is in flight settles every reservation exactly once", async () => {
+  let accept: (end: number) => void = () => {};
+  const f = renewing({
+      extend: (_scope, expiresAt) =>
+        new Promise<number>((resolve) => {
+          accept = () => resolve(expiresAt);
+        }),
+    }),
+    session = await f.open();
+  await until(() => f.order.filter((step) => step === "credits").length === 2);
+  await tick();
+  await session.close();
+  // The renewal was never granted: its reservation carries no usage.
+  expect(f.settled).toHaveLength(2);
+  expect(f.settled[0]).toMatchObject({ dispatched: { stt: true } });
+  expect(f.settled[1]).toEqual(UNGRANTED);
+  accept(0);
+  await tick();
+  await sleep(5);
+  expect(f.settled).toHaveLength(2);
+  expect(f.events.some((event) => isExtended(event))).toBe(false);
+  expect(f.order.filter((step) => step === "quota-release")).toHaveLength(1);
+});
+test("a reservation that lands after close is released, not leaked", async () => {
+  let admit: () => void = () => {};
+  let calls = 0;
+  const f = renewing(),
+    reserve = f.ports.reserveCredits;
+  f.ports.reserveCredits = async (scope, budget) => {
+    if (calls++ === 0) return reserve(scope, budget);
+    await new Promise<void>((resolve) => {
+      admit = resolve;
+    });
+    return reserve(scope, budget);
+  };
+  const session = await f.open();
+  await until(() => calls === 2);
+  await session.close();
+  expect(f.settled).toHaveLength(1);
+  admit();
+  await until(() => f.settled.length === 2);
+  expect(f.settled[1]).toEqual(UNGRANTED);
+  expect(f.extensions).toEqual([]);
+  expect(f.order.filter((step) => step === "quota-release")).toHaveLength(1);
+});
+test("a late renewal never asks for more than one window past the current end", async () => {
+  const f = renewing({ expiresAt: 1_000 + 20 }),
+    session = await f.open();
+  // The renewal runs only after the clock already passed the current end.
+  f.advance(25);
+  await until(() => f.extensions.length === 1);
+  expect(f.extensions[0]).toBe(1_020 + SPEECH_RELAY_BUDGET.durationMs);
+  await session.close();
+});
+
+test("an entered TTS provider factory remains uncertain when it throws", async () => {
+  let attempts = 0;
+  const f = harness({
+    openTts: () => {
+      attempts++;
+      throw Error("provider upgrade outcome unknown");
+    },
+    confirmTtsTransportStopped: async () => "unknown",
+  });
+  const session = await f.open();
+  await expect(
+    session.control({ t: "tts", id: "ambiguous", text: "hello" }),
+  ).rejects.toThrow("provider upgrade outcome unknown");
+  await expect(session.close()).rejects.toThrow("cleanup was not confirmed");
+  expect(attempts).toBe(1);
+  expect(f.settled).toMatchObject([
+    {
+      ttsCharacters: 5,
+      dispatched: { stt: true, tts: true },
+      outcomes: { tts: "unknown" },
+    },
+  ]);
+  expect(session.retirement.evidence()?.tts).toBe("unknown");
+});
+
+test("earlier cancellation uncertainty survives a later pre-provider revocation", async () => {
+  let marks = 0,
+    release!: () => void;
+  const held = new Promise<void>((yes) => {
+    release = yes;
+  });
+  const f = harness({
+    reserveCredits: async () => ({
+      beforeProviderDispatch: async (kind) => {
+        if (kind === "tts" && ++marks === 2) await held;
+      },
+      settle: async (receipt) => {
+        f.settled.push(receipt);
+      },
+    }),
+  });
+  const session = await f.open();
+  await session.control({ t: "tts", id: "prior", text: "already" });
+  await session.control({ t: "cancel", id: "prior" });
+  const queued = session.control({ t: "tts", id: "queued", text: "later" });
+  await tick();
+  f.revoke();
+  release();
+  await expect(queued).rejects.toThrow("closed");
+  await session.close();
+  expect(f.order.filter((value) => value === "tts-open")).toHaveLength(1);
+  expect(f.settled).toMatchObject([
+    { ttsCharacters: 7, outcomes: { tts: "unknown" } },
+  ]);
+});
+
+test("unused renewed STT budgets do not repeat an unknown initial hold", async () => {
+  const f = renewing({ confirmProviderStopped: async () => "unknown" }),
+    session = await f.open();
+  await until(() => f.events.some((event) => isExtended(event)));
+  await session.close();
+  expect(f.settled).toHaveLength(2);
+  expect(f.settled[0]).toMatchObject({
+    pcmBytes: 0,
+    outcomes: { stt: "unknown" },
+    dispatched: { stt: true },
+  });
+  expect(f.settled[1]).toMatchObject({
+    pcmBytes: 0,
+    outcomes: { stt: "unknown" },
+    dispatched: { stt: false },
+  });
+  await session.close();
+  expect(f.settled).toHaveLength(2);
+});
+
+test("unknown STT drain preserves the used audio budget and releases unused renewal", async () => {
+  const f = renewing({ confirmProviderStopped: async () => "unknown" }),
+    session = await f.open();
+  await until(() => f.events.some((event) => isExtended(event)));
+  f.advance(1_000);
+  session.sendPcm(new Uint8Array(SPEECH_RELAY_BUDGET.chunkBytes));
+  await session.close();
+  expect(f.settled).toHaveLength(2);
+  expect(f.settled[0]).toMatchObject({
+    pcmBytes: SPEECH_RELAY_BUDGET.chunkBytes,
+    outcomes: { stt: "unknown" },
+    dispatched: { stt: true },
+  });
+  expect(f.settled[1]).toMatchObject({
+    pcmBytes: 0,
+    outcomes: { stt: "unknown" },
+    dispatched: { stt: false },
+  });
+});
+
+test("a send that throws after dispatch at the next STT budget keeps that budget uncertain", async () => {
+  vi.useFakeTimers();
+  vi.setSystemTime(1_000);
+  let session: Awaited<ReturnType<typeof createSpeechRelaySession>> | undefined;
+  let attempted = 0;
+  const windowBytes =
+    (SPEECH_RELAY_BUDGET.durationMs * SPEECH_RELAY_BUDGET.pcmBytesPerSecond) /
+    1000;
+  const f = harness({
+    expiresAt: 1_000 + SPEECH_RELAY_BUDGET.durationMs,
+    maxWindows: 2,
+    extend: async (_scope, end) => end,
+    confirmProviderStopped: async () => "unknown",
+    openStt: () => ({
+      sendAudioChunk: (chunk) => {
+        attempted += chunk.byteLength;
+        if (attempted > windowBytes) throw Error("send dispatched then threw");
+      },
+      cancel: () => {},
+    }),
+  });
+  try {
+    session = await f.open();
+    for (let n = 0; n < windowBytes / SPEECH_RELAY_BUDGET.chunkBytes; n++) {
+      f.advance(100);
+      await vi.advanceTimersByTimeAsync(100);
+      session.sendPcm(new Uint8Array(SPEECH_RELAY_BUDGET.chunkBytes));
+    }
+    expect(f.events.filter(isExtended)).toHaveLength(1);
+    f.advance(100);
+    await vi.advanceTimersByTimeAsync(100);
+    const activeSession = session;
+    expect(() =>
+      activeSession.sendPcm(new Uint8Array(SPEECH_RELAY_BUDGET.chunkBytes)),
+    ).toThrow("send dispatched then threw");
+    await session.close();
+    expect(attempted).toBe(windowBytes + SPEECH_RELAY_BUDGET.chunkBytes);
+    expect(f.settled).toHaveLength(2);
+    expect(f.settled[0]).toMatchObject({
+      pcmBytes: windowBytes,
+      dispatched: { stt: true },
+      outcomes: { stt: "unknown" },
+    });
+    // Confirmed bytes did not advance, but the attempted send may have billed.
+    expect(f.settled[1]).toMatchObject({
+      pcmBytes: 0,
+      dispatched: { stt: true },
+      outcomes: { stt: "unknown" },
+    });
+    expect(() =>
+      activeSession.sendPcm(new Uint8Array(SPEECH_RELAY_BUDGET.chunkBytes)),
+    ).toThrow();
+    await session.close();
+    expect(f.settled).toHaveLength(2);
+  } finally {
+    await session?.close().catch(() => {});
+    vi.useRealTimers();
+  }
+});
+
+test("complete STT drain splits a full, partial and unused budget without changing usage", async () => {
+  vi.useFakeTimers();
+  vi.setSystemTime(1_000);
+  let delivered = 0;
+  let session: Awaited<ReturnType<typeof createSpeechRelaySession>> | undefined;
+  const windowBytes =
+    (SPEECH_RELAY_BUDGET.durationMs * SPEECH_RELAY_BUDGET.pcmBytesPerSecond) /
+    1000;
+  const f = harness({
+    expiresAt: 1_000 + SPEECH_RELAY_BUDGET.durationMs,
+    maxWindows: 3,
+    extend: async (_scope, end) => end,
+    openStt: () => ({
+      sendAudioChunk: (chunk) => {
+        delivered += chunk.byteLength;
+      },
+      cancel: () => {},
+      drain: async () => ({
+        source: "provider-graceful-close" as const,
+        audioBytes: delivered,
+        sampleRate: 16000 as const,
+        channels: 1 as const,
+        encoding: "pcm_s16le" as const,
+      }),
+    }),
+  });
+  try {
+    session = await f.open();
+    for (let n = 0; n <= windowBytes / SPEECH_RELAY_BUDGET.chunkBytes; n++) {
+      f.advance(100);
+      await vi.advanceTimersByTimeAsync(100);
+      session.sendPcm(new Uint8Array(SPEECH_RELAY_BUDGET.chunkBytes));
+    }
+    f.advance(39_900);
+    await vi.advanceTimersByTimeAsync(39_900);
+    expect(f.events.filter(isExtended)).toHaveLength(2);
+    await session.close();
+    expect(f.settled).toHaveLength(3);
+    expect(f.settled).toMatchObject([
+      {
+        pcmBytes: windowBytes,
+        outcomes: { stt: "complete" },
+        dispatched: { stt: true },
+      },
+      {
+        pcmBytes: SPEECH_RELAY_BUDGET.chunkBytes,
+        outcomes: { stt: "complete" },
+        dispatched: { stt: true },
+      },
+      {
+        pcmBytes: 0,
+        outcomes: { stt: "complete" },
+        dispatched: { stt: false },
+      },
+    ]);
+    expect(delivered).toBe(windowBytes + SPEECH_RELAY_BUDGET.chunkBytes);
+  } finally {
+    await session?.close().catch(() => {});
+    vi.useRealTimers();
+  }
+});
+
+for (const windows of [3, 10]) {
+  test(`zero PCM with ${windows} granted STT windows retains only the initial unknown risk`, async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(1_000);
+    let session:
+      | Awaited<ReturnType<typeof createSpeechRelaySession>>
+      | undefined;
+    const f = harness({
+      expiresAt: 1_000 + SPEECH_RELAY_BUDGET.durationMs,
+      maxWindows: windows,
+      usageLimits: { organizationDailyMinutes: 10, userDailyMinutes: 10 },
+      extend: async (_scope, end) => end,
+      confirmProviderStopped: async () => "unknown",
+    });
+    try {
+      session = await f.open();
+      for (let n = 1; n < windows; n++) {
+        f.advance(50_000);
+        await vi.advanceTimersByTimeAsync(50_000);
+      }
+      expect(f.events.filter(isExtended)).toHaveLength(windows - 1);
+      await session.close();
+      expect(f.settled).toHaveLength(windows);
+      expect(f.settled[0]).toMatchObject({
+        pcmBytes: 0,
+        dispatched: { stt: true },
+        outcomes: { stt: "unknown" },
+      });
+      for (const receipt of f.settled.slice(1))
+        expect(receipt).toMatchObject({
+          pcmBytes: 0,
+          dispatched: { stt: false },
+          outcomes: { stt: "unknown" },
+        });
+      await session.close();
+      expect(f.settled).toHaveLength(windows);
+    } finally {
+      await session?.close().catch(() => {});
+      vi.useRealTimers();
+    }
+  });
+}

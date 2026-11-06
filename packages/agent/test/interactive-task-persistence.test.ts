@@ -128,6 +128,20 @@ describe("durable interactive task journal", () => {
         },
       ).task;
       expect(task.status).toBe("cancelled");
+      expect(
+        restarted
+          .events(input.id, owner)
+          .events.filter((event) => event.operationId !== undefined)
+          .map(({ kind, operationId, operationStatus }) => [
+            kind,
+            operationId,
+            operationStatus,
+          ]),
+      ).toEqual([
+        ["prepare", "op-1", "prepared"],
+        ["dispatch", "op-1", "dispatched"],
+        ["reconcile", "op-1", "succeeded"],
+      ]);
       expect(restarted.create({ ...input, id: "task-2" }).id).toBe("task-2");
       expect(() => restarted.create(input)).toThrow(/identity/);
     } finally {
@@ -135,6 +149,85 @@ describe("durable interactive task journal", () => {
       rmSync(root, { recursive: true, force: true });
     }
   });
+  it("recovers a stored dispatched operation whose plan no longer matches the task", () => {
+    const root = mkdtempSync(join(tmpdir(), "eliza-task-stale-dispatch-"));
+    const connections: DatabaseSync[] = [];
+    const open = () => {
+      const connection = new DatabaseSync(join(root, "host.sqlite"));
+      connections.push(connection);
+      connection.exec("PRAGMA synchronous = FULL");
+      return { connection, store: new SqliteInteractiveTaskStore(connection) };
+    };
+    try {
+      const { connection, store } = open();
+      store.create(input);
+      let task = store.transition(
+        input.id,
+        { owner, expectedRevision: 0, now: 1001 },
+        {
+          type: "observe",
+          observation: {
+            id: "view-1",
+            pageId: "page-1",
+            version: 1,
+            inputRevision: 0,
+            origin: "https://example.org",
+            observedAt: 1001,
+          },
+        },
+      ).task;
+      task = store.transition(
+        input.id,
+        { owner, expectedRevision: task.revision, now: 1002 },
+        {
+          type: "prepare",
+          proposal: {
+            id: "op-1",
+            taskId: input.id,
+            epoch: 0,
+            observationId: "view-1",
+            observationVersion: 1,
+            inputRevision: 0,
+            targetRef: "field-1",
+            capability: "fill",
+            authorizationId: "grant",
+            expiresAt: 5000,
+          },
+        },
+      ).task;
+      task = store.transition(
+        input.id,
+        { owner, expectedRevision: task.revision, now: 1003 },
+        { type: "dispatch", operationId: "op-1" },
+      ).task;
+      // A row written by another build or by hand: the effect may already have
+      // happened, so the stale plan must still load and recover to unknown.
+      const stale = structuredClone(task);
+      stale.operations[0].proposal.authorizationId = "grant-old";
+      stale.operations[0].proposal.observationId = "view-0";
+      connection
+        .prepare(
+          "UPDATE interactive_task_journal_v1 SET document = ? WHERE id = ?",
+        )
+        .run(JSON.stringify(stale), input.id);
+      for (const each of connections.splice(0)) each.close();
+      const restarted = open().store;
+      const recovered = restarted.recoverOwner(owner, 1004);
+      if (!recovered) throw new Error("Expected the persisted task");
+      expect(recovered.operations[0].status).toBe("unknown");
+      expect(recovered.status).toBe("paused");
+      const cancelled = restarted.transition(
+        input.id,
+        { owner, expectedRevision: recovered.revision, now: 1005 },
+        { type: "cancel" },
+      ).task;
+      expect(cancelled.status).toBe("cancelled");
+    } finally {
+      for (const connection of connections) connection.close();
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
+
   it("rejects a non-durable host configuration", () => {
     const db = new DatabaseSync(":memory:");
     try {

@@ -8,8 +8,15 @@ import {
   inspectDevelopmentRuntime,
 } from "./committed-source.mjs";
 
-/** Build a pinned mobile payload; the consumer supplies skills and gateway composition.
- * `embeddingModel: false` stages no BGE embedding model, for an agent that never loads it. */
+const BARE_SPECIFIER =
+  /^(?:@[a-z0-9][a-z0-9._-]*\/)?[a-z0-9][a-z0-9._-]*(?:\/[a-z0-9._@-]+)*$/i;
+
+/**
+ * Build a pinned mobile payload; the consumer supplies skills and gateway composition.
+ * `stubPlugins` names packages the consumer never loads; the bundle omits them
+ * (ELIZA_MOBILE_STUB_PLUGINS in build-mobile-bundle.ts).
+ * `embeddingModel: false` stages no BGE embedding model, for an agent that never loads it.
+ */
 export function buildConsumerAndroidRuntime({
   source,
   expectedCommit,
@@ -19,6 +26,7 @@ export function buildConsumerAndroidRuntime({
   stageGateway,
   targetAbi = "arm64-v8a",
   bunTarget = "linux-musl",
+  stubPlugins = [],
   embeddingModel = true,
 }) {
   if (typeof embeddingModel !== "boolean")
@@ -27,6 +35,21 @@ export function buildConsumerAndroidRuntime({
     throw new ConsumerSourceError(
       "Consumer runtime ABI must be arm64-v8a or x86_64",
     );
+  // Same rule as parseMobileStubPlugins (packages/agent/scripts/mobile-stub-plugins.ts),
+  // checked before any source read or output, so provenance names what was stubbed.
+  if (
+    !Array.isArray(stubPlugins) ||
+    stubPlugins.some(
+      (name) =>
+        typeof name !== "string" ||
+        !BARE_SPECIFIER.test(name) ||
+        name.split("/").some((part) => part === "." || part === ".."),
+    )
+  )
+    throw new ConsumerSourceError(
+      "Consumer stub plugins must be a list of package names",
+    );
+  stubPlugins = [...new Set(stubPlugins)].sort();
   const arm64 = targetAbi === "arm64-v8a";
   if (bunTarget !== "linux-musl" && bunTarget !== "android")
     throw new ConsumerSourceError("Unsupported consumer Bun target");
@@ -97,7 +120,12 @@ export function buildConsumerAndroidRuntime({
   const stageSourceHash = hash(
     fs.readFileSync(path.join(source, stageRelative)),
   );
-  execute([buildRelative, "--target=android"]);
+  execute(
+    [buildRelative, "--target=android"],
+    stubPlugins.length > 0
+      ? { ELIZA_MOBILE_STUB_PLUGINS: stubPlugins.join(",") }
+      : {},
+  );
   const distMobile = path.join(source, "packages/agent/dist-mobile");
   // The staging contract requires skills; supply this product's assistance
   // policy only when the upstream bundle emits none.
@@ -208,6 +236,7 @@ export function buildConsumerAndroidRuntime({
     stagedProvenanceSha256: hash(fs.readFileSync(manifestPath)),
     target: targetAbi,
     bunTarget,
+    stubPlugins,
     embeddingModel,
     completedAt: new Date().toISOString(),
     claim:

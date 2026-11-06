@@ -35,11 +35,11 @@ public final class RuntimeRequestDispatcherTest {
     }
     try (RuntimeRequestDispatcher dispatcher = new RuntimeRequestDispatcher()) {
       AtomicInteger rejectedRuns = new AtomicInteger();
-      check(dispatcher.submit("/messages", 65537, rejectedRuns::incrementAndGet) == TOO_LARGE);
-      check(dispatcher.submit("/voice/stt", 12 * 1024 * 1024 + 1, rejectedRuns::incrementAndGet) == TOO_LARGE);
+      check(dispatcher.submit("/messages", RuntimeRequestDispatcher.MAX_BODY_TEXT_UNITS + 1, rejectedRuns::incrementAndGet) == TOO_LARGE);
+      check(dispatcher.submit("/voice/stt", RuntimeRequestDispatcher.MAX_STT_BODY_TEXT_UNITS + 1, rejectedRuns::incrementAndGet) == TOO_LARGE);
       CountDownLatch completed = new CountDownLatch(2);
-      check(dispatcher.submit("/messages", 65536, completed::countDown) == ACCEPTED);
-      check(dispatcher.submit("/voice/stt", 12 * 1024 * 1024, completed::countDown) == ACCEPTED);
+      check(dispatcher.submit("/messages", RuntimeRequestDispatcher.MAX_BODY_TEXT_UNITS, completed::countDown) == ACCEPTED);
+      check(dispatcher.submit("/voice/stt", RuntimeRequestDispatcher.MAX_STT_BODY_TEXT_UNITS, completed::countDown) == ACCEPTED);
       await(completed); check(rejectedRuns.get() == 0);
       try { dispatcher.submit("/messages", -1, () -> {}); throw new AssertionError("negative size accepted"); }
       catch (IllegalArgumentException expected) { assertions++; }

@@ -1,4 +1,4 @@
-import { TASK_ID_PATTERN } from "@elizaos/core/protocol";
+import { TASK_ID_PATTERN } from "@elizaos/core/task-events";
 
 export type TaskView = {
   schemaVersion: 1;

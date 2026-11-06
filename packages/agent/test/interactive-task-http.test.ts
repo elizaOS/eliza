@@ -5,6 +5,7 @@ import { join } from "node:path";
 import { DatabaseSync } from "node:sqlite";
 import { TASK_ID_PATTERN } from "@elizaos/core/protocol";
 import { describe, expect, it, vi } from "vitest";
+import { TaskHostError } from "../../host/native-host/errors.mjs";
 import {
   TaskLifecycle,
   type TaskLifecycleState,
@@ -64,6 +65,51 @@ function goal(goalRef: string) {
 }
 
 describe("interactive task HTTP host", () => {
+  it("answers a host goal refusal with its code and hides other failures", async () => {
+    const storage = setup();
+    const runtime = new InteractiveTaskRuntime({
+      owner,
+      store: storage.store,
+      actuator: {
+        capabilities: [],
+        observe: async () => {
+          throw new Error("unexpected observe");
+        },
+        execute: async () => {
+          throw new Error("unexpected execute");
+        },
+        quiesce: async () => {},
+      },
+    });
+    const refusals = [
+      new TaskHostError("Open a website first", {
+        code: "HOST_GOAL_NO_PAGE",
+      }),
+      Object.assign(new Error("Internal detail"), { code: "ENOENT" }),
+    ];
+    const http = await listenTaskHttp(
+      createInteractiveTaskHandler({
+        runtime,
+        authenticate: async () => owner,
+        authorizeGoal: async () => {
+          throw refusals.shift();
+        },
+      }),
+    );
+    try {
+      const refused = await http.call("/tasks", { goalRef: "read-page" });
+      expect(refused.status).toBe(409);
+      expect(await refused.json()).toEqual({ code: "HOST_GOAL_NO_PAGE" });
+      const failed = await http.call("/tasks", { goalRef: "read-page" });
+      expect(failed.status).toBe(503);
+      expect(await failed.json()).toEqual({ code: "TASK_UNAVAILABLE" });
+      expect(runtime.current()).toBeNull();
+    } finally {
+      await http.close();
+      storage.close();
+    }
+  });
+
   it.each([false, true])(
     "completes through host review and retains the record across restart (cleanup failure: %s)",
     async (cleanupFails) => {
