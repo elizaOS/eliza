@@ -373,22 +373,35 @@ export function stringifyForDiagnostics(value: unknown): string {
 }
 
 /**
- * Tag-name shape of an invented pseudo-tool tag: `_`-bearing OR ≥4 uppercase
- * chars, case-sensitive, so quoted real acronyms (`<AI>`) stay prose. Single
- * source of truth shared by the reply stripper below, the planner's embedded
- * tool-call recovery, and the evaluator's user-facing-answer screen — the
- * three must agree on what counts as tool markup, or text screened by one is
- * silently laundered by another (matrix F38, tj-9129a432454364).
+ * Tag-name shapes for an invented pseudo-tool tag. An underscore name
+ * (`NOTES_CREATE`, `BROWSE_PAGE`) is a tool. A bare run of four or more
+ * capitals is a tool only when a JSON object starts the tag body
+ * (`<SEARCH>{"q":"weather"}`). A bare tag in a sentence (`<HTML>`, `<JSON>`,
+ * `<HTTP>`, `<HEAD>`) is prose. A short acronym (`<AI>`) stays prose because
+ * the name is shorter than four letters.
+ *
+ * The reply stripper and the user-facing-answer screen share these shapes.
+ * They must agree, or text screened by one is shipped by the other
+ * (matrix F38, tj-9129a432454364).
  */
-export const PSEUDO_TOOL_TAG_NAME_SRC =
-	"[A-Z][A-Z0-9]*(?:_[A-Z0-9]+)+|[A-Z][A-Z0-9]{3,}";
+const PSEUDO_TOOL_SNAKE_TAG_SRC = "[A-Z][A-Z0-9]*(?:_[A-Z0-9]+)+";
+const PSEUDO_TOOL_BARE_TAG_SRC = "[A-Z][A-Z0-9]{3,}";
+export const PSEUDO_TOOL_TAG_NAME_SRC = `${PSEUDO_TOOL_SNAKE_TAG_SRC}|${PSEUDO_TOOL_BARE_TAG_SRC}`;
 
-const PSEUDO_TOOL_TAG_BLOCK_RE = new RegExp(
-	`<(${PSEUDO_TOOL_TAG_NAME_SRC})>[\\s\\S]*?</\\1>`,
+const PSEUDO_TOOL_SNAKE_BLOCK_RE = new RegExp(
+	`<(${PSEUDO_TOOL_SNAKE_TAG_SRC})>[\\s\\S]*?</\\1>`,
 	"g",
 );
-const PSEUDO_TOOL_TAG_OPEN_TAIL_RE = new RegExp(
-	`<(?:${PSEUDO_TOOL_TAG_NAME_SRC})>[\\s\\S]*$`,
+const PSEUDO_TOOL_SNAKE_OPEN_TAIL_RE = new RegExp(
+	`<(?:${PSEUDO_TOOL_SNAKE_TAG_SRC})>[\\s\\S]*$`,
+	"g",
+);
+const PSEUDO_TOOL_BARE_BLOCK_RE = new RegExp(
+	`<(${PSEUDO_TOOL_BARE_TAG_SRC})>\\s*\\{[\\s\\S]*?</\\1>`,
+	"g",
+);
+const PSEUDO_TOOL_BARE_OPEN_TAIL_RE = new RegExp(
+	`<(?:${PSEUDO_TOOL_BARE_TAG_SRC})>\\s*\\{[\\s\\S]*$`,
 	"g",
 );
 
@@ -403,7 +416,8 @@ const PSEUDO_TOOL_TAG_OPEN_TAIL_RE = new RegExp(
 export function containsToolCallShapedMarkup(text: string): boolean {
 	return (
 		/<\/?(?:tool_call|function_call|arg_key|arg_value)\b/i.test(text) ||
-		new RegExp(`<(?:${PSEUDO_TOOL_TAG_NAME_SRC})>`).test(text)
+		new RegExp(`<(?:${PSEUDO_TOOL_SNAKE_TAG_SRC})>`).test(text) ||
+		new RegExp(`<(?:${PSEUDO_TOOL_BARE_TAG_SRC})>\\s*\\{`).test(text)
 	);
 }
 
@@ -472,15 +486,15 @@ export function stripJsonStructuralJunkReply(value: string): string {
 			/<tool_call\b[^>]*>\s*(?=[A-Z][A-Z0-9_]{2,}|[\s\S]*?<arg_(?:key|value)\b)[\s\S]*$/g,
 			"",
 		)
-		// Invented pseudo-tool-invocation tags: a weak model reaching for a
-		// capability it cannot call structurally emits a bare `<UPPER_SNAKE>`
-		// tag block instead (observed on cerebras zai/gemma:
-		// `<BROWSE_PAGE><url>…</url></BROWSE_PAGE>`). Uppercase-snake XML tags are
-		// never legitimate reply prose, so strip the paired block and any
-		// truncated-open tail. Case-SENSITIVE + `_`-bearing OR ≥4-char to avoid
-		// touching real acronyms a user might quote (`<AI>` stays).
-		.replace(PSEUDO_TOOL_TAG_BLOCK_RE, "")
-		.replace(PSEUDO_TOOL_TAG_OPEN_TAIL_RE, "")
+		// Invented pseudo-tool tags. An underscore name is always a tool
+		// (`<BROWSE_PAGE><url>…</url></BROWSE_PAGE>`, `<NOTES_CREATE>{…}`).
+		// A bare run of four or more capitals is a tool only when `{` starts
+		// the body. `<HTML>`, `<JSON>`, `<HTTP>`, and `<HEAD>` in a sentence
+		// are prose; deleting from that tag used to drop the rest of the reply.
+		.replace(PSEUDO_TOOL_SNAKE_BLOCK_RE, "")
+		.replace(PSEUDO_TOOL_SNAKE_OPEN_TAIL_RE, "")
+		.replace(PSEUDO_TOOL_BARE_BLOCK_RE, "")
+		.replace(PSEUDO_TOOL_BARE_OPEN_TAIL_RE, "")
 		.trim();
 	if (!cleaned) return "";
 	return /^[\s{}[\]":,]+$/.test(cleaned) ? "" : cleaned;
