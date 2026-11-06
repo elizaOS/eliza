@@ -1938,6 +1938,153 @@ describe("NativeTaskActuator over the native socket", () => {
     }
   });
 
+  it("refuses a reviewed target the browser cannot check unless the host says omit", async () => {
+    for (const policy of [undefined, "refuse"] as const) {
+      const refusals: TaskActionRefusal[] = [];
+      const browser = await actuatorOverSocket(
+        ["task-bind", "task-guide", "task-action-feedback"],
+        {
+          ...(policy ? { unsupportedExpectedTarget: policy } : {}),
+          onNotDispatched: (refusal) => refusals.push(refusal),
+        },
+      );
+      try {
+        await expect(
+          browser.click({ expectedSelector: "#pay" }),
+        ).rejects.toMatchObject({ code: "TASK_ACTION_NOT_DISPATCHED" });
+        expect(refusals.map((refusal) => refusal.reason)).toEqual([
+          "expected-target-unsupported",
+        ]);
+        expect(
+          browser
+            .sent("command")
+            .filter((message) => message.command.subaction === "click"),
+        ).toHaveLength(0);
+      } finally {
+        await browser.close();
+      }
+    }
+  });
+
+  it("under omit still refuses a selector that is not a reviewed binding target", async () => {
+    const refusals: TaskActionRefusal[] = [];
+    const browser = await actuatorOverSocket(
+      ["task-bind", "task-guide", "task-action-feedback"],
+      {
+        unsupportedExpectedTarget: "omit",
+        onNotDispatched: (refusal) => refusals.push(refusal),
+      },
+    );
+    try {
+      await expect(
+        browser.click({ expectedSelector: "#elsewhere" }),
+      ).rejects.toMatchObject({ code: "TASK_ACTION_NOT_DISPATCHED" });
+      // The binding check runs first: the reason is not the unsupported check.
+      expect(refusals).toEqual([
+        {
+          taskId: browser.taskId,
+          proposalId: "operation-1",
+          capability: "browser.click",
+          source: "actuator",
+          reason: "target-not-reviewed",
+        },
+      ]);
+      expect(
+        browser
+          .sent("command")
+          .filter((message) => message.command.subaction === "click"),
+      ).toHaveLength(0);
+    } finally {
+      await browser.close();
+    }
+  });
+
+  it("under omit sends a reviewed target's action without the selector the browser cannot check", async () => {
+    const refusals: TaskActionRefusal[] = [];
+    const browser = await actuatorOverSocket(
+      ["task-bind", "task-guide", "task-action-feedback"],
+      {
+        unsupportedExpectedTarget: "omit",
+        describeAction: () => "I will press the button.",
+        onNotDispatched: (refusal) => refusals.push(refusal),
+      },
+    );
+    try {
+      expect(await browser.click({ expectedSelector: "#pay" })).toMatchObject({
+        status: "succeeded",
+      });
+      expect(refusals).toEqual([]);
+      const clicks = browser
+        .sent("command")
+        .filter((message) => message.command.subaction === "click");
+      expect(clicks).toHaveLength(1);
+      expect(clicks[0].command).toMatchObject({ subaction: "click", id: "1" });
+      expect(clicks[0].command).not.toHaveProperty("expectedSelector");
+      expect(clicks[0].command).not.toHaveProperty("actionText");
+    } finally {
+      await browser.close();
+    }
+  });
+
+  it("never sends a commit grant under omit, since its reviewed control goes unchecked", async () => {
+    const refusals: TaskActionRefusal[] = [];
+    const browser = await actuatorOverSocket(
+      ["task-bind", "task-guide", "task-action-feedback", "task-commit-grant"],
+      {
+        unsupportedExpectedTarget: "omit",
+        onNotDispatched: (refusal) => refusals.push(refusal),
+        commitGrant: (task, proposal) => ({
+          grantId: "yes-1",
+          taskId: task.id,
+          epoch: task.epoch,
+          origin: "https://bills.example",
+          targetRef: proposal.targetRef,
+          selector: "#pay",
+          subaction: "click",
+          expiresAt: Date.now() + 30000,
+        }),
+      },
+    );
+    try {
+      await expect(
+        browser.click({ expectedSelector: "#pay" }),
+      ).rejects.toMatchObject({ code: "TASK_ACTION_NOT_DISPATCHED" });
+      expect(refusals).toMatchObject([
+        { source: "actuator", reason: "commit-grant-mismatch" },
+      ]);
+      expect(
+        browser
+          .sent("command")
+          .filter((message) => message.command.subaction === "click"),
+      ).toHaveLength(0);
+    } finally {
+      await browser.close();
+    }
+  });
+
+  it("keeps the reviewed target on a browser that checks it, even under omit", async () => {
+    const browser = await actuatorOverSocket(
+      [
+        "task-bind",
+        "task-guide",
+        "task-action-feedback",
+        "task-expected-target",
+      ],
+      { unsupportedExpectedTarget: "omit" },
+    );
+    try {
+      expect(await browser.click({ expectedSelector: "#pay" })).toMatchObject({
+        status: "succeeded",
+      });
+      const clicked = browser
+        .sent("command")
+        .find((message) => message.command.subaction === "click");
+      expect(clicked?.command).toMatchObject({ expectedSelector: "#pay" });
+    } finally {
+      await browser.close();
+    }
+  });
+
   it("applies the host's guidance policy, keeps the paused cursor and the generic preview", async () => {
     const browser = await actuatorOverSocket(
       [
