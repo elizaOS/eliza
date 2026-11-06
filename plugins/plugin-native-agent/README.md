@@ -273,6 +273,17 @@ cleanup and cancellation between startup stages.
 same verified immutable bundle preparation path. Hosts retain asset names,
 required library lists, storage layout and inventory format; presence does not
 establish integrity or readiness.
+`prepare` and `prepareFromAsset` hash every file on every launch.
+`prepareSealed` and `prepareSealedFromAsset` let a host start sooner. After a full
+SHA-256 check they write a seal to `<root>/.seals/<release>`, outside the release.
+The seal holds the size, mtime, ctime, inode, mode and owner of each listed file and
+native library. While these values match and the seal is under 24 hours old, the
+launch skips the hash and returns `Prepared.deferred`. The host must then call
+`Prepared.verify()` off the startup path and stop the runtime if it throws. A
+missing, changed, unreadable, old or future seal makes the store hash before it
+returns. The seal is not keyed, so code running as the app user can forge it. Only
+`verify()` catches that, and the runtime may run tampered code until it does.
+`Prepared.sealed` is false when no seal could be written; the next launch then hashes first.
 
 Source-checkout consumers can use `scripts/updater-contract-fixtures.mjs` to stage
 or run the five portable updater contracts in their adapter namespace. This keeps
