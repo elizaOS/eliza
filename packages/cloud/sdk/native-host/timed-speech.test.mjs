@@ -491,6 +491,7 @@ function live() {
         new TextEncoder().encode(`${JSON.stringify(value)}\n`),
       ),
     end: () => controller.close(),
+    error: (value) => controller.error(value),
   };
 }
 
@@ -620,4 +621,128 @@ test("the SDK client rejects a batch with a gap or an early completion and stops
     await assert.rejects(stream.pull(), /Invalid speech/);
     assert.equal(paths.at(-1), "/voice/tts/stream/cancel");
   }
+});
+
+test("a finished stream nobody pulls keeps only its terminal frame after replayMs", async (t) => {
+  let time = 0;
+  const { service } = sessions(t, { now: () => time, replayMs: 100 });
+  const a = await service.start({ requestId, owner, input });
+  await tick();
+  time = 100;
+  const pull = (cursor) =>
+    service.pull({ streamId: a.streamId, owner, cursor, batch: true });
+  await assert.rejects(pull(0), (error) => error.status === 409);
+  assert.deepEqual(await pull(2), { cursor: 2, frames: [done(2)] });
+});
+
+test("finished streams nobody pulled count toward maxActive until delivered or trimmed", async (t) => {
+  let time = 0;
+  const { service } = sessions(t, { now: () => time, replayMs: 100 });
+  const start = (i) =>
+    service.start({ requestId: `unpulled-request-${i}`, owner, input });
+  const a = await start(1);
+  await start(2);
+  await tick();
+  await assert.rejects(start(3), (error) => error.status === 429);
+  // Delivering the done frame frees a slot; the replay audio stays.
+  const reply = await service.pull({
+    streamId: a.streamId,
+    owner,
+    cursor: 0,
+    batch: true,
+  });
+  assert.equal(reply.frames.at(-1).type, "done");
+  await start(3);
+  await tick();
+  await assert.rejects(start(4), (error) => error.status === 429);
+  time = 100;
+  await start(4);
+});
+
+test("the replay window trims a finished stream without another call", async (t) => {
+  const { service } = sessions(t, { now: () => 0, replayMs: 20 });
+  const a = await service.start({ requestId, owner, input });
+  await tick();
+  const pull = (cursor) =>
+    service.pull({ streamId: a.streamId, owner, cursor, batch: true });
+  assert.equal((await pull(0)).frames.length, 3);
+  // The clock never moves, so only the timer can trim.
+  await new Promise((resolve) => setTimeout(resolve, 60));
+  await assert.rejects(pull(0), (error) => error.status === 409);
+  assert.deepEqual(await pull(2), { cursor: 2, frames: [done(2)] });
+});
+
+test("a provider failure still delivers the frames read before it", async (t) => {
+  const stream = live();
+  const { service } = sessions(t, {
+    open: async () => ({ response: stream.response, renderedSpeed: 1 }),
+  });
+  const a = await service.start({ requestId, owner, input });
+  stream.send(frame());
+  stream.send(frame(1));
+  await tick();
+  stream.error(Error("private-provider-data"));
+  await tick();
+  const pull = (cursor, batch = true) =>
+    service.pull({ streamId: a.streamId, owner, cursor, batch });
+  assert.deepEqual(await pull(0), { cursor: 0, frames: [frame(), frame(1)] });
+  assert.deepEqual(await pull(1, false), { cursor: 1, frame: frame(1) });
+  await assert.rejects(
+    pull(2),
+    (error) =>
+      error.status === 502 && /Speech stream failed/.test(error.message),
+  );
+  await assert.rejects(pull(0), /Speech stream failed/);
+});
+
+test("a pull waiting when the stream expires rejects with 410", async (t) => {
+  const stream = live();
+  const { service } = sessions(t, {
+    lifetimeMs: 30,
+    open: async () => ({ response: stream.response, renderedSpeed: 1 }),
+  });
+  const a = await service.start({ requestId, owner, input });
+  await assert.rejects(
+    service.pull({ streamId: a.streamId, owner, cursor: 0, batch: true }),
+    (error) => error.status === 410,
+  );
+});
+
+test("a large buffered clip comes back in bounded batches", async (t) => {
+  const clip = [frame(), frame(1), frame(2), done(3)];
+  const { service } = sessions(t, {
+    maxBatchChars: 8,
+    open: async () => ({ response: response(clip), renderedSpeed: 0.8 }),
+  });
+  const a = await service.start({ requestId, owner, input });
+  await tick();
+  const pull = (cursor) =>
+    service.pull({ streamId: a.streamId, owner, cursor, batch: true });
+  assert.deepEqual(await pull(0), { cursor: 0, frames: [frame(), frame(1)] });
+  assert.deepEqual(await pull(2), { cursor: 2, frames: [frame(2), done(3)] });
+
+  // The SDK client follows the bounded batches to the same done frame.
+  const pulls = [];
+  const client = createNativeSpeechStream(
+    async (path, body) => {
+      const { requestId: id, ...rest } = body;
+      if (path.endsWith("/start"))
+        return service.start({ requestId: id, owner, input: rest });
+      if (path.endsWith("/pull")) {
+        pulls.push(body.cursor);
+        return service.pull({ ...body, owner });
+      }
+      return service.cancel({ ...body, owner });
+    },
+    input,
+    { requestId: "bounded-batch-request" },
+  );
+  const seen = [];
+  for (;;) {
+    const next = await client.pull();
+    seen.push(next.type === "done" ? next : next.sequence);
+    if (next.type === "done") break;
+  }
+  assert.deepEqual(seen, [0, 1, 2, { type: "done", frames: 3, audioBytes: 9 }]);
+  assert.deepEqual(pulls, [0, 2]);
 });
