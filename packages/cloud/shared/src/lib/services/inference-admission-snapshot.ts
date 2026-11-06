@@ -184,6 +184,28 @@ export async function refreshStaleInferenceAdmissionSnapshot(
 }
 
 /**
+ * Make a committed credit-balance change (top-up, refund, hold settlement or a
+ * non-inference debit) visible to Worker admission before the next lease.
+ * Where the organization gate is bound, the projection is republished from
+ * the primary: that advances the gate to the committed balance revision, and
+ * because the gate keeps the newest revision, a request still carrying an
+ * older snapshot leases against the committed balance. Hosts without a gate
+ * drop the shared projection so the next Worker admission refills it. Run
+ * only after the owning transaction commits; the republish locks the policy row.
+ */
+export async function republishInferenceAdmissionAfterCreditMutation(
+  organizationId: string,
+): Promise<void> {
+  if (getCloudBinding("INFERENCE_ADMISSION_GATES")) {
+    await refreshStaleInferenceAdmissionSnapshot(organizationId);
+    return;
+  }
+  const key = CacheKeys.inference.orgAdmission(organizationId);
+  admissionMemoryCache.delete(key);
+  await cache.del(key);
+}
+
+/**
  * Read the published organization projection from the isolate or shared cache
  * only. Returns null on a miss or an unreadable cache; it never hydrates.
  */
