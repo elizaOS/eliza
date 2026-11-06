@@ -355,3 +355,48 @@ it("keeps workflow todo responses and host overview projections identical", asyn
     ),
   ).toEqual(updated);
 });
+
+it("refuses re-enabling a trigger that would duplicate an active schedule", async () => {
+  const prefix = `duplicate-trigger-${randomUUID()}`;
+  const activeInstructions = `${prefix}-active: do not run this future QA automation`;
+  const pausedInstructions = `${prefix}-paused: do not run this future QA automation`;
+  const create = async (
+    displayName: string,
+    instructions: string,
+    enabled: boolean,
+  ) => {
+    const response = await request("canonical", "/api/triggers", "POST", {
+      kind: "prompt",
+      displayName,
+      instructions,
+      triggerType: "cron",
+      cronExpression: "0 12 28 9 *",
+      enabled,
+    });
+    expect(response.status).toBe(201);
+    const { trigger } = (await response.json()) as {
+      trigger: { id: string; taskId: string };
+    };
+    return trigger;
+  };
+  const active = await create(`${prefix}-active`, activeInstructions, true);
+  const paused = await create(`${prefix}-paused`, pausedInstructions, false);
+  // POST refuses an equivalent active trigger. Re-enabling the paused one after
+  // aligning its instructions must fail the same way instead of scheduling both.
+  const edit = await request("canonical", `/api/triggers/${paused.id}`, "PUT", {
+    enabled: true,
+    instructions: activeInstructions,
+  });
+  expect(edit.status).toBe(409);
+  expect(await edit.json()).toMatchObject({
+    error: "Equivalent trigger already exists",
+  });
+  const saved = await fixture.runtime.getTask(paused.taskId as never);
+  const savedTrigger = saved ? readTriggerConfig(saved) : null;
+  expect(savedTrigger?.instructions).toBe(pausedInstructions);
+  expect(savedTrigger?.enabled).toBe(false);
+  const activeSaved = await fixture.runtime.getTask(active.taskId as never);
+  const activeTrigger = activeSaved ? readTriggerConfig(activeSaved) : null;
+  expect(activeTrigger?.enabled).toBe(true);
+  expect(savedTrigger?.dedupeKey).not.toBe(activeTrigger?.dedupeKey);
+});
