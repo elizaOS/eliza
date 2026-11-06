@@ -349,8 +349,10 @@ describe("a yes to a guided step", () => {
 
   it("from a question asked before a new epoch is ignored", async () => {
     const g = guide({ ask: true });
-    await g.workflow.refresh();
+    const asked = await g.workflow.refresh();
     const askedIn = g.runtime.get(g.taskId).epoch;
+    // The question names the epoch it was asked in.
+    expect(asked).toMatchObject({ kind: "person-check", epoch: askedIn });
     await g.stop();
     const paused = g.runtime.get(g.taskId);
     await g.runtime.observe(g.taskId, paused.revision, true);
@@ -360,8 +362,10 @@ describe("a yes to a guided step", () => {
       kind: "person-check",
       key: "ask:show-news",
     });
-    const askedNow = g.runtime.get(g.taskId).epoch;
-    g.workflow.acknowledge("ask:show-news", { epoch: askedNow });
+    const again = await g.workflow.refresh();
+    expect(again.epoch).toBe(g.runtime.get(g.taskId).epoch);
+    expect(again.epoch).not.toBe(askedIn);
+    g.workflow.acknowledge("ask:show-news", { epoch: again.epoch });
     expect((await g.workflow.refresh()).kind).toBe("agent-action");
     expect(g.browser.clicks).toBe(0);
   });
