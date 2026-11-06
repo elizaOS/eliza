@@ -3108,6 +3108,11 @@ export const ROUTE_MOUNTS: readonly GeneratedRouteMount[] = [
     load: () => import("../v1/maps/routes/route"),
   },
   {
+    path: "/api/v1/maps/tiles/viewport",
+    shard: "v1/maps",
+    load: () => import("../v1/maps/tiles/viewport/route"),
+  },
+  {
     path: "/api/v1/maps/tiles/:z/:x/:y",
     shard: "v1/maps",
     load: () => import("../v1/maps/tiles/[z]/[x]/[y]/route"),

@@ -571,8 +571,9 @@ each environment:
 
 `ELIZA_MAPS_PROVIDER=google` serves the same contract from Google Maps
 Platform instead: Places API (New) text search and place details, Geocoding API
-geocode and reverse, Routes API `computeRoutes` (drive, walk, bicycle) and Map
-Tiles API 2D roadmap tiles. Ops provision:
+geocode and reverse, Routes API `computeRoutes` (drive with live traffic, walk,
+bicycle, and transit on published timetables) and Map Tiles API 2D roadmap
+tiles. Ops provision:
 
 - Secret `GOOGLE_MAPS_API_KEY`: a server key restricted to those four APIs
   (no application restriction usable from Workers; restrict by API). It goes
@@ -583,19 +584,30 @@ Tiles API 2D roadmap tiles. Ops provision:
   `ELIZA_MAPS_DATASET_REVISION` (default `google-maps-platform-live`),
   `ELIZA_MAPS_PROVIDER_ID` (default `eliza-cloud-google`) and
   `ELIZA_MAPS_ATTRIBUTION` (default `Google Maps`).
-- `ELIZA_MAPS_TILES=false` turns the tile proxy off.
+- `ELIZA_MAPS_TILES=false` turns the tile proxy off; `ELIZA_MAPS_TRAFFIC=none`
+  drops live traffic (traffic-aware routes bill as Routes Pro);
+  `ELIZA_MAPS_TRANSIT=false` drops transit.
 
-The Maps contract and the device clients accept only `traffic: "none"` and
-`transit: "none"`, so Google routes are requested `TRAFFIC_UNAWARE` and
-transit is refused (`422 unsupported_mode`) even though the Routes API serves
-both; offering them needs a contract change first. Search asks only for basic
-place fields (Text Search Pro); details adds website, phone and opening hours.
+`capabilities.traffic` is `live` and `capabilities.transit` is `scheduled`
+while those are on; `modes` then includes `transit`. Drive routes are requested
+`TRAFFIC_AWARE`, carry `traffic: "live"` and `staticDurationSeconds` (the
+free-flow time); walk, bicycle and transit routes carry `traffic: "none"`.
+Transit ride steps carry `transit` (`line`, `vehicle`, `headsign`, stops,
+times, `stopCount`, `color`). `POST routes` accepts an optional `departAt`
+(ISO 8601) for timetables and traffic prediction; a past departure for a
+traffic-aware drive is `400 invalid_request`. Search asks only for basic place
+fields (Text Search Pro); details adds website, phone and opening hours.
 
 `GET /api/v1/maps/tiles/{z}/{x}/{y}` returns one PNG roadmap tile
 (`Cache-Control: private, max-age=86400`) when the provider serves tiles;
 `capabilities.tiles` then gives the URL template, zoom range, tile size and
-the attribution a host must show on the map (`capabilities.map` stays `false`
-until device map planes consume these tiles). Cloud creates the Map Tiles
+the attribution a host must show on the map, and `capabilities.map` is `true`.
+`POST /api/v1/maps/tiles/viewport` with `{zoom, north, south, east, west}`
+returns `{providerId, copyright, maxZoom}`: the copyright for the visible area,
+which the host shows with the tiles (it is metadata like `capabilities`: it
+needs the subscription but no `Idempotency-Key` and consumes no allowance).
+plugin-maps' `createCloudMaps(..., { tileRequest })` and `MapPlane` with a
+`cloud-raster` basemap draw these tiles. Cloud creates the Map Tiles
 session once per isolate, key, language and region, renews it an hour before
 it expires and once more if Google refuses it. Tiles use the same
 authentication, subscription and durable admission as every Maps operation:

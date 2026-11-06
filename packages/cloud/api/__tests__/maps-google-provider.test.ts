@@ -154,10 +154,10 @@ describe("Google Maps provider configuration", () => {
       { id: "world", name: "World", bounds: [-180, -85.0511, 180, 85.0511] },
     ]);
     expect(coverage.capabilities).toMatchObject({
-      map: false,
-      modes: ["drive", "walk", "bicycle"],
-      traffic: "none",
-      transit: "none",
+      map: true,
+      modes: ["drive", "walk", "bicycle", "transit"],
+      traffic: "live",
+      transit: "scheduled",
       alternatives: true,
     });
     expect(coverage.sources).toEqual({
@@ -368,9 +368,9 @@ describe("Google Places and Geocoding", () => {
 });
 
 describe("Google Routes", () => {
-  test("drive is traffic unaware; steps, maneuvers and polyline5 geometry map to the contract", async () => {
+  test("drive uses live traffic; steps, maneuvers and polyline5 geometry map to the contract", async () => {
     const { calls, provider } = google(() =>
-      Response.json({ routes: [ROUTE(300)] }),
+      Response.json({ routes: [{ ...ROUTE(300), staticDuration: "180s" }] }),
     );
     const [route] = await provider.routes({
       from: CASINO,
@@ -389,15 +389,20 @@ describe("Google Routes", () => {
       origin: { location: { latLng: CASINO } },
       destination: { location: { latLng: PORT } },
       travelMode: "DRIVE",
-      routingPreference: "TRAFFIC_UNAWARE",
+      routingPreference: "TRAFFIC_AWARE",
       computeAlternativeRoutes: false,
     });
+    expect(call.body).not.toHaveProperty("departureTime");
+    expect(call.headers.get("x-goog-fieldmask")).toContain(
+      "routes.staticDuration",
+    );
     expect(route).toMatchObject({
       providerId: "eliza-cloud-google",
       mode: "drive",
       distanceMeters: 300,
       durationSeconds: 223,
-      traffic: "none",
+      staticDurationSeconds: 180,
+      traffic: "live",
       attribution: "Google Maps",
     });
     expect(route.id).toMatch(/^route_[0-9a-f]{24}$/);
@@ -438,16 +443,134 @@ describe("Google Routes", () => {
     expect(calls[1].body).toMatchObject({ travelMode: "BICYCLE" });
   });
 
-  test("transit, empty answers and alternatives turned off are honest", async () => {
-    const { calls, provider } = google(() => Response.json({}), {
-      ELIZA_MAPS_ROUTE_ALTERNATIVES: "false",
+  test("transit rides carry line, stops and times from the timetable", async () => {
+    const departAt = new Date(Date.now() + 3_600_000).toISOString();
+    const { calls, provider } = google(() =>
+      Response.json({
+        routes: [
+          {
+            ...ROUTE(900),
+            legs: [
+              {
+                steps: [
+                  {
+                    distanceMeters: 120,
+                    travelMode: "WALK",
+                    startLocation: { latLng: CASINO },
+                    navigationInstruction: {
+                      instructions: "Walk to Casino stop",
+                    },
+                  },
+                  {
+                    distanceMeters: 780,
+                    travelMode: "TRANSIT",
+                    startLocation: {
+                      latLng: { latitude: 43.737, longitude: 7.424 },
+                    },
+                    transitDetails: {
+                      stopDetails: {
+                        departureStop: { name: "Casino" },
+                        arrivalStop: { name: "Port" },
+                        departureTime: "2026-11-06T21:05:00Z",
+                        arrivalTime: "2026-11-06T21:12:00Z",
+                      },
+                      headsign: "Fontvieille",
+                      stopCount: 3,
+                      transitLine: {
+                        name: "Ligne 1",
+                        nameShort: "1",
+                        color: "#E2001A",
+                        vehicle: { type: "BUS", name: { text: "Bus" } },
+                      },
+                    },
+                  },
+                ],
+              },
+            ],
+          },
+        ],
+      }),
+    );
+    const [route] = await provider.routes({
+      from: CASINO,
+      to: PORT,
+      mode: "transit",
+      departAt,
+    });
+    expect(calls[0].body).toMatchObject({
+      travelMode: "TRANSIT",
+      departureTime: departAt,
+    });
+    expect(calls[0].body).not.toHaveProperty("routingPreference");
+    expect(calls[0].headers.get("x-goog-fieldmask")).toContain(
+      "routes.legs.steps.transitDetails",
+    );
+    expect(route.mode).toBe("transit");
+    expect(route.traffic).toBe("none");
+    expect(route.steps[1]).toMatchObject({
+      instruction:
+        "Take the bus 1 toward Fontvieille from Casino to Port, 3 stops.",
+      transit: {
+        line: "1",
+        vehicle: "bus",
+        headsign: "Fontvieille",
+        departureStop: "Casino",
+        arrivalStop: "Port",
+        departureTime: "2026-11-06T21:05:00Z",
+        arrivalTime: "2026-11-06T21:12:00Z",
+        stopCount: 3,
+        color: "#e2001a",
+      },
+    });
+    expect(route.steps[0]).not.toHaveProperty("transit");
+  });
+
+  test("traffic and transit can be turned off; a past departure is refused for live traffic", async () => {
+    const { calls, provider } = google(
+      () => Response.json({ routes: [ROUTE(300)] }),
+      {
+        ELIZA_MAPS_TRAFFIC: "none",
+        ELIZA_MAPS_TRANSIT: "false",
+      },
+    );
+    expect(provider.coverage().capabilities).toMatchObject({
+      modes: ["drive", "walk", "bicycle"],
+      traffic: "none",
+      transit: "none",
     });
     expect(
       await refusal(
         provider.routes({ from: CASINO, to: PORT, mode: "transit" }),
       ),
     ).toBe("unsupported_mode");
-    expect(calls).toHaveLength(0);
+    const [route] = await provider.routes({
+      from: CASINO,
+      to: PORT,
+      mode: "drive",
+    });
+    expect(calls[0].body).toMatchObject({
+      routingPreference: "TRAFFIC_UNAWARE",
+    });
+    expect(route.traffic).toBe("none");
+    expect(route).not.toHaveProperty("staticDurationSeconds");
+    const live = google(() => Response.json({ routes: [ROUTE(300)] }));
+    expect(
+      await refusal(
+        live.provider.routes({
+          from: CASINO,
+          to: PORT,
+          mode: "drive",
+          departAt: "2020-01-01T00:00:00Z",
+        }),
+      ),
+    ).toBe("invalid_request");
+    expect(live.calls).toHaveLength(0);
+  });
+
+  test("empty answers and alternatives turned off are honest", async () => {
+    const { calls, provider } = google(() => Response.json({}), {
+      ELIZA_MAPS_ROUTE_ALTERNATIVES: "false",
+    });
     expect(
       await refusal(provider.routes({ from: CASINO, to: PORT, mode: "drive" })),
     ).toBe("no_route");
@@ -460,6 +583,7 @@ describe("Google Routes", () => {
       }),
     );
     expect(calls[1].body).toMatchObject({ computeAlternativeRoutes: false });
+    expect(calls[0].body).toMatchObject({ computeAlternativeRoutes: false });
     expect(provider.coverage().capabilities.alternatives).toBe(false);
   });
 });
@@ -479,6 +603,14 @@ describe("Google Map Tiles", () => {
           imageFormat: "png",
         });
       }
+      if (url.pathname === "/tile/v1/viewport")
+        return Response.json({
+          copyright: "Map data ©2026 Google",
+          maxZoomRects: [
+            { maxZoom: 19, north: 90, south: -90, east: 180, west: -180 },
+            { maxZoom: 21, north: 44, south: 43, east: 8, west: 7 },
+          ],
+        });
       const status = tileStatus();
       return status === 200
         ? new Response(PNG, { headers: { "content-type": "image/png" } })
@@ -587,5 +719,66 @@ describe("Google Map Tiles", () => {
     expect(((await unconfigured.json()) as { code: string }).code).toBe(
       "maps_not_configured",
     );
+  });
+
+  test("the viewport copyright reuses the tile session and needs no allowance key", async () => {
+    const { calls, provider } = tiles();
+    const view = {
+      zoom: 15,
+      north: 43.75,
+      south: 43.72,
+      east: 7.45,
+      west: 7.4,
+    };
+    expect(await provider.viewport?.(view)).toEqual({
+      providerId: "eliza-cloud-google",
+      copyright: "Map data ©2026 Google",
+      maxZoom: 21,
+    });
+    const viewportCall = calls.find(
+      (call) => call.url.pathname === "/tile/v1/viewport",
+    );
+    expect(viewportCall?.url.searchParams.get("session")).toBe("session-1");
+    expect(viewportCall?.url.searchParams.get("zoom")).toBe("15");
+    expect(viewportCall?.url.searchParams.get("north")).toBe("43.75");
+    const admitted: string[] = [];
+    const route = createMapsRoute("viewport", {
+      authenticate: async () => ({
+        id: "91000000-0000-4000-8000-000000000001",
+        organization_id: "92000000-0000-4000-8000-000000000001",
+      }),
+      entitlement: async () => ({
+        entitled: true,
+        planKey: "plus_monthly",
+        planEffectiveUntil: null,
+      }),
+      admit: async (request) => {
+        admitted.push(request.operation);
+        return { allowed: true };
+      },
+      provider: () => provider,
+    });
+    const post = (body: unknown, ip: string) =>
+      route.request(
+        "/",
+        {
+          method: "POST",
+          headers: {
+            "content-type": "application/json",
+            "cf-connecting-ip": ip,
+          },
+          body: JSON.stringify(body),
+        },
+        { NODE_ENV: "test" },
+      );
+    const ok = await post(view, "203.0.113.210");
+    expect(ok.status).toBe(200);
+    expect(((await ok.json()) as { copyright: string }).copyright).toBe(
+      "Map data ©2026 Google",
+    );
+    expect(admitted).toEqual(["viewport"]);
+    expect(
+      (await post({ ...view, north: 10, south: 20 }, "203.0.113.211")).status,
+    ).toBe(400);
   });
 });

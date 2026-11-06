@@ -2,14 +2,11 @@
  * Google Maps Platform provider for Eliza Cloud Maps (`ELIZA_MAPS_PROVIDER=google`).
  * One server key (`GOOGLE_MAPS_API_KEY`) answers the provider-neutral
  * contract: Places API (New) text search and place details, Geocoding API
- * geocode and reverse, Routes API computeRoutes (drive, walk, bicycle) and Map
- * Tiles API 2D roadmap tiles. The key stays on the server and goes only in
- * headers or Google's own request URLs; queries and coordinates are never
- * logged.
- *
- * The contract (and the device clients that validate it) allows only
- * `traffic: "none"` and `transit: "none"`, so routes are requested traffic
- * unaware and transit is not offered, although the Routes API serves both.
+ * geocode and reverse, Routes API computeRoutes (drive with live traffic, walk,
+ * bicycle, and transit on published timetables) and Map Tiles API 2D roadmap
+ * tiles with their viewport copyright. The key stays on the server and goes
+ * only in headers or Google's own request URLs; queries and coordinates are
+ * never logged.
  */
 import {
   boundedText,
@@ -38,7 +35,10 @@ import {
   type MapsTextSearchRequest,
   type MapsTile,
   type MapsTileRequest,
+  type MapsTransitDetails,
   type MapsTravelMode,
+  type MapsViewportRequest,
+  type MapsViewportResponse,
   regionFor,
 } from "./contract";
 import { decodePolyline } from "./valhalla-router";
@@ -60,6 +60,8 @@ const SEARCH_TEXT_URL = "https://places.googleapis.com/v1/places:searchText";
 const GEOCODE_URL = "https://maps.googleapis.com/maps/api/geocode/json";
 const ROUTES_URL = "https://routes.googleapis.com/directions/v2:computeRoutes";
 const TILES_URL = "https://tile.googleapis.com/v1/";
+const VIEWPORT_URL = "https://tile.googleapis.com/tile/v1/viewport";
+const TILE_ATTRIBUTION = "Map data © Google";
 /** Basic fields only, so search bills at the Text Search Pro tier. */
 const SEARCH_FIELDS = "places.id,places.displayName,places.formattedAddress,places.location";
 const DETAILS_FIELDS =
@@ -67,15 +69,19 @@ const DETAILS_FIELDS =
 const ROUTE_FIELDS = [
   "routes.distanceMeters",
   "routes.duration",
+  "routes.staticDuration",
   "routes.polyline.encodedPolyline",
   "routes.legs.steps.distanceMeters",
   "routes.legs.steps.startLocation",
   "routes.legs.steps.navigationInstruction",
+  "routes.legs.steps.travelMode",
+  "routes.legs.steps.transitDetails",
 ].join(",");
-const TRAVEL_MODES: Record<Exclude<MapsTravelMode, "transit">, string> = {
+const TRAVEL_MODES: Record<MapsTravelMode, string> = {
   drive: "DRIVE",
   walk: "WALK",
   bicycle: "BICYCLE",
+  transit: "TRANSIT",
 };
 /** Google place ids: URL-safe base64-like tokens. */
 const GOOGLE_PLACE_ID = /^[A-Za-z0-9_-]{10,255}$/;
@@ -120,6 +126,10 @@ export interface GoogleMapsProviderConfig {
   region?: string;
   /** Serve Map Tiles API roadmap tiles through `/api/v1/maps/tiles`. */
   tiles: boolean;
+  /** Drive durations with live and predicted traffic (Routes API TRAFFIC_AWARE). Default true. */
+  traffic?: boolean;
+  /** Transit routes on published timetables. Default true. */
+  transit?: boolean;
   fetchImpl?: typeof fetch;
   now?: () => number;
 }
@@ -151,6 +161,74 @@ function latLng(value: unknown): MapsCoordinate | undefined {
   return coordinateOf(point.latitude, point.longitude);
 }
 
+const VEHICLES: Record<string, string> = {
+  BUS: "bus",
+  INTERCITY_BUS: "bus",
+  TROLLEYBUS: "bus",
+  SHARE_TAXI: "shared taxi",
+  SUBWAY: "subway",
+  METRO_RAIL: "metro",
+  LIGHT_RAIL: "light rail",
+  TRAM: "tram",
+  MONORAIL: "monorail",
+  RAIL: "train",
+  HEAVY_RAIL: "train",
+  COMMUTER_TRAIN: "train",
+  HIGH_SPEED_TRAIN: "train",
+  LONG_DISTANCE_TRAIN: "train",
+  FERRY: "ferry",
+  CABLE_CAR: "cable car",
+  GONDOLA_LIFT: "gondola",
+  FUNICULAR: "funicular",
+};
+
+/** Maps one Routes API `transitDetails` to the contract; null when it names no line or stops. */
+function transitDetailsOf(value: unknown): MapsTransitDetails | null {
+  if (!value || typeof value !== "object") return null;
+  const details = value as Record<string, unknown>;
+  const stops = (details.stopDetails ?? {}) as Record<string, unknown>;
+  const line = (details.transitLine ?? {}) as Record<string, unknown>;
+  const vehicle = (line.vehicle ?? {}) as Record<string, unknown>;
+  const lineName = boundedText(line.nameShort, 100) ?? boundedText(line.name, 100);
+  const departureStop = boundedText((stops.departureStop as { name?: unknown })?.name, 200);
+  const arrivalStop = boundedText((stops.arrivalStop as { name?: unknown })?.name, 200);
+  if (!lineName || !departureStop || !arrivalStop) return null;
+  const vehicleType = typeof vehicle.type === "string" ? VEHICLES[vehicle.type] : undefined;
+  const result: MapsTransitDetails = {
+    line: lineName,
+    vehicle: vehicleType ?? textValue(vehicle.name, 50)?.toLowerCase() ?? "transit",
+    departureStop,
+    arrivalStop,
+  };
+  const headsign = boundedText(details.headsign, 200);
+  if (headsign) result.headsign = headsign;
+  for (const [key, field] of [
+    ["departureTime", stops.departureTime],
+    ["arrivalTime", stops.arrivalTime],
+  ] as const) {
+    const time = boundedText(field, 40);
+    if (time && Number.isFinite(Date.parse(time))) result[key] = time;
+  }
+  const stopCount = finiteNumber(details.stopCount);
+  if (stopCount !== undefined && Number.isInteger(stopCount) && stopCount >= 0)
+    result.stopCount = stopCount;
+  const color = typeof line.color === "string" ? line.color : undefined;
+  if (color && /^#[0-9a-fA-F]{6}$/.test(color)) result.color = color.toLowerCase();
+  return result;
+}
+
+function transitInstruction(details: MapsTransitDetails): string {
+  const toward = details.headsign ? ` toward ${details.headsign}` : "";
+  const stops =
+    details.stopCount === undefined
+      ? ""
+      : `, ${details.stopCount} stop${details.stopCount === 1 ? "" : "s"}`;
+  return `Take the ${details.vehicle} ${details.line}${toward} from ${details.departureStop} to ${details.arrivalStop}${stops}.`.slice(
+    0,
+    500,
+  );
+}
+
 function textValue(value: unknown, max: number): string | undefined {
   if (value && typeof value === "object" && "text" in value)
     return boundedText((value as { text?: unknown }).text, max);
@@ -179,6 +257,8 @@ export class GoogleMapsProvider implements MapsProviderAdapter {
   private readonly language?: string;
   private readonly region?: string;
   private readonly tiles: boolean;
+  private readonly traffic: boolean;
+  private readonly transit: boolean;
   private readonly fetchImpl?: typeof fetch;
   private readonly now: () => number;
 
@@ -213,6 +293,8 @@ export class GoogleMapsProvider implements MapsProviderAdapter {
     this.regions = regions.map((region) => ({ ...region, bounds: [...region.bounds] }));
     this.alternatives = config.alternatives;
     this.tiles = config.tiles;
+    this.traffic = config.traffic ?? true;
+    this.transit = config.transit ?? true;
     this.fetchImpl = config.fetchImpl;
     this.now = config.now ?? Date.now;
   }
@@ -238,15 +320,17 @@ export class GoogleMapsProvider implements MapsProviderAdapter {
       },
       regions: this.regions.map((region) => ({ ...region, bounds: [...region.bounds] })),
       capabilities: {
-        map: false,
+        map: this.tiles,
         search: true,
         placeDetails: true,
         geocode: true,
         reverseGeocode: true,
-        modes: ["drive", "walk", "bicycle"],
+        modes: this.transit
+          ? ["drive", "walk", "bicycle", "transit"]
+          : ["drive", "walk", "bicycle"],
         alternatives: this.alternatives,
-        traffic: "none",
-        transit: "none",
+        traffic: this.traffic ? "live" : "none",
+        transit: this.transit ? "scheduled" : "none",
         offline: { map: false, search: false, routing: false },
       },
       ...(this.tiles
@@ -257,7 +341,7 @@ export class GoogleMapsProvider implements MapsProviderAdapter {
               minZoom: 0,
               maxZoom: 22,
               tileSize: 256,
-              attribution: "Map data © Google",
+              attribution: TILE_ATTRIBUTION,
             },
           }
         : {}),
@@ -352,7 +436,7 @@ export class GoogleMapsProvider implements MapsProviderAdapter {
   }
 
   async routes(request: MapsRoutesRequest, signal?: AbortSignal): Promise<MapsRoute[]> {
-    if (request.mode === "transit")
+    if (request.mode === "transit" && !this.transit)
       throw new MapsServiceError(
         "unsupported_mode",
         "This travel mode is not available from Eliza Cloud Maps.",
@@ -365,6 +449,19 @@ export class GoogleMapsProvider implements MapsProviderAdapter {
       );
     const alternatives = this.alternatives && request.alternatives === true;
     const travelMode = TRAVEL_MODES[request.mode];
+    const liveTraffic = travelMode === "DRIVE" && this.traffic;
+    // Traffic prediction and timetables look forward; Google refuses a past
+    // departure for traffic-aware routes, so Cloud refuses it first.
+    if (
+      request.departAt !== undefined &&
+      liveTraffic &&
+      Date.parse(request.departAt) < this.now() - 60_000
+    )
+      throw new MapsServiceError("invalid_request", "The departure time is in the past.");
+    const departure =
+      request.departAt !== undefined && (liveTraffic || travelMode === "TRANSIT")
+        ? { departureTime: new Date(request.departAt).toISOString() }
+        : {};
     const waypoint = (point: MapsCoordinate) => ({
       location: { latLng: { latitude: point.latitude, longitude: point.longitude } },
     });
@@ -377,8 +474,11 @@ export class GoogleMapsProvider implements MapsProviderAdapter {
           origin: waypoint(request.from),
           destination: waypoint(request.to),
           travelMode,
-          // Live traffic is outside the contract (`traffic: "none"`).
-          ...(travelMode === "DRIVE" ? { routingPreference: "TRAFFIC_UNAWARE" } : {}),
+          // routingPreference is valid for DRIVE only; TRAFFIC_AWARE bills as Routes Pro.
+          ...(travelMode === "DRIVE"
+            ? { routingPreference: liveTraffic ? "TRAFFIC_AWARE" : "TRAFFIC_UNAWARE" }
+            : {}),
+          ...departure,
           computeAlternativeRoutes: alternatives,
           polylineEncoding: "ENCODED_POLYLINE",
           units: "METRIC",
@@ -399,13 +499,15 @@ export class GoogleMapsProvider implements MapsProviderAdapter {
     const fetchedAt = this.now();
     return Promise.all(
       routes.slice(0, alternatives ? 3 : 1).map(async (entry, index) => {
-        const candidate = this.routeCandidate(entry, request.to);
+        const { staticSeconds, ...candidate } = this.routeCandidate(entry, request.to);
         return {
           providerId: this.providerId,
           id: await routeId(
             JSON.stringify({
               provider: "google",
               travelMode,
+              liveTraffic,
+              departAt: request.departAt ?? null,
               index,
               from: request.from,
               to: request.to,
@@ -418,9 +520,12 @@ export class GoogleMapsProvider implements MapsProviderAdapter {
           to: { ...request.to },
           mode: request.mode,
           ...candidate,
+          ...(liveTraffic && staticSeconds !== undefined
+            ? { staticDurationSeconds: staticSeconds }
+            : {}),
           attribution: this.attribution,
           fetchedAt,
-          traffic: "none" as const,
+          traffic: liveTraffic ? ("live" as const) : ("none" as const),
         };
       }),
     );
@@ -448,7 +553,52 @@ export class GoogleMapsProvider implements MapsProviderAdapter {
     return {
       body: await response.arrayBuffer(),
       contentType: type,
-      attribution: "Map data © Google",
+      attribution: TILE_ATTRIBUTION,
+    };
+  }
+
+  async viewport(
+    request: MapsViewportRequest,
+    signal?: AbortSignal,
+  ): Promise<MapsViewportResponse> {
+    if (!this.tiles)
+      throw new MapsServiceError("maps_not_configured", "Map tiles are not configured.");
+    const ask = async (session: TileSession) => {
+      const url = new URL(VIEWPORT_URL);
+      url.searchParams.set("session", session.token);
+      url.searchParams.set("key", this.apiKey);
+      url.searchParams.set("zoom", String(request.zoom));
+      url.searchParams.set("north", String(request.north));
+      url.searchParams.set("south", String(request.south));
+      url.searchParams.set("east", String(request.east));
+      url.searchParams.set("west", String(request.west));
+      return upstreamFetch(url, { method: "GET" }, signal, this.fetchImpl, [200, 400, 401, 403]);
+    };
+    let response = await ask(await this.tileSession(signal));
+    if (response.status === 401 || response.status === 403) {
+      tileSessions.delete(this.tileSessionKey());
+      response = await ask(await this.tileSession(signal));
+    }
+    if (response.status === 400)
+      throw new MapsServiceError("invalid_request", "The map viewport is invalid.");
+    if (response.status !== 200) throw unavailable(response.status);
+    const json = (await responseJson(response)) as {
+      copyright?: unknown;
+      maxZoomRects?: unknown;
+    } | null;
+    const copyright = boundedText(json?.copyright, 500);
+    if (copyright === undefined && json?.copyright !== undefined && json.copyright !== "")
+      throw invalidResponse();
+    const maxZoom = Array.isArray(json?.maxZoomRects)
+      ? json.maxZoomRects.reduce<number | undefined>((best, rect) => {
+          const zoom = finiteNumber((rect as { maxZoom?: unknown } | null)?.maxZoom);
+          return zoom === undefined ? best : Math.max(best ?? 0, zoom);
+        }, undefined)
+      : undefined;
+    return {
+      providerId: this.providerId,
+      copyright: copyright ?? TILE_ATTRIBUTION,
+      ...(maxZoom !== undefined ? { maxZoom } : {}),
     };
   }
 
@@ -592,7 +742,9 @@ export class GoogleMapsProvider implements MapsProviderAdapter {
   private routeCandidate(
     value: unknown,
     destination: MapsCoordinate,
-  ): Pick<MapsRoute, "geometry" | "distanceMeters" | "durationSeconds" | "steps"> {
+  ): Pick<MapsRoute, "geometry" | "distanceMeters" | "durationSeconds" | "steps"> & {
+    staticSeconds?: number;
+  } {
     if (!value || typeof value !== "object") throw invalidResponse();
     const route = value as Record<string, unknown>;
     const distanceMeters = finiteNumber(route.distanceMeters);
@@ -616,7 +768,11 @@ export class GoogleMapsProvider implements MapsProviderAdapter {
           | { maneuver?: unknown; instructions?: unknown }
           | undefined;
         const start = latLng((step.startLocation as { latLng?: unknown } | undefined)?.latLng);
-        const instruction = boundedText(navigation?.instructions, 500);
+        const transit =
+          step.travelMode === "TRANSIT" ? transitDetailsOf(step.transitDetails) : null;
+        const instruction =
+          boundedText(navigation?.instructions, 500) ??
+          (transit ? transitInstruction(transit) : undefined);
         if (!start || !instruction) continue;
         const maneuver =
           typeof navigation?.maneuver === "string" ? MANEUVERS[navigation.maneuver] : undefined;
@@ -625,6 +781,7 @@ export class GoogleMapsProvider implements MapsProviderAdapter {
           coordinate: start,
           distanceMeters: finiteNumber(step.distanceMeters) ?? 0,
           ...(maneuver ? { maneuver } : {}),
+          ...(transit ? { transit } : {}),
         });
       }
     }
@@ -634,7 +791,14 @@ export class GoogleMapsProvider implements MapsProviderAdapter {
       distanceMeters: 0,
       maneuver: "arrive",
     });
-    return { geometry, distanceMeters, durationSeconds: seconds, steps };
+    const staticSeconds = durationSeconds(route.staticDuration);
+    return {
+      geometry,
+      distanceMeters,
+      durationSeconds: seconds,
+      steps,
+      ...(staticSeconds !== undefined ? { staticSeconds } : {}),
+    };
   }
 
   private googleHeaders(fieldMask: string, extra: Record<string, string> = {}) {

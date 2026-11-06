@@ -25,6 +25,7 @@ import {
   mapsRoutesRequestSchema,
   mapsTextSearchRequestSchema,
   mapsTileRequestSchema,
+  mapsViewportRequestSchema,
 } from "@elizaos/cloud-shared/lib/services/maps/contract";
 import {
   MAPS_PROVIDER_SETTINGS,
@@ -253,6 +254,17 @@ async function dispatch(
           signal,
         ),
       };
+    case "viewport": {
+      const viewport = provider.viewport;
+      if (!viewport) throw new Error("Viewport provider disappeared");
+      return {
+        ...(await viewport.call(
+          provider,
+          parsed(mapsViewportRequestSchema, body),
+          signal,
+        )),
+      };
+    }
   }
 }
 
@@ -298,7 +310,12 @@ export function createMapsRoute(
           "Eliza Cloud Maps is not configured.",
         ),
       );
-    if (operation === "tiles" && (!provider.tile || !provider.coverage().tiles))
+    if (
+      (operation === "tiles" && !provider.tile) ||
+      (operation === "viewport" && !provider.viewport) ||
+      ((operation === "tiles" || operation === "viewport") &&
+        !provider.coverage().tiles)
+    )
       return failure(
         c,
         new MapsServiceError(
@@ -322,7 +339,9 @@ export function createMapsRoute(
               ? mapsReverseRequestSchema
               : operation === "details"
                 ? mapsPlaceDetailsRequestSchema
-                : mapsRoutesRequestSchema,
+                : operation === "viewport"
+                  ? mapsViewportRequestSchema
+                  : mapsRoutesRequestSchema,
           body,
         );
     } catch (error) {

@@ -83,6 +83,7 @@ export async function admitMapsRequest(
   const requestId = c.req.header("Idempotency-Key");
   if (
     operation !== "coverage" &&
+    operation !== "viewport" &&
     (!requestId || !/^[A-Za-z0-9_-]{1,128}$/.test(requestId))
   )
     throw new MapsAdmissionError(
@@ -109,7 +110,8 @@ export async function admitMapsRequest(
           "subscription_required",
           "An active Eliza subscription is required for Maps.",
         );
-      if (operation === "coverage") return null;
+      // Coverage and viewport copyright are metadata: entitled, never counted.
+      if (operation === "coverage" || operation === "viewport") return null;
       if (!summary.rateTier)
         throw new MapsAdmissionError(
           503,
