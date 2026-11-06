@@ -647,7 +647,7 @@ export async function createTaskGateway({
      * the gateway is closing, the answer is "unavailable".
      */
     inspectStorage() {
-      if (closed || typeof storageInspector !== "function")
+      if (fence.closed || typeof storageInspector !== "function")
         return "unavailable";
       return storageInspector(db);
     },
