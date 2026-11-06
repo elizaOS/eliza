@@ -2058,8 +2058,21 @@ async function consumeTelegramLoginChallenge(
         typeof parsed.originHost === "string" ? parsed.originHost : undefined,
       issuedAt: typeof parsed.issuedAt === "number" ? parsed.issuedAt : 0,
     };
-  } catch {
-    return null;
+  } catch (cause) {
+    // createTelegramLoginChallenge always writes this record and `consume`
+    // removes it, so a value that does not parse is a torn write or a foreign
+    // writer on the same key, not a client that reused an old challenge.
+    // Returning null here answered every retry with "Invalid or expired
+    // Telegram login challenge" and hid the store fault from the operator.
+    throw new ElizaError(
+      "Stored Telegram login challenge record cannot be read.",
+      {
+        code: "TELEGRAM_LOGIN_CHALLENGE_UNREADABLE",
+        cause,
+        context: { record: "telegram-login-challenge" },
+        severity: "ephemeral",
+      },
+    );
   }
 }
 
