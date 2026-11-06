@@ -205,7 +205,14 @@ export class BionicStreamingTranscriber extends BaseStreamingTranscriber {
 
 	/** Feed queued audio and, when enough is new, emit a running partial. */
 	private async drain(): Promise<void> {
-		if (this.disposedFlag || this.failure || this.queuedSamples === 0) return;
+		if (this.disposedFlag || this.queuedSamples === 0) return;
+		if (this.failure) {
+			// The rest of a failed segment has no stream to go to. Drop it so
+			// the next segment's stream does not start with it.
+			this.queue = [];
+			this.queuedSamples = 0;
+			return;
+		}
 		let pcm = this.takeQueued();
 		const room = this.maxSegmentSamples - this.segmentSamples;
 		if (pcm.length > room) {
