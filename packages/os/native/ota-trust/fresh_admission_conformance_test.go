@@ -11,13 +11,18 @@ import (
 	"time"
 )
 
-// This test replays the OtaFreshAdmission TLA+ model against the real code.
-// The model's Decide, Remembered and LoadCheck, and the commit and recovery
-// checks of its fixed configuration (recheck, required refresh, fix forward),
-// are written out below. Every ratchet sequence of the model's descriptor
-// table runs through the real functions, and each result must equal the
-// model's. Sequences of one descriptor run by default and reach every refusal;
-// OTA_FRESH_CONFORMANCE=full adds every sequence of two (about two minutes).
+// A differential test of the real code against a hand port of the
+// OtaFreshAdmission TLA+ model's predicates: Decide, Remembered and LoadCheck,
+// and the commit and recovery checks of its fixed configuration (recheck,
+// required refresh, fix forward), written out below. It does not run the TLA+
+// state machine, so an error made the same way in the model port and in the
+// code would pass. To check the model's own commit guard, t <= refreshedAt + F,
+// every eligible commit with both bounds set must also satisfy it with
+// F = commitByUpperMs - refreshedAfterLowerMs. Every ratchet sequence of the
+// model's descriptor table runs through the real functions, and each result
+// must equal the port's. Sequences of one descriptor run by default and reach
+// every refusal; OTA_FRESH_CONFORMANCE=full adds every sequence of two (about
+// two minutes).
 
 type freshDesc struct {
 	id, lane                 string
@@ -143,8 +148,9 @@ func modelRecovery(d freshDesc, fl freshFloor, global int64) string {
 
 // modelCommit is CommitOnlyIfFresh of the fixed configuration: the trusted
 // interval inside the rollout, neither artifact known revoked, the security
-// floor, no newer sequence and a refresh no older than refreshedAfter.
-func modelCommit(d freshDesc, fl freshFloor, pol freshPolicy, refreshedAfter int64) string {
+// floor, no newer sequence, a refresh no older than refreshedAfter and, when
+// commitBy is set, a commit no later than commitBy.
+func modelCommit(d freshDesc, fl freshFloor, pol freshPolicy, refreshedAfter, commitBy int64) string {
 	switch {
 	case fl.seq < d.seq || fl.rev < d.rev:
 		return "error"
@@ -158,7 +164,7 @@ func modelCommit(d freshDesc, fl freshFloor, pol freshPolicy, refreshedAfter int
 		return "below-security-floor"
 	case fl.seq > d.seq:
 		return "superseded"
-	case fl.refreshed < refreshedAfter:
+	case fl.refreshed < refreshedAfter, commitBy > 0 && freshMillis(pol.up) > commitBy:
 		return "stale-metadata"
 	}
 	return "eligible"
@@ -372,15 +378,20 @@ func (f *freshFixture) replay(t *testing.T, sequence []int) (cases int64) {
 		}
 		for _, pol := range freshPolicies {
 			for _, after := range []int64{0, fetched, freshMillis(1)} {
-				cases++
-				want := modelCommit(d, model, pol, after)
-				policy, _ := json.Marshal(commitPolicy{Lower: freshMillis(pol.lo), Upper: freshMillis(pol.up), SecurityFloor: pol.sec, RefreshedAfter: after})
-				got, err := EvaluatePreparedForCommit(prepared, state, f.ids[e], policy)
-				if err != nil {
-					got = "error"
-				}
-				if got != want {
-					t.Fatalf("%v commit of %s, policy %+v, refreshed after %d: got %s, model %s", sequence, d.id, pol, after, got, want)
+				for _, by := range []int64{0, freshMillis(1), freshMillis(2)} {
+					cases++
+					want := modelCommit(d, model, pol, after, by)
+					policy, _ := json.Marshal(commitPolicy{Lower: freshMillis(pol.lo), Upper: freshMillis(pol.up), SecurityFloor: pol.sec, RefreshedAfter: after, CommitBy: by})
+					got, err := EvaluatePreparedForCommit(prepared, state, f.ids[e], policy)
+					if err != nil {
+						got = "error"
+					}
+					if got != want {
+						t.Fatalf("%v commit of %s, policy %+v, refreshed after %d, by %d: got %s, model %s", sequence, d.id, pol, after, by, got, want)
+					}
+					if got == "eligible" && after > 0 && by > 0 && freshMillis(pol.up)-model.refreshed > by-after {
+						t.Fatalf("%v commit of %s at %d breaks t <= refreshedAt + F: refreshed %d, F %d", sequence, d.id, pol.up, model.refreshed, by-after)
+					}
 				}
 			}
 		}

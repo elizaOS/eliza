@@ -80,10 +80,11 @@ func (d *EnrolledDiscovery) RunWithTimeSource(scheduleDirectory, trustDirectory,
 // already prepared. It ratchets the lane's floors and revocations and records
 // the refresh that EvaluatePreparedForCommit requires, but it persists no
 // prepared record and returns no descriptor, so it cannot stage or replace the
-// plan it guards. Use a schedule directory of its own.
+// plan it guards. Use a schedule directory of its own: a success does not hold
+// back the next refresh, so each activation run can refresh before it commits.
 func (d *EnrolledDiscovery) RefreshWithTimeSource(scheduleDirectory, trustDirectory, admissionDirectory string, deviceJSON []byte, securityFloor, generation int64) (*DiscoveryResult, error) {
 	return d.runEnrolled(deviceJSON, securityFloor, generation, func(policy []byte) (*DiscoveryResult, error) {
-		result, err := d.session.RunAdmitted(scheduleDirectory, trustDirectory, admissionDirectory, d.enrollment.Root, d.config.MetadataBase, deviceJSON, policy, generation)
+		result, err := d.session.runAdmitted(scheduleDirectory, trustDirectory, admissionDirectory, d.enrollment.Root, d.config.MetadataBase, deviceJSON, policy, generation, true)
 		if err != nil {
 			return nil, err
 		}

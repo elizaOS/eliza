@@ -10,8 +10,9 @@ import (
 	"syscall"
 )
 
-// admissionStateVersion 2 added Refreshed. Installs are dev-only, so a
-// version 1 state fails closed with no migration.
+// admissionStateVersion 2 added Refreshed. A stored version 1 state still
+// reads, as never refreshed, which is stale until the next fetch; the next
+// write stores version 2.
 const admissionStateVersion = 2
 
 type admissionFloor struct {
@@ -34,6 +35,26 @@ type admissionState struct {
 type admissionEnvelope struct {
 	State admissionState `json:"state"`
 	Hash  string         `json:"hash"`
+}
+
+// The version 1 shapes, without Refreshed. Their hash covers these exact fields.
+type admissionFloorV1 struct {
+	Sequence int64    `json:"sequence"`
+	Revision int64    `json:"revision"`
+	Security int64    `json:"security"`
+	Core     string   `json:"core"`
+	Rollout  string   `json:"rollout"`
+	Revoked  []string `json:"revoked"`
+}
+type admissionStateV1 struct {
+	Version      int64                       `json:"version"`
+	Repository   string                      `json:"repository"`
+	Distribution string                      `json:"distribution"`
+	Lanes        map[string]admissionFloorV1 `json:"lanes"`
+}
+type admissionEnvelopeV1 struct {
+	State admissionStateV1 `json:"state"`
+	Hash  string           `json:"hash"`
 }
 
 // InitializeAdmissionState is an explicit provisioning operation. It refuses
@@ -179,10 +200,12 @@ func readAdmission(directory string) (*admissionState, error) {
 	}
 	var envelope admissionEnvelope
 	if err = decodeAdmission(data, &envelope); err != nil {
-		return nil, err
-	}
-	digest, err := admissionHash(envelope.State)
-	if err != nil || digest != envelope.Hash {
+		legacy, e := readAdmissionV1(data)
+		if e != nil {
+			return nil, err
+		}
+		envelope = *legacy
+	} else if digest, e := admissionHash(envelope.State); e != nil || digest != envelope.Hash {
 		return nil, errors.New("admission state checksum mismatch")
 	}
 	s := envelope.State
@@ -195,6 +218,27 @@ func readAdmission(directory string) (*admissionState, error) {
 		}
 	}
 	return &s, nil
+}
+
+// readAdmissionV1 checks a version 1 state against its own hash and returns it
+// as version 2 with every lane never refreshed.
+func readAdmissionV1(data []byte) (*admissionEnvelope, error) {
+	var legacy admissionEnvelopeV1
+	if err := decodeAdmission(data, &legacy); err != nil {
+		return nil, err
+	}
+	digest, err := admissionHash(legacy.State)
+	if err != nil || digest != legacy.Hash {
+		return nil, errors.New("admission state checksum mismatch")
+	}
+	if legacy.State.Version != 1 {
+		return nil, errors.New("invalid admission enrollment state")
+	}
+	state := admissionState{Version: admissionStateVersion, Repository: legacy.State.Repository, Distribution: legacy.State.Distribution, Lanes: map[string]admissionFloor{}}
+	for channel, floor := range legacy.State.Lanes {
+		state.Lanes[channel] = admissionFloor{Sequence: floor.Sequence, Revision: floor.Revision, Security: floor.Security, Core: floor.Core, Rollout: floor.Rollout, Revoked: floor.Revoked}
+	}
+	return &admissionEnvelope{State: state}, nil
 }
 func saveAdmission(directory string, state admissionState, fault func(string)) error {
 	hash, err := admissionHash(state)

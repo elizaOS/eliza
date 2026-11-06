@@ -171,22 +171,28 @@ type commitPolicy struct {
 	Upper          int64 `json:"trustedUpperMs"`
 	SecurityFloor  int64 `json:"securityFloor"`
 	RefreshedAfter int64 `json:"refreshedAfterLowerMs"`
+	CommitBy       int64 `json:"commitByUpperMs"`
 }
 
 // EvaluatePreparedForCommit decides, just before commit, whether a prepared
 // release may still install. Admission is not a lasting permission. policyJSON
-// holds the current qualified bounds, the installed/global security floor and
-// refreshedAfterLowerMs, the oldest metadata refresh the caller accepts. It
-// reads only local state and returns "eligible" or the first refusal:
-// "expired", "rollout-time", "revoked-artifact" (candidate or recovery),
-// "below-security-floor", "superseded" (the lane admitted a newer sequence) or
-// "stale-metadata" (no refresh at or after refreshedAfterLowerMs).
+// holds the current qualified bounds, the installed/global security floor,
+// refreshedAfterLowerMs, the oldest metadata refresh the caller accepts, and
+// commitByUpperMs, the latest trusted time the commit may happen (0 for none).
+// Together they bound commit time minus refresh time by
+// commitByUpperMs - refreshedAfterLowerMs, so a revocation published before a
+// commit is seen unless it is newer than that bound. It reads only local state
+// and returns "eligible" or the first refusal: "expired", "rollout-time",
+// "revoked-artifact" (candidate or recovery), "below-security-floor",
+// "superseded" (the lane admitted a newer sequence) or "stale-metadata" (no
+// refresh at or after refreshedAfterLowerMs, or the bounds reach past
+// commitByUpperMs).
 func EvaluatePreparedForCommit(directory, admissionDirectory, identity string, policyJSON []byte) (decision string, err error) {
 	var policy commitPolicy
 	if err = decodeAdmission(policyJSON, &policy); err != nil {
 		return "", err
 	}
-	if !bounded(policy.Lower, 1, safeInteger) || !bounded(policy.Upper, policy.Lower, safeInteger) || !bounded(policy.SecurityFloor, 1, 2147483647) || !bounded(policy.RefreshedAfter, 0, safeInteger) {
+	if !bounded(policy.Lower, 1, safeInteger) || !bounded(policy.Upper, policy.Lower, safeInteger) || !bounded(policy.SecurityFloor, 1, 2147483647) || !bounded(policy.RefreshedAfter, 0, safeInteger) || !bounded(policy.CommitBy, 0, safeInteger) {
 		return "", errors.New("invalid commit freshness policy")
 	}
 	err = lockedPrepared(directory, func() error {
@@ -223,7 +229,7 @@ func commitDecision(d releaseDescriptor, floor admissionFloor, policy commitPoli
 		return "below-security-floor"
 	case floor.Sequence > d.Sequence:
 		return "superseded"
-	case floor.Refreshed < policy.RefreshedAfter:
+	case floor.Refreshed < policy.RefreshedAfter, policy.CommitBy > 0 && policy.Upper > policy.CommitBy:
 		return "stale-metadata"
 	}
 	return "eligible"

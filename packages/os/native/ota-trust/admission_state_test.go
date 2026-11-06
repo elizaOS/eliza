@@ -168,3 +168,49 @@ func TestRememberedRevocationsCannotDisappear(t *testing.T) {
 		t.Fatal("revoked recovery silently reenabled")
 	}
 }
+
+// A state stored before Refreshed existed (version 1) still evaluates. Its
+// lanes read as never refreshed, and the next fetch records a refresh and
+// stores version 2.
+func TestRememberedAdmissionReadsVersion1State(t *testing.T) {
+	dir, v := rememberedFixture(t)
+	if _, err := EvaluateRememberedReleaseInterval(dir, v.Release, v.Device, v.Policy); err != nil {
+		t.Fatal(err)
+	}
+	current, err := readAdmission(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	legacy := admissionStateV1{Version: 1, Repository: current.Repository, Distribution: current.Distribution, Lanes: map[string]admissionFloorV1{}}
+	for channel, f := range current.Lanes {
+		legacy.Lanes[channel] = admissionFloorV1{Sequence: f.Sequence, Revision: f.Revision, Security: f.Security, Core: f.Core, Rollout: f.Rollout, Revoked: f.Revoked}
+	}
+	hash, _ := admissionHash(legacy)
+	data, _ := json.Marshal(admissionEnvelopeV1{State: legacy, Hash: hash})
+	if err = os.WriteFile(filepath.Join(dir, "admission.json"), data, 0600); err != nil {
+		t.Fatal(err)
+	}
+	if result, err := EvaluateRememberedReleaseInterval(dir, v.Release, v.Device, v.Policy); err != nil || result.Decision != "eligible" {
+		t.Fatalf("version 1 state: %+v %v", result, err)
+	}
+	var policy admissionPolicy
+	if err = json.Unmarshal(v.Policy, &policy); err != nil {
+		t.Fatal(err)
+	}
+	if _, err = evaluateRememberedRelease(dir, v.Release, v.Device, policy, policy.Lower); err != nil {
+		t.Fatal(err)
+	}
+	stored, err := readAdmission(dir)
+	if err != nil || stored.Version != admissionStateVersion || stored.Lanes["stable"].Refreshed != policy.Lower {
+		t.Fatalf("refresh not recorded over version 1: %+v %v", stored, err)
+	}
+	// A version 1 state is checked against its own hash.
+	legacy.Lanes["stable"] = admissionFloorV1{Sequence: 9, Revision: 9, Security: 1, Core: legacy.Lanes["stable"].Core, Rollout: legacy.Lanes["stable"].Rollout, Revoked: []string{}}
+	data, _ = json.Marshal(admissionEnvelopeV1{State: legacy, Hash: hash})
+	if err = os.WriteFile(filepath.Join(dir, "admission.json"), data, 0600); err != nil {
+		t.Fatal(err)
+	}
+	if _, err = readAdmission(dir); err == nil {
+		t.Fatal("tampered version 1 state read")
+	}
+}

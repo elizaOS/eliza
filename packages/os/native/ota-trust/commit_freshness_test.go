@@ -10,7 +10,12 @@ import (
 
 func commitPolicyJSON(t *testing.T, lower, upper, floor, refreshedAfter int64) []byte {
 	t.Helper()
-	data, err := json.Marshal(commitPolicy{Lower: lower, Upper: upper, SecurityFloor: floor, RefreshedAfter: refreshedAfter})
+	return commitByPolicyJSON(t, lower, upper, floor, refreshedAfter, 0)
+}
+
+func commitByPolicyJSON(t *testing.T, lower, upper, floor, refreshedAfter, commitBy int64) []byte {
+	t.Helper()
+	data, err := json.Marshal(commitPolicy{Lower: lower, Upper: upper, SecurityFloor: floor, RefreshedAfter: refreshedAfter, CommitBy: commitBy})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -135,10 +140,38 @@ func TestCommitFreshnessRequiresAFetchedRefresh(t *testing.T) {
 	}
 }
 
+// commitByUpperMs bounds the time from the run's refresh to its commit. An
+// activation run that outlives it is refused, so a revocation published while
+// it waited cannot be missed for longer than the bound.
+func TestCommitFreshnessRefusesALongActivationRun(t *testing.T) {
+	dir, state, id, _ := preparedFixture(t)
+	at := now.UnixMilli()
+	if decision := commitDecisionFor(t, dir, state, id, at, at, 1, 0); decision != "eligible" {
+		t.Fatal(decision)
+	}
+	decide := func(upper, commitBy int64) string {
+		t.Helper()
+		decision, err := EvaluatePreparedForCommit(dir, state, id, commitByPolicyJSON(t, at, upper, 1, 0, commitBy))
+		if err != nil {
+			t.Fatal(err)
+		}
+		return decision
+	}
+	if decision := decide(at, at); decision != "eligible" {
+		t.Fatal("commit at the bound refused:", decision)
+	}
+	if decision := decide(at+1, at); decision != "stale-metadata" {
+		t.Fatal("commit after the bound accepted:", decision)
+	}
+	if decision := decide(at+1, 0); decision != "eligible" {
+		t.Fatal("no bound refused:", decision)
+	}
+}
+
 func TestCommitFreshnessRefusesBadInputsAndLostState(t *testing.T) {
 	dir, state, id, _ := preparedFixture(t)
 	at := now.UnixMilli()
-	for _, policy := range [][]byte{commitPolicyJSON(t, 0, at, 1, 0), commitPolicyJSON(t, at, at-1, 1, 0), commitPolicyJSON(t, at, at, 0, 0), []byte(`{"trustedLowerMs":1}`)} {
+	for _, policy := range [][]byte{commitPolicyJSON(t, 0, at, 1, 0), commitPolicyJSON(t, at, at-1, 1, 0), commitPolicyJSON(t, at, at, 0, 0), commitByPolicyJSON(t, at, at, 1, 0, -1), []byte(`{"trustedLowerMs":1}`)} {
 		if _, err := EvaluatePreparedForCommit(dir, state, id, policy); err == nil {
 			t.Fatalf("invalid policy accepted: %s", policy)
 		}
@@ -148,5 +181,43 @@ func TestCommitFreshnessRefusesBadInputsAndLostState(t *testing.T) {
 	}
 	if decision, err := EvaluatePreparedForCommit(dir, state, id, commitPolicyJSON(t, at, at, 1, 0)); err == nil || decision != "" {
 		t.Fatal("lost admission state decided", decision)
+	}
+}
+
+// A refresh's success must not hold back the next refresh: each activation run
+// refreshes and then commits, so a refresh deferred by an earlier success
+// would leave every run stale. Runs a minute and 20 minutes apart (the fixture
+// timestamp lasts an hour) each fetch and each reach eligible.
+func TestCommitFreshnessRefreshesEveryActivationRun(t *testing.T) {
+	f := enrolledTest(t)
+	result, err := f.run()
+	if err != nil || result.Status != "admitted" {
+		t.Fatalf("%+v %v", result, err)
+	}
+	id := result.AuthorizationID
+	schedule, _ := discoveryDirs(t)
+	const maxRun = 10 * 60 * 1000
+	start := now.Add(5 * time.Minute)
+	for _, gap := range []time.Duration{0, time.Minute, 20 * time.Minute} {
+		at := start.Add(gap).UnixMilli()
+		refresh, err := newEnrolledDiscovery(f.directory, func(string) (discoveryTransport, error) {
+			return &discoveryFixture{repository: f.transport.repository}, nil
+		})
+		if err != nil {
+			t.Fatal(err)
+		}
+		refresh.session.source = &fixtureTimeSource{bounds: TrustedTimeInterval{at, at}}
+		refreshed, err := refresh.RefreshWithTimeSource(schedule, f.cache, f.admission, f.device, 1, 0)
+		if err != nil || refreshed.Status != "admitted" {
+			t.Fatalf("run after %v: refresh %+v %v", gap, refreshed, err)
+		}
+		state, err := readAdmission(f.admission)
+		if err != nil || state.Lanes["stable"].Refreshed != at {
+			t.Fatalf("run after %v: refresh not recorded %+v %v", gap, state, err)
+		}
+		decision, err := EvaluatePreparedForCommit(f.prepared, f.admission, id, commitByPolicyJSON(t, at, at, 1, at, at+maxRun))
+		if err != nil || decision != "eligible" {
+			t.Fatalf("run after %v: commit %q %v", gap, decision, err)
+		}
 	}
 }
