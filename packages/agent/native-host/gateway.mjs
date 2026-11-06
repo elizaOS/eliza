@@ -57,7 +57,10 @@ export function createLocalAgentGateway({
   surfaceChannel,
   inferenceConfigured = async () => true,
   fetchImpl = fetch,
+  requestScope = (_req, _res, next) => next(),
 } = {}) {
+  if (typeof requestScope !== "function")
+    throw new TypeError("requestScope must be a function");
   if (
     !hostPolicy ||
     Array.isArray(origins) === (typeof isAllowedOrigin === "function") ||
@@ -90,6 +93,9 @@ export function createLocalAgentGateway({
   };
   const pending = new Set();
   const rooms = new Map();
+  // Rooms sent a message since the last sign-out: only these can have a turn
+  // that this gateway started still running upstream.
+  const turnRooms = new Set();
   let epoch = 0,
     writeQueue = Promise.resolve();
   const ready = (async () => {
@@ -127,7 +133,7 @@ export function createLocalAgentGateway({
     "Access-Control-Allow-Headers": "Authorization, Content-Type",
     "Access-Control-Max-Age": "600",
   };
-  const server = http.createServer(async (req, res) => {
+  const handle = async (req, res) => {
     const origin = req.headers.origin;
     // Host validation also rejects DNS rebinding requests without an Origin.
     let originAllowed = !origin;
@@ -221,23 +227,26 @@ export function createLocalAgentGateway({
       ) {
         surfaceChannel?.revoke();
         epoch++;
+        // Stop the turn of every room sent a message, not only the rooms
+        // with an open request: a turn keeps running upstream after its
+        // renderer request closed, and must not survive the sign-out.
+        const roomIds = new Set(turnRooms);
+        turnRooms.clear();
         rooms.clear();
         for (const request of pending) {
           request.controller.abort();
-          if (request.roomId)
-            void fetchImpl(
-              new URL(`/api/turns/${request.roomId}/abort`, target),
-              {
-                method: "POST",
-                headers: {
-                  Authorization: `Bearer ${token}`,
-                  "Content-Type": "application/json",
-                },
-                body: JSON.stringify({ reason: "cloud-logout" }),
-                signal: AbortSignal.timeout(5000),
-              },
-            ).catch(() => {});
+          if (request.roomId) roomIds.add(request.roomId);
         }
+        for (const roomId of roomIds)
+          void fetchImpl(new URL(`/api/turns/${roomId}/abort`, target), {
+            method: "POST",
+            headers: {
+              Authorization: `Bearer ${token}`,
+              "Content-Type": "application/json",
+            },
+            body: JSON.stringify({ reason: "cloud-logout" }),
+            signal: AbortSignal.timeout(5000),
+          }).catch(() => {});
         await taskGateway?.revoke();
         await persist();
       }
@@ -364,6 +373,7 @@ export function createLocalAgentGateway({
       }
       const active = { controller, roomId: record?.roomId };
       if (isMessage || isCreate) pending.add(active);
+      if (isMessage) turnRooms.add(record.roomId);
       let response;
       let data;
       try {
@@ -469,6 +479,35 @@ export function createLocalAgentGateway({
           : {}),
       });
     }
+  };
+  // `requestScope(req, res, next)` lets a host run each request inside its
+  // own context (for example an AsyncLocalStorage scope). It must call
+  // `next()` once; `next` returns the handler's promise. The hook runs
+  // synchronously, so an AsyncLocalStorage scope it opens covers the whole
+  // handler. A hook that throws, or returns a promise that rejects, before
+  // `next` fails only that request with one 500, and `next` can no longer
+  // start the handler afterwards. A failure after `next` never answers again.
+  const server = http.createServer((req, res) => {
+    let started = false;
+    const next = () => {
+      if (started) throw new Error("Request handler already started");
+      started = true;
+      return handle(req, res);
+    };
+    const fail = () => {
+      const answer = !started;
+      started = true;
+      if (answer && !res.headersSent && !res.destroyed && !res.writableEnded)
+        json(res, 500, { error: "Local agent unavailable" });
+    };
+    let scoped;
+    try {
+      scoped = requestScope(req, res, next);
+    } catch {
+      return fail();
+    }
+    if (scoped && typeof scoped.then === "function")
+      Promise.resolve(scoped).then(undefined, fail);
   });
   server.on("close", () => surfaceChannel?.close());
   return server;

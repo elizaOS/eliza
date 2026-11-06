@@ -56,11 +56,6 @@ const USERNAME_AUTHORITY_LOCK_KEY = "username-claim";
  * round-trip (~5ms) for repeated lookups within the same serverless instance.
  */
 const inMemoryCharCache = new InMemoryLRUCache<UserCharacter>(100, 60_000);
-const characterHydrations = new Map<string, Promise<void>>();
-
-export type InferenceCharacterCacheResolution =
-  | { kind: "ready"; character: UserCharacter | null }
-  | { kind: "warming" | "unavailable" };
 
 export type CharacterCreationPolicy =
   | { mode: "metered" }
@@ -242,54 +237,6 @@ export class CharactersService {
     }
 
     return character;
-  }
-
-  /**
-   * Resolve a character for a Worker inference request without falling through
-   * to Postgres. Cold entries hydrate under `waitUntil`; repeated turns in the
-   * same isolate normally resolve from the in-process LRU without remote I/O.
-   */
-  async getByIdCacheOnly(
-    id: string,
-    options: {
-      executionCtx?: { waitUntil(promise: Promise<unknown>): void };
-    } = {},
-  ): Promise<InferenceCharacterCacheResolution> {
-    const inMemoryHit = inMemoryCharCache.get(id);
-    if (inMemoryHit) {
-      return { kind: "ready", character: structuredClone(inMemoryHit) };
-    }
-
-    const outcome = await cache.getWithOutcome<UserCharacter>(characterCacheKey(id));
-    if (outcome.kind === "hit") {
-      inMemoryCharCache.set(id, outcome.value);
-      return { kind: "ready", character: structuredClone(outcome.value) };
-    }
-
-    if (options.executionCtx) {
-      let hydration = characterHydrations.get(id);
-      if (!hydration) {
-        hydration = this.getById(id)
-          .then(() => undefined)
-          .catch((error) => {
-            // error-policy:J7 a cold inference retry remains fail-closed while
-            // the authoritative character hydration failure is observable.
-            logger.warn("[Characters] Background inference hydration failed", {
-              characterId: id,
-              error: error instanceof Error ? error.message : String(error),
-            });
-          })
-          .finally(() => {
-            characterHydrations.delete(id);
-          });
-        characterHydrations.set(id, hydration);
-      }
-      options.executionCtx.waitUntil(hydration);
-    }
-
-    return {
-      kind: outcome.kind === "unavailable" || outcome.kind === "error" ? "unavailable" : "warming",
-    };
   }
 
   /**

@@ -8,6 +8,7 @@ import {
   type CancellationIdentity,
   claimCancellation,
   failReviewedCancellationBeforeDispatch,
+  failUnsettledCancellation,
   finalizeCancellation,
   listCancellationRecovery,
   type PrepareCancellationInput,
@@ -177,7 +178,10 @@ async function executeClaim(
         );
       raw = await stripe.subscriptions.retrieve(claim.source.stripe_subscription_id);
     } else if (initial.scheduled !== targetScheduled) {
-      await releaseCancellation(input, claim);
+      // The provider shows no effect and this attempt may not send one. Once the
+      // settle window has passed nothing can still apply it, so it fails;
+      // otherwise the command stays uncertain for a later observation.
+      if (!(await failUnsettledCancellation(input, claim))) await releaseCancellation(input, claim);
       return toDto(await readCancellation({ ...input, commandId: claim.command.id }, kind));
     }
     await verifyCustomer();
@@ -237,12 +241,12 @@ export async function recoverOrganizationSubscriptionCancellations(limit: number
         command.kind === "resume" ? "resume" : "cancel",
       );
       if (!claim) {
-        // A stale PREPARED command is superseded instead of claimed.
+        // A stale command is superseded, or settled once its window passed, instead of claimed.
         const current = await readCancellation(
           { ...identity, commandId: command.id },
           command.kind === "resume" ? "resume" : "cancel",
         );
-        if (current.status === "SUPERSEDED") result.failed++;
+        if (current.status === "SUPERSEDED" || current.status === "FAILED") result.failed++;
         else result.pending++;
         continue;
       }

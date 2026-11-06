@@ -137,6 +137,10 @@ import {
   normalizeRawParsedForFieldRegistry,
   reportRejectedUserVisibleModelOutput,
 } from "./stage1-output.ts";
+import {
+  STAGE1_REPLY_STREAM_FIELDS,
+  stage1DirectReplyStreamGate,
+} from "./stage1-reply-stream.ts";
 import { parseToolArguments } from "./tool-arguments.ts";
 import { recordMessageHandlerStage } from "./trajectory-stages.ts";
 import type { V5MessageRuntimeInput } from "./turn-input.ts";
@@ -825,12 +829,21 @@ export async function generateStage1Decision(
     // plannerDefaultMaxTokens).
     maxTokens: undefined,
     omitMaxTokens: true,
-    // Streamed structured generation: the local engine (W4) streams the
-    // HANDLE_RESPONSE envelope and parses it incrementally so `shouldRespond`
-    // / `contexts` route the moment they are known. User-visible `replyText`
-    // remains buffered until routing and effect validation complete. Cloud
-    // adapters ignore the flag and return the result whole.
+    // Streamed structured generation: the provider streams the
+    // HANDLE_RESPONSE envelope and the runtime parses it incrementally. Only
+    // `replyText` reaches the user's stream, and only when the routing fields
+    // generated before it settle a direct answer (stage1-reply-stream.ts);
+    // routing JSON, acknowledgements for planned work and source quotations
+    // never stream. Each attempt (retry, repair, context read) is its own
+    // stream revision and the validated final reply stays authoritative. A
+    // decision-only call delivers no reply, so it streams nothing.
     streamStructured: true,
+    ...(args.stage1DecisionOnly
+      ? {}
+      : {
+          streamFields: STAGE1_REPLY_STREAM_FIELDS,
+          streamFieldGate: stage1DirectReplyStreamGate,
+        }),
     // This is the only Stage 1 field intended for the user. Local voice
     // consumes the validated replyText field; planner/evaluator calls leave
     // this unset and therefore cannot leak their structured output to TTS.

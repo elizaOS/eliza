@@ -21,6 +21,7 @@ public final class LocalCredentialBrokerContract {
     verifiedAccountContract();
     taskKeyContract();
     taskKeyRetirementContract();
+    strandedTaskKeyContract();
     MemoryStore primary = new MemoryStore(), pending = new MemoryStore();
     try { new LocalCredentialBroker(primary, pending, ""); throw new AssertionError("Empty token accepted"); }
     catch (IllegalArgumentException expected) { }
@@ -128,6 +129,45 @@ public final class LocalCredentialBrokerContract {
       int before=calls[0];check(operation(broker,"task-key-create",null),503);require(calls[0]==before,"Retired owner mutated custody");
       guard.refuseAt=Integer.MAX_VALUE;
       require(operation(broker,"task-key-remove","12345678-1234-1234-1234-123456789abc").getJSONObject("body").getBoolean("removed"),"Remove failed");
+    }
+  }
+  private static void strandedTaskKeyContract() throws Exception {
+    final String id = "12345678-1234-1234-1234-123456789abc";
+    final String record = "{\"version\":1,\"id\":\"" + id + "\",\"key\":\"AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=\"}";
+    final boolean[] stranded = {true};
+    final java.util.List<String> completed = new java.util.ArrayList<>();
+    LocalCredentialBroker.TaskKeyCustody keys = new LocalCredentialBroker.TaskKeyCustody() {
+      public String read() { return null; }
+      public String createForNewDatabase() { return record; }
+      public boolean remove(String expected) { return false; }
+      @Override public String readStranded() { return stranded[0] ? record : null; }
+      @Override public boolean completeStranded(String expected) {
+        completed.add(expected); if (!stranded[0] || !expected.equals(id)) return false; stranded[0] = false; return true;
+      }
+    };
+    final boolean[] owner = {true};
+    LocalCredentialBroker.Guard guard = () -> { if (!owner[0]) throw new IOException("synthetic-owner-canary"); };
+    try (LocalCredentialBroker broker = new LocalCredentialBroker(new MemoryStore(), new MemoryStore(), "contract-token", keys, guard)) {
+      require(operation(broker,"task-key-stranded-read",null).getJSONObject("body").getString("value").equals(record),"Stranded read changed key");
+      check(exchange(broker.port(),"","{\"operation\":\"task-key-stranded-complete\"}","contract-token","POST /credential HTTP/1.1",null),503);
+      require(completed.isEmpty(),"Complete ran without a generation");
+      require(!operation(broker,"task-key-stranded-complete","87654321-1234-1234-1234-123456789abc").getJSONObject("body").getBoolean("removed"),"Stale generation erased stranded key");
+      owner[0] = false;
+      JSONObject retired = operation(broker,"task-key-stranded-complete",id); check(retired,503);
+      require(completed.size() == 1 && !retired.toString().contains("canary"),"Retired owner completed stranded slot");
+      owner[0] = true;
+      require(operation(broker,"task-key-stranded-complete",id).getJSONObject("body").getBoolean("removed"),"Complete failed");
+      require(operation(broker,"task-key-stranded-read",null).getJSONObject("body").isNull("value"),"Completed slot still stranded");
+    }
+    // A host without stranded slots keeps the defaults: nothing to read, nothing erased.
+    LocalCredentialBroker.TaskKeyCustody plain = new LocalCredentialBroker.TaskKeyCustody() {
+      public String read() { return null; }
+      public String createForNewDatabase() { return record; }
+      public boolean remove(String expected) { return false; }
+    };
+    try (LocalCredentialBroker broker = new LocalCredentialBroker(new MemoryStore(), new MemoryStore(), "contract-token", plain, () -> {})) {
+      require(operation(broker,"task-key-stranded-read",null).getJSONObject("body").isNull("value"),"Default custody reported a stranded key");
+      require(!operation(broker,"task-key-stranded-complete",id).getJSONObject("body").getBoolean("removed"),"Default custody erased a key");
     }
   }
   private static void taskKeyRetirementContract() throws Exception {

@@ -18,6 +18,8 @@
   "files": [
     "android/src/main/",
     "android/build.gradle",
+    "android-nativeonly/src/main/",
+    "android-nativeonly/build.gradle",
     "dist/",
     "ios/Sources/",
     "*.podspec"

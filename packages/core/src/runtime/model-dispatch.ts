@@ -59,6 +59,8 @@ import {
 	ModelType,
 	type ModelTypeName,
 	type ResponseSkeleton,
+	type StructuredStreamField,
+	type StructuredStreamGate,
 	type TextStreamResult,
 } from "../types/model.js";
 import {
@@ -111,7 +113,7 @@ import {
 	NoModelProviderConfiguredError,
 	type ResolvedModelRegistration,
 	readReasoningTokensFromResponse,
-	resolveResponseSkeletonStreamFields,
+	resolveStructuredStreamFields,
 	TEXT_GENERATION_MODEL_KEYS,
 } from "./model-policy.js";
 import type { RuntimePipelineHooks } from "./pipeline-hooks.js";
@@ -1253,6 +1255,8 @@ export class RuntimeModelDispatch {
 					signal?: AbortSignal;
 					streamStructured?: boolean;
 					responseSkeleton?: ResponseSkeleton;
+					streamFields?: readonly StructuredStreamField[];
+					streamFieldGate?: StructuredStreamGate;
 				}
 				const streamingCtx = getStreamingContext();
 				const paramsAsStreaming = isPlainObject(modelParams)
@@ -1276,16 +1280,25 @@ export class RuntimeModelDispatch {
 						: requiresExplicitStreaming
 							? explicitStream === true
 							: !!(paramsChunk || ctxChunk || explicitStream);
-				const structuredStreamFields =
+				// Structured calls release only their declared user-visible fields,
+				// behind the caller's gate. Both are runtime-only and never reach
+				// the provider handler.
+				const structuredStream =
 					shouldStream && paramsAsStreaming?.streamStructured === true
-						? resolveResponseSkeletonStreamFields(
+						? resolveStructuredStreamFields(
 								paramsAsStreaming.responseSkeleton,
+								paramsAsStreaming.streamFields,
 							)
-						: [];
+						: { fields: [], parts: {} };
+				const structuredStreamGate = paramsAsStreaming?.streamFieldGate;
+				if (paramsAsStreaming) {
+					delete paramsAsStreaming.streamFields;
+					delete paramsAsStreaming.streamFieldGate;
+				}
 				const suppressStructuredStream =
 					shouldStream &&
 					paramsAsStreaming?.streamStructured === true &&
-					structuredStreamFields.length === 0;
+					structuredStream.fields.length === 0;
 				let downstreamDelivery = Promise.resolve();
 				let downstreamDeliveryError: unknown;
 				let downstreamDeliveryFailed = false;
@@ -1312,11 +1325,13 @@ export class RuntimeModelDispatch {
 					if (downstreamDeliveryFailed) throw downstreamDeliveryError;
 				};
 				const structuredExtractor =
-					structuredStreamFields.length > 0 &&
+					structuredStream.fields.length > 0 &&
 					paramsAsStreaming?.responseSkeleton
 						? new ResponseSkeletonStreamExtractor({
 								skeleton: paramsAsStreaming.responseSkeleton,
-								streamFields: structuredStreamFields,
+								streamFields: structuredStream.fields,
+								streamParts: structuredStream.parts,
+								...(structuredStreamGate ? { gate: structuredStreamGate } : {}),
 								unordered: true,
 								onChunk: (chunk, _field, accumulated, streamRevision) =>
 									downstreamChunk(chunk, accumulated, streamRevision),

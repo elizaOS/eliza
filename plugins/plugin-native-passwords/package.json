@@ -18,6 +18,8 @@
   "files": [
     "android/src/main/",
     "android/build.gradle",
+    "android-transfer/src/main/",
+    "android-transfer/build.gradle",
     "dist/"
   ],
   "author": "elizaOS",

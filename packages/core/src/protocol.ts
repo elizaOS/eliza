@@ -122,6 +122,7 @@ export {
 	type TaskOperation,
 	type TaskOriginGrant,
 	type TaskOriginStep,
+	type TaskOutcome,
 	type TaskOwner,
 	type TaskTransition,
 	transitionInteractiveTask,
@@ -579,7 +580,6 @@ export {
 	TEXT_NORMALIZE_UNBOUNDED,
 	toMultilineText,
 } from "./utils/text-normalize.ts";
-export { createFirstSentenceStreamTracker } from "./utils/text-splitting.ts";
 export * from "./utils/type-guards.ts";
 export * from "./utils/unicode.js";
 export * from "./utils/union-find.ts";
