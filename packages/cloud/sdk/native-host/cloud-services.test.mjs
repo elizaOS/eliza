@@ -1033,17 +1033,19 @@ function googleHost(t, google, extraPolicy = {}) {
           authUrl: "https://accounts.google.com/o/oauth2/v2/auth?state=x",
         });
       if (path === "/api/v1/eliza/google/gmail/inbox-v1/capabilities")
-        return Response.json(
-          google.capabilities ?? {
-            version: 1,
-            attachmentPolicy: {
-              mimeTypes: ["application/pdf", "image/png"],
-              maximumBytes: 5242880,
-              maximumOutgoing: 10,
-              maximumTotalBytes: 5242880,
-            },
-          },
-        );
+        return google.capabilitiesStatus
+          ? new Response(null, { status: google.capabilitiesStatus })
+          : Response.json(
+              google.capabilities ?? {
+                version: 1,
+                attachmentPolicy: {
+                  mimeTypes: ["application/pdf", "image/png"],
+                  maximumBytes: 5242880,
+                  maximumOutgoing: 10,
+                  maximumTotalBytes: 5242880,
+                },
+              },
+            );
       if (path.startsWith("/api/v1/eliza/google/gmail/inbox-v1/operations")) {
         if (google.operationResponse) return google.operationResponse(path);
         if (google.operationStatus)
@@ -2171,6 +2173,13 @@ test("the owner mail writer relays Cloud's reviewed two-step operation for the c
   google.capabilities = { version: 1 };
   await assert.rejects(writer.capabilities(), { status: 502 });
   google.capabilities = undefined;
+  // A failed Google token read is an outage, not a changed review.
+  google.capabilitiesStatus = 409;
+  await assert.rejects(writer.capabilities(), {
+    code: "unavailable",
+    status: 503,
+  });
+  google.capabilitiesStatus = undefined;
   // Another connected mailbox, or a revoked grant, is refused before Cloud.
   google.connectionId = GRANT_B;
   await assert.rejects(

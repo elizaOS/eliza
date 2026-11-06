@@ -2688,12 +2688,23 @@ export function createCloudRoutes({
       },
       /** Cloud's limits on the files that one sent message can carry. */
       async capabilities() {
-        const value = await call(
-          `/api/v1/eliza/google/gmail/inbox-v1/capabilities?grantId=${encodeURIComponent(accountId)}`,
-          undefined,
-          undefined,
-          false,
-        );
+        let value;
+        try {
+          value = await call(
+            `/api/v1/eliza/google/gmail/inbox-v1/capabilities?grantId=${encodeURIComponent(accountId)}`,
+            undefined,
+            undefined,
+            false,
+          );
+        } catch (error) {
+          // This route reads no review: Cloud answers 409 when it cannot get
+          // a Google token and 403 when the grant is gone. A grant that is
+          // still current makes it an outage.
+          if (!["review_changed", "insufficient_scope"].includes(error?.code))
+            throw error;
+          await authority();
+          throw writeFailure("unavailable", 503);
+        }
         const policy = value?.attachmentPolicy;
         const count = (number) => Number.isSafeInteger(number) && number > 0;
         if (

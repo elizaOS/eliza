@@ -235,7 +235,7 @@ it left reduced as a read reduces them (null for send and before dispatch).
 `to`, `cc` and `bcc`, a `subject` and file names with a 502. `capabilities()`
 returns Cloud's `attachmentPolicy` (`mimeTypes`, `maximumBytes`,
 `maximumOutgoing`, `maximumTotalBytes`) for outgoing files; a server without it
-fails with a 502.
+fails with a 502, and a failed Google token read with `unavailable`.
 Before each call it checks the signed-in owner, the
 Cloud sign-in and that `accountId` is still the connected grant holding the
 scope the effect needs (`gmail.send` for send, `gmail.modify` otherwise).
