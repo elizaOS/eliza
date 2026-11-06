@@ -944,3 +944,179 @@ it.each(["reply", "lost-reply", "pause-timeout"])(
   },
   20_000,
 );
+
+describe("shared task lifecycle client", () => {
+  const messages = {
+    start: "start failed",
+    pause: "pause failed",
+    resume: "resume failed",
+    cancel: "cancel failed",
+  };
+  function host(
+    observe: InteractiveTaskActuator["observe"] = async () => {
+      throw new Error("unexpected observe");
+    },
+  ) {
+    const f = setup();
+    const runtime = new InteractiveTaskRuntime({
+      owner,
+      store: f.store,
+      actuator: {
+        capabilities: [],
+        observe,
+        execute: async () => {
+          throw new Error("unexpected execute");
+        },
+        quiesce: async () => {},
+      },
+    });
+    return { f, runtime };
+  }
+
+  it.each(["confirmed", "refused"])(
+    "a refresh never drops a Close that waits for a pending start (%s)",
+    async (outcome) => {
+      const { f, runtime } = host();
+      const created = deferred<void>();
+      const authorizing = deferred<void>();
+      const deferredSent = deferred<void>();
+      const deferredReply = deferred<void>();
+      const http = await listenTaskHttp(
+        createInteractiveTaskHandler({
+          runtime,
+          authenticate: async () => owner,
+          authorizeGoal: async (ref) => {
+            authorizing.resolve();
+            await created.promise;
+            return goal(ref);
+          },
+        }),
+      );
+      const paths: string[] = [];
+      let pauses = 0;
+      const states: TaskLifecycleState[] = [];
+      const client = new TaskLifecycle(
+        async (path, body) => {
+          paths.push(path);
+          if (path === "/tasks/current/pause" && ++pauses === 2) {
+            deferredSent.resolve();
+            await deferredReply.promise;
+            if (outcome === "refused") throw new Error("Task HTTP 503");
+          }
+          const response = await http.call(path, body);
+          if (!response.ok) throw new Error(`Task HTTP ${response.status}`);
+          return response.json();
+        },
+        (state) => states.push(state),
+        messages,
+      );
+      try {
+        const starting = client.start("bill");
+        await authorizing.promise;
+        // Close finds no task yet; it waits for the start to settle.
+        expect(await client.control("close")).toBe(true);
+        created.resolve();
+        await starting;
+        await deferredSent.promise;
+        const before = paths.length;
+        await client.refresh();
+        expect(await client.start("bill")).toBe(false);
+        expect(paths).toHaveLength(before);
+        deferredReply.resolve();
+        await vi.waitFor(() =>
+          expect(client.snapshot()).toMatchObject(
+            outcome === "confirmed"
+              ? { pending: false, error: "", task: { status: "paused" } }
+              : { pending: false, error: "pause failed" },
+          ),
+        );
+        expect(runtime.get("task-1").status).toBe(
+          outcome === "confirmed" ? "paused" : "active",
+        );
+      } finally {
+        created.resolve();
+        deferredReply.resolve();
+        await http.close();
+        f.close();
+      }
+    },
+  );
+
+  it("start never reports another goal's task as started", async () => {
+    const { f, runtime } = host();
+    runtime.create(goal("goal/a"));
+    runtime.control("task-1", 0, "pause");
+    const http = await listenTaskHttp(
+      createInteractiveTaskHandler({
+        runtime,
+        authenticate: async () => owner,
+        authorizeGoal: async (ref) => goal(ref),
+      }),
+    );
+    const client = new TaskLifecycle(
+      async (path, body) => {
+        const response = await http.call(path, body);
+        if (!response.ok) throw new Error(`Task HTTP ${response.status}`);
+        return response.json();
+      },
+      () => {},
+      messages,
+    );
+    try {
+      expect(await client.start("goal/b")).toBe(false);
+      expect(client.snapshot()).toMatchObject({
+        error: "start failed",
+        task: { id: "task-1", status: "paused" },
+      });
+      // The task of her own goal is kept, as after a lost creation reply.
+      expect(await client.start("goal/a")).toBe(true);
+      expect(client.snapshot()).toMatchObject({
+        error: "",
+        task: { id: "task-1", status: "paused" },
+      });
+    } finally {
+      await http.close();
+      f.close();
+    }
+  });
+
+  it("cancel is not refused when a planner step lands between its requests", async () => {
+    let version = 0;
+    const { f, runtime } = host(async () => ({
+      id: `view-${++version}`,
+      pageId: "page",
+      origin: "https://example.org",
+      version,
+      inputRevision: 0,
+      observedAt: Date.now(),
+    }));
+    runtime.create(goal("goal/a"));
+    const http = await listenTaskHttp(
+      createInteractiveTaskHandler({
+        runtime,
+        authenticate: async () => owner,
+        authorizeGoal: async (ref) => goal(ref),
+      }),
+    );
+    const client = new TaskLifecycle(
+      async (path, body) => {
+        const reply = await (await http.call(path, body)).json();
+        // The planner observes the page right after each read of the task.
+        if (path.startsWith("/tasks/current"))
+          await runtime
+            .observe("task-1", runtime.get("task-1").revision)
+            .catch(() => undefined);
+        return reply;
+      },
+      () => {},
+      messages,
+    );
+    try {
+      expect(await client.control("cancel")).toBe(true);
+      expect(runtime.get("task-1").status).toBe("cancelled");
+    } finally {
+      await http.close();
+      f.close();
+    }
+  });
+});
