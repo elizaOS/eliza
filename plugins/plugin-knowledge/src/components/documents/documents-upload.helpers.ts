@@ -56,6 +56,8 @@ const TEXT_BACKED_UPLOAD_EXTENSIONS = [
   ".xml",
   ".csv",
   ".tsv",
+  ".html",
+  ".htm",
 ] as const;
 
 export function shouldReadDocumentFileAsText(

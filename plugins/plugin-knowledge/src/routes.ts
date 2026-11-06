@@ -197,9 +197,17 @@ function isTextBackedContentType(contentType: string): boolean {
 }
 function hasTextBackedFilename(filename: string): boolean {
   const lowerFilename = filename.toLowerCase();
-  return [".md", ".mdx", ".txt", ".json", ".xml", ".csv", ".tsv"].some(
-    (extension) => lowerFilename.endsWith(extension),
-  );
+  return [
+    ".md",
+    ".mdx",
+    ".txt",
+    ".json",
+    ".xml",
+    ".csv",
+    ".tsv",
+    ".html",
+    ".htm",
+  ].some((extension) => lowerFilename.endsWith(extension));
 }
 function getOwnerEntityId(runtime: AgentRuntime | null): UUID | undefined {
   if (!runtime || typeof runtime.getSetting !== "function") return undefined;
