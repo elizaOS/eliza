@@ -39,13 +39,13 @@ const FIELD_LINE = new RegExp(
 	`^\\s{0,3}(${RESPONSE_HANDLER_FIELD_NAMES.join("|")})\\s*:\\s?(.*)$`,
 );
 
+const LINE_BREAK = /\r?\n/;
+
 /**
  * A fenced-code-block delimiter line (``` or ~~~, optionally indented). Field
  * lines inside a fence are QUOTED content — e.g. a reply diagnosing a leaked
  * transcript the user pasted — never envelope structure.
  */
-const LINE_BREAK = /\r?\n/;
-
 const FENCE_LINE = /^\s{0,3}(?:`{3,}|~{3,})/;
 
 /**

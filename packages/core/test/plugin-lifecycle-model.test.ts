@@ -124,6 +124,92 @@ it("unload during a service start removes the connectors that start registers", 
 	).not.toContain("inflight-chat");
 });
 
+// PluginLifecycle.tla NoOrphanConnector: a service started lazily, after its
+// plugin registered, runs start() in the plugin's context, so unload removes
+// the connector that start() registers.
+it("unload removes a connector registered by a lazily started service", async () => {
+	const runtime = await newRuntime("Unload lazy start");
+	let startCalls = 0;
+	class LazyConnectorService extends Service {
+		static serviceType = "unload_lazy_connector_fixture";
+		capabilityDescription = "Connector whose first start fails";
+		static async start(rt: IAgentRuntime): Promise<Service> {
+			startCalls += 1;
+			if (startCalls === 1) throw new Error("not ready yet");
+			rt.registerMessageConnector({
+				source: "lazy-chat",
+				sendHandler: async () => undefined,
+			});
+			return new LazyConnectorService(rt);
+		}
+		async stop(): Promise<void> {}
+	}
+	await runtime.registerPlugin({
+		name: "unload-lazy-connector-fixture",
+		description: "Its service starts on the first load after registration",
+		services: [LazyConnectorService],
+	});
+	await waitFor(() => startCalls === 1);
+	await tick(10);
+	await runtime.getServiceLoadPromise("unload_lazy_connector_fixture");
+	expect(startCalls).toBe(2);
+	expect(runtime.getMessageConnectors().map(({ source }) => source)).toContain(
+		"lazy-chat",
+	);
+
+	await runtime.unloadPlugin("unload-lazy-connector-fixture");
+
+	expect(
+		runtime.getMessageConnectors().map(({ source }) => source),
+	).not.toContain("lazy-chat");
+	await runtime.stop();
+});
+
+// PluginLifecycle.tla NoOrphanInstance with StopMayFail: a rejected stop() must
+// not leave the plugin's other instances running with no lookup to stop them.
+it("unload stops every owned instance when one stop rejects", async () => {
+	const runtime = await newRuntime("Unload failing stop");
+	const stopped: string[] = [];
+	class Failing extends Service {
+		static serviceType = "unload_failing_stop_fixture";
+		static allowsMultiple = true;
+		capabilityDescription = "Its stop rejects";
+		static async start(rt: IAgentRuntime): Promise<Service> {
+			return new Failing(rt);
+		}
+		async stop(): Promise<void> {
+			stopped.push("failing");
+			throw new Error("stop failed");
+		}
+	}
+	class Healthy extends Service {
+		static serviceType = "unload_failing_stop_fixture";
+		static allowsMultiple = true;
+		capabilityDescription = "Stops cleanly";
+		static async start(rt: IAgentRuntime): Promise<Service> {
+			return new Healthy(rt);
+		}
+		async stop(): Promise<void> {
+			stopped.push("healthy");
+		}
+	}
+	await runtime.registerPlugin({
+		name: "unload-failing-stop-fixture",
+		description: "Two implementations; the first one's stop rejects",
+		services: [Failing, Healthy],
+	});
+	await runtime.getServiceLoadPromise("unload_failing_stop_fixture");
+	expect(runtime.getServicesByType("unload_failing_stop_fixture")).toHaveLength(
+		2,
+	);
+
+	await expect(
+		runtime.unloadPlugin("unload-failing-stop-fixture"),
+	).rejects.toThrow();
+
+	expect(stopped).toEqual(["failing", "healthy"]);
+});
+
 // PluginLifecycle.tla StopAtMostOnce: runtime.stop() during an unload must not
 // stop the instance the unload is already stopping.
 it("runtime stop during unload stops each service instance once", async () => {

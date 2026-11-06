@@ -3,7 +3,7 @@
  * tla/TaskScheduler.tla. Real TaskService, real scheduler daemon, real PGlite.
  */
 import { createTestRuntime } from "@elizaos/testing/runtime";
-import { afterEach, expect, it } from "vitest";
+import { afterEach, expect, it, vi } from "vitest";
 import { TaskService } from "../src/services/task";
 import {
 	startTaskScheduler,
@@ -58,6 +58,86 @@ it("a host runDueTasks during a daemon tick does not run a one-shot twice", asyn
 		expect(runs).toBe(1);
 	} finally {
 		finish.resolve();
+		await service.stop();
+		await f.cleanup();
+	}
+});
+
+// TaskService.tla OneShotAtMostOnce (Recheck): a stale snapshot of a one-shot
+// that another run executed and deleted does not run it again.
+it("a stale snapshot does not rerun a one-shot that already ran", async () => {
+	const f = await createTestRuntime({ characterName: "StaleOneShot" });
+	const held = latch(),
+		release = latch();
+	let runs = 0,
+		checks = 0;
+	const service = new TaskService(f.runtime);
+	try {
+		f.runtime.registerTaskWorker({
+			name: "STALE_ONE_SHOT",
+			shouldRun: async () => {
+				if (checks++ === 0) {
+					held.resolve();
+					await release.promise;
+				}
+				return true;
+			},
+			execute: async () => {
+				runs++;
+				return undefined;
+			},
+		});
+		const id = await f.runtime.createTask({
+			name: "STALE_ONE_SHOT",
+			tags: ["queue"],
+			metadata: {},
+		});
+		const stale = service.runDueTasks();
+		await held.promise;
+		await service.executeTaskById(id);
+		expect(await f.runtime.getTask(id)).toBeNull();
+		release.resolve();
+		await stale;
+		expect(runs).toBe(1);
+	} finally {
+		release.resolve();
+		await service.stop();
+		await f.cleanup();
+	}
+});
+
+// TaskService.tla OneShotDeletedAfterRun: a failed re-read of a one-shot is a
+// failure, not absence; the row stays and a later run executes it.
+it("a failed one-shot re-read keeps the task for a later run", async () => {
+	const f = await createTestRuntime({ characterName: "RecheckFails" });
+	let runs = 0;
+	const service = new TaskService(f.runtime);
+	try {
+		f.runtime.registerTaskWorker({
+			name: "RECHECK_ONE_SHOT",
+			execute: async () => {
+				runs++;
+				return undefined;
+			},
+		});
+		const id = await f.runtime.createTask({
+			name: "RECHECK_ONE_SHOT",
+			tags: ["queue"],
+			metadata: {},
+		});
+		vi.spyOn(f.runtime, "getTask").mockRejectedValueOnce(
+			new Error("connection reset"),
+		);
+		await expect(service.runDueTasks()).rejects.toMatchObject({
+			code: "TASK_TICK_FAILED",
+		});
+		expect(runs).toBe(0);
+		expect(await f.runtime.getTask(id)).not.toBeNull();
+		await service.runDueTasks();
+		expect(runs).toBe(1);
+		expect(await f.runtime.getTask(id)).toBeNull();
+	} finally {
+		vi.restoreAllMocks();
 		await service.stop();
 		await f.cleanup();
 	}

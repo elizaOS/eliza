@@ -22,8 +22,14 @@
 (* local timer.                                                            *)
 (*                                                                         *)
 (* executeTaskInternal returns at once when a one-shot or blocking id is  *)
-(* already in executingTasks, and a one-shot re-reads its row after       *)
-(* claiming the id, so a stale snapshot does not run a deleted one-shot.   *)
+(* already in executingTasks, and a one-shot re-reads its row (getTask)   *)
+(* after claiming the id, so a stale snapshot does not run a deleted      *)
+(* one-shot. That read sits outside the failure path: a missing row or a  *)
+(* failed read releases the id and returns (or throws) with no write.     *)
+(*                                                                         *)
+(* A worker that returns preserveTask makes executeTaskInternal return    *)
+(* before any write: the row stays as it is and a later run executes it   *)
+(* again. Such a run is not counted as a one-shot's run.                  *)
 (***************************************************************************)
 EXTENDS Naturals, FiniteSets
 
@@ -63,7 +69,7 @@ VARIABLES
     armed,      \* hasTimer
     deferred,   \* a fired timer waits on activeTick.then(armTimer)
     unseen,     \* a task write (markDirty) no tick has read since
-    starts,     \* worker.execute calls, saturating at 2
+    starts,     \* worker.execute calls not returning preserveTask, saturating at 2
     unserved,   \* wake revisions no run has observed yet
     requests,   \* wake requests made
     pauses      \* pause/resume writes made
@@ -82,7 +88,7 @@ TypeOK ==
     /\ row \in Rows
     /\ snap \in [Runners -> Snaps \cup {None}]
     /\ pc \in [Runners -> States]
-    /\ outcome \in [Runners -> {"ok", "fail", "okWake", None}]
+    /\ outcome \in [Runners -> {"ok", "fail", "okWake", "preserve", None}]
     /\ activeTick \in Runners \cup {None}
     /\ inSet \in BOOLEAN
     /\ armed \in BOOLEAN
@@ -182,26 +188,33 @@ Select(r) ==
             /\ UNCHANGED <<activeTick, deferred, armed, snap>>
     /\ UNCHANGED <<row, outcome, unseen, requests, pauses>>
 
-(* The claimed one-shot re-reads its row (getTask); a row another run    *)
-(* already deleted is not run again.                                     *)
+(* The claimed one-shot re-reads its row (getTask). A row another run    *)
+(* already deleted is not run again; a failed read releases the id and   *)
+(* throws, leaving the row.                                              *)
 Recheck(r) ==
     /\ pc[r] = "recheck"
-    /\ IF row.exists
-       THEN StartWorker(r)
-       ELSE /\ pc' = [pc EXCEPT ![r] = "release"]
-            /\ UNCHANGED <<starts, unserved>>
+    /\ \/ /\ row.exists
+          /\ StartWorker(r)
+       \/ /\ pc' = [pc EXCEPT ![r] = "release"]   \* missing row, or the read failed
+          /\ UNCHANGED <<starts, unserved>>
     /\ UNCHANGED <<row, snap, outcome, activeTick, inSet, armed, deferred, unseen,
                    requests, pauses>>
 
-(* worker.execute settles. *)
+(* worker.execute settles. A one-shot's failure takes the same delete as *)
+(* its success. preserveTask returns before any write.                   *)
 Work(r) ==
     /\ pc[r] = "exec"
-    /\ \E o \in IF Repeat
-                THEN {"ok", "fail"} \cup (IF requests < MaxRequests THEN {"okWake"} ELSE {})
-                ELSE {"ok"} :
-         outcome' = [outcome EXCEPT ![r] = o]
-    /\ pc' = [pc EXCEPT ![r] = "write"]
-    /\ UNCHANGED <<row, snap, activeTick, inSet, armed, deferred, unseen, starts,
+    /\ \E o \in {"preserve"} \cup
+              IF Repeat
+              THEN {"ok", "fail"} \cup (IF requests < MaxRequests THEN {"okWake"} ELSE {})
+              ELSE {"ok"} :
+         /\ outcome' = [outcome EXCEPT ![r] = o]
+         /\ IF o = "preserve"
+            THEN /\ pc' = [pc EXCEPT ![r] = "release"]
+                 /\ starts' = IF Repeat THEN starts ELSE starts - 1
+            ELSE /\ pc' = [pc EXCEPT ![r] = "write"]
+                 /\ UNCHANGED starts
+    /\ UNCHANGED <<row, snap, activeTick, inSet, armed, deferred, unseen,
                    unserved, requests, pauses>>
 
 (* The bookkeeping write of executeTaskInternal (success and catch):     *)
@@ -296,8 +309,12 @@ Spec == Init /\ [][Next]_vars /\ Fairness
 ---------------------------------------------------------------------------
 (* Safety *)
 
-(* A one-shot's worker runs at most once. *)
+(* A one-shot's worker runs at most once, not counting runs that      *)
+(* returned preserveTask.                                              *)
 OneShotAtMostOnce == ~Repeat => starts <= 1
+
+(* A one-shot's row is deleted only by a run whose worker ran. *)
+OneShotDeletedAfterRun == ~Repeat /\ ~row.exists => starts = 1
 
 (* A blocking task never runs while another run of it is in progress. *)
 BlockingNoOverlap == Guarded => Cardinality(Executing) <= 1

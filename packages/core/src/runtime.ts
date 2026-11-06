@@ -425,6 +425,8 @@ export class AgentRuntime implements IAgentRuntime {
 			servicePromiseHandlers: () => this.servicePromiseHandlers,
 			servicePromises: () => this.servicePromises,
 			stopped: () => this.stopped,
+			runServiceStart: (key, serviceType, serviceClass) =>
+				this._runServiceStart(key, serviceType, serviceClass),
 		},
 		this.retirement,
 	);
@@ -3241,9 +3243,8 @@ export class AgentRuntime implements IAgentRuntime {
 	}
 
 	/**
-	 * Wrapped by plugin-lifecycle to attribute service-start registrations to
-	 * their plugin. RuntimeServiceLifecycle starts services through its own
-	 * method, so this runtime entry is not on the start path.
+	 * RuntimeServiceLifecycle starts every service through this entry, which
+	 * plugin-lifecycle wraps to attribute start-time registrations to their plugin.
 	 */
 	private _runServiceStart(
 		key: ServiceTypeName,

@@ -103,8 +103,20 @@ interface RoomHandlerOwnershipContext {
 	roomId: string;
 }
 
-const roomHandlerOwnershipStorage =
-	new AsyncLocalStorage<RoomHandlerOwnershipContext>();
+/** Every lease the current turn owns, by room. */
+type AmbientLeases = ReadonlyMap<string, RoomHandlerLease>;
+
+const roomHandlerOwnershipStorage = new AsyncLocalStorage<AmbientLeases>();
+
+function crossRoomReentry(
+	ownerRoomIds: readonly string[],
+	requestedRoomIds: readonly string[],
+): ElizaError {
+	return new ElizaError("Nested room ownership cannot widen across rooms", {
+		code: "ROOM_HANDLER_CROSS_ROOM_REENTRY",
+		context: { ownerRoomIds, requestedRoomIds },
+	});
+}
 
 interface RunWithOptions {
 	/** Cancellation applies only while the work is queued, never after it starts. */
@@ -222,7 +234,7 @@ export class RoomHandlerQueue {
 		error: unknown,
 		event: RoomQueueEvent,
 	) => void;
-	private readonly ownershipStorage: AsyncLocalStorage<RoomHandlerOwnershipContext> | null;
+	private readonly ownershipStorage: AsyncLocalStorage<AmbientLeases> | null;
 
 	constructor(options: RoomHandlerQueueOptions = {}) {
 		const maxPendingPerRoom =
@@ -395,12 +407,18 @@ export class RoomHandlerQueue {
 		fn: (lease: RoomHandlerLease) => Promise<T>,
 		options?: WithRoomHandlerLeaseOptions,
 	): Promise<T> {
-		// A nested call reuses the live ownership it inherits; runInLease
-		// refuses one that owns another room (ROOM_HANDLER_CROSS_ROOM_REENTRY),
-		// the order withLeases enforces (tla/RoomHandlerQueue.tla, Nest).
-		const inherited = options?.lease ?? this.currentOwnership()?.lease;
-		if (inherited) {
-			return await this.runInLease(roomId, inherited, () => fn(inherited));
+		// A nested call reuses the live lease its turn holds on this room and
+		// refuses any other room (ROOM_HANDLER_CROSS_ROOM_REENTRY), so a turn
+		// never takes rooms out of order (tla/RoomHandlerQueue.tla, Nest).
+		if (options?.lease) {
+			const lease = options.lease;
+			return await this.runInLease(roomId, lease, () => fn(lease));
+		}
+		const live = this.liveAmbientLeases();
+		if (live.size > 0) {
+			const inherited = live.get(roomId);
+			if (!inherited) throw crossRoomReentry([...live.keys()], [roomId]);
+			return await fn(inherited);
 		}
 		const lease = await this.acquire(roomId, options?.signal);
 		try {
@@ -411,9 +429,10 @@ export class RoomHandlerQueue {
 	}
 
 	/**
-	 * Own multiple rooms in stable lexical order. Ambient ownership may be reused
-	 * only for that exact single room; widening a nested transaction fails fast
-	 * instead of risking an A→B/B→A deadlock.
+	 * Own multiple rooms in stable lexical order, running `fn` as the owner of
+	 * all of them. A nested call may reuse only rooms its turn already holds;
+	 * widening a nested transaction fails fast instead of risking an A→B/B→A
+	 * deadlock.
 	 */
 	async withLeases<T>(
 		roomIds: Iterable<string>,
@@ -422,22 +441,17 @@ export class RoomHandlerQueue {
 	): Promise<T> {
 		const rooms = [...new Set(roomIds)].sort();
 		if (rooms.length === 0) return fn(new Map());
-		const ambient = this.ownershipStorage?.getStore();
-		if (ambient) {
-			if (
-				rooms.length !== 1 ||
-				rooms[0] !== ambient.roomId ||
-				!this.ownsLease(ambient.roomId, ambient.lease)
-			) {
-				throw new ElizaError(
-					"Nested room ownership cannot widen across rooms",
-					{
-						code: "ROOM_HANDLER_CROSS_ROOM_REENTRY",
-						context: { ownerRoomId: ambient.roomId, requestedRoomIds: rooms },
-					},
-				);
+		// Like withLease, a store whose leases have all been released (a
+		// continuation that outlived its owner) counts as no ownership.
+		const live = this.liveAmbientLeases();
+		if (live.size > 0) {
+			const reused = new Map<string, RoomHandlerLease>();
+			for (const roomId of rooms) {
+				const lease = live.get(roomId);
+				if (!lease) throw crossRoomReentry([...live.keys()], rooms);
+				reused.set(roomId, lease);
 			}
-			return fn(new Map([[ambient.roomId, ambient.lease]]));
+			return fn(reused);
 		}
 		if (options?.lease) {
 			const ownership = this.activeLeases.get(options.lease);
@@ -448,16 +462,7 @@ export class RoomHandlerQueue {
 				rooms.length !== 1 ||
 				rooms[0] !== ownership.roomId
 			) {
-				throw new ElizaError(
-					"Nested room ownership cannot widen across rooms",
-					{
-						code: "ROOM_HANDLER_CROSS_ROOM_REENTRY",
-						context: {
-							ownerRoomId: ownership?.roomId,
-							requestedRoomIds: rooms,
-						},
-					},
-				);
+				throw crossRoomReentry(ownership ? [ownership.roomId] : [], rooms);
 			}
 			return fn(new Map([[ownership.roomId, options.lease]]));
 		}
@@ -466,7 +471,10 @@ export class RoomHandlerQueue {
 			for (const roomId of rooms) {
 				leases.set(roomId, await this.acquire(roomId, options?.signal));
 			}
-			return await fn(leases);
+			const owned: AmbientLeases = leases;
+			return await (this.ownershipStorage
+				? this.ownershipStorage.run(owned, () => fn(owned))
+				: fn(owned));
 		} finally {
 			for (let index = rooms.length - 1; index >= 0; index--) {
 				await leases.get(rooms[index])?.release();
@@ -532,29 +540,35 @@ export class RoomHandlerQueue {
 	runInLease<T>(roomId: string, lease: RoomHandlerLease, fn: () => T): T {
 		this.assertLeaseForRoom(roomId, lease);
 		if (!this.ownershipStorage) return fn();
-		return this.ownershipStorage.run({ roomId, lease }, fn);
+		// Already inside this turn's ownership: keep every room it holds.
+		if (this.ownershipStorage.getStore()?.get(roomId) === lease) return fn();
+		return this.ownershipStorage.run(new Map([[roomId, lease]]), fn);
 	}
 
 	/** Return the exact live capability inherited by the current async work. */
 	currentLease(roomId: string): RoomHandlerLease | undefined {
-		const context = this.ownershipStorage?.getStore();
-		if (
-			!context ||
-			context.roomId !== roomId ||
-			!this.ownsLease(roomId, context.lease)
-		) {
-			return undefined;
-		}
-		return context.lease;
+		const lease = this.ownershipStorage?.getStore()?.get(roomId);
+		return this.ownsLease(roomId, lease) ? lease : undefined;
 	}
 
-	/** Snapshot the exact live ownership inherited by the current async work. */
+	/**
+	 * Snapshot the exact live single-room ownership inherited by the current
+	 * async work; an owner of several rooms has no single ownership.
+	 */
 	currentOwnership(): RoomHandlerOwnershipContext | undefined {
 		const context = this.ownershipStorage?.getStore();
-		if (!context || !this.ownsLease(context.roomId, context.lease)) {
-			return undefined;
+		if (context?.size !== 1) return undefined;
+		const [[roomId, lease]] = context;
+		return this.ownsLease(roomId, lease) ? { roomId, lease } : undefined;
+	}
+
+	/** The inherited leases that are still live, by room. */
+	private liveAmbientLeases(): Map<string, RoomHandlerLease> {
+		const live = new Map<string, RoomHandlerLease>();
+		for (const [roomId, lease] of this.ownershipStorage?.getStore() ?? []) {
+			if (this.ownsLease(roomId, lease)) live.set(roomId, lease);
 		}
-		return context;
+		return live;
 	}
 
 	/** Whether this exact live lease owns this queue and room. */
@@ -629,13 +643,7 @@ export class RoomHandlerQueue {
 			ownership.accepting &&
 			ownership.roomId !== roomId
 		) {
-			throw new ElizaError("Nested room ownership cannot widen across rooms", {
-				code: "ROOM_HANDLER_CROSS_ROOM_REENTRY",
-				context: {
-					ownerRoomId: ownership.roomId,
-					requestedRoomIds: [roomId],
-				},
-			});
+			throw crossRoomReentry([ownership.roomId], [roomId]);
 		}
 		if (!this.ownsLease(roomId, lease)) {
 			throw new ElizaError("Room ownership capability is not live", {

@@ -6,9 +6,11 @@
 (* The interval timer starts a tick when an adapter is set and no tick is  *)
 (* active. A tick snapshots the dirty agent and its registration id,       *)
 (* clears the dirty mark, awaits adapter.getTasks, drops the result if the *)
-(* scheduler generation changed, checks the registration again and awaits  *)
-(* taskService.runTick(tasks); afterwards a still-current agent is marked  *)
-(* dirty again. startTaskScheduler with another adapter and                *)
+(* scheduler generation changed, checks the registration again and, when  *)
+(* rows came back for the agent, awaits taskService.runTick(tasks);        *)
+(* afterwards a still-current agent is marked dirty again. An agent whose  *)
+(* query returned no rows gets no runTick and stays quiet until it is      *)
+(* marked dirty. startTaskScheduler with another adapter and                *)
 (* stopTaskScheduler bump the generation and detach activeTick, so the old *)
 (* tick may still be inside runTick when a new tick starts.                *)
 (* registerTaskSchedulerRuntime (TaskService.startTimer) gives each        *)
@@ -44,10 +46,12 @@ VARIABLES
     busy,        \* busyServices: services inside a scheduler runTick
     stale,       \* a runTick was dispatched for a stale generation or registration
     restarts,
-    regs
+    regs,
+    taken        \* history: the service a Fire snapshot took since the last dirty
+                 \* mark, or None when the latest mark is not yet taken
 
 vars == <<registry, nextId, dirty, timer, adapter, activeTick, gen, tk, inRun,
-          stopped, busy, stale, restarts, regs>>
+          stopped, busy, stale, restarts, regs, taken>>
 
 TickPcs == {"free", "query", "run", "after"}
 Entries == [svc : Services, id : 1..MaxRegs]
@@ -68,6 +72,7 @@ TypeOK ==
     /\ stale \in BOOLEAN
     /\ restarts \in 0..MaxRestarts
     /\ regs \in 0..MaxRegs
+    /\ taken \in Services \cup {None}
 
 FreeTick == [pc |-> "free", gen |-> 0, id |-> 0, svc |-> None]
 
@@ -86,6 +91,10 @@ Init ==
     /\ stale = FALSE
     /\ restarts = 0
     /\ regs = 0
+    /\ taken = None
+
+(* A step that sets the dirty mark is a new mark that no snapshot has taken. *)
+Marks == taken' = IF dirty' THEN None ELSE taken
 
 (* currentRegistration(agentId, registrationId, generation). *)
 Current(k) == tk[k].gen = gen /\ registry # None /\ registry.id = tk[k].id
@@ -106,12 +115,14 @@ Fire(k) ==
                                            id |-> registry.id, svc |-> registry.svc]]
                /\ activeTick' = k
           ELSE UNCHANGED <<tk, activeTick>>
+       /\ taken' = IF take THEN registry.svc ELSE taken
     /\ UNCHANGED <<registry, nextId, timer, adapter, gen, inRun, stopped, busy, stale,
                    restarts, regs>>
 
 (* adapter.getTasks settles in tick(). A failure re-marks              *)
 (* a current agent dirty; a result for a stale generation or registration  *)
-(* is dropped; otherwise runTick is called, synchronously after the fence. *)
+(* is dropped; no rows for the agent end the tick with no runTick and no   *)
+(* re-dirty; otherwise runTick is called, synchronously after the fence.   *)
 Query(k) ==
     /\ tk[k].pc = "query"
     /\ LET s == tk[k].svc IN
@@ -122,12 +133,16 @@ Query(k) ==
        \/ /\ ~Current(k)
           /\ Settle(k)
           /\ UNCHANGED <<dirty, inRun, busy, stale>>
+       \/ /\ Current(k)            \* no rows for the agent
+          /\ Settle(k)
+          /\ UNCHANGED <<dirty, inRun, busy, stale>>
        \/ /\ Current(k)
           /\ stale' = (stale \/ tk[k].gen # gen \/ registry.id # tk[k].id)
           /\ tk' = [tk EXCEPT ![k].pc = IF stopped[s] THEN "after" ELSE "run"]
           /\ inRun' = IF stopped[s] THEN inRun ELSE [inRun EXCEPT ![s] = @ + 1]
           /\ busy' = busy \cup {s}
           /\ UNCHANGED <<dirty, activeTick>>
+    /\ Marks
     /\ UNCHANGED <<registry, nextId, timer, adapter, gen, stopped, restarts, regs>>
 
 (* runTick returns; a still-current agent is marked dirty again. *)
@@ -138,6 +153,7 @@ RunDone(k) ==
        /\ busy' = busy \ {s}
     /\ dirty' = (dirty \/ Current(k))
     /\ Settle(k)
+    /\ Marks
     /\ UNCHANGED <<registry, nextId, timer, adapter, gen, stopped, stale, restarts, regs>>
 
 (* startTaskScheduler(adapter): a new adapter starts a new generation. *)
@@ -153,6 +169,7 @@ Start(a) ==
        ELSE /\ timer' = TRUE
             /\ UNCHANGED dirty
     /\ restarts' = restarts + 1
+    /\ Marks
     /\ UNCHANGED <<registry, nextId, tk, inRun, stopped, busy, stale, regs>>
 
 (* stopTaskScheduler(): no process tasks are registered here. *)
@@ -165,7 +182,7 @@ Stop ==
     /\ adapter' = None
     /\ activeTick' = None
     /\ restarts' = restarts + 1
-    /\ UNCHANGED <<nextId, tk, inRun, stopped, busy, stale, regs>>
+    /\ UNCHANGED <<nextId, tk, inRun, stopped, busy, stale, regs, taken>>
 
 (* TaskService.startTimer() while an adapter is set. *)
 Register(s) ==
@@ -174,6 +191,7 @@ Register(s) ==
     /\ registry' = [svc |-> s, id |-> nextId + 1]
     /\ dirty' = TRUE
     /\ regs' = regs + 1
+    /\ taken' = None
     /\ UNCHANGED <<timer, adapter, activeTick, gen, tk, inRun, stopped, busy, stale,
                    restarts>>
 
@@ -186,12 +204,13 @@ StopService(s) ==
             /\ dirty' = FALSE
        ELSE UNCHANGED <<registry, dirty>>
     /\ UNCHANGED <<nextId, timer, adapter, activeTick, gen, tk, inRun, busy, stale,
-                   restarts, regs>>
+                   restarts, regs, taken>>
 
 (* markTaskSchedulerDirty after a task write. *)
 MarkDirty ==
     /\ ~dirty
     /\ dirty' = TRUE
+    /\ taken' = None
     /\ UNCHANGED <<registry, nextId, timer, adapter, activeTick, gen, tk, inRun,
                    stopped, busy, stale, restarts, regs>>
 
@@ -224,16 +243,23 @@ OneRunTickPerService == \A s \in Services : inRun[s] <= 1
 (* The attached tick belongs to the current generation. *)
 AttachedTickCurrent == activeTick # None => tk[activeTick].gen = gen
 
+(* The history variable: a taken mark means the agent is no longer dirty. *)
+TakenClearsDirty == taken # None => ~dirty
+
 ---------------------------------------------------------------------------
 (* Liveness *)
 
-(* A dirty, registered, running service gets a runTick, unless the        *)
-(* scheduler or the registration changes first.                           *)
+(* Every dirty mark of a registered, running service is taken by a Fire   *)
+(* whose snapshot of s comes after that mark, unless the scheduler or the *)
+(* registration changes first. A query that started before the mark      *)
+(* does not count: a mark set during an in-flight query or runTick gets   *)
+(* its own tick. Whether that tick then runs runTick depends on the rows  *)
+(* its query returns.                                                     *)
 DirtyServed ==
     \A s \in Services :
         (dirty /\ timer /\ adapter # None /\ registry # None /\ registry.svc = s
            /\ ~stopped[s])
-        ~> \/ \E k \in Ticks : tk[k].pc = "run" /\ tk[k].svc = s
+        ~> \/ taken = s
            \/ registry = None \/ registry.svc # s \/ adapter = None \/ stopped[s]
 
 (* Every tick that queried finishes. *)

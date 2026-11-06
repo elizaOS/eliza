@@ -4,20 +4,32 @@
 (*                                                                         *)
 (* src/runtime/service-lifecycle.ts: startServiceEagerly (eager retry),     *)
 (*   _ensureServiceStarted (per-class dedupe, sibling settlement),          *)
-(*   runServiceStart (stop-during-start), _stopServiceInstance (per-instance *)
-(*   single-flight stop).                                                   *)
+(*   _runServiceStart (stop-during-start, unload-during-start),            *)
+(*   _stopServiceInstance and stopServiceOnce (per-instance single-flight   *)
+(*   stop).                                                                 *)
 (* src/runtime.ts: registerPlugin's service part and registerService (a      *)
 (*   sibling class registered later), _stopServices (runtime stop).          *)
-(* src/plugin-lifecycle.ts: stopOwnedServices (plugin unload of one class).  *)
+(* src/plugin-lifecycle.ts: stopOwnedServices for one owned class beside a   *)
+(*   sibling that stays. PluginLifecycle.tla models the rest of unload:      *)
+(*   teardown, connectors, several owned classes and failing stops.          *)
 (*                                                                         *)
 (* This models the code WITH the fixes from the TLA+ review applied:        *)
-(*   - runServiceStart sets the type "registered" when it publishes, and a  *)
+(*   - _runServiceStart sets the type "registered" when it publishes, and a *)
 (*     single class failure no longer marks the type "failed" (the type is  *)
 (*     settled by _ensureServiceStarted from the published list);           *)
 (*   - _stopServices clears runtime.services;                               *)
-(*   - stopOwnedServices stops through the per-instance single-flight and   *)
-(*     re-reads runtime.services after its awaits instead of writing back   *)
-(*     the list it captured before them.                                    *)
+(*   - stopOwnedServices withdraws the class from serviceTypes and takes    *)
+(*     its instance out of every lookup before its first await, so a        *)
+(*     sibling that publishes meanwhile cannot leave the instance where a   *)
+(*     runtime stop clears it unstopped; it then awaits the one             *)
+(*     startingServices entry present then and the owned class's own start, *)
+(*     and stops the instance through the single-flight stop;               *)
+(*   - a start that settles after the withdrawal stops its instance instead *)
+(*     of publishing it;                                                    *)
+(*   - stopOwnedServices then sets the registration status from the current *)
+(*     services and serviceTypes, and a caller whose starts settle with no  *)
+(*     class left for the type deletes the status instead of writing        *)
+(*     "failed", so neither order leaves a phantom entry.                   *)
 (*                                                                         *)
 (* Everything between two awaits is one action. Instances are numbered in   *)
 (* creation order; cls[i] is the class that created instance i.             *)
@@ -61,17 +73,19 @@ VARIABLES
     rpc,        \* runtime stop phase
     rcur,       \* instance the runtime stop is awaiting
     rvisited,   \* instances the runtime stop already handled
+    lastEnsure, \* the caller whose start set is in startingServices, or None
     upc,        \* plugin unload phase
-    ucur        \* instance the unload is awaiting
+    ucur,       \* instance the unload is awaiting
+    uwait       \* uwait[c]: start attempt of c the unload awaits (0 = none)
 
 vars == <<types, byClass, starting, failed, sc, att, scInst, published, status,
           nextInst, cls, late, stopCalls, stopOp, epc, tries, ewait,
-          stopReq, stopped, rpc, rcur, rvisited, upc, ucur>>
+          lastEnsure, stopReq, stopped, rpc, rcur, rvisited, upc, ucur, uwait>>
 
 startVars == <<byClass, starting, failed, sc, att, scInst, nextInst, cls, late>>
-callerVars == <<epc, tries, ewait>>
+callerVars == <<epc, tries, ewait, lastEnsure>>
 stopVars == <<stopReq, stopped, rpc, rcur, rvisited>>
-unloadVars == <<upc, ucur>>
+unloadVars == <<upc, ucur, uwait>>
 
 Created == 1..(nextInst - 1)
 InFlight == {"awaitStart", "event", "lateStop"}
@@ -95,7 +109,9 @@ TypeOK ==
     /\ ewait \in [Callers -> [Classes -> Nat]]
     /\ stopReq \in BOOLEAN /\ stopped \in BOOLEAN
     /\ rpc \in {"idle", "services", "stopping", "stopInst", "done"}
-    /\ upc \in {"idle", "wait", "stop", "done"}
+    /\ lastEnsure \in Callers \cup {None}
+    /\ upc \in {"idle", "wait", "drain", "stop", "done"}
+    /\ uwait \in [Classes -> Nat]
 
 Init ==
     /\ types = Classes \ LateClasses
@@ -120,8 +136,10 @@ Init ==
     /\ rpc = "idle"
     /\ rcur = None
     /\ rvisited = {}
+    /\ lastEnsure = None
     /\ upc = "idle"
     /\ ucur = None
+    /\ uwait = [c \in Classes |-> 0]
 
 (* runServiceStart rebuilds services[key] from serviceTypes order. *)
 Rebuild(bc, ts) == {bc[x] : x \in {y \in ts : bc[y] # None}}
@@ -142,16 +160,17 @@ EBegin(e) ==
     /\ ~stopReq
     /\ epc' = [epc EXCEPT ![e] = "ensure"]
     /\ UNCHANGED <<types, startVars, published, status, stopCalls, stopOp, tries,
-                   ewait, stopVars, unloadVars>>
+                   ewait, lastEnsure, stopVars, unloadVars>>
 
 (* After initPromise: snapshot the classes; reuse a started instance, join a  *)
 (* pending start, skip a failed sibling when another started, else begin     *)
-(* runServiceStart, which runs synchronously up to `await start()`.          *)
+(* _runServiceStart, which runs synchronously up to `await start()`; the     *)
+(* caller's start set becomes the startingServices entry.                   *)
 EEnsure(e) ==
     /\ epc[e] = "ensure"
     /\ IF stopReq \/ types = {}
        THEN /\ epc' = [epc EXCEPT ![e] = "done"]
-            /\ UNCHANGED <<starting, sc, att, status, ewait>>
+            /\ UNCHANGED <<starting, sc, att, status, ewait, lastEnsure>>
        ELSE LET startedImpl == \E c \in types : byClass[c] # None
                 spawn == {c \in types : byClass[c] = None /\ ~starting[c]
                                         /\ ~(startedImpl /\ failed[c])}
@@ -163,6 +182,7 @@ EEnsure(e) ==
                     [c \in Classes |-> IF c \in spawn THEN att[c] + 1
                                        ELSE IF c \in join THEN att[c] ELSE 0]]
                /\ status' = IF spawn # {} /\ published = {} THEN "registering" ELSE status
+               /\ lastEnsure' = e
                /\ epc' = [epc EXCEPT ![e] = "wait"]
     /\ UNCHANGED <<types, byClass, failed, scInst, published, nextInst, cls, late,
                    stopCalls, stopOp, tries, stopVars, unloadVars>>
@@ -180,23 +200,24 @@ ESettle(e) ==
        THEN /\ status' = "registered"
             /\ epc' = [epc EXCEPT ![e] = "done"]
             /\ UNCHANGED tries
-       ELSE /\ status' = "failed"
+       ELSE /\ status' = IF types = {} THEN "unknown" ELSE "failed"
             /\ IF tries[e] < MaxRetries /\ ~stopReq /\ ~stopped
                THEN /\ epc' = [epc EXCEPT ![e] = "delay"]
                     /\ tries' = [tries EXCEPT ![e] = @ + 1]
                ELSE /\ epc' = [epc EXCEPT ![e] = "done"]
                     /\ UNCHANGED tries
-    /\ UNCHANGED <<types, startVars, published, stopCalls, stopOp, stopVars, unloadVars>>
+    /\ UNCHANGED <<types, startVars, published, stopCalls, stopOp, lastEnsure,
+                   stopVars, unloadVars>>
 
 (* The retry delay; shutdown ends the retries. *)
 EDelay(e) ==
     /\ epc[e] = "delay"
     /\ epc' = [epc EXCEPT ![e] = IF stopReq \/ stopped THEN "done" ELSE "ensure"]
     /\ UNCHANGED <<types, startVars, published, status, stopCalls, stopOp, tries,
-                   ewait, stopVars, unloadVars>>
+                   ewait, lastEnsure, stopVars, unloadVars>>
 
 ---------------------------------------------------------------------------
-(* runServiceStart after `await start()`. *)
+(* _runServiceStart after `await start()`. *)
 
 StartFail(c) ==
     /\ sc[c] = "awaitStart"
@@ -206,16 +227,17 @@ StartFail(c) ==
     /\ UNCHANGED <<types, byClass, att, scInst, published, status, nextInst, cls, late,
                    stopCalls, stopOp, callerVars, stopVars, unloadVars>>
 
-(* A start that resolves after stop was requested is stopped and never      *)
-(* published; otherwise the instance is published and the type registered.  *)
+(* A start that resolves after stop was requested, or after plugin unload   *)
+(* withdrew its class, is stopped and never published; otherwise the        *)
+(* instance is published and the type registered.                           *)
 StartOk(c) ==
     /\ sc[c] = "awaitStart"
     /\ nextInst <= MaxInst
     /\ LET i == nextInst IN
        /\ nextInst' = nextInst + 1
        /\ cls' = [cls EXCEPT ![i] = c]
-       /\ IF stopped \/ stopReq
-          THEN /\ late' = [late EXCEPT ![i] = TRUE]
+       /\ IF stopped \/ stopReq \/ c \notin types
+          THEN /\ late' = [late EXCEPT ![i] = stopped \/ stopReq]
                /\ StopOnce(i)
                /\ scInst' = [scInst EXCEPT ![c] = i]
                /\ sc' = [sc EXCEPT ![c] = "lateStop"]
@@ -311,52 +333,88 @@ RClear ==
                    stopOp, callerVars, stopReq, stopped, rcur, rvisited, unloadVars>>
 
 ---------------------------------------------------------------------------
-(* Plugin unload of the owned class: await the type's in-flight start, stop  *)
-(* the class's instance, then drop the class and its instance.              *)
+(* stopOwnedServices for the owned class. *)
 
-(* Remove instance rem and the owned class from the live registries. *)
-UFinish(rem) ==
-    LET kept == published \ {rem}
-        ts == types \ Owned
-    IN /\ published' = kept
-       /\ types' = ts
-       /\ status' = IF kept # {} THEN "registered"
-                    ELSE IF ts # {} THEN "pending" ELSE "unknown"
-       /\ byClass' = [byClass EXCEPT ![OwnedClass] = None]
-       /\ failed' = [failed EXCEPT ![OwnedClass] = FALSE]
+(* The single-flight stop of the instance the unload took; with none, the   *)
+(* class leaves failedServiceClasses and the unload is done.                *)
+UStopTaken(i) ==
+    IF i # None
+    THEN /\ StopOnce(i)
+         /\ upc' = "stop"
+         /\ UNCHANGED failed
+    ELSE /\ failed' = [failed EXCEPT ![OwnedClass] = FALSE]
+         /\ upc' = "done"
+         /\ UNCHANGED <<stopCalls, stopOp>>
 
+(* The status from the current services and serviceTypes; "unknown" is the  *)
+(* deleted entry, with servicePromises and servicePromiseHandlers deleted.  *)
+UStatus(p, ts) ==
+    IF p # {} THEN "registered" ELSE IF ts # {} THEN "pending" ELSE "unknown"
+
+(* Before the first await: withdraw the class from serviceTypes, take its    *)
+(* instance out of serviceInstancesByClass and services, and read the       *)
+(* startingServices entry and the owned class's startingServiceClasses      *)
+(* entry. With either in flight, await both; otherwise go straight on to    *)
+(* UDrain. The entries can already be gone while a caller whose      *)
+(* starts settled has not run ESettle: a startingServiceClasses entry       *)
+(* leaves when its start settles, and the startingServices entry can be a   *)
+(* later caller's that has already left.                                    *)
 UStart ==
-    /\ upc = "idle"
-    /\ upc' = "wait"
-    /\ UNCHANGED <<types, startVars, published, status, stopCalls, stopOp, callerVars,
-                   stopVars, ucur>>
+    LET entry == lastEnsure # None /\ epc[lastEnsure] = "wait"
+        inflight == entry \/ starting[OwnedClass]
+        awaited == [c \in Classes |->
+                      IF c = OwnedClass /\ starting[c] THEN att[c]
+                      ELSE IF entry THEN ewait[lastEnsure][c] ELSE 0]
+        ts == types \ Owned
+        i == byClass[OwnedClass]
+        kept == published \ {i}
+    IN /\ upc = "idle"
+       /\ IF types = {}
+          THEN /\ upc' = "done"
+               /\ UNCHANGED <<types, byClass, failed, published, status,
+                              stopCalls, stopOp, ucur, uwait>>
+          ELSE /\ types' = ts
+               /\ byClass' = [byClass EXCEPT ![OwnedClass] = None]
+               /\ published' = kept
+               /\ ucur' = i
+               /\ IF inflight
+                  THEN /\ uwait' = awaited
+                       /\ upc' = "wait"
+                       /\ UNCHANGED <<failed, stopCalls, stopOp, status>>
+                  ELSE /\ upc' = "drain"
+                       /\ UNCHANGED <<failed, stopCalls, stopOp, status, uwait>>
+       /\ UNCHANGED <<starting, sc, att, scInst, nextInst, cls, late, callerVars,
+                      stopVars>>
 
-(* `await startingServices.get(key)` returns (or there was none). *)
-UCheck ==
+(* `await Promise.allSettled(inFlightStarts)` returns: every awaited start  *)
+(* settled. No order against the callers is assumed.                        *)
+UAwaited ==
     /\ upc = "wait"
-    /\ \A e \in Callers : epc[e] # "wait"
-    /\ IF OwnedClass \notin types
-       THEN /\ upc' = "done"
-            /\ UNCHANGED <<types, byClass, failed, published, status, stopCalls, stopOp,
-                           ucur>>
-       ELSE IF byClass[OwnedClass] # None
-       THEN /\ StopOnce(byClass[OwnedClass])
-            /\ ucur' = byClass[OwnedClass]
-            /\ upc' = "stop"
-            /\ UNCHANGED <<types, byClass, failed, published, status>>
-       ELSE /\ UFinish(None)
-            /\ upc' = "done"
-            /\ UNCHANGED <<stopCalls, stopOp, ucur>>
-    /\ UNCHANGED <<starting, sc, att, scInst, nextInst, cls, late, callerVars, stopVars>>
+    /\ \A c \in Classes : uwait[c] > 0 => (att[c] > uwait[c] \/ sc[c] = "idle")
+    /\ upc' = "drain"
+    /\ UNCHANGED <<types, startVars, published, status, stopCalls, stopOp,
+                   callerVars, stopVars, ucur, uwait>>
 
-(* `await` the single-flight stop of the owned instance returns. *)
+(* The status is set and the stop of the taken instance begins. The code   *)
+(* runs this in the same segment as UStart or UAwaited; a separate step     *)
+(* only adds interleavings, so every invariant checked here holds for it.   *)
+UDrain ==
+    /\ upc = "drain"
+    /\ status' = UStatus(published, types)
+    /\ UStopTaken(ucur)
+    /\ UNCHANGED <<types, byClass, starting, sc, att, scInst, published,
+                   nextInst, cls, late, callerVars, stopVars, ucur, uwait>>
+
+(* `await runtime._stopServiceOnce` returns; the class leaves                *)
+(* failedServiceClasses.                                                    *)
 UStopped ==
     /\ upc = "stop"
     /\ stopOp[ucur] = "done"
-    /\ UFinish(ucur)
+    /\ failed' = [failed EXCEPT ![OwnedClass] = FALSE]
     /\ upc' = "done"
-    /\ UNCHANGED <<starting, sc, att, scInst, nextInst, cls, late, stopCalls, stopOp,
-                   callerVars, stopVars, ucur>>
+    /\ UNCHANGED <<types, byClass, starting, sc, att, scInst, published, status,
+                   nextInst, cls, late, stopCalls, stopOp, callerVars, stopVars,
+                   ucur, uwait>>
 
 ---------------------------------------------------------------------------
 Finished ==
@@ -372,7 +430,7 @@ Next ==
                          \/ StartEvent(c) \/ StartLateStopped(c)
     \/ \E i \in Inst : StopOpDone(i)
     \/ RRequest \/ RServices \/ RStopNext \/ RStopWait \/ RClear
-    \/ UStart \/ UCheck \/ UStopped
+    \/ UStart \/ UAwaited \/ UDrain \/ UStopped
     \/ (Finished /\ UNCHANGED vars)
 
 (* Starts, stops, events and the drains all settle; callers, stop requests,  *)
@@ -383,7 +441,7 @@ Fairness ==
                           /\ WF_vars(StartLateStopped(c))
     /\ \A i \in Inst : WF_vars(StopOpDone(i))
     /\ WF_vars(RServices) /\ WF_vars(RStopNext) /\ WF_vars(RStopWait) /\ WF_vars(RClear)
-    /\ WF_vars(UCheck) /\ WF_vars(UStopped)
+    /\ WF_vars(UAwaited) /\ WF_vars(UDrain) /\ WF_vars(UStopped)
 
 Spec == Init /\ [][Next]_vars /\ Fairness
 
@@ -401,11 +459,20 @@ StopAtMostOnce == \A i \in Inst : stopCalls[i] <= 1
 NoLatePublish == \A i \in published : ~late[i]
 
 (* Every running instance is reachable through getService, so runtime stop  *)
-(* will stop it.                                                            *)
-NoOrphan == \A i \in Created : stopCalls[i] = 0 => i \in published
+(* will stop it, or is the one a plugin unload took and will stop.          *)
+NoOrphan ==
+    \A i \in Created : stopCalls[i] = 0 => (i \in published \/ (upc \in {"wait", "drain"} /\ i = ucur))
 
 (* The type reads "failed" only while nothing of it is published. *)
 StatusConsistent == status = "failed" => published = {}
+
+(* Once the unload finished, a type with no registered classes has no      *)
+(* registration status: no start that settled with its class gone leaves a *)
+(* phantom "failed" entry. A runtime stop clears startingServices and        *)
+(* startingServiceClasses but no status, so this holds while the runtime    *)
+(* has not stopped.                                                         *)
+NoStatusWithoutClasses ==
+    (upc = "done" /\ types = {} /\ ~stopped) => status = "unknown"
 
 (* After runtime stop, getService returns no stopped instance. *)
 StoppedNotReachable == rpc = "done" => published = {}

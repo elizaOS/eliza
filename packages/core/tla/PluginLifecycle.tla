@@ -1,10 +1,10 @@
 ---------------------------- MODULE PluginLifecycle ----------------------------
 (***************************************************************************)
-(* src/plugin-lifecycle.ts: the registerPlugin, unloadPlugin and           *)
-(* reloadPlugin wrappers, teardownPluginOwnership, stopOwnedServices and   *)
-(* claimConnector; src/runtime.ts: _registerPlugin and _stopServices;       *)
-(* src/runtime/service-lifecycle.ts: _ensureServiceStarted,                 *)
-(* runServiceStart and _stopServiceInstance.                               *)
+(* src/plugin-lifecycle.ts: the registerPlugin, unloadPlugin, reloadPlugin *)
+(* and _runServiceStart wrappers, teardownPluginOwnership,                 *)
+(* stopOwnedServices and claimConnector; src/runtime.ts: _registerPlugin   *)
+(* and _stopServices; src/runtime/service-lifecycle.ts:                    *)
+(* _ensureServiceStarted, _runServiceStart and _stopServiceInstance.       *)
 (*                                                                         *)
 (* Plugin A owns NumClasses service classes of one serviceType; each      *)
 (* started instance registers A's connector key (registerSendHandlers).    *)
@@ -17,12 +17,18 @@
 (* This models the code with the fixes from the TLA+ review applied:       *)
 (*  - unloadPlugin joins a teardown already in flight for the same plugin; *)
 (*  - registerPlugin joins a registration in flight for the same name;     *)
-(*  - stopOwnedServices withdraws the classes from serviceTypes before its *)
-(*    first await, takes the instances out of every lookup, then stops     *)
-(*    them through the runtime's single-flight stop;                       *)
-(*  - runServiceStart stops and discards an instance whose class left      *)
+(*  - stopOwnedServices withdraws the classes from serviceTypes and takes  *)
+(*    the instances out of every lookup before its first await, then stops *)
+(*    every one of them through the runtime's single-flight stop, even     *)
+(*    after a stop() rejects, and rethrows the failures afterwards;        *)
+(*  - every start, eager or lazy, goes through the host's runServiceStart, *)
+(*    which plugin-lifecycle wraps, so start() and registerSendHandlers    *)
+(*    run in the plugin's service-start context and claim A's key for A;   *)
+(*  - _runServiceStart stops and discards an instance whose class left     *)
 (*    serviceTypes while start() ran, as it does after runtime stop.       *)
-(* reloadPlugin is unloadPlugin followed by registerPlugin.                *)
+(* reloadPlugin is unloadPlugin followed by registerPlugin. A start that   *)
+(* fails leaves its class to a later load; startServiceEagerly's retries   *)
+(* are such loads.                                                         *)
 (***************************************************************************)
 EXTENDS Naturals, FiniteSets
 
@@ -35,6 +41,8 @@ CONSTANTS
     Rivals,         \* {} or plugin B, which registers A's connector key
     StartsInFlight, \* A's eager service starts are still running at the start
     InitMayFail,    \* A's init() can throw
+    StopMayFail,    \* a service stop() can reject
+    StartMayFail,   \* a service start() can reject
     None
 
 Classes == 1..NumClasses
@@ -49,7 +57,8 @@ VARIABLES
     waitSet,      \* waitSet[u]: class starts unload u awaits
     queue,        \* queue[u]: instances unload u still has to stop
     visited,      \* instances runtime.stop() already handled
-    joinOf,       \* joinOf[r]: the registration r joined
+    joinOf,       \* joinOf[a]: the registration or teardown a joined
+    stopFailed,   \* a stop() awaited by the teardown rejected
     owned,        \* A's ownership is in the ownership store
     pluginsA,     \* A is in runtime.plugins
     tdActive,     \* the unload whose teardown is in flight, or None
@@ -58,6 +67,7 @@ VARIABLES
     types,        \* serviceTypes.get(key)
     byClass,      \* serviceInstancesByClass (0 = none)
     starting,     \* starting[c]: the instance class c is starting (0 = none)
+    failedC,      \* failedServiceClasses
     services,     \* runtime.services.get(key)
     live,         \* started instances not yet stopped
     stopCalls,    \* stop() invocations per instance
@@ -68,10 +78,10 @@ VARIABLES
     ownsA, ownsB, \* the key is in A's / B's ownership list
     lastReg       \* the last plugin that registered the key
 
-ctl == <<cur, waitSet, queue, visited, joinOf>>
+ctl == <<cur, waitSet, queue, visited, joinOf, stopFailed>>
 plug == <<owned, pluginsA, tdActive, regActive, disposeCalls>>
-svc == <<types, byClass, starting, services, live, stopCalls, stopOps, nextInst,
-         stopRequested>>
+svc == <<types, byClass, starting, failedC, services, live, stopCalls, stopOps,
+         nextInst, stopRequested>>
 conn == <<registry, ownsA, ownsB, lastReg>>
 vars == <<pc, running, ctl, plug, svc, conn>>
 
@@ -86,7 +96,8 @@ Init ==
     /\ waitSet = [u \in Unloaders |-> {}]
     /\ queue = [u \in Unloaders |-> {}]
     /\ visited = {}
-    /\ joinOf = [r \in Registrars |-> None]
+    /\ joinOf = [a \in Registrars \cup Unloaders |-> None]
+    /\ stopFailed = FALSE
     /\ owned = (Registrars = {})
     /\ pluginsA = (Registrars = {})
     /\ tdActive = None
@@ -95,6 +106,7 @@ Init ==
     /\ types = IF Registrars = {} THEN Classes ELSE {}
     /\ byClass = [c \in Classes |-> IF StartsInFlight THEN 0 ELSE c]
     /\ starting = [c \in Classes |-> IF StartsInFlight THEN c ELSE 0]
+    /\ failedC = {}
     /\ services = IF StartsInFlight THEN {} ELSE Classes
     /\ live = services
     /\ stopCalls = [i \in Insts |-> 0]
@@ -113,76 +125,92 @@ Init ==
 UCall(u) ==
     /\ pc[u] = "idle" /\ Free(u)
     /\ running' = None
-    /\ IF ~owned THEN Go(u, "done") /\ UNCHANGED <<tdActive, disposeCalls>>
-       ELSE IF tdActive # None THEN Go(u, "join") /\ UNCHANGED <<tdActive, disposeCalls>>
+    /\ IF ~owned THEN Go(u, "done") /\ UNCHANGED <<tdActive, disposeCalls, joinOf>>
+       ELSE IF tdActive # None
+       THEN Go(u, "join") /\ joinOf' = [joinOf EXCEPT ![u] = tdActive]
+            /\ UNCHANGED <<tdActive, disposeCalls>>
        ELSE /\ Go(u, "dispose")
             /\ tdActive' = u
             /\ disposeCalls' = disposeCalls + 1
-    /\ UNCHANGED <<ctl, owned, pluginsA, regActive, svc, conn>>
+            /\ UNCHANGED joinOf
+    /\ UNCHANGED <<cur, waitSet, queue, visited, stopFailed, owned, pluginsA,
+                   regActive, svc, conn>>
 
+(* A joined unload settles as the teardown it joined. *)
 UJoin(u) ==
-    /\ pc[u] = "join" /\ Free(u) /\ tdActive = None
-    /\ Go(u, "done")
+    /\ pc[u] = "join" /\ Free(u)
+    /\ pc[joinOf[u]] \in {"done", "err"}
+    /\ Go(u, pc[joinOf[u]])
     /\ UNCHANGED <<running, ctl, plug, svc, conn>>
 
 (* After dispose(): removeOwnedConnectors, then stopOwnedServices withdraws
-   the classes and reads the starts in flight, all before the next await. *)
+   the classes, takes the owned instances out of serviceInstancesByClass and
+   services, and reads the starts in flight, all before the next await. *)
 UDispose(u) ==
-    LET inflight == {c \in Classes : starting[c] # 0} IN
+    LET inflight == {c \in Classes : starting[c] # 0}
+        I == {byClass[c] : c \in Classes} \ {0}
+    IN
     /\ pc[u] = "dispose" /\ Free(u)
     /\ registry' = IF ownsA THEN "none" ELSE registry
     /\ types' = {}
-    /\ waitSet' = [waitSet EXCEPT ![u] = inflight]
-    /\ IF inflight # {} THEN Go(u, "inflight") /\ running' = None
-       ELSE Go(u, "take") /\ running' = u
-    /\ UNCHANGED <<cur, queue, visited, joinOf, plug, byClass, starting, services,
-                   live, stopCalls, stopOps, nextInst, stopRequested, ownsA,
-                   ownsB, lastReg>>
-
-UInflight(u) ==
-    /\ pc[u] = "inflight" /\ Free(u)
-    /\ \A c \in waitSet[u] : starting[c] = 0
-    /\ Go(u, "take") /\ running' = u
-    /\ UNCHANGED <<ctl, plug, svc, conn>>
-
-(* Take the owned instances out of serviceInstancesByClass and services. *)
-UTake(u) ==
-    LET I == {byClass[c] : c \in Classes} \ {0} IN
-    /\ pc[u] = "take" /\ running = u
     /\ byClass' = [c \in Classes |-> 0]
     /\ services' = services \ I
     /\ queue' = [queue EXCEPT ![u] = I]
-    /\ Go(u, "stop")
-    /\ UNCHANGED <<running, cur, waitSet, visited, joinOf, plug, types, starting,
-                   live, stopCalls, stopOps, nextInst, stopRequested, conn>>
+    /\ waitSet' = [waitSet EXCEPT ![u] = inflight]
+    /\ Go(u, "inflight") /\ running' = None
+    /\ UNCHANGED <<cur, visited, joinOf, stopFailed, plug, starting, failedC,
+                   live, stopCalls, stopOps, nextInst, stopRequested, ownsA,
+                   ownsB, lastReg>>
 
-(* Await the single-flight stop of each taken instance. *)
+(* `await Promise.allSettled(inFlightStarts)`, skipped with none, before the
+   status and the stops. Taking this step even with nothing in flight only
+   adds an interleaving point, so the invariants still hold for the code. *)
+UInflight(u) ==
+    /\ pc[u] = "inflight" /\ Free(u)
+    /\ \A c \in waitSet[u] : starting[c] = 0
+    /\ Go(u, "stop") /\ running' = u
+    /\ UNCHANGED <<ctl, plug, svc, conn>>
+
+(* Await the single-flight stop of each taken instance; then the owned
+   classes leave failedServiceClasses. *)
 UStop(u) ==
     /\ pc[u] = "stop" /\ running = u
     /\ IF queue[u] = {}
-       THEN Go(u, "finish") /\ UNCHANGED <<running, cur, stopCalls, stopOps>>
+       THEN /\ failedC' = {}
+            /\ Go(u, "finish") /\ UNCHANGED <<running, cur, stopCalls, stopOps>>
        ELSE LET i == CHOOSE x \in queue[u] : TRUE IN
             /\ stopCalls' = IF i \in stopOps THEN stopCalls
                             ELSE [stopCalls EXCEPT ![i] = @ + 1]
             /\ stopOps' = stopOps \cup {i}
             /\ cur' = [cur EXCEPT ![u] = i]
             /\ Go(u, "stopwait") /\ running' = None
-    /\ UNCHANGED <<waitSet, queue, visited, joinOf, plug, types, byClass,
-                   starting, services, live, nextInst, stopRequested, conn>>
+            /\ UNCHANGED failedC
+    /\ UNCHANGED <<waitSet, queue, visited, joinOf, stopFailed, plug, types,
+                   byClass, starting, services, live, nextInst, stopRequested,
+                   conn>>
 
+(* The stop settles. A rejection is recorded and the loop goes on to the
+   next instance: nothing else can stop the instances already taken out of
+   the lookups, and the single-flight stop never calls a rejected stop()
+   again, so the instance is done with either way. *)
 UStopWait(u) ==
     /\ pc[u] = "stopwait" /\ Free(u)
     /\ live' = live \ {cur[u]}
     /\ queue' = [queue EXCEPT ![u] = @ \ {cur[u]}]
+    /\ \/ UNCHANGED stopFailed
+       \/ StopMayFail /\ stopFailed' = TRUE
     /\ Go(u, "stop") /\ running' = u
     /\ UNCHANGED <<cur, waitSet, visited, joinOf, plug, types, byClass, starting,
-                   services, stopCalls, stopOps, nextInst, stopRequested, conn>>
+                   failedC, services, stopCalls, stopOps, nextInst,
+                   stopRequested, conn>>
 
-(* The rest of teardown is synchronous; the store entry goes last. *)
+(* stopOwnedServices rethrows the stop failures; teardownPluginOwnership
+   catches them, finishes synchronously, drops the store entry last and
+   rejects with the aggregate. *)
 UFinish(u) ==
     /\ pc[u] = "finish" /\ running = u
     /\ owned' = FALSE /\ pluginsA' = FALSE /\ tdActive' = None
-    /\ Go(u, "done") /\ running' = None
+    /\ Go(u, IF stopFailed THEN "err" ELSE "done") /\ running' = None
     /\ UNCHANGED <<ctl, regActive, disposeCalls, svc, conn>>
 
 ---------------------------------------------------------------------------
@@ -193,9 +221,13 @@ LCall(l) ==
     /\ Go(l, IF stopRequested THEN "done" ELSE "init") /\ running' = None
     /\ UNCHANGED <<ctl, plug, svc, conn>>
 
-(* After `await initPromise`: start every class with no instance and no start. *)
+(* After `await initPromise`: start every class with no instance and no start.
+   A class whose last start failed is retried only while no class of the
+   type has an instance. *)
 LBegin(l) ==
-    LET S == {c \in types : byClass[c] = 0 /\ starting[c] = 0} IN
+    LET S == {c \in types : /\ byClass[c] = 0 /\ starting[c] = 0
+                            /\ (c \in failedC => \A x \in types : byClass[x] = 0)}
+    IN
     /\ pc[l] = "init" /\ Free(l)
     /\ IF stopRequested \/ types = {}
        THEN UNCHANGED <<starting, nextInst>>
@@ -203,27 +235,36 @@ LBegin(l) ==
                                IF c \in S THEN nextInst + c - 1 ELSE starting[c]]
             /\ nextInst' = nextInst + NumClasses
     /\ Go(l, "done") /\ running' = None
-    /\ UNCHANGED <<ctl, plug, types, byClass, services, live, stopCalls, stopOps,
-                   stopRequested, conn>>
+    /\ UNCHANGED <<ctl, plug, types, byClass, failedC, services, live, stopCalls,
+                   stopOps, stopRequested, conn>>
 
-(* runServiceStart after `await serviceDef.start()`. A start that outlived the
-   runtime or its class is stopped and discarded; otherwise it is published and
-   registerSendHandlers claims the key for A, releasing it from B. *)
+(* runServiceStart after `await serviceDef.start()`, inside the host's
+   runServiceStart, which runs eager and lazy starts alike in A's
+   service-start context. A rejected start() publishes nothing and marks the
+   class failed. A start that outlived the runtime or its class is stopped and
+   discarded, and _runServiceStart throws, so the class is marked failed too;
+   otherwise it is published and registerSendHandlers claims the
+   key for A, releasing it from B. *)
 SDone(c) ==
     LET i == starting[c] IN
     /\ i # 0 /\ Free(c)
     /\ starting' = [starting EXCEPT ![c] = 0]
     /\ running' = None
-    /\ IF stopRequested \/ c \notin types
-       THEN /\ stopCalls' = [stopCalls EXCEPT ![i] = @ + 1]
-            /\ stopOps' = stopOps \cup {i}
-            /\ UNCHANGED <<byClass, services, live, conn>>
-       ELSE /\ byClass' = [byClass EXCEPT ![c] = i]
-            /\ services' = {byClass'[x] : x \in types} \ {0}
-            /\ live' = live \cup {i}
-            /\ registry' = "A" /\ lastReg' = "A"
-            /\ ownsA' = owned /\ ownsB' = FALSE
-            /\ UNCHANGED <<stopCalls, stopOps>>
+    /\ \/ /\ StartMayFail
+          /\ failedC' = failedC \cup {c}
+          /\ UNCHANGED <<byClass, services, live, stopCalls, stopOps, conn>>
+       \/ /\ IF stopRequested \/ c \notin types
+             THEN /\ failedC' = failedC \cup {c}
+                  /\ stopCalls' = [stopCalls EXCEPT ![i] = @ + 1]
+                  /\ stopOps' = stopOps \cup {i}
+                  /\ UNCHANGED <<byClass, services, live, conn>>
+             ELSE /\ failedC' = failedC \ {c}
+                  /\ byClass' = [byClass EXCEPT ![c] = i]
+                  /\ services' = {byClass'[x] : x \in types} \ {0}
+                  /\ live' = live \cup {i}
+                  /\ registry' = "A" /\ lastReg' = "A"
+                  /\ ownsA' = owned /\ ownsB' = FALSE
+                  /\ UNCHANGED <<stopCalls, stopOps>>
     /\ UNCHANGED <<pc, ctl, plug, types, nextInst, stopRequested>>
 
 ---------------------------------------------------------------------------
@@ -233,7 +274,7 @@ TReq(t) ==
     /\ pc[t] = "idle" /\ Free(t)
     /\ stopRequested' = TRUE
     /\ Go(t, "drain") /\ running' = None
-    /\ UNCHANGED <<ctl, plug, types, byClass, starting, services, live,
+    /\ UNCHANGED <<ctl, plug, types, byClass, starting, failedC, services, live,
                    stopCalls, stopOps, nextInst, conn>>
 
 (* Waits for the service starts in flight. *)
@@ -258,15 +299,16 @@ TSvc(t) ==
             /\ cur' = [cur EXCEPT ![t] = i]
             /\ Go(t, "svcwait") /\ running' = None
             /\ UNCHANGED byClass
-    /\ UNCHANGED <<waitSet, queue, joinOf, plug, types, starting, services, live,
-                   nextInst, stopRequested, conn>>
+    /\ UNCHANGED <<waitSet, queue, joinOf, stopFailed, plug, types, starting,
+                   failedC, services, live, nextInst, stopRequested, conn>>
 
+(* _stopServiceInstance logs a rejected stop() and goes on. *)
 TSvcWait(t) ==
     /\ pc[t] = "svcwait" /\ Free(t)
     /\ live' = live \ {cur[t]}
     /\ Go(t, "svc") /\ running' = t
-    /\ UNCHANGED <<ctl, plug, types, byClass, starting, services, stopCalls,
-                   stopOps, nextInst, stopRequested, conn>>
+    /\ UNCHANGED <<ctl, plug, types, byClass, starting, failedC, services,
+                   stopCalls, stopOps, nextInst, stopRequested, conn>>
 
 ---------------------------------------------------------------------------
 (* Plugin B registers A's key: claimConnector releases it from A's list. *)
@@ -288,8 +330,8 @@ RCall(r) ==
             /\ UNCHANGED <<pluginsA, regActive>>
        ELSE IF pluginsA THEN Go(r, "ok") /\ UNCHANGED <<pluginsA, regActive, joinOf>>
        ELSE Go(r, "init") /\ pluginsA' = TRUE /\ regActive' = r /\ UNCHANGED joinOf
-    /\ UNCHANGED <<cur, waitSet, queue, visited, owned, tdActive, disposeCalls,
-                   svc, conn>>
+    /\ UNCHANGED <<cur, waitSet, queue, visited, stopFailed, owned, tdActive,
+                   disposeCalls, svc, conn>>
 
 (* A failed init() withdraws A from plugins and rolls back; success stores
    the ownership. *)
@@ -314,8 +356,8 @@ Quiescent ==
 
 Finished == Quiescent /\ \A a \in Actors : pc[a] # "idle"
 
-Unload(u) == UCall(u) \/ UJoin(u) \/ UDispose(u) \/ UInflight(u) \/ UTake(u)
-             \/ UStop(u) \/ UStopWait(u) \/ UFinish(u)
+Unload(u) == UCall(u) \/ UJoin(u) \/ UDispose(u) \/ UInflight(u) \/ UStop(u)
+             \/ UStopWait(u) \/ UFinish(u)
 Load(l) == LCall(l) \/ LBegin(l)
 Stop(t) == TReq(t) \/ TDrain(t) \/ TSvc(t) \/ TSvcWait(t)
 Register(r) == RCall(r) \/ RInit(r) \/ RJoin(r)
@@ -345,16 +387,18 @@ Spec == Init /\ [][Next]_vars /\ Fairness
 
 TypeOK ==
     /\ running \in Actors \cup Classes \cup {None}
+    /\ stopFailed \in BOOLEAN
     /\ owned \in BOOLEAN /\ pluginsA \in BOOLEAN
     /\ types \subseteq Classes
     /\ byClass \in [Classes -> 0..MaxInst]
     /\ starting \in [Classes -> 0..MaxInst]
+    /\ failedC \subseteq Classes
     /\ services \subseteq Insts /\ live \subseteq Insts
     /\ stopCalls \in [Insts -> Nat] /\ stopOps \subseteq Insts
     /\ registry \in Owners /\ lastReg \in Owners
     /\ ownsA \in BOOLEAN /\ ownsB \in BOOLEAN
 
-TeardownStates == {"dispose", "inflight", "take", "stop", "stopwait", "finish"}
+TeardownStates == {"dispose", "inflight", "stop", "stopwait", "finish"}
 
 (* At most one teardown of A runs, and dispose() runs once. *)
 TeardownExclusive ==

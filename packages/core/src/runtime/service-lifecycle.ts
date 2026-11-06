@@ -33,6 +33,13 @@ export interface RuntimeServiceLifecycleHost {
 	servicePromiseHandlers(): Map<string, ServicePromiseHandler>;
 	servicePromises(): Map<string, Promise<Service>>;
 	stopped(): boolean;
+	/** Runs one start through the runtime, so plugin-lifecycle can attribute
+	 * what start() registers to the service's plugin. */
+	runServiceStart(
+		key: ServiceTypeName,
+		serviceType: string,
+		serviceClass: ServiceClass,
+	): Promise<Service | null>;
 }
 
 /** Backoff between eager service-start attempts after a failed boot-time start. */
@@ -191,21 +198,23 @@ export class RuntimeServiceLifecycle {
 				return Promise.resolve(startedImplementation);
 			}
 
-			const start = this._runServiceStart(key, serviceType, serviceClass).then(
-				(service) => {
-					if (!service) {
-						throw new Error(
-							`Service implementation ${serviceClass.name || "<anonymous>"} did not start`,
-						);
-					}
-					this.host.failedServiceClasses().delete(serviceClass);
-					return service;
-				},
-				(error) => {
-					this.host.failedServiceClasses().add(serviceClass);
-					throw error;
-				},
-			);
+			const start = this.host
+				.runServiceStart(key, serviceType, serviceClass)
+				.then(
+					(service) => {
+						if (!service) {
+							throw new Error(
+								`Service implementation ${serviceClass.name || "<anonymous>"} did not start`,
+							);
+						}
+						this.host.failedServiceClasses().delete(serviceClass);
+						return service;
+					},
+					(error) => {
+						this.host.failedServiceClasses().add(serviceClass);
+						throw error;
+					},
+				);
 			this.host.startingServiceClasses().set(serviceClass, start);
 			void start.then(
 				() => this.host.startingServiceClasses().delete(serviceClass),
@@ -264,7 +273,14 @@ export class RuntimeServiceLifecycle {
 			this.host.servicePromiseHandlers().delete(key);
 			this.host.servicePromises().delete(key);
 		}
-		this.host.serviceRegistrationStatus().set(key, "failed");
+		// A plugin unload may have withdrawn every class of this type while
+		// these starts ran; a type with no classes keeps no status
+		// (tla/ServiceLifecycle.tla, NoStatusWithoutClasses).
+		if (this.host.serviceTypes().get(key)?.length) {
+			this.host.serviceRegistrationStatus().set(key, "failed");
+		} else {
+			this.host.serviceRegistrationStatus().delete(key);
+		}
 		throw startupError;
 	}
 

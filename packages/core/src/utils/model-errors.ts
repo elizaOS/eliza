@@ -39,9 +39,13 @@ export function isTransientModelError(error: unknown): boolean {
 	);
 }
 
-/** A failed funded operation must retain its payer and original intent across wrappers and retries. */
+/**
+ * A failed funded operation must retain its payer and original intent across
+ * wrappers and retries, so this walks the whole error graph: a funding denial
+ * anywhere in it blocks provider fallback and retry.
+ */
 export function isModelFundingAuthorityError(error: unknown): boolean {
-	for (const node of modelErrorChain(error)) {
+	for (const node of modelErrorChain(error, Number.POSITIVE_INFINITY)) {
 		if ((node as { code?: unknown }).code === "MODEL_FUNDING_AUTHORITY_FAILED")
 			return true;
 	}
@@ -203,11 +207,12 @@ const NETWORK_ERROR_CODES = new Set([
 // `RetryError` envelope (`.lastError` / `.errors[]`, populated once retries
 // exhaust). Only OBJECT nodes are traversed — `SchemaValidationFailedError`
 // carries an `errors: string[]` of validation messages, and those strings must
-// not be mistaken for wrapped provider errors.
-function* modelErrorChain(error: unknown): Generator<object> {
+// not be mistaken for wrapped provider errors. The classifiers stop after
+// `limit` nodes; the funding-authority check walks every node.
+function* modelErrorChain(error: unknown, limit = 12): Generator<object> {
 	const seen = new Set<unknown>();
 	const stack: unknown[] = [error];
-	while (stack.length > 0 && seen.size < 12) {
+	while (stack.length > 0 && seen.size < limit) {
 		const node = stack.pop();
 		if (typeof node !== "object" || node === null || seen.has(node)) continue;
 		seen.add(node);

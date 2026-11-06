@@ -884,13 +884,27 @@ export class TaskService extends Service {
 			return;
 		}
 		this.executingTasks.add(task.id);
+		if (!isRepeat) {
+			// A one-shot from a stale snapshot may already have run and been
+			// deleted. The read sits outside the failure path below, so a failed
+			// read propagates and leaves the row in place.
+			let current: Task | null;
+			try {
+				current = await this.runtime.getTask(task.id);
+			} catch (error) {
+				this.executingTasks.delete(task.id);
+				throw error;
+			}
+			if (!current) {
+				this.executingTasks.delete(task.id);
+				return;
+			}
+		}
 		const startTime = this.clock.now();
 		const observedWakeRevision = task.metadata?.wakeRevision;
 		const observedWakeAt = task.metadata?.wakeAt;
 
 		try {
-			// A one-shot from a stale snapshot may already have run and been deleted.
-			if (!isRepeat && !(await this.runtime.getTask(task.id))) return;
 			const taskOptions = (task.metadata ?? {}) as Record<
 				string,
 				JsonValue | object

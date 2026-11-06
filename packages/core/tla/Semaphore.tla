@@ -55,7 +55,7 @@ Init ==
     /\ ticket = [c \in Callers |-> 0]
     /\ next = 1
 
-(* acquire, lines 57-83: one synchronous step up to the await. *)
+(* acquire: one synchronous step up to the await. *)
 Acquire(c) ==
     /\ pc[c] = "idle"
     /\ IF aborted[c]
@@ -80,7 +80,8 @@ Abort(c) ==
     /\ queuedAbort' = [queuedAbort EXCEPT ![c] = pc[c] = "waiting"]
     /\ UNCHANGED <<permits, waiters, pc, ticket, next>>
 
-(* `cancelled`, lines 74-80: a no-op when release already shifted c out. *)
+(* acquire's `cancelled` abort listener: a no-op when release already *)
+(* shifted c out.                                                      *)
 CancelListener(c) ==
     /\ listener[c]
     /\ listener' = [listener EXCEPT ![c] = FALSE]
@@ -90,7 +91,7 @@ CancelListener(c) ==
        ELSE UNCHANGED <<waiters, pc>>
     /\ UNCHANGED <<permits, aborted, queuedAbort, ticket, next>>
 
-(* release, lines 86-97: the loop skips aborted waiters (each `admitted`    *)
+(* release: the loop skips aborted waiters (each `admitted`               *)
 (* call rejects it and removes its listener) and grants the first live one. *)
 Skipped(s) == LET F[i \in 0..Len(s)] ==
                     IF i = 0 THEN 0

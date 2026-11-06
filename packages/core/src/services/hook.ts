@@ -105,11 +105,12 @@ export class HookService extends Service implements IHookService {
 	private hookConfig: Record<string, unknown> = {};
 
 	/**
-	 * {@link hasBinary} results per binary name: the PATH scan is synchronous
-	 * filesystem work, and eligibility is checked on every hook dispatch. Valid
-	 * for {@link binaryCachePath}; a PATH change or stop clears it.
+	 * Binary names {@link hasBinary} found: the PATH scan is synchronous
+	 * filesystem work, and eligibility is checked on every hook dispatch. Only
+	 * hits are kept, so a binary installed later is found on the next check.
+	 * Valid for {@link binaryCachePath}; a PATH change or stop clears it.
 	 */
-	private readonly binaryCache = new Map<string, boolean>();
+	private readonly binaryCache = new Set<string>();
 	private binaryCachePath: string | undefined;
 
 	/** Runtime event handlers installed by {@link setupEventInterceptors}, removed on stop. */
@@ -149,11 +150,9 @@ export class HookService extends Service implements IHookService {
 			this.binaryCache.clear();
 			this.binaryCachePath = process.env.PATH;
 		}
-		let found = this.binaryCache.get(bin);
-		if (found === undefined) {
-			found = hasBinary(bin);
-			this.binaryCache.set(bin, found);
-		}
+		if (this.binaryCache.has(bin)) return true;
+		const found = hasBinary(bin);
+		if (found) this.binaryCache.add(bin);
 		return found;
 	}
 

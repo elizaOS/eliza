@@ -154,7 +154,7 @@ TFinish(t) ==
 BeginAttempt(s) ==
     /\ stopPromise' = TRUE
     /\ aid' = aid + 1
-    /\ afast' = sfast[s]
+    /\ afast' = sfast'[s]
     /\ apc' = "drain"
     /\ sjoined' = [sjoined EXCEPT ![s] = aid + 1]
     /\ prepareCalls' = IF stopReq THEN prepareCalls ELSE prepareCalls + 1
@@ -219,9 +219,12 @@ AServices ==
     /\ UNCHANGED <<svcLate, aid, afast, outcome, initVars, turnVars, stopReq, stopPromise,
                    prepareCalls, closed, turnsClosed, failures, callVars>>
 
+(* A strict attempt awaits each published service's stop(). A fast one    *)
+(* waits for them only up to the service-stop timeout                     *)
+(* (settleBeforeTimeout), so its stop() may still run when it resolves.    *)
 ASvcDone ==
     /\ apc = "svcwait"
-    /\ (svc # "stopping" \/ svcLate)
+    /\ (svc # "stopping" \/ svcLate \/ afast)
     /\ apc' = "none"
     /\ outcome' = [outcome EXCEPT ![aid] = "ok"]
     /\ stopPromise' = FALSE
@@ -314,7 +317,13 @@ NoStartOnFailedInit == svc \in {"starting", "live"} => ~initFailed
 NoLiveAfterStopped == stopped => (svc # "live" \/ apc = "services")
 
 (* "stopped" means admissions are closed and no published service is live. *)
-StoppedIsQuiet == LifecycleState = "stopped" => closed /\ (svc \notin {"live", "stopping"} \/ svcLate)
+(* A published service's stop() may still run only after a fast stop     *)
+(* (service-stop timeout); only a strict drain waits for it to settle.    *)
+StoppedIsQuiet ==
+    LifecycleState = "stopped" =>
+        /\ closed
+        /\ svc # "live"
+        /\ (svc = "stopping" => svcLate \/ afast)
 
 (* A strict stop resolves only when nothing is pending and nothing failed. *)
 StrictMeansQuiescent ==

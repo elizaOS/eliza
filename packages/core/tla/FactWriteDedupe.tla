@@ -1,8 +1,8 @@
 ---------------------------- MODULE FactWriteDedupe ----------------------------
 (***************************************************************************)
-(* src/runtime/data-mutations.ts DataMutations.createMemory, facts branch, *)
-(* with src/runtime/fact-write-dedupe.ts findEquivalentFact and            *)
-(* mergeStrongerFactMetadata.                                              *)
+(* src/runtime/data-mutations.ts RuntimeDataMutations.createMemory, facts *)
+(* branch, and serialiseFactWrite, with src/runtime/fact-write-dedupe.ts   *)
+(* findEquivalentFact and mergeStrongerFactMetadata.                       *)
 (*                                                                         *)
 (* Every writer carries the same fact (same trimmed text, room and entity) *)
 (* and its own evidence id. Check is `await findEquivalentFact` (one       *)
@@ -11,8 +11,11 @@
 (* with `await adapter.createMemories`. Each await is a step. Prefilled     *)
 (* says whether the row already exists before the writers start.           *)
 (*                                                                         *)
-(* Serialised = FALSE is the code as written. Serialised = TRUE models the *)
-(* fix: the check and its update or insert run one at a time per room.     *)
+(* Serialised = TRUE is the code as written: serialiseFactWrite runs the   *)
+(* check and its update or insert one at a time per room (the model lets   *)
+(* any waiter go next; the code's chain is FIFO). Serialised = FALSE is    *)
+(* the original unserialised code, which can insert duplicate facts and    *)
+(* lose evidence; both cfgs check TRUE.                                    *)
 (***************************************************************************)
 EXTENDS Naturals, Sequences, FiniteSets
 

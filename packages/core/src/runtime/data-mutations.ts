@@ -551,7 +551,7 @@ export class RuntimeDataMutations {
 		const insert = () =>
 			this.runtime.adapter.createMemories([{ memory, tableName, unique }]);
 		let ids: UUID[];
-		if (tableName === "facts" && memory.roomId) {
+		if (tableName === "facts") {
 			// An array is the inserted ids; a single id is the equivalent row kept.
 			const outcome = await this.serialiseFactWrite(
 				memory.roomId,

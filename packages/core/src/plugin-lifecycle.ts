@@ -568,6 +568,7 @@ async function stopOwnedServices(
 		serviceGroups.set(ownedService.serviceType, nextGroup);
 	}
 
+	const stopErrors: unknown[] = [];
 	for (const [serviceType, ownedClasses] of serviceGroups) {
 		const key = serviceType as ServiceTypeName;
 		const currentClasses = runtime.serviceTypes.get(key) ?? [];
@@ -588,21 +589,11 @@ async function stopOwnedServices(
 			runtime.serviceTypes.delete(key);
 		}
 
-		// A start still in flight sees its class gone and stops itself.
-		const inFlightStart = runtime.startingServices.get(key);
-		if (inFlightStart) {
-			try {
-				await inFlightStart;
-			} catch (error) {
-				// error-policy:J6 teardown continues after an already-reported startup failure
-				runtime.logger.debug(
-					{ src: "plugin-lifecycle", serviceType, error },
-					"Service startup failed before plugin teardown",
-				);
-			}
-		}
-
-		// Take the owned instances out of every lookup before stopping them.
+		// Take the owned instances out of every lookup before the first await.
+		// A sibling that publishes meanwhile rebuilds runtime.services from
+		// serviceTypes, so a withdrawn instance left in serviceInstancesByClass
+		// would be out of runtime.services, and a runtime stop in that window
+		// would clear it without stopping it (ServiceLifecycle.tla NoOrphan).
 		// The same instance can be published more than once when two plugins
 		// register the same service class, so every occurrence goes.
 		const ownedInstances = ownedClasses.flatMap((ownedClass) => {
@@ -615,23 +606,53 @@ async function stopOwnedServices(
 		);
 		if (instances.length > 0) {
 			runtime.services.set(key, instances);
-			runtime.serviceRegistrationStatus.set(key, "registered");
 		} else {
 			runtime.services.delete(key);
-			if (remainingClasses.length > 0) {
-				runtime.serviceRegistrationStatus.set(key, "pending");
-			} else {
-				runtime.serviceRegistrationStatus.delete(key);
-				runtime.servicePromises.delete(key);
-				runtime.servicePromiseHandlers.delete(key);
+		}
+
+		// A start still in flight sees its class gone and stops itself. The
+		// startingServices entry can belong to a later caller that only reused
+		// a published instance, so each owned class's own start is awaited too.
+		const inFlightStarts = [
+			runtime.startingServices.get(key),
+			...ownedClasses.map((ownedClass) =>
+				runtime.startingServiceClasses.get(ownedClass),
+			),
+		].filter((start) => start !== undefined);
+		if (inFlightStarts.length > 0) {
+			for (const result of await Promise.allSettled(inFlightStarts)) {
+				if (result.status === "rejected") {
+					// error-policy:J6 teardown continues after an already-reported startup failure
+					runtime.logger.debug(
+						{ src: "plugin-lifecycle", serviceType, error: result.reason },
+						"Service startup failed before plugin teardown",
+					);
+				}
 			}
 		}
 
+		if ((runtime.services.get(key)?.length ?? 0) > 0) {
+			runtime.serviceRegistrationStatus.set(key, "registered");
+		} else if ((runtime.serviceTypes.get(key)?.length ?? 0) > 0) {
+			runtime.serviceRegistrationStatus.set(key, "pending");
+		} else {
+			runtime.serviceRegistrationStatus.delete(key);
+			runtime.servicePromises.delete(key);
+			runtime.servicePromiseHandlers.delete(key);
+		}
+
 		// The runtime's single-flight stop, so a concurrent runtime.stop()
-		// cannot stop the same instance again (StopAtMostOnce).
+		// cannot stop the same instance again (StopAtMostOnce). Every instance
+		// is stopped even when one stop() rejects: none of them is in a lookup
+		// any more, so nothing else would stop it (NoOrphanInstance).
 		for (const instance of ownedInstances) {
 			if (typeof instance.stop === "function") {
-				await runtime._stopServiceOnce(key, instance);
+				try {
+					await runtime._stopServiceOnce(key, instance);
+				} catch (error) {
+					// error-policy:J6 attempt every owned instance; failures are rethrown below
+					stopErrors.push(error);
+				}
 			}
 		}
 
@@ -642,6 +663,15 @@ async function stopOwnedServices(
 			}
 			serviceClassOwners.delete(ownedClass);
 		}
+	}
+
+	if (stopErrors.length > 0) {
+		throw stopErrors.length === 1
+			? stopErrors[0]
+			: new AggregateError(
+					stopErrors,
+					`Failed to stop services of plugin "${ownership.pluginName}"`,
+				);
 	}
 }
 
