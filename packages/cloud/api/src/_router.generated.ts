@@ -1601,6 +1601,11 @@ export const ROUTE_MOUNTS: readonly GeneratedRouteMount[] = [
     load: () => import("../v1/app-auth/mobile/credentials/route"),
   },
   {
+    path: "/api/v1/app-auth/mobile/google",
+    shard: "v1/app-auth",
+    load: () => import("../v1/app-auth/mobile/google/route"),
+  },
+  {
     path: "/api/v1/app-auth/mobile/token",
     shard: "v1/app-auth",
     load: () => import("../v1/app-auth/mobile/token/route"),

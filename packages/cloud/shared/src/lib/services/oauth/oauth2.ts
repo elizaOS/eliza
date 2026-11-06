@@ -464,7 +464,16 @@ export interface GoogleServerAuthCodeResult {
  */
 export async function exchangeGoogleServerAuthCode(
   provider: OAuthProviderConfig,
-  params: { organizationId: string; userId: string; serverAuthCode: string },
+  params: {
+    organizationId: string;
+    userId: string;
+    serverAuthCode: string;
+    /**
+     * The Google account (`sub`) this code must belong to, e.g. the identity
+     * that just signed in. A different account stores nothing.
+     */
+    expectedPlatformUserId?: string;
+  },
 ): Promise<GoogleServerAuthCodeResult> {
   if (provider.id !== "google") throw new Error("GOOGLE_SERVER_AUTH_CODE_PROVIDER_INVALID");
   const tokens = await exchangeCodeForTokens(provider, params.serverAuthCode, undefined, "");
@@ -474,6 +483,8 @@ export async function exchangeGoogleServerAuthCode(
       : [];
   if (granted.length === 0) throw new Error("GOOGLE_GRANTED_SCOPES_REQUIRED");
   const userInfo = await fetchUserInfo(provider, tokens.access_token);
+  if (params.expectedPlatformUserId !== undefined && userInfo.id !== params.expectedPlatformUserId)
+    throw new Error("GOOGLE_SERVER_AUTH_CODE_ACCOUNT_MISMATCH");
   const { connectionId } = await storeConnection(
     provider,
     params.organizationId,

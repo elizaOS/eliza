@@ -228,6 +228,28 @@ describe("Android server auth code exchange", () => {
     expect(secretsCreateCalls).toHaveLength(0);
   });
 
+  it("a code for another Google account than the signed-in one stores nothing", async () => {
+    const { OAUTH_PROVIDERS } = await import("./provider-registry");
+    const { exchangeGoogleServerAuthCode } = await import("./oauth2");
+    await expect(
+      exchangeGoogleServerAuthCode(OAUTH_PROVIDERS.google, {
+        organizationId: "org-1",
+        userId: "user-1",
+        serverAuthCode: "4/0AeaYSHnative",
+        expectedPlatformUserId: "someone-else",
+      }),
+    ).rejects.toThrow("GOOGLE_SERVER_AUTH_CODE_ACCOUNT_MISMATCH");
+    expect(connectionWriteCalls).toHaveLength(0);
+    expect(secretsCreateCalls).toHaveLength(0);
+    const matched = await exchangeGoogleServerAuthCode(OAUTH_PROVIDERS.google, {
+      organizationId: "org-1",
+      userId: "user-1",
+      serverAuthCode: "4/0AeaYSHnative",
+      expectedPlatformUserId: "google-sub-1",
+    });
+    expect(matched.platformUserId).toBe("google-sub-1");
+  });
+
   it("refuses a provider other than Google", async () => {
     const { OAUTH_PROVIDERS } = await import("./provider-registry");
     const { exchangeGoogleServerAuthCode } = await import("./oauth2");
