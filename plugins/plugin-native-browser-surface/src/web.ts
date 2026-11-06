@@ -137,7 +137,7 @@ export class BrowserSurfaceWeb
   }
   async purgeProfiles(
     _options: Parameters<ElizaSurfaceManagerPlugin["purgeProfiles"]>[0],
-  ): Promise<{ purged: number }> {
+  ): ReturnType<ElizaSurfaceManagerPlugin["purgeProfiles"]> {
     throw this.unavailable(UNAVAILABLE);
   }
   async captureSurface(

@@ -78,7 +78,9 @@ and deleted once Android releases it. `createSurface({ ..., profileKey })` inste
 selects one persistent profile per owner and key (for example a signed-in account), so
 website sign-ins survive. `purgeProfiles({ profileKey })` removes it at once and closes
 its surfaces (`surfaceClosed`); `purgeProfiles({ idleMs })` removes keyed profiles idle
-for that long. `clearSurfaceStorage` signs one isolated surface out of every website.
+for that long. `purgeProfiles({ all: true })` removes every surface profile of any owner,
+closes their surfaces and resolves `clean` once no purged profile holds a cookie.
+`clearSurfaceStorage` signs one isolated surface out of every website.
 
 `captureSurface` returns a JPEG of the visible page, about 1024 px on the long edge, for
 a vision fallback. Before the copy it covers password, `cc-*`, `one-time-code` and other
