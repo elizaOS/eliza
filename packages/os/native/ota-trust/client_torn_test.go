@@ -114,3 +114,32 @@ func TestDiscoveryReportsTrustCacheFailure(t *testing.T) {
 		t.Fatalf("healthy: %+v", result)
 	}
 }
+
+// An I/O failure may pass, so it is an ordinary failure, never a trust cache
+// that no retry repairs. Only the check before a session reads the cache
+// reports a refused entry as trust-cache.
+func TestCacheIOFailureIsNotTrustCache(t *testing.T) {
+	r, dir := cachedFixture(t)
+	if err := os.Chmod(dir, 0300); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { os.Chmod(dir, 0700) })
+	if _, err := os.ReadDir(dir); err == nil {
+		t.Skip("directory still readable (running as root?)")
+	}
+	if _, err := fetch(dir, r, now); err == nil || errors.Is(err, errTrustCache) {
+		t.Fatal("unreadable directory:", err)
+	}
+	if err := os.Chmod(dir, 0700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, "snapshot.json"), []byte("{"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	if err := syncCache(dir, false); err == nil || errors.Is(err, errTrustCache) {
+		t.Fatal("in-session sync:", err)
+	}
+	if err := syncCache(dir, true); !errors.Is(err, errTrustCache) {
+		t.Fatal("pre-session check:", err)
+	}
+}
