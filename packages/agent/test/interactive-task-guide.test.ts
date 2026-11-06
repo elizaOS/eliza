@@ -385,6 +385,38 @@ describe("a yes to a guided step", () => {
     expect(g.browser.clicks).toBe(0);
   });
 
+  it("an offer armed before her Stop and Resume never presses", async () => {
+    const g = guide({ ask: true });
+    await g.workflow.refresh();
+    g.workflow.acknowledge("ask:show-news");
+    const offer = await g.workflow.refresh();
+    expect(offer.kind).toBe("agent-action");
+    await g.stop();
+    const paused = g.runtime.get(g.taskId);
+    await g.runtime.observe(g.taskId, paused.revision, true);
+    // The host presses the offer it got before the Stop, with no refresh.
+    expect(await g.workflow.executeAction(offer.offerKey)).toMatchObject({
+      kind: "person-check",
+      key: "ask:show-news",
+    });
+    expect(g.browser.clicks).toBe(0);
+  });
+
+  it("her Stop before the guide's new binding answers paused", async () => {
+    const g = guide();
+    const offer = await g.workflow.refresh();
+    const hiding = g.hold("quiesce", { now: true });
+    const dispatch = g.workflow.executeAction(offer.offerKey);
+    await hiding.reached;
+    expect(await g.stop()).toMatchObject({
+      status: 200,
+      task: { status: "paused" },
+    });
+    hiding.open();
+    expect(await dispatch).toEqual({ kind: "paused", taskId: g.taskId });
+    expect(g.browser.clicks).toBe(0);
+  });
+
   it("two presses of the same Yes give one effect", async () => {
     const g = guide();
     const offer = await g.workflow.refresh();

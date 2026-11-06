@@ -547,6 +547,10 @@ export class GuidedWebsiteWorkflow {
       key.startsWith(MANUAL_ACTIVITY) ? null : current,
     );
   }
+  /** Whether the yes `offer` was armed with no longer stands. */
+  answerGone(offer) {
+    return offer.answer !== null && !this.acknowledged.has(offer.answer);
+  }
   /** Drops each yes given in another epoch than `epoch`. */
   forgetAnswers(epoch) {
     for (const [key, given] of this.acknowledged)
@@ -1042,6 +1046,12 @@ export class GuidedWebsiteWorkflow {
     const gate = await this.taskGate();
     if (gate.result) return gate.result;
     let { task } = gate;
+    // Her Stop, a Resume or any new epoch dropped the yes this offer was
+    // armed with: the offer is stale, and she is asked again.
+    if (this.answerGone(offer)) {
+      this.offer = null;
+      return this.refresh();
+    }
     await this.clearGuidance();
     await this.requireAuthority();
     if (
@@ -1060,12 +1070,18 @@ export class GuidedWebsiteWorkflow {
         // cancels it to press: nothing is pressed, and its fresh offer follows.
         if (error?.code === "TASK_BUSY")
           return blocked(this.words.changed, "task-busy");
+        // Her Stop (or another change) landed during the awaits above.
+        if (["TASK_CONFLICT", "TASK_NOT_ACTIVE"].includes(error?.code)) {
+          this.offer = null;
+          const changed = await this.taskGate();
+          return changed.result ?? blocked(this.words.changed, "task-changed");
+        }
         throw error;
       }
-      await this.runtime.settle?.(task.id);
       // The guide's own new binding keeps her yes; her Stop never does.
       for (const [key, given] of this.acknowledged)
         if (given === epoch) this.acknowledged.set(key, task.epoch);
+      await this.runtime.settle?.(task.id);
       this.grant = {
         epoch: task.epoch,
         selector: offer.selector,
@@ -1134,6 +1150,10 @@ export class GuidedWebsiteWorkflow {
       task = this.runtime.get(this.taskId);
     }
     await this.requireAuthority();
+    if (this.answerGone(offer)) {
+      this.offer = null;
+      return this.refresh();
+    }
     this.offer = null;
     if (offer.answer !== null) this.acknowledged.delete(offer.answer);
     const id = `${kind === "offer-fill" ? GUIDED_FILL : PLANNED_ACTION}${operationId}`;
