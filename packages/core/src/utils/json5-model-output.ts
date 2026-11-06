@@ -8,6 +8,8 @@ import JSON5 from "json5";
 const jsonBlockPattern =
 	/```(?:(?:json5|json)(?![A-Za-z0-9_-]))?\s*\r?\n?([\s\S]*?)\r?\n?```/i;
 
+const jsonBlockPatternGlobal = new RegExp(jsonBlockPattern.source, "gi");
+
 /**
  * Extract and parse JSON from text using JSON5 for LLM output tolerance.
  * Throws on parse failure for invalid JSON.
@@ -29,9 +31,26 @@ export function extractAndParseJSONObjectFromText(
 		try {
 			parsed = JSON5.parse(text.trim());
 		} catch (error) {
-			const match = text.match(jsonBlockPattern);
-			if (!match) throw error;
-			parsed = JSON5.parse(match[1].trim());
+			// Try each fenced block in order. Model output can hold a bad
+			// first block (a failed draft, prose, or a scalar) before the
+			// valid block, so a single first-block parse must not end the
+			// search. Keep the first block error for the failure case, so a
+			// one-block input reports the same error as before.
+			let fenceError: unknown = error;
+			let found = false;
+			for (const match of text.matchAll(jsonBlockPatternGlobal)) {
+				try {
+					parsed = JSON5.parse(match[1].trim());
+					if (parsed === null || typeof parsed !== "object") {
+						throw new Error("Parsed JSON must be an object or array");
+					}
+					found = true;
+					break;
+				} catch (blockError) {
+					if (fenceError === error) fenceError = blockError;
+				}
+			}
+			if (!found) throw fenceError;
 		}
 		if (parsed === null || typeof parsed !== "object") {
 			throw new Error("Parsed JSON must be an object or array");
