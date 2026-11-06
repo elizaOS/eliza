@@ -48,7 +48,7 @@ function valid(value: unknown): value is MapsAllowanceRequest {
         Number.isSafeInteger(v.credential.issuedAt) &&
         v.credential.issuedAt > 0) &&
     id(v.credential.userId) &&
-    ["search", "geocode", "reverse", "details", "routes"].includes(
+    ["search", "geocode", "reverse", "details", "routes", "tiles"].includes(
       v.operation,
     ) &&
     !!v.policy &&
