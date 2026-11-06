@@ -4,6 +4,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { DatabaseSync } from "node:sqlite";
 import { describe, expect, it } from "vitest";
+import { InteractiveTaskRuntime } from "../src/services/interactive-task-runtime.ts";
 import { SqliteInteractiveTaskStore } from "../src/services/interactive-task-store.ts";
 
 const owner = {
@@ -144,6 +145,181 @@ describe("durable interactive task journal", () => {
       ]);
       expect(restarted.create({ ...input, id: "task-2" }).id).toBe("task-2");
       expect(() => restarted.create(input)).toThrow(/identity/);
+    } finally {
+      for (const connection of connections) connection.close();
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
+  it("lets the owner release the slot of a revoked task whose outcome stays unknown", async () => {
+    const root = mkdtempSync(join(tmpdir(), "eliza-task-acknowledge-"));
+    const connections: DatabaseSync[] = [];
+    let clock = 1000;
+    const open = () => {
+      const connection = new DatabaseSync(join(root, "host.sqlite"));
+      connections.push(connection);
+      connection.exec("PRAGMA synchronous = FULL");
+      return new InteractiveTaskRuntime({
+        owner,
+        store: new SqliteInteractiveTaskStore(connection),
+        now: () => ++clock,
+        actuator: {
+          capabilities: ["fill"],
+          observe: async () => ({
+            id: "view-1",
+            pageId: "page-1",
+            version: 1,
+            inputRevision: 0,
+            origin: "https://example.org",
+            observedAt: clock,
+          }),
+          // The reply is lost, so the effect may or may not have happened.
+          execute: async () => {
+            throw new Error("reply lost");
+          },
+          reconcile: async () => ({ status: "unknown" }),
+        },
+      });
+    };
+    try {
+      let runtime = open();
+      let task = runtime.create(input);
+      task = await runtime.observe(task.id, task.revision);
+      task = await runtime.execute(task.id, task.revision, {
+        id: "op-1",
+        taskId: input.id,
+        epoch: task.epoch,
+        observationId: "view-1",
+        observationVersion: 1,
+        inputRevision: 0,
+        targetRef: "field-1",
+        capability: "fill",
+        authorizationId: "grant",
+        expiresAt: 1_000_000,
+      });
+      expect(task.operations[0].status).toBe("unknown");
+      // Sign-out revokes the task, and readback needs an active authorization.
+      task = runtime.control(task.id, task.revision, "revoke");
+      await expect(
+        runtime.reconcile(task.id, task.revision, "op-1", async () => true),
+      ).rejects.toMatchObject({ code: "TASK_NOT_ACTIVE" });
+      expect(() => runtime.create({ ...input, id: "task-2" })).toThrow(
+        /unfinished/,
+      );
+      for (const connection of connections.splice(0)) connection.close();
+      runtime = open();
+      task = runtime.get(input.id);
+      expect(() => runtime.create({ ...input, id: "task-2" })).toThrow(
+        /unfinished/,
+      );
+      expect(() =>
+        runtime.acknowledgeUnknown(task.id, task.revision - 1),
+      ).toThrow(expect.objectContaining({ code: "TASK_CONFLICT" }));
+      const acknowledged = runtime.acknowledgeUnknown(task.id, task.revision);
+      await runtime.settle(task.id);
+      // The outcome stays visibly unknown; nothing records success or failure.
+      expect(acknowledged.status).toBe("cancelled");
+      expect(acknowledged.operations[0]).toEqual({
+        proposal: expect.objectContaining({ id: "op-1" }),
+        status: "unknown",
+      });
+      expect(runtime.current()).toBeNull();
+      expect(() =>
+        runtime.acknowledgeUnknown(task.id, acknowledged.revision),
+      ).toThrow(expect.objectContaining({ code: "TASK_REPLAY" }));
+      for (const connection of connections.splice(0)) connection.close();
+      runtime = open();
+      expect(runtime.get(input.id).operations[0].status).toBe("unknown");
+      expect(runtime.create({ ...input, id: "task-2" }).id).toBe("task-2");
+    } finally {
+      for (const connection of connections) connection.close();
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
+  it("sets aside a record another version wrote and keeps the host up", () => {
+    const root = mkdtempSync(join(tmpdir(), "eliza-task-unreadable-"));
+    const connections: DatabaseSync[] = [];
+    const open = () => {
+      const connection = new DatabaseSync(join(root, "host.sqlite"));
+      connections.push(connection);
+      connection.exec("PRAGMA synchronous = FULL");
+      return connection;
+    };
+    const runtimeOn = (connection: DatabaseSync) =>
+      new InteractiveTaskRuntime({
+        owner,
+        store: new SqliteInteractiveTaskStore(connection),
+        now: () => 2000,
+        actuator: {
+          capabilities: ["fill"],
+          observe: async () => {
+            throw new Error("not used");
+          },
+          execute: async () => {
+            throw new Error("not used");
+          },
+        },
+      });
+    try {
+      const store = new SqliteInteractiveTaskStore(open());
+      store.create({ ...input, id: "task-done" });
+      store.transition(
+        "task-done",
+        { owner, expectedRevision: 0, now: 1001 },
+        { type: "cancel" },
+      );
+      store.create(input);
+      // A different build wrote the unfinished record with a field this one
+      // does not know.
+      const written = store.get(input.id, owner);
+      const document = JSON.stringify({ ...written, laterField: true });
+      connections[0]
+        .prepare(
+          "UPDATE interactive_task_journal_v1 SET document = ? WHERE id = ?",
+        )
+        .run(document, input.id);
+      for (const connection of connections.splice(0)) connection.close();
+
+      const runtime = runtimeOn(open());
+      expect(runtime.current()).toBeNull();
+      expect(runtime.unreadable()).toEqual([
+        {
+          taskId: input.id,
+          reason: "Unexpected task record fields",
+          quarantinedAt: 2000,
+          acknowledgedAt: null,
+        },
+      ]);
+      expect(() => runtime.get(input.id)).toThrow(
+        expect.objectContaining({ code: "TASK_UNREADABLE" }),
+      );
+      expect(runtime.get("task-done").status).toBe("cancelled");
+      // The record still holds the slot until the owner releases it.
+      expect(() => runtime.create({ ...input, id: "task-2" })).toThrow(
+        expect.objectContaining({ code: "TASK_UNREADABLE" }),
+      );
+      expect(runtime.acknowledgeUnreadable(input.id)[0].acknowledgedAt).toBe(
+        2000,
+      );
+      expect(() => runtime.acknowledgeUnreadable(input.id)).toThrow(
+        expect.objectContaining({ code: "TASK_NOT_FOUND" }),
+      );
+      expect(runtime.create({ ...input, id: "task-2" }).id).toBe("task-2");
+      // The record itself is kept as it was written.
+      const kept = connections[0]
+        .prepare(
+          "SELECT document FROM interactive_task_journal_v1 WHERE id = ?",
+        )
+        .get(input.id) as { document: string };
+      expect(kept.document).toBe(document);
+      // A torn record is still corruption, not a version difference.
+      connections[0]
+        .prepare(
+          "UPDATE interactive_task_journal_v1 SET document = '{' WHERE id = ?",
+        )
+        .run("task-2");
+      expect(() => runtimeOn(open())).toThrow(
+        expect.objectContaining({ code: "TASK_STORAGE_CORRUPT" }),
+      );
     } finally {
       for (const connection of connections) connection.close();
       rmSync(root, { recursive: true, force: true });
