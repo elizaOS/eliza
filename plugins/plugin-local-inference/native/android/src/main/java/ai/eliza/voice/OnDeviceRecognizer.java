@@ -23,6 +23,7 @@ import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.LinkedBlockingQueue;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.concurrent.atomic.AtomicLong;
 import java.util.concurrent.atomic.AtomicReference;
 
 /**
@@ -40,11 +41,25 @@ import java.util.concurrent.atomic.AtomicReference;
  * {@link #feed} from the capture thread and {@link #finish} and
  * {@link #transcribe} on a worker thread, never on the main thread.
  * {@link #cancel} may be called from any thread.
+ *
+ * <p>Android's recognizer can end on its own while speech is still being fed:
+ * at a pause, or with "no speech heard" before she starts talking. Then
+ * {@link #feed} returns false and {@link #answered} is true; the rest of the
+ * speech is not heard, so a host that still records starts a new session (or
+ * uses {@link NativeAsr}) for the audio after that point.
  */
 public final class OnDeviceRecognizer {
     /** The language used when a host names none. */
     public static final String DEFAULT_LANGUAGE = "en-US";
     private static final int WRITE_BLOCK = 6400;
+    /**
+     * Most audio {@link #feed} keeps waiting for the recognizer: 64 seconds at
+     * 16 kHz mono 16-bit. More means the recognizer stopped reading; the session
+     * then ends with {@link #BACKLOG}.
+     */
+    static final long MAX_BACKLOG_BYTES = 64L * NativeAsr.SAMPLE_RATE * 2;
+    /** Reason for a session whose recognizer stopped reading the fed audio. */
+    public static final String BACKLOG = "audio backlog";
     private static final java.util.regex.Pattern LANGUAGE_TAG =
             java.util.regex.Pattern.compile("[a-z]{2,3}(?:-[A-Za-z0-9]{2,8})*");
 
@@ -63,6 +78,8 @@ public final class OnDeviceRecognizer {
     /** Ends the recognizer's audio; compared by identity. */
     private static final byte[] END = new byte[0];
     private final LinkedBlockingQueue<byte[]> audio = new LinkedBlockingQueue<>();
+    /** Bytes fed and not yet written to the recognizer. */
+    private final AtomicLong backlog = new AtomicLong();
     /** Guards {@link #pipe}, {@link #finished} and {@link #released}. */
     private final Object session = new Object();
     private ParcelFileDescriptor[] pipe;
@@ -200,9 +217,27 @@ public final class OnDeviceRecognizer {
      * {@link #finish} or {@link #cancel}. After {@link #cancel} the audio is
      * dropped. Throws {@link RecognizerUnavailable} when the recognizer cannot
      * start; a later failure is reported by {@link #finish}.
+     *
+     * <p>Returns false when this part was dropped: the session was cancelled, or
+     * the recognizer has already answered ({@link #answered}) and reads no more
+     * audio. It also returns false, and ends the session with {@link #BACKLOG},
+     * when more than {@link #MAX_BACKLOG_BYTES} wait for a recognizer that
+     * stopped reading. A part fed just before the recognizer answers can still go
+     * unheard, so check {@link #answered} before {@link #finish} too.
      */
-    public void feed(byte[] pcm16kMono) throws RecognizerUnavailable {
-        feed(pcm16kMono, true);
+    public boolean feed(byte[] pcm16kMono) throws RecognizerUnavailable {
+        return feed(pcm16kMono, true);
+    }
+
+    /**
+     * True once the session has its answer and reads no more audio: the
+     * recognizer answered (possibly before {@link #finish}, at a pause or with
+     * "no speech heard"), failed, or was cancelled. True before {@link #finish}
+     * means {@link #finish} returns that early answer and later speech was not
+     * heard.
+     */
+    public boolean answered() {
+        return done.getCount() == 0;
     }
 
     /**
@@ -256,15 +291,26 @@ public final class OnDeviceRecognizer {
         release();
     }
 
-    private void feed(byte[] pcm16kMono, boolean copy) throws RecognizerUnavailable {
+    private boolean feed(byte[] pcm16kMono, boolean copy) throws RecognizerUnavailable {
         if (pcm16kMono == null) throw new IllegalArgumentException("Expected PCM");
         synchronized (session) {
             if (finished) throw new IllegalStateException("Recognition already finished");
-            if (stopped) return;
+            if (stopped) return false;
             start();
             // A recognizer that has answered reads no more audio.
-            if (pcm16kMono.length > 0 && done.getCount() > 0) audio.add(copy ? pcm16kMono.clone() : pcm16kMono);
+            if (done.getCount() == 0) return false;
+            if (pcm16kMono.length == 0) return true;
+            // A finished recording (transcribe) is one array already in memory;
+            // only live parts that pile up behind a stalled recognizer are capped.
+            if (!copy || backlog.get() + pcm16kMono.length <= MAX_BACKLOG_BYTES) {
+                backlog.addAndGet(pcm16kMono.length);
+                audio.add(copy ? pcm16kMono.clone() : pcm16kMono);
+                return true;
+            }
         }
+        // Outside the session lock: answer frees the session, which takes it.
+        answer(null, BACKLOG);
+        return false;
     }
 
     /** Caller holds {@link #session}. Starts the recognizer and its audio writer once. */
@@ -307,7 +353,9 @@ public final class OnDeviceRecognizer {
             try (OutputStream out = new ParcelFileDescriptor.AutoCloseOutputStream(opened[1])) {
                 for (byte[] block = audio.take(); block != END && !stopped && done.getCount() > 0; block = audio.take()) {
                     for (int offset = 0; offset < block.length && !stopped && done.getCount() > 0; offset += WRITE_BLOCK) {
-                        out.write(block, offset, Math.min(WRITE_BLOCK, block.length - offset));
+                        int length = Math.min(WRITE_BLOCK, block.length - offset);
+                        out.write(block, offset, length);
+                        backlog.addAndGet(-length);
                     }
                 }
             } catch (IOException closed) {
@@ -332,6 +380,8 @@ public final class OnDeviceRecognizer {
             released = true;
             opened = pipe;
         }
+        // Audio the recognizer will never read is not kept.
+        audio.clear();
         audio.add(END);
         main.post(() -> {
             SpeechRecognizer open = recognizer;
@@ -346,12 +396,25 @@ public final class OnDeviceRecognizer {
         });
     }
 
-    /** Keeps the first answer: the recognizer's, a timeout, an interrupt or a cancel. */
-    private synchronized void answer(String heard, String error) {
-        if (done.getCount() == 0) return;
-        text = heard;
-        failure = error;
-        done.countDown();
+    /**
+     * Keeps the first answer: the recognizer's, a timeout, a backlog, an
+     * interrupt or a cancel. The session is freed at once, so a recognizer that
+     * answers before {@link #finish} holds no service, thread or pipe while the
+     * host still records.
+     */
+    private void answer(String heard, String error) {
+        synchronized (this) {
+            if (done.getCount() == 0) return;
+            text = heard;
+            failure = error;
+            done.countDown();
+        }
+        release();
+    }
+
+    /** Bytes fed and not yet written to the recognizer; for tests. */
+    long backlogBytes() {
+        return backlog.get();
     }
 
     private final RecognitionListener listener = new RecognitionListener() {

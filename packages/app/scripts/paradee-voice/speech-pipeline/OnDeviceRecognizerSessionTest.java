@@ -113,18 +113,44 @@ public final class OnDeviceRecognizerSessionTest {
         expect(IllegalStateException.class, () -> live.feed(first), "feed after finish is refused");
         expect(IllegalStateException.class, () -> live.finish(1_000), "a second finish is refused");
 
-        // (2) An answer before finish (the service heard the end of speech) is kept, and later
-        // audio is accepted and not written.
+        // (2) The service gives up before she speaks ("no speech heard" on leading silence): the
+        // host sees it while it still feeds, the session is freed at once, and later audio is
+        // refused and not written. finish keeps the early answer.
         OnDeviceRecognizer early = new OnDeviceRecognizer(CONTEXT);
-        early.feed(pcm(3_200, 3));
+        check(early.feed(pcm(3_200, 3)), "a part the recognizer can still hear is accepted");
+        check(!early.answered(), "no answer while the service listens");
         service = listening(service);
         ParcelFileDescriptor earlyAudio = source(service);
         waitFor(() -> earlyAudio.received().length == 3_200, "the service hears the audio");
-        service.listener.onError(SpeechRecognizer.ERROR_NO_MATCH);
-        Thread.sleep(50);
-        early.feed(pcm(3_200, 4));
+        service.listener.onError(SpeechRecognizer.ERROR_SPEECH_TIMEOUT);
+        check(early.answered(), "the host sees that the recognizer answered before finish");
+        released(service);
+        check(!early.feed(pcm(3_200, 4)), "feed after the recognizer answered says the part was not heard");
         check("".equals(early.finish(5_000)), "no speech heard before finish is an empty transcript");
         check(earlyAudio.received().length == 3_200, "no audio is written after the answer");
+
+        // (2b) An endpoint at a pause: the host sees it and opens a new session for the rest of
+        // the speech, which the new service hears in full.
+        OnDeviceRecognizer paused = new OnDeviceRecognizer(CONTEXT);
+        paused.feed(pcm(3_200, 12));
+        service = listening(service);
+        ParcelFileDescriptor pausedAudio = source(service);
+        waitFor(() -> pausedAudio.received().length == 3_200, "the service hears the first words");
+        service.listener.onResults(heard("call my"));
+        byte[] rest = pcm(4_800, 13);
+        check(!paused.feed(rest), "the part after the pause is refused");
+        check(paused.answered(), "the early answer is visible before finish");
+        check("call my".equals(paused.finish(5_000)), "finish returns the answer heard at the pause");
+        released(service);
+        OnDeviceRecognizer next = new OnDeviceRecognizer(CONTEXT);
+        check(next.feed(rest), "a new session takes the rest of the speech");
+        service = listening(service);
+        ParcelFileDescriptor nextAudio = source(service);
+        Finishing nextFinish = new Finishing(next, 5_000);
+        waitFor(nextAudio::ended, "finish ends the new session's audio");
+        check(Arrays.equals(nextAudio.received(), rest), "the new session hears the rest");
+        service.listener.onResults(heard("daughter"));
+        check("daughter".equals(nextFinish.await()), "the new session answers");
         released(service);
 
         // (3) No answer within the limit after finish: TIMEOUT, and the session is freed.
@@ -206,6 +232,35 @@ public final class OnDeviceRecognizerSessionTest {
         worker.join(5_000);
         check("call my daughter".equals(transcript.get()), "transcribe returns the answer");
         released(service);
+
+        // (9) A service that stops reading without answering: the fed audio waiting for it stays
+        // within the cap, feed then refuses more and the session ends with BACKLOG and is freed,
+        // even before finish.
+        OnDeviceRecognizer stalledSession = new OnDeviceRecognizer(CONTEXT);
+        byte[] second32k = pcm(32_000, 14);
+        stalledSession.feed(pcm(320, 15));
+        service = listening(service);
+        source(service).stall();
+        int accepted = 0;
+        boolean refused = false;
+        for (int part = 0; part < 200 && !refused; part++) {
+            check(stalledSession.backlogBytes() <= OnDeviceRecognizer.MAX_BACKLOG_BYTES,
+                    "the waiting audio stays within the cap");
+            if (stalledSession.feed(second32k)) accepted++;
+            else refused = true;
+        }
+        check(refused, "feed refuses audio past the cap");
+        check(accepted >= 60 && accepted <= 64, "about 64 seconds wait before the cap: " + accepted);
+        check(stalledSession.answered(), "the backlog ends the session before finish");
+        released(service);
+        check(!stalledSession.feed(second32k), "feed after the backlog is refused");
+        try {
+            stalledSession.finish(5_000);
+            throw new AssertionError("a backlog fails finish");
+        } catch (RecognizerUnavailable expected) {
+            check(OnDeviceRecognizer.BACKLOG.equals(expected.getMessage()) && !expected.timedOut,
+                    "finish reports the backlog, not a timeout");
+        }
 
         System.out.println("PASS on-device recognizer session");
     }
