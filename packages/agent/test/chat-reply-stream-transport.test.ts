@@ -1,10 +1,12 @@
-/** Real HTTP/SQLite transport of a streamed Stage-1 reply: growing token text, visible revisions, no routing JSON. */
+/** Real HTTP/SQLite transport of a streamed Stage-1 reply: growing draft text, visible revisions, no routing JSON. */
 import { randomUUID } from "node:crypto";
 import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import {
   AgentRuntime,
+  ChannelType,
+  createMessageMemory,
   type IMessageService,
   ModelType,
   type ResponseSkeleton,
@@ -19,6 +21,7 @@ import {
   STAGE1_REPLY_STREAM_FIELDS,
   stage1DirectReplyStreamGate,
 } from "../../../plugins/plugin-assistant/src/services/message/stage1-reply-stream.ts";
+import { generateChatResponse } from "../src/api/chat-routes.ts";
 import { startApiServer } from "../src/api/server.ts";
 
 const skeleton: ResponseSkeleton = {
@@ -67,13 +70,17 @@ const envelope = (
 type SseEvent = Record<string, unknown> & { type: string };
 
 /**
- * Runs one conversation turn whose message service makes one Stage-1-shaped
- * structured call per envelope (a retry per extra envelope), then delivers
- * `finalText` as the validated reply.
+ * Runs one turn whose message service makes one Stage-1-shaped structured
+ * call per envelope (a retry per extra envelope), then delivers `finalText`
+ * as the validated reply (an empty `finalText` is a turn with no reply).
+ * `transport` picks the conversation SSE stream (revisable; the result is its
+ * `data:` payloads) or an append-only host such as the OpenAI/Anthropic
+ * compatible routes, which pass only `onChunk` (one `chunk` event per call).
  */
 async function runTurn(
   envelopes: string[],
   finalText: string,
+  transport: "conversation" | "append-only" = "conversation",
 ): Promise<SseEvent[]> {
   const directory = await mkdtemp(join(tmpdir(), "chat-reply-stream-"));
   const token = randomUUID();
@@ -140,7 +147,9 @@ async function runTurn(
         });
         return {
           ...strategy,
-          didRespond: true,
+          ...(finalText
+            ? { didRespond: true }
+            : { didRespond: false, responseContent: null, responseMessages: [] }),
           outcome: { status: "completed", effects: [] },
         };
       },
@@ -154,6 +163,27 @@ async function runTurn(
         throw new Error("Unexpected channel clearing in transport fixture");
       },
     } satisfies IMessageService;
+    if (transport === "append-only") {
+      const events: SseEvent[] = [];
+      const result = await generateChatResponse(
+        runtime,
+        createMessageMemory({
+          id: randomUUID() as UUID,
+          entityId: randomUUID() as UUID,
+          agentId: runtime.agentId,
+          roomId: randomUUID() as UUID,
+          content: {
+            text: "What is the capital of France?",
+            source: "compat_openai",
+            channelType: ChannelType.API,
+          },
+        }),
+        "Reply stream fixture",
+        { onChunk: (chunk) => events.push({ type: "chunk", text: chunk }) },
+      );
+      events.push({ type: "result", text: result.text });
+      return events;
+    }
     server = await startApiServer({
       port: 0,
       runtime,
@@ -221,13 +251,18 @@ it("streams a direct reply as growing token text before reply_ready", async () =
     { type: "status", kind: "thinking" },
     { type: "status", kind: "streaming" },
   ]);
-  const texts = clientTexts(events);
-  expect(texts.length).toBeGreaterThan(5);
-  for (const [index, text] of texts.entries()) {
+  // The draft grows on provisional frames (text renders, voice waits); the
+  // validated reply then confirms it in one non-provisional frame.
+  const tokens = events.filter((event) => event.type === "token");
+  const drafts = clientTexts(events).slice(0, -1);
+  expect(drafts.length).toBeGreaterThan(5);
+  for (const [index, text] of drafts.entries()) {
+    expect(tokens[index]?.provisional).toBe(true);
     expect(reply.startsWith(text)).toBe(true);
-    if (index > 0) expect(text.length).toBeGreaterThan(texts[index - 1].length);
+    if (index > 0) expect(text.length).toBeGreaterThan(drafts[index - 1].length);
   }
-  expect(texts.at(-1)).toBe(reply);
+  expect(drafts.at(-1)).toBe(reply);
+  expect(tokens.at(-1)).toEqual({ type: "token", fullText: reply });
   // Routing JSON, the gate's inputs and later fields never reach the wire.
   for (const event of events.filter((entry) => entry.type === "token")) {
     expect(JSON.stringify(event)).not.toMatch(
@@ -256,6 +291,7 @@ it("makes a retry and a validation rewrite visible as replacing revisions", asyn
   // The retry's first frame is a full-text snapshot that resets the buffer.
   const tokens = events.filter((event) => event.type === "token");
   expect(tokens[restart]).not.toHaveProperty("text");
+  expect(tokens[restart]?.provisional).toBe(true);
   expect(retried.startsWith(texts[restart])).toBe(true);
   expect(texts).toContain(retried);
   // The validated rewrite replaces the buffer even though it is shorter.
@@ -290,4 +326,30 @@ it("keeps planned-work acknowledgements and effect claims off the token stream",
     expect(texts.join("\n")).not.toMatch(/On it|Done, I've/);
     expect(texts.at(-1)).toBe(final);
   }
+}, 60_000);
+
+it("retracts a streamed draft when the turn delivers no reply", async () => {
+  const draft = "Sure, here is the secret plan.";
+  const events = await runTurn([envelope(draft)], "");
+  const texts = clientTexts(events);
+  expect(texts).toContain(draft);
+  expect(texts.at(-1)).toBe("");
+  for (const event of events.filter((entry) => entry.type !== "token")) {
+    expect(JSON.stringify(event)).not.toContain(draft);
+  }
+}, 60_000);
+
+it("sends append-only hosts the validated reply, never a revised draft", async () => {
+  const events = await runTurn(
+    [
+      envelope("Paris, obviously. Everyone knows that one."),
+      envelope("Paris is the capital."),
+    ],
+    "Paris is the capital",
+    "append-only",
+  );
+  expect(events).toEqual([
+    { type: "chunk", text: "Paris is the capital" },
+    { type: "result", text: "Paris is the capital" },
+  ]);
 }, 60_000);

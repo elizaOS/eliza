@@ -5826,6 +5826,9 @@ async function streamConversationMessage(
       // cleanup slot that is cleared when the request finally releases it.
       const generationLease = runtimeTurnLease;
       let streamedText = "";
+      // The streamed text is an unvalidated model draft (provisional on the
+      // wire) until a final-reply frame confirms it.
+      let streamedTextIsDraft = false;
       // The route already wrote a `thinking` status when the SSE channel opened;
       // collapse the identical opening status generateChatResponse re-emits so
       // the wire carries each phase transition once. Distinct consecutive phases
@@ -6074,16 +6077,18 @@ async function streamConversationMessage(
               // Keep the durable candidate complete even when a paired client
               // has gone offline. Transport closure only suppresses writes.
               streamedText += chunk;
+              streamedTextIsDraft = origin === "model_draft";
               if (connectionClosed || disconnectTracker.isAborted()) return;
-              // Action-callback text is provisional on the wire: the final reply
-              // may replace it wholesale, and a voice client must not speak text
-              // it cannot retract. Text rendering remains unchanged.
+              // Action-callback and draft text is provisional on the wire: the
+              // final reply may replace it wholesale, and a voice client must
+              // not speak text it cannot retract. Text rendering is unchanged.
               tokenWriter.writeChunk(res, chunk, streamedText, {
-                provisional: origin === "action_callback",
+                provisional: origin !== undefined && origin !== "model",
               });
             },
             onSnapshot: (text, origin, revision) => {
-              if (!text) return;
+              // An empty revision retracts a draft the turn did not deliver.
+              if (!text && !revision) return;
               assertCurrentGenerationOwner();
               const connectionClosed =
                 disconnectTracker.checkConnectionClosed();
@@ -6105,9 +6110,10 @@ async function streamConversationMessage(
                 return;
               }
               streamedText = text;
+              streamedTextIsDraft = origin === "model_draft";
               if (connectionClosed || disconnectTracker.isAborted()) return;
               tokenWriter.writeSnapshot(res, streamedText, {
-                provisional: origin === "action_callback",
+                provisional: origin !== undefined && origin !== "model",
               });
             },
             resolveNoResponseText: () => {
@@ -6273,8 +6279,8 @@ async function streamConversationMessage(
           // If text was already streamed to the client (e.g. the initial
           // response succeeded but planner follow-up failed), use the
           // streamed text as the final reply instead of replacing it with a
-          // generic fallback.
-          if (streamedText) {
+          // generic fallback. An unconfirmed draft is not a delivered reply.
+          if (streamedText && !streamedTextIsDraft) {
             logger.warn(
               {
                 err: getErrorMessage(terminalError),
@@ -6342,7 +6348,7 @@ async function streamConversationMessage(
                     ? terminalError.stack
                     : undefined,
               },
-              "Chat generation failed with no streamed text",
+              "Chat generation failed with no confirmed streamed text",
             );
             try {
               assertConversationConnectionRuntime(

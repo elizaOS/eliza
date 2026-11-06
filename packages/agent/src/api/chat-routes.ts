@@ -501,13 +501,16 @@ export interface ChatActionResultSummary {
 }
 /**
  * Where a streamed text emission originated. `"model"` text is (or extends)
- * the turn's final reply; `"action_callback"` text is an in-flight action
- * status delivery that the turn's final reply may replace entirely. Voice
- * clients must not synthesize `"action_callback"` text until the terminal
- * frame confirms it — speech, unlike a chat bubble, cannot be retracted
- * (the "double-speak" defect: ack spoken, then the reply spoken again).
+ * the turn's final reply; `"model_draft"` text is a structured model field
+ * (the Stage-1 reply) streamed before validation, which the final reply
+ * confirms, revises or retracts; `"action_callback"` text is an in-flight
+ * action status delivery that the turn's final reply may replace entirely.
+ * Voice clients must not synthesize `"model_draft"` or `"action_callback"`
+ * text until a `"model"` frame or the terminal frame confirms it — speech,
+ * unlike a chat bubble, cannot be retracted (the "double-speak" defect: ack
+ * spoken, then the reply spoken again).
  */
-export type ChatStreamTextOrigin = "model" | "action_callback";
+export type ChatStreamTextOrigin = "model" | "model_draft" | "action_callback";
 export interface ChatGenerateOptions {
   /** Internal host timer begun before room admission; never read from a request body. */
   inferenceTimer?: InferenceTurnTimer;
@@ -2641,6 +2644,9 @@ async function generateChatResponseWithTiming(
     };
     // The model attempt whose accumulation the stream currently carries.
     let activeStreamRevision: number | undefined;
+    // A structured draft reached the client; finalization must confirm,
+    // revise or retract it from the authoritative result.
+    let draftStreamed = false;
     const appendIncomingText = (
       chunk: string,
       accumulated?: string,
@@ -2656,6 +2662,7 @@ async function generateChatResponseWithTiming(
         emitChunk(chunk, origin);
         return;
       }
+      draftStreamed = true;
       // A new revision is a new model attempt (retry, repair, failover): its
       // accumulation restarts the reply. An older one is a superseded attempt.
       let revised = false;
@@ -2969,11 +2976,16 @@ async function generateChatResponseWithTiming(
                             }
                             return;
                           }
+                          // A structured accumulation is a revisable draft. A
+                          // transport that cannot replace text gets the
+                          // validated reply whole at finalization instead.
+                          if (accumulated !== undefined && !opts.onSnapshot)
+                            return;
                           if (!claimStreamSource("onStreamChunk")) return;
                           appendIncomingText(
                             chunk,
                             accumulated,
-                            "model",
+                            accumulated === undefined ? "model" : "model_draft",
                             streamRevision,
                           );
                         }
@@ -3049,7 +3061,7 @@ async function generateChatResponseWithTiming(
                   )
                 : terminalFailure.message;
             if (opts?.onSnapshot && !replyFailure) {
-              emitSnapshot(failureText);
+              emitSnapshot(failureText, "model", draftStreamed);
             } else {
               responseText = failureText;
             }
@@ -3300,6 +3312,15 @@ async function generateChatResponseWithTiming(
       result?.actionResults,
       resultContentCandidates,
     );
+    // A streamed draft is not the reply: only the authoritative result is.
+    // Clear it so the fallback below re-sends the result as a confirming
+    // revision, or retract it when the turn produced no visible reply.
+    if (draftStreamed && !terminalFailure) {
+      responseText = "";
+      if (!resultText || resultTextVisibility === "internal") {
+        opts?.onSnapshot?.("", "model", true);
+      }
+    }
     // Fallback: if callbacks weren't used for text, stream + return final text.
     if (
       !terminalFailure &&
@@ -3308,7 +3329,7 @@ async function generateChatResponseWithTiming(
       resultTextVisibility !== "internal"
     ) {
       if (opts?.onSnapshot) {
-        emitSnapshot(resultText);
+        emitSnapshot(resultText, "model", draftStreamed);
       } else {
         emitChunk(resultText);
       }
@@ -3330,9 +3351,9 @@ async function generateChatResponseWithTiming(
       !forcedWalletExecutionText &&
       !blockedUnexecutedActionPayload
     ) {
-      // The validated reply rewrote the streamed text (source substitution,
-      // a validation retry, a planner reroute). It is a revision: clients
-      // replace their buffer even when the final text is a prefix of it.
+      // The validated reply rewrote the streamed text (a planner reroute,
+      // cleanup of raw model tokens). It is a revision: clients replace their
+      // buffer even when the final text is a prefix of it.
       if (opts?.onSnapshot) {
         emitSnapshot(resultText, "model", true);
       } else {
