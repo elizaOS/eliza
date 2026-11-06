@@ -71,7 +71,16 @@ const RESCINDED_REMINDER =
   /\bremind\s+(?:me|myself)\b[\s\S]{0,160}(?:[;,—-]\s*(?:actually\s+)?(?:disregard|ignore|cancel|scratch|withdraw|forget)\b(?:\s+(?:it|this|that)(?:\s+request)?)?|\bnever\s+mind\b)/iu;
 
 export function isOwnerReminderNonCommandContext(text: string): boolean {
-  const normalized = text.trim().replace(POLITE_REQUEST_LEAD_IN, "");
+  const trimmed = text.trim();
+  // Drop a polite lead-in only when a reminder request follows it. "Is it
+  // possible to delete my reminder?" keeps its leading "is", so the meta
+  // prefix still refuses a create built from it.
+  const politeStripped = trimmed.replace(POLITE_REQUEST_LEAD_IN, "");
+  const normalized = REMINDER_CREATE_PATTERNS.some((pattern) =>
+    pattern.test(politeStripped.replace(DIRECT_REQUEST_LEAD_IN, "")),
+  )
+    ? politeStripped
+    : trimmed;
   return (
     REMINDER_META_PREFIX.test(normalized) ||
     REMINDER_META_SUFFIX.test(normalized) ||
