@@ -107,7 +107,17 @@ public final class UpdateJournalTest {
       check(format.read().phase==UpdateJournal.Phase.COMMITTING);check(format.read().pendingMillis==(version==1?0:100));check(format.read().probation==null);
       format.observePending("release-11",4,10,200,1000);check(format.read().phase==UpdateJournal.Phase.COMMITTING);check(format.read().pendingMillis==(version==1?0:200));
       check(format.read().reportedFailure==null);check(format.read().releasedCandidate.isEmpty());check(format.read().releases==0);
-      check(java.nio.ByteBuffer.wrap(Files.readAllBytes(oldFormat.resolve("journal"))).getInt(4)==5);
+      // With no install record the rewrite stays version 4, which an older
+      // updater still reads; a record moves it to version 5, and back once cleared.
+      check(java.nio.ByteBuffer.wrap(Files.readAllBytes(oldFormat.resolve("journal"))).getInt(4)==4);
+      if(version==4) {
+        format.reconcileInstallerResult("release-11",4,OLD,true,null,UpdateJournal.InstallerFailure.CANDIDATE_REJECTED);
+        check(java.nio.ByteBuffer.wrap(Files.readAllBytes(oldFormat.resolve("journal"))).getInt(4)==5);
+        check(new UpdateJournal(oldFormat,SYNC).read().reportedFailure==UpdateJournal.InstallerFailure.CANDIDATE_REJECTED);
+        format.reconcileInstallerResult("release-11",4,NEW,false,null,null);
+        check(format.read().phase==UpdateJournal.Phase.PROBATION&&format.read().reportedFailure==null);
+        check(java.nio.ByteBuffer.wrap(Files.readAllBytes(oldFormat.resolve("journal"))).getInt(4)==4);
+      }
     }
     for(String boundary:new String[]{"before-sync","before-rename","published"}) {
       Path root=directory.resolve("timer-"+boundary);UpdateJournal death=new UpdateJournal(root,SYNC);

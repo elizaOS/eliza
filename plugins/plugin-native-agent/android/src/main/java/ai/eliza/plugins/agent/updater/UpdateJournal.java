@@ -414,15 +414,19 @@ public class UpdateJournal {
   }
   private static byte[] encode(State s) throws IOException {
     ByteArrayOutputStream bytes=new ByteArrayOutputStream();
+    // Version 5 adds only the install report and release record. While they
+    // hold their defaults the journal is written as version 4, which an older
+    // updater still reads; nothing is lost, since decode restores the defaults.
+    boolean installRecord=s.reported!=null||!s.releasedDigest.isEmpty()||s.releases!=0;
     try(DataOutputStream out=new DataOutputStream(bytes)) {
-      out.writeInt(MAGIC);out.writeInt(VERSION);out.writeLong(s.revision);out.writeLong(s.generation);out.writeUTF(s.channel);out.writeUTF(s.phase.name());out.writeUTF(s.reason);out.writeInt(s.session);out.writeInt(s.attempts);
+      out.writeInt(MAGIC);out.writeInt(installRecord?VERSION:4);out.writeLong(s.revision);out.writeLong(s.generation);out.writeUTF(s.channel);out.writeUTF(s.phase.name());out.writeUTF(s.reason);out.writeInt(s.session);out.writeInt(s.attempts);
       out.writeBoolean(s.plan!=null);
       if(s.plan!=null){out.writeUTF(s.plan.id);out.writeUTF(s.plan.channel);out.writeUTF(s.plan.distribution);identity(out,s.plan.baseline);identity(out,s.plan.candidate);identity(out,s.plan.recovery);}
       out.writeInt(s.quarantine.size());for(String digest:s.quarantine)out.writeUTF(digest);
       out.writeLong(s.pendingMillis);out.writeLong(s.observedBoot);out.writeLong(s.observedElapsed);
       out.writeBoolean(s.probation!=null);
       if(s.probation!=null){ProbationWindow w=s.probation;out.writeUTF(w.policy.id);out.writeLong(w.policy.readyMillis);out.writeLong(w.policy.failureMillis);out.writeLong(w.policy.maxGapMillis);out.writeLong(w.last.boot);out.writeLong(w.last.elapsed);out.writeUTF(w.last.process);out.writeUTF(w.last.runtime);out.writeUTF(w.last.kind.name());out.writeLong(w.readyMillis);out.writeLong(w.failureMillis);}
-      out.writeUTF(s.reported==null?"":s.reported.name());out.writeUTF(s.releasedDigest);out.writeInt(s.releases);
+      if(installRecord){out.writeUTF(s.reported==null?"":s.reported.name());out.writeUTF(s.releasedDigest);out.writeInt(s.releases);}
     }
     byte[] body=bytes.toByteArray();require(body.length+32<=MAX_BYTES,"Journal exceeds limit");
     byte[] envelope=Arrays.copyOf(body,body.length+32);System.arraycopy(hash(body),0,envelope,body.length,32);return envelope;
