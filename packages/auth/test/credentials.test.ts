@@ -326,6 +326,7 @@ describe("credentials — domain entered as a URL or host:port", () => {
     ["https://GitHub.com/login", "github.com"],
     ["localhost:3000", "localhost"],
     ["http://user@intranet.example:8080/sso?next=/", "intranet.example"],
+    ["example.com.", "example.com"],
   ])(
     "saves %s as %s so it can be revealed, autofilled and deleted",
     async (entered, hostname) => {
@@ -382,24 +383,28 @@ describe("credentials — domain entered as a URL or host:port", () => {
   // A domain that keeps a colon would save `<domain>:<username>` under an
   // identifier the Logins tab splits at the wrong colon, so nothing could
   // reveal or delete it. Refuse it and store nothing.
-  it.each(["::1", "[::1]:3000", "http://[::1]/admin", "github.com:abc"])(
-    "rejects %s instead of saving an undeletable login",
-    async (entered) => {
-      await expect(
-        setSavedLogin(test.vault, {
-          domain: entered,
-          username: "alice",
-          password: "pw-1",
-        }),
-      ).rejects.toThrow("setSavedLogin: domain must be a hostname");
-      const manager = createManager({
-        vault: test.vault,
-        exec: async () => {
-          throw new Error("external password managers are not used here");
-        },
-      });
-      const { logins } = await manager.listAllSavedLogins();
-      expect(logins.filter((login) => login.source === "in-house")).toEqual([]);
-    },
-  );
+  it.each([
+    "::1",
+    "[::1]:3000",
+    "http://[::1]/admin",
+    "github.com:abc",
+    "[127.0.0.1]:3000",
+    "[github.com]:443",
+  ])("rejects %s instead of saving an undeletable login", async (entered) => {
+    await expect(
+      setSavedLogin(test.vault, {
+        domain: entered,
+        username: "alice",
+        password: "pw-1",
+      }),
+    ).rejects.toThrow("setSavedLogin: domain must be a hostname");
+    const manager = createManager({
+      vault: test.vault,
+      exec: async () => {
+        throw new Error("external password managers are not used here");
+      },
+    });
+    const { logins } = await manager.listAllSavedLogins();
+    expect(logins.filter((login) => login.source === "in-house")).toEqual([]);
+  });
 });
