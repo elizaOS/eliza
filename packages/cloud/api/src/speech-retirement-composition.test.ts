@@ -28,7 +28,7 @@ let quotaStore = new InMemoryVoiceUsageStore();
 class CreditRefusal extends Error {}
 mock.module(
   "@elizaos/cloud-shared/lib/services/inference-billing-fast-path",
-  () => ({ InferenceBalanceCacheWarmingError: class extends Error {} }),
+  () => ({ InferenceBillingUnavailableError: class extends Error {} }),
 );
 mock.module("@elizaos/cloud-shared/lib/services/credits", () => ({
   InsufficientCreditsError: CreditRefusal,

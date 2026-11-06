@@ -447,11 +447,6 @@ export const ROUTE_MOUNTS: readonly GeneratedRouteMount[] = [
     load: () => import("../cron/sweep-credit-reservations/route"),
   },
   {
-    path: "/api/cron/sweep-inference-charges",
-    shard: "cron",
-    load: () => import("../cron/sweep-inference-charges/route"),
-  },
-  {
     path: "/api/cron/website-reputation-refresh",
     shard: "cron",
     load: () => import("../cron/website-reputation-refresh/route"),

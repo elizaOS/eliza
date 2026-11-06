@@ -21,19 +21,11 @@ export class InferenceFundingBudgetUnavailableError extends ElizaError {
 }
 
 export function isFundedBudgetAdmissionEnabled(): boolean {
-  const env = getCloudAwareEnv();
-  return (
-    env.INFERENCE_FUNDED_BUDGET_ADMISSION === "true" &&
-    env.INFERENCE_STRONG_REVOCATION_ENABLED === "true"
-  );
+  return getCloudAwareEnv().INFERENCE_FUNDED_BUDGET_ADMISSION === "true";
 }
 
 export function isRatePolicyAdmissionEnabled(): boolean {
-  const env = getCloudAwareEnv();
-  return (
-    env.INFERENCE_RATE_POLICY_ADMISSION === "true" &&
-    env.INFERENCE_STRONG_REVOCATION_ENABLED === "true"
-  );
+  return getCloudAwareEnv().INFERENCE_RATE_POLICY_ADMISSION === "true";
 }
 
 /** Both modes use the same mutation epoch, but only the funded mode can spend. */
