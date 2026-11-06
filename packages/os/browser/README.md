@@ -82,7 +82,13 @@ fences pending lookups; a dispatched effect can still have an uncertain outcome.
 The host supplies reviewed CSS target/action permissions. Main-frame execution
 rechecks those permissions, excludes password/payment/OTP fields from ordinary
 fills, and rejects submit controls and explicit sign-in/verification/payment
-labels even if accidentally allowed. This is an additional guard, not semantic
+labels even if accidentally allowed. A binding's optional `commitPattern` (the
+`task-commit-pattern` capability) adds the host's commit words for its other
+languages. Words cannot cover every language, so on a page with a card or bank
+field or a currency amount, a click with no commit grant reaches only a control
+whose effect the browser defines: a link to another document, a checkbox or
+radio, an option, a disclosure or a tab. Snapshots report the page's declared
+`lang`, or null. This is an additional guard, not semantic
 proof about arbitrary JavaScript: a reviewed ordinary button or field can run
 site code. Qualify each supported page and its consequences. Protected OTP fills,
 complete sensitive-page policy, and installed Android task binding remain separate
@@ -103,8 +109,8 @@ lane in the OS verification job (`.github/workflows/os.yml`: `verify:portable`
 runs `test`, which ends with `test:browser`) whenever a change touches
 `packages/os`. That job runs for develop pushes (`develop-full.yml` calls
 `ci.yml`), not in pull request validation. The Chromium scripts
-(`test:browser:page`, `test:browser:guidance`, `test:browser:task-guidance` and
-`scripts/test-protected-fill.mjs`) need a browser and are run by hand.
+(`test:browser:page`, `test:browser:guidance`, `test:browser:task-guidance`, `scripts/test-protected-fill.mjs` and
+`scripts/test-page-guard.mjs`) need a browser and are run by hand.
 Installed-browser and signed Android native-host verification are separate required
 integration checks; a built extension alone does not prove those paths work.
 

@@ -464,6 +464,36 @@
         return "government-id";
       return null;
     };
+    // A control whose effect the browser defines, whatever the page's words.
+    // A link to the page it is on (href="#") runs only the page's handlers.
+    const inert = (node) => {
+      if (
+        node.matches(
+          "input[type=checkbox],input[type=radio],option,summary,[aria-expanded],[role=tab]",
+        )
+      )
+        return true;
+      if (!(node instanceof HTMLAnchorElement) || !node.hasAttribute("href"))
+        return false;
+      try {
+        const target = new URL(node.href);
+        const here = new URL(location.href);
+        target.hash = "";
+        here.hash = "";
+        return /^https?:$/.test(target.protocol) && target.href !== here.href;
+      } catch {
+        return false;
+      }
+    };
+    const showsMoney = () =>
+      [
+        ...document.querySelectorAll("input,textarea,select,[contenteditable]"),
+      ].some((field) =>
+        ["payment-card", "bank-account"].includes(sensitivity(field)),
+      ) ||
+      /(?:\p{Sc}|\b(?:USD|EUR|GBP|MXN|CAD|AUD|JPY|CNY|INR|BRL|CHF)\b)\s?\d|\d\s?(?:\p{Sc}|\b(?:USD|EUR|GBP|MXN|CAD|AUD|JPY|CNY|INR|BRL|CHF)\b)/u.test(
+        readVisibleText(document.body ?? document.documentElement),
+      );
     if (command.subaction === "snapshot") {
       const controlState = (node) => {
         const flag = (name) => node.getAttribute(name) === "true";
@@ -1115,6 +1145,12 @@
           : {}),
         url: location.href,
         title: withoutSecrets(document.title),
+        // The language the page declares, so a host knows which words it can read.
+        lang: /^[a-z]{2,3}(?:-[a-z0-9]{1,8}){0,4}$/.test(
+          document.documentElement.lang.trim().toLowerCase(),
+        )
+          ? document.documentElement.lang.trim().toLowerCase()
+          : null,
         readyState: document.readyState,
         domRevision: monitor.domRevision,
         inputRevision: monitor.inputRevision,
@@ -1210,6 +1246,15 @@
         node instanceof HTMLInputElement ? node.value : "",
         ...[...(node.labels ?? [])].map((item) => item.textContent),
       ].join(" ");
+      // The host's own commit words, for the languages it serves (bounded and
+      // checked by the binding). They only add to COMMIT_CONTROL.
+      let commitPattern = null;
+      if (policy.commitPattern !== undefined)
+        try {
+          commitPattern = new RegExp(policy.commitPattern, "iu");
+        } catch {
+          return denied();
+        }
       // A control that commits something stays with the person, whatever its
       // element or role, unless she said yes to this exact commit. Keep this
       // literal equal to COMMIT_CONTROL above; the function runs in the page,
@@ -1222,7 +1267,21 @@
         ) ||
           /\b(pay|pays|paying|payments?|submit|confirm|sign\s*in|log\s*in|sign\s*up|verify|send|delete|remove|cancel|close\s+account|authori[sz]e|agree|accept|save|continue|proceed|buy|purchase|place\s+(?:my\s+|your\s+|the\s+)?order|order\s+now|check\s*out|schedule|transfer|donate|subscribe)\b/i.test(
             label,
-          ))
+          ) ||
+          commitPattern?.test(label))
+      )
+        return denied();
+      // Words cannot say what a control does in every language. On a page that
+      // shows money, a click with no grant may press only a control whose
+      // effect the browser itself defines: a link to another document, a
+      // checkbox or radio, an option, a disclosure or a tab. Facts decide, not
+      // words: a card or bank field in this document, or a currency sign or
+      // code next to a number in its text.
+      if (
+        command.subaction === "click" &&
+        !grant &&
+        !inert(node) &&
+        showsMoney()
       )
         return denied();
       if (
