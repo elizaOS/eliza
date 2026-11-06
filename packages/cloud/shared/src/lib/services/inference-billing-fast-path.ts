@@ -119,13 +119,6 @@ export interface GateBalanceReadOptions {
    * response promise.
    */
   executionCtx?: { waitUntil(promise: Promise<unknown>): void };
-  /**
-   * Fail closed on a full cache miss instead of performing a synchronous
-   * Postgres read in the inference path. The caller should return a retryable
-   * cache-warming response; the authoritative hydration is registered with
-   * `executionCtx`.
-   */
-  cacheOnly?: boolean;
 }
 
 export class InferenceBalanceCacheWarmingError extends Error {
@@ -219,17 +212,9 @@ export async function getGateBalanceHint(
     };
   }
 
-  const refresh = refreshOrgBalanceHint(organizationId);
-  if (options.cacheOnly) {
-    const observed = observeBackgroundBalanceRefresh(organizationId, refresh);
-    if (options.executionCtx) {
-      options.executionCtx.waitUntil(observed);
-    } else {
-      await observed;
-    }
-    throw new InferenceBalanceCacheWarmingError();
-  }
-  return await refresh;
+  // A cold hint is read from the primary once (coalesced per isolate) and
+  // serves this request; it never fails the request for being cold.
+  return await refreshOrgBalanceHint(organizationId);
 }
 
 export async function getGateBalanceUsd(

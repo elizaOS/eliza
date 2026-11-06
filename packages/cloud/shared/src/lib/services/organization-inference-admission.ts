@@ -36,7 +36,7 @@ import {
   reserveCredits,
   reserveFlatUsageCredits,
 } from "./ai-billing";
-import { AiPricingCacheUnavailableError, AiPricingCacheWarmingError } from "./ai-pricing/cache";
+import { AiPricingCacheUnavailableError } from "./ai-pricing/cache";
 import { isSubscriptionFundedReservation } from "./allowance-first-credits";
 import { billingHoldService } from "./billing-hold";
 import {
@@ -67,7 +67,6 @@ import {
 } from "./inference-admission-snapshot";
 import {
   InferenceAffiliateCacheUnavailableError as AffiliateCacheUnavailableError,
-  InferenceAffiliateCacheWarmingError as AffiliateCacheWarmingError,
   getCachedInferenceAffiliateAttribution,
 } from "./inference-affiliate-cache";
 import type { InferenceAdmissionSnapshot } from "./inference-auth-cache";
@@ -138,27 +137,11 @@ export interface OrganizationInferenceAdmissionParams {
   requireTerminalSettlementReceipt?: boolean;
 }
 
-/** Retryable signal preserving route compatibility while identifying pricing hydration. */
-export class InferencePricingCacheWarmingError extends InferenceBalanceCacheWarmingError {
-  constructor(readonly cause: AiPricingCacheWarmingError) {
-    super();
-    this.name = "InferencePricingCacheWarmingError";
-  }
-}
-
 /** Retryable signal for a configured Worker cache that cannot serve pricing. */
 export class InferencePricingCacheUnavailableError extends InferenceBalanceCacheWarmingError {
   constructor(readonly cause: AiPricingCacheUnavailableError) {
     super();
     this.name = "InferencePricingCacheUnavailableError";
-  }
-}
-
-/** Retryable signal identifying a cold affiliate pricing-policy cache. */
-export class InferenceAffiliateCacheWarmingError extends InferenceBalanceCacheWarmingError {
-  constructor(readonly cause: AffiliateCacheWarmingError) {
-    super();
-    this.name = "InferenceAffiliateCacheWarmingError";
   }
 }
 
@@ -923,14 +906,10 @@ async function admitCreditsViaDurableObject(
   );
 }
 
-/** Map cache misses during pricing/affiliate resolution to retryable admission errors. */
+/** Map pricing/affiliate policy failures to retryable admission errors. */
 function classifyCacheError(error: unknown): unknown {
-  if (error instanceof AiPricingCacheWarmingError)
-    return new InferencePricingCacheWarmingError(error);
   if (error instanceof AiPricingCacheUnavailableError)
     return new InferencePricingCacheUnavailableError(error);
-  if (error instanceof AffiliateCacheWarmingError)
-    return new InferenceAffiliateCacheWarmingError(error);
   if (error instanceof AffiliateCacheUnavailableError)
     return new InferenceAffiliateCacheUnavailableError(error);
   return error;

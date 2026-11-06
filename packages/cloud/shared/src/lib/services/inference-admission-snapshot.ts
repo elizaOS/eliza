@@ -1,7 +1,7 @@
 /**
  * Hydrates the immutable admission projection stored beside inference identity.
- * Database work is allowed only while warming the combined decision under a
- * Worker lifetime; warm requests consume the projection from their single KV read.
+ * Warm requests consume the projection from their single cache read; a cold or
+ * superseded projection is filled from the primary once, inline.
  */
 
 import type { DbTransaction } from "../../db/client";
@@ -30,17 +30,6 @@ const admissionMemoryCache = new InMemoryLRUCache<InferenceAdmissionSnapshot>(1_
 /** Clears isolate-local projection state for deterministic cache contract tests. */
 export function resetInferenceAdmissionMemoryCacheForTests(): void {
   admissionMemoryCache.clear();
-}
-
-export interface AdmissionSnapshotExecutionContext {
-  waitUntil(promise: Promise<unknown>): void;
-}
-
-export class InferenceAdmissionSnapshotCacheWarmingError extends Error {
-  constructor(message = "Inference admission cache is warming") {
-    super(message);
-    this.name = "InferenceAdmissionSnapshotCacheWarmingError";
-  }
 }
 
 /** Derive the exact endpoint limiter without another shared-cache lookup. */
@@ -149,7 +138,12 @@ export async function publishInferenceAdmissionSnapshotToGate(
   });
 }
 
-/** Populate the combined projection from authoritative stores off the hot path. */
+/**
+ * Populate the combined projection from the primary and publish it to the
+ * organization gate. The snapshot read inside the policy transaction is the
+ * decision; a failed shared-cache write only means the next isolate fills
+ * again, so it is reported and never fails the request being served.
+ */
 export async function warmInferenceAdmissionSnapshot(
   organizationId: string,
 ): Promise<InferenceAdmissionSnapshot> {
@@ -159,9 +153,10 @@ export async function warmInferenceAdmissionSnapshot(
     await publishInferenceAdmissionSnapshotToGate(organizationId, snapshot);
     const outcome = await cache.setWithOutcome(key, snapshot, CacheTTL.inference.orgAdmission);
     if (outcome.kind !== "written")
-      throw new InferenceAdmissionSnapshotCacheWarmingError(
-        "Admission snapshot publication was not acknowledged",
-      );
+      logger.warn("[inference-admission] admission snapshot cache write failed", {
+        organizationId,
+        cacheWrite: outcome.kind,
+      });
     admissionMemoryCache.set(key, snapshot);
     return snapshot;
   });
