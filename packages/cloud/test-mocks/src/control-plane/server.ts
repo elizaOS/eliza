@@ -2,6 +2,7 @@
 import { chatSseFrame } from "@elizaos/cloud-shared/lib/services/chat-sse-frames";
 import { parseClampedLimit } from "@elizaos/cloud-shared/lib/utils/clamp-limit";
 import {
+  ElizaError,
   parseSharedTodoCutoverSnapshot,
   type SharedTodoCutoverSnapshot,
   TodoCutoverContractError,
@@ -327,6 +328,15 @@ export function buildControlPlaneApp(options: ControlPlaneMockOptions): {
               const appRow = await appsRepository.findById(appId);
               if (!appRow) {
                 throw new Error(`App not found for APP_DEPLOY: ${appId}`);
+              }
+              if (!appRow.created_by_user_id) {
+                throw new ElizaError(
+                  "The app's deployment principal is no longer available",
+                  {
+                    code: "APP_DEPLOY_PRINCIPAL_UNAVAILABLE",
+                    severity: "ephemeral",
+                  },
+                );
               }
 
               const container = await containersRepository.create({

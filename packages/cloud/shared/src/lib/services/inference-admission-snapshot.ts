@@ -15,6 +15,7 @@ import { publishInferenceAdmissionPolicy } from "./inference-admission-gate";
 import {
   type InferenceAdmissionSnapshot,
   isInferenceAdmissionSnapshot,
+  startOffResponse,
 } from "./inference-auth-cache";
 import { isSnapshotAdmissionEnabled } from "./inference-billing-deferred";
 import { type EndpointType, type OrgRateLimitConfig } from "./org-rate-limits";
@@ -64,8 +65,8 @@ export function inferenceRateLimitConfig(
 export async function loadInferenceAdmissionSnapshot(
   organizationId: string,
 ): Promise<InferenceAdmissionSnapshot> {
-  const { isFundedBudgetAdmissionEnabled } = await import("./inference-funded-budget-admission");
-  if (isFundedBudgetAdmissionEnabled()) {
+  const { isInferencePolicyAdmissionEnabled } = await import("./inference-funded-budget-admission");
+  if (isInferencePolicyAdmissionEnabled()) {
     return withOrganizationPolicyAdmission(organizationId, undefined, (policy, tx) =>
       inferenceAdmissionSnapshotInTransaction(tx, organizationId, policy),
     );
@@ -110,13 +111,18 @@ export async function inferenceAdmissionSnapshotInTransaction(
   const funding = policy.subscriptionFunded
     ? await readSubscriberFundingCapacityInTransaction(tx, organizationId, { policy })
     : undefined;
-  const { readInferenceBudgetPolicy } = await import("./inference-funded-budget-admission");
+  const { readInferenceBudgetPolicy, readInferencePolicy, isRatePolicyAdmissionEnabled } =
+    await import("./inference-funded-budget-admission");
   const fundedBudget = await readInferenceBudgetPolicy(tx, organizationId, policy);
+  const ratePolicy = isRatePolicyAdmissionEnabled()
+    ? await readInferencePolicy(tx, organizationId, policy)
+    : undefined;
   return {
     ...snapshot,
     billingHold: hold.status === "held",
     ...(funding && { funding }),
     ...(fundedBudget && { fundedBudget }),
+    ...(ratePolicy?.rateEnabled && { ratePolicy }),
   };
 }
 
@@ -246,8 +252,7 @@ export async function getInferenceAdmissionSnapshotCacheOnly(
     return cached;
   }
 
-  const hydration = Promise.resolve()
-    .then(() => warmInferenceAdmissionSnapshot(organizationId))
+  const hydration = startOffResponse(() => warmInferenceAdmissionSnapshot(organizationId))
     .then(() => undefined)
     .catch((error) => {
       // error-policy:J7 authoritative hydration is deliberately detached from
