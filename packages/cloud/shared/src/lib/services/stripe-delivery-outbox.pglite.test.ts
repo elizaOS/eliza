@@ -300,3 +300,27 @@ test("a legacy entry that cannot be adopted stays listed and never blocks the ou
   expect(await cache.getQueueLength("stripe-events:dlq")).toBe(0);
   await cache.removeQueueValue("stripe-events", poison);
 });
+
+test("a delivered row drops the stored event, and a late legacy copy of it is not adopted again", async () => {
+  await settleAll();
+  const payload = await record();
+  expect((await drain()).seen.map((delivery) => delivery.eventId)).toEqual([payload.eventId]);
+  const stored = await client
+    .getPgliteClientForTests()
+    .query<{ delivery_payload: unknown; delivery_completed_at: Date | null }>(
+      "SELECT delivery_payload,delivery_completed_at FROM webhook_events WHERE event_id=$1",
+      [payload.eventId],
+    );
+  expect(stored.rows[0]?.delivery_payload).toBeNull();
+  expect(stored.rows[0]?.delivery_completed_at).not.toBeNull();
+
+  await repo.adoptLegacyStripeDelivery(payload, "a".repeat(64));
+  const after = await client
+    .getPgliteClientForTests()
+    .query<{ delivery_payload: unknown }>(
+      "SELECT delivery_payload FROM webhook_events WHERE event_id=$1",
+      [payload.eventId],
+    );
+  expect(after.rows[0]?.delivery_payload).toBeNull();
+  expect((await drain()).seen).toEqual([]);
+});

@@ -153,6 +153,8 @@ export class WebhookEventsRepository {
           eq(webhookEvents.event_id, eventId),
           eq(webhookEvents.provider, "stripe"),
           isNull(webhookEvents.delivery_payload),
+          // A delivered row has dropped its payload; it is not work to adopt.
+          isNull(webhookEvents.delivery_completed_at),
         ),
       )
       .returning({ id: webhookEvents.id });
@@ -241,9 +243,11 @@ export class WebhookEventsRepository {
     return settled.length > 0;
   }
 
+  /** Drops the stored event once it is delivered: the row keeps only its marker and hash for retention. */
   completeStripeDelivery(delivery: ClaimedStripeDelivery): Promise<boolean> {
     return this.settleStripeDelivery(delivery, {
       delivery_completed_at: sql`clock_timestamp()`,
+      delivery_payload: null,
     });
   }
 
