@@ -208,6 +208,11 @@ plus sign-in identity). A host that sets `hostPolicy.gmailOwnerWrites: true`
 asks Google for `gmail.modify` and `gmail.send` as well, and lets the owner's
 mailbox (`/gmail/list`, `/gmail/read`, `mailboxForAccount`) hold that grant;
 `/gmail/status` then also reports `canChangeMessages` and `canSendMessages`.
+Every `/gmail/status` answer reports the host policy as `ownerWrites` and the
+verdict on the grant as `grant`: `read-only`, `part-write` or `write` (it reads
+mail, and holds none, some or all of the write scopes this host asks for),
+`too-broad` (a scope this host never asks for) or `no-read`.
+`canReadMessages` is true exactly for the first three when connected.
 Agent task reads (`googleForAccount`) also accept that owner grant, so the
 agent can still read the owner's mail. The task port only sends GET reads; it
 has no write operation. Compose, full mail access or any other scope is still

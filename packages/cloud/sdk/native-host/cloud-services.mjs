@@ -235,6 +235,7 @@ const googleScopes = (value) =>
 const GMAIL_READ_ONLY_SCOPE = "https://www.googleapis.com/auth/gmail.readonly";
 const GMAIL_MODIFY_SCOPE = "https://www.googleapis.com/auth/gmail.modify";
 const GMAIL_SEND_SCOPE = "https://www.googleapis.com/auth/gmail.send";
+const GMAIL_METADATA_SCOPE = "https://www.googleapis.com/auth/gmail.metadata";
 const GOOGLE_IDENTITY_SCOPES = new Set([
   "openid",
   "email",
@@ -242,37 +243,57 @@ const GOOGLE_IDENTITY_SCOPES = new Set([
   "https://www.googleapis.com/auth/userinfo.email",
   "https://www.googleapis.com/auth/userinfo.profile",
 ]);
+// What a Google grant means on a host, checked on the raw scope list, so an
+// unrecognized entry also makes the grant wider. `no-read`: nothing reads
+// messages (identity or metadata only, or no gmail.readonly). `too-broad`: a
+// scope this host never asks for. `read-only`, `part-write` and `write`: the
+// grant reads mail and holds none, some or all of the write scopes. Only a
+// host with `writes` asks for any write scope (gmail.modify, gmail.send).
+const gmailGrant = (scopes, writes) => {
+  const list = Array.isArray(scopes) ? scopes : [];
+  const wanted = writes ? [GMAIL_MODIFY_SCOPE, GMAIL_SEND_SCOPE] : [];
+  if (
+    list.every(
+      (scope) =>
+        scope === GMAIL_METADATA_SCOPE || GOOGLE_IDENTITY_SCOPES.has(scope),
+    )
+  )
+    return "no-read";
+  if (
+    !list.every(
+      (scope) =>
+        scope === GMAIL_READ_ONLY_SCOPE ||
+        GOOGLE_IDENTITY_SCOPES.has(scope) ||
+        wanted.includes(scope),
+    )
+  )
+    return "too-broad";
+  if (!list.includes(GMAIL_READ_ONLY_SCOPE)) return "no-read";
+  const held = wanted.filter((scope) => list.includes(scope)).length;
+  return held === 0
+    ? "read-only"
+    : held === wanted.length
+      ? "write"
+      : "part-write";
+};
+const readsMail = (grant) =>
+  grant === "read-only" || grant === "part-write" || grant === "write";
 // By default this host asks Google for read-only Gmail (`google.gmail.triage`,
 // which Cloud maps to gmail.readonly plus sign-in identity). Mail is read only
 // through a grant that is exactly that. A wider grant (gmail.modify,
 // gmail.send, gmail.compose, https://mail.google.com/ or another product's
 // scope) can change, send or delete mail, so it is refused rather than used.
-// Checked on the raw list: an unrecognized entry also makes the grant wider.
 // Agent task reads (`googleForAccount`) use this grant unless the host opts
 // in to the owner write grant below.
 const gmailReadOnlyGrant = (scopes) =>
-  Array.isArray(scopes) &&
-  scopes.includes(GMAIL_READ_ONLY_SCOPE) &&
-  scopes.every(
-    (scope) =>
-      scope === GMAIL_READ_ONLY_SCOPE || GOOGLE_IDENTITY_SCOPES.has(scope),
-  );
+  gmailGrant(scopes, false) === "read-only";
 // A host that opts in (`hostPolicy.gmailOwnerWrites: true`) lets the owner's
 // own mailbox also hold gmail.modify and gmail.send, for the owner's reviewed
 // mail changes (`mailboxWriterForAccount`). Nothing else widens it: compose,
 // full mail access or another product's scope is still refused. Agent task
 // reads may then run under this grant too: their port only sends GET reads, so
 // the wider grant gives a task no write path.
-const gmailOwnerWriteGrant = (scopes) =>
-  Array.isArray(scopes) &&
-  scopes.includes(GMAIL_READ_ONLY_SCOPE) &&
-  scopes.every(
-    (scope) =>
-      scope === GMAIL_READ_ONLY_SCOPE ||
-      scope === GMAIL_MODIFY_SCOPE ||
-      scope === GMAIL_SEND_SCOPE ||
-      GOOGLE_IDENTITY_SCOPES.has(scope),
-  );
+const gmailOwnerWriteGrant = (scopes) => readsMail(gmailGrant(scopes, true));
 // The owner's reviewed mail effects this host relays to Cloud's inbox-v1
 // operations. Drafts are not offered here.
 const OWNER_MAIL_EFFECTS = new Set([
@@ -2031,6 +2052,9 @@ export function createCloudRoutes({
           // only through an exactly read-only grant (gmailReadOnlyGrant), or
           // the owner write grant when the host opts in.
           grantedScopes: connected ? googleScopes(value.grantedScopes) : [],
+          // This host's policy and its verdict on the grant, on every answer.
+          ownerWrites,
+          grant: gmailGrant(connected ? value.grantedScopes : [], ownerWrites),
           canReadMessages: connected && ownerGmailGrant(value.grantedScopes),
           // Reported only by a host that opts in to owner mail writes.
           ...(ownerWrites

@@ -1148,6 +1148,49 @@ test("Gmail status names its connection and whether message bodies can be read",
   assert.equal(calls.length, 9);
 });
 
+test("Gmail status reports the host policy and its verdict on each grant", async (t) => {
+  const MODIFY = "https://www.googleapis.com/auth/gmail.modify";
+  const SEND = "https://www.googleapis.com/auth/gmail.send";
+  // [scopes, verdict on a read-only host, verdict on an owner-writes host]
+  for (const [scopes, readOnlyHost, writesHost] of [
+    [[READ_SCOPE, "openid"], "read-only", "read-only"],
+    [[READ_SCOPE, MODIFY, "email"], "too-broad", "part-write"],
+    [[READ_SCOPE, SEND], "too-broad", "part-write"],
+    [[READ_SCOPE, MODIFY, SEND, "openid"], "too-broad", "write"],
+    [[READ_SCOPE, "https://mail.google.com/"], "too-broad", "too-broad"],
+    [[READ_SCOPE, METADATA_SCOPE], "too-broad", "too-broad"],
+    [[READ_SCOPE, "not a scope"], "too-broad", "too-broad"],
+    [[METADATA_SCOPE, "openid"], "no-read", "no-read"],
+    [["openid", "email"], "no-read", "no-read"],
+    [[MODIFY, SEND], "too-broad", "no-read"],
+  ]) {
+    for (const [ownerWrites, grant] of [
+      [false, readOnlyHost],
+      [true, writesHost],
+    ]) {
+      const google = { connectionId: GRANT_A, scopes };
+      const { get } = googleHost(t, google, { gmailOwnerWrites: ownerWrites });
+      const status = await (await get("/gmail/status")).json();
+      const label = `${scopes.join(" ")} ownerWrites=${ownerWrites}`;
+      assert.equal(status.ownerWrites, ownerWrites, label);
+      assert.equal(status.grant, grant, label);
+      assert.equal(
+        status.canReadMessages,
+        ["read-only", "part-write", "write"].includes(grant),
+        label,
+      );
+      // Not connected: the policy is still reported, and nothing reads.
+      google.connectionId = null;
+      const disconnected = await (await get("/gmail/status")).json();
+      assert.deepEqual(
+        [disconnected.ownerWrites, disconnected.grant],
+        [ownerWrites, "no-read"],
+        label,
+      );
+    }
+  }
+});
+
 test("a Gmail grant wider than read-only is never read, by task reads or by list and read", async (t) => {
   const google = {
     connectionId: GRANT_A,
