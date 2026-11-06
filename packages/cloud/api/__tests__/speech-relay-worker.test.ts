@@ -9,10 +9,15 @@ import { Miniflare } from "miniflare";
 import { CARTESIA_PUBLISHED_USD_PER_CREDIT } from "../v1/voice/stt/cartesia-pricing";
 
 let worker: Miniflare;
+let outboundAttempts = 0;
 const common = `const stats=()=>globalThis.__speechStats??={};
 const bootstrap=(name)=>{const s=stats();if(s.locked)throw Error('DB/auth/admission on live speech path');s[name]=(s[name]??0)+1;};`;
 beforeAll(async () => {
   const sources: Array<[RegExp, string]> = [
+    [
+      /\/services\/inference-billing-fast-path\.ts$/,
+      `export class InferenceBalanceCacheWarmingError extends Error {}`,
+    ],
     [
       /\/inference-admission-recovery\.ts$/,
       `export async function recoverExpiredInferenceAdmissionLease(){throw Error("Unexpected recovery");}`,
@@ -49,7 +54,7 @@ import {getCloudBinding} from '@elizaos/cloud-shared/lib/runtime/cloud-bindings'
 import {testDbContext} from '@elizaos/cloud-shared/db/client';${common}
 export async function admitOrganizationInference(input){bootstrap('admissions');if(stats().decline)throw new InsufficientCreditsError('private provider details');const openedIn=testDbContext();let settled=false;
 const account=()=>{const s=stats();if(getCloudBinding('HYPERDRIVE')?.connectionString!=='postgres://boundary-test.invalid/not-used'||!testDbContext())throw Error('Missing settlement binding/context');if(settled)throw Error('Duplicate admission settlement');settled=true;(s.settlementContexts??=[]).push({openedIn,settledIn:testDbContext(),hasHyperdrive:true});};
-return {async markProviderDispatched(){bootstrap('dispatches');},async settle(cost){account();const s=stats();s.settlements=(s.settlements??0)+1;(s.settledAmounts??=[]).push({model:input.context.model,cost});},async settleUnknown(){account();const s=stats();s.unknown=(s.unknown??0)+1;}};}`,
+return {async markProviderDispatched(){bootstrap('dispatches');},async settle(cost){account();const s=stats();s.settlements=(s.settlements??0)+1;(s.settledAmounts??=[]).push({model:input.context.model,cost});(s.allSettlementCalls??=[]).push({requestId:input.context.requestId,model:input.context.model,cost,kind:'actual'});},async settleUnknown(){account();const s=stats();s.unknown=(s.unknown??0)+1;(s.allSettlementCalls??=[]).push({requestId:input.context.requestId,model:input.context.model,cost:input.flatCost.totalCost,kind:'unknown'});}};}`,
     ],
     [
       /\/services\/content-safety\.ts$/,
@@ -73,11 +78,11 @@ return {async markProviderDispatched(){bootstrap('dispatches');},async settle(co
     ],
     [
       /\/voice\/cartesia-ink\.ts$/,
-      `${common} export const CARTESIA_INK_CHUNK_BYTES=3200;export function createCartesiaInkRealtimeSession({onEvent}){let bytes=0;stats().sttOpened=(stats().sttOpened??0)+1;return {sendAudioChunk(chunk){if(chunk.byteLength!==3200)throw Error('Invalid Ink frame');bytes+=chunk.byteLength;stats().pcmBytes=bytes;onEvent({type:'transcript-update',transcript:'hello'});},cancel(){stats().sttCancelled=true;},async drain(){stats().sttDrained=true;stats().sttDrains=(stats().sttDrains??0)+1;return {source:'provider-graceful-close',audioBytes:bytes,sampleRate:16000,channels:1,encoding:'pcm_s16le'};}};}`,
+      `${common} export const CARTESIA_INK_CHUNK_BYTES=3200;export function createCartesiaInkRealtimeSession({onEvent}){let bytes=0;stats().sttOpened=(stats().sttOpened??0)+1;return {sendAudioChunk(chunk){if(chunk.byteLength!==3200)throw Error('Invalid Ink frame');bytes+=chunk.byteLength;stats().pcmBytes=bytes;onEvent({type:'transcript-update',transcript:'hello'});},cancel(){stats().sttCancelled=true;},async drain(){stats().sttDrained=true;stats().sttDrains=(stats().sttDrains??0)+1;if(stats().sttDrainUnknown)throw Error('controlled unknown STT drain');return {source:'provider-graceful-close',audioBytes:bytes,sampleRate:16000,channels:1,encoding:'pcm_s16le'};}};}`,
     ],
     [
       /\/voice\/cartesia-sonic-tts\.ts$/,
-      `${common} export const CARTESIA_SONIC_MODEL_ID="sonic-3.6";export class CartesiaSonicTtsAdapter{createStream(_options,callbacks){stats().ttsOpened=(stats().ttsOpened??0)+1;return {sendPhrase(){queueMicrotask(()=>callbacks.onAudioFrame({bytes:new Uint8Array([7,0,8,0])}));},finish(){queueMicrotask(()=>callbacks.onComplete({frameCount:1}));},cancel(){stats().ttsCancelled=true;stats().ttsCancels=(stats().ttsCancels??0)+1;}};}close(){stats().ttsClosed=true;}}`,
+      `${common} export const CARTESIA_SONIC_MODEL_ID="sonic-3.6";export class CartesiaSonicTtsAdapter{createStream(_options,callbacks){stats().ttsOpened=(stats().ttsOpened??0)+1;return {sendPhrase(){queueMicrotask(()=>callbacks.onAudioFrame({bytes:new Uint8Array([7,0,8,0])}));},finish(){queueMicrotask(()=>callbacks.onComplete({frameCount:1}));},cancel(){stats().ttsCancelled=true;stats().ttsCancels=(stats().ttsCancels??0)+1;}};}close(){stats().ttsClosed=true;}async closeAndConfirm(){stats().ttsClosed=true;return stats().ttsUnknown ? "unknown" : "transport_closed";}}`,
     ],
   ];
   const result = await Bun.build({
@@ -111,6 +116,10 @@ return {async markProviderDispatched(){bootstrap('dispatches');},async settle(co
   if (!result.success)
     throw new AggregateError(result.logs, "Speech worker build failed");
   worker = new Miniflare({
+    outboundService() {
+      outboundAttempts++;
+      throw new Error("Unexpected outbound request in speech fixture");
+    },
     modules: true,
     script: await result.outputs[0].text(),
     compatibilityDate: "2026-04-01",
@@ -137,6 +146,7 @@ return {async markProviderDispatched(){bootstrap('dispatches');},async settle(co
 });
 afterAll(async () => {
   await worker?.dispose();
+  expect(outboundAttempts).toBe(0);
 });
 const account = {
   id: "11111111-1111-4111-8111-111111111111",
@@ -397,6 +407,165 @@ test("legacy speech clients receive no unnegotiated billing reason", async () =>
   const refused = next(socket as any, (value) => value.t === "error");
   socket.send(JSON.stringify({ t: "hello", token }));
   expect(await refused).toEqual({ t: "error", code: "unavailable" });
+});
+
+async function openTestSession(input: {
+  name: string;
+  sessionId: string;
+  organizationId?: string;
+  environment?: string;
+  expiresAt?: number;
+}) {
+  const headers: Record<string, string> = {
+    "x-test-session": input.name,
+    "Content-Type": "application/json",
+  };
+  const request = (path: string, body?: unknown) =>
+    worker.dispatchFetch(`https://speech-relay.internal${path}`, {
+      method: body === undefined ? "GET" : "POST",
+      headers,
+      ...(body === undefined ? {} : { body: JSON.stringify(body) }),
+    });
+  const token = `${input.name}-capability`;
+  await request("/test-allow-admission");
+  await request("/initialize", {
+    sessionId: input.sessionId,
+    tokenDigest: new Bun.CryptoHasher("sha256").update(token).digest("hex"),
+    expiresAt: input.expiresAt ?? Date.now() + 60000,
+    caller: {
+      user: {
+        ...account,
+        organization_id: input.organizationId ?? account.organization_id,
+      },
+      apiKeyId: "timing-key",
+      authSource: "combined_cache",
+      appScopeId: null,
+      credential: {
+        kind: "api_key",
+        credentialId: "timing-key",
+        userId: account.id,
+      },
+    },
+  });
+  const upgraded = await worker.dispatchFetch(
+    "https://speech-relay.internal/ws",
+    {
+      headers: {
+        ...headers,
+        Upgrade: "websocket",
+        ...(input.environment
+          ? { "x-test-environment": input.environment }
+          : {}),
+      },
+    },
+  );
+  const socket = upgraded.webSocket!;
+  socket.accept();
+  return { socket, token, request };
+}
+
+test("staging reports numeric bootstrap phases only to a client that asked in hello", async () => {
+  const staged = await openTestSession({
+    name: "timings-staging",
+    sessionId: "88888888-8888-4888-8888-888888888881",
+    environment: "staging",
+  });
+  const frames: any[] = [];
+  staged.socket.addEventListener("message", (event) => {
+    if (typeof event.data === "string") frames.push(JSON.parse(event.data));
+  });
+  const timings = next(staged.socket as any, (value) => value.t === "timings");
+  staged.socket.send(
+    JSON.stringify({ t: "hello", token: staged.token, timings: true }),
+  );
+  const frame = await timings;
+  // Ready is first, so exact-key clients see the unchanged ready contract.
+  expect(frames[0]?.t).toBe("ready");
+  expect(Object.keys(frames[0]).sort()).toEqual(
+    ["channels", "expiresAt", "sampleRate", "t", "version"].sort(),
+  );
+  for (const [key, value] of Object.entries(frame)) {
+    if (key === "t") continue;
+    expect([
+      "claimMs",
+      "revocationMs",
+      "admissionMs",
+      "relayMs",
+      "activateMs",
+      "openMs",
+    ]).toContain(key);
+    expect(typeof value).toBe("number");
+    expect(value as number).toBeGreaterThanOrEqual(0);
+  }
+  expect(frame.openMs).toBeGreaterThanOrEqual(0);
+  staged.socket.close();
+
+  const production = await openTestSession({
+    name: "timings-production",
+    sessionId: "88888888-8888-4888-8888-888888888882",
+    environment: "production",
+  });
+  const productionFrames: any[] = [];
+  production.socket.addEventListener("message", (event) => {
+    if (typeof event.data === "string")
+      productionFrames.push(JSON.parse(event.data));
+  });
+  const ready = next(production.socket as any, (value) => value.t === "ready");
+  production.socket.send(
+    JSON.stringify({ t: "hello", token: production.token, timings: true }),
+  );
+  await ready;
+  const transcript = next(
+    production.socket as any,
+    (value) => value.t === "stt",
+  );
+  production.socket.send(new Uint8Array(3200));
+  await transcript;
+  expect(productionFrames.some((value) => value.t === "timings")).toBe(false);
+  production.socket.close();
+});
+
+test("a refused revocation fence releases the concurrently admitted leases before any provider opens", async () => {
+  const organizationId = "66666666-6666-4666-8666-666666666666";
+  await worker.dispatchFetch("https://speech-relay.internal/test-lifecycle", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      path: "/organization/set-active",
+      organizationId,
+      active: false,
+    }),
+  });
+  const session = await openTestSession({
+    name: "fence-refused",
+    sessionId: "88888888-8888-4888-8888-888888888883",
+    organizationId,
+  });
+  const before = (await (
+    await session.request("/test-stats")
+  ).json()) as Record<string, any>;
+  const refused = next(session.socket as any, (value) => value.t === "error");
+  session.socket.send(JSON.stringify({ t: "hello", token: session.token }));
+  expect(await refused).toEqual({ t: "error", code: "unavailable" });
+  let after: Record<string, any> = {};
+  for (let attempt = 0; attempt < 50; attempt++) {
+    after = (await (await session.request("/test-stats")).json()) as Record<
+      string,
+      any
+    >;
+    if ((after.settlements ?? 0) - (before.settlements ?? 0) >= 2) break;
+    await Bun.sleep(20);
+  }
+  expect(after.sttOpened).toBe(before.sttOpened);
+  expect(after.ttsOpened).toBe(before.ttsOpened);
+  const admitted = (after.admissions ?? 0) - (before.admissions ?? 0);
+  const settled = (after.settledAmounts ?? []).slice(
+    (before.settledAmounts ?? []).length,
+  );
+  // Admission overlaps the fence, so both leases exist and both settle to zero.
+  expect(admitted).toBe(2);
+  expect(settled.length).toBe(admitted);
+  for (const entry of settled) expect(entry.cost).toBe(0);
 });
 
 test("authoritative org, API-key and session-cutoff revocations stop active speech through the internal socket", async () => {
@@ -900,4 +1069,498 @@ test("socket Stop settles with the DO bindings and a fresh DB context before a l
     any
   >;
   expect(repeated.settlements).toBe(settled);
+});
+
+test("an extending client keeps one live session past its minted end with a fresh fence and reservation", async () => {
+  const token = "extend-capability";
+  const session = { "x-test-session": "native-extend" };
+  await worker.dispatchFetch(
+    "https://speech-relay.internal/test-allow-admission",
+    { headers: session },
+  );
+  const before = (await (
+    await worker.dispatchFetch("https://speech-relay.internal/test-stats", {
+      headers: session,
+    })
+  ).json()) as Record<string, number>;
+  // Renewal is due 10 s before the end, so it starts almost immediately.
+  const mintedEnd = Date.now() + 10_400;
+  await worker.dispatchFetch("https://speech-relay.internal/initialize", {
+    method: "POST",
+    headers: { ...session, "Content-Type": "application/json" },
+    body: JSON.stringify({
+      sessionId: "88888888-8888-4888-8888-888888888888",
+      tokenDigest: new Bun.CryptoHasher("sha256").update(token).digest("hex"),
+      expiresAt: mintedEnd,
+      caller: {
+        user: account,
+        apiKeyId: null,
+        authSource: "combined_cache",
+        appScopeId: null,
+        credential: {
+          kind: "api_key",
+          credentialId: "test-key",
+          userId: account.id,
+        },
+      },
+    }),
+  });
+  const upgraded = await worker.dispatchFetch(
+    "https://speech-relay.internal/ws",
+    { headers: { ...session, Upgrade: "websocket" } },
+  );
+  const socket = upgraded.webSocket!;
+  socket.accept();
+  const ready = next(socket as any, (value) => value.t === "ready");
+  const extended = next(socket as any, (value) => value.t === "extended");
+  socket.send(JSON.stringify({ t: "hello", token, extend: true }));
+  await ready;
+  const renewal = await extended;
+  expect(Date.parse(renewal.expiresAt)).toBeGreaterThan(mintedEnd);
+  expect(Date.parse(renewal.expiresAt)).toBeLessThanOrEqual(
+    Date.now() + 60_000,
+  );
+  const after = (await (
+    await worker.dispatchFetch("https://speech-relay.internal/test-stats", {
+      headers: session,
+    })
+  ).json()) as Record<string, number>;
+  // Two admissions (STT + TTS) per window: bootstrap and one renewal.
+  expect(after.admissions - (before.admissions ?? 0)).toBe(4);
+  const audio = next(
+    socket as any,
+    (value) =>
+      typeof value !== "object" ||
+      value instanceof ArrayBuffer ||
+      ArrayBuffer.isView(value),
+  );
+  socket.send(
+    JSON.stringify({
+      t: "tts",
+      id: "turn-1",
+      text: "Still here.",
+      flush: true,
+    }),
+  );
+  expect((await audio).byteLength).toBeGreaterThan(4);
+  await worker.dispatchFetch("https://speech-relay.internal/revoke", {
+    method: "POST",
+    headers: { ...session, "Content-Type": "application/json" },
+    body: JSON.stringify({
+      userId: account.id,
+      organizationId: account.organization_id,
+    }),
+  });
+  const closed = (await (
+    await worker.dispatchFetch("https://speech-relay.internal/test-stats", {
+      headers: session,
+    })
+  ).json()) as Record<string, number>;
+  // Every lease of both windows is settled exactly once.
+  expect(
+    (closed.settlements ?? 0) +
+      (closed.unknown ?? 0) -
+      (before.settlements ?? 0) -
+      (before.unknown ?? 0),
+  ).toBe(4);
+});
+
+test("a declined renewal keeps the minted end and holds no lease for it", async () => {
+  const token = "declined-extend-capability";
+  const session = { "x-test-session": "native-extend-declined" };
+  await worker.dispatchFetch(
+    "https://speech-relay.internal/test-allow-admission",
+    { headers: session },
+  );
+  const stats = async () =>
+    (await (
+      await worker.dispatchFetch("https://speech-relay.internal/test-stats", {
+        headers: session,
+      })
+    ).json()) as Record<string, number>;
+  const before = await stats();
+  const mintedEnd = Date.now() + 10_800;
+  await worker.dispatchFetch("https://speech-relay.internal/initialize", {
+    method: "POST",
+    headers: { ...session, "Content-Type": "application/json" },
+    body: JSON.stringify({
+      sessionId: "88888888-8888-4888-8888-888888888889",
+      tokenDigest: new Bun.CryptoHasher("sha256").update(token).digest("hex"),
+      expiresAt: mintedEnd,
+      caller: {
+        user: account,
+        apiKeyId: null,
+        authSource: "combined_cache",
+        appScopeId: null,
+        credential: {
+          kind: "api_key",
+          credentialId: "test-key",
+          userId: account.id,
+        },
+      },
+    }),
+  });
+  const upgraded = await worker.dispatchFetch(
+    "https://speech-relay.internal/ws",
+    { headers: { ...session, Upgrade: "websocket" } },
+  );
+  const socket = upgraded.webSocket!;
+  socket.accept();
+  const frames: any[] = [];
+  socket.addEventListener("message", (event) => {
+    if (typeof event.data === "string") frames.push(JSON.parse(event.data));
+  });
+  const ready = next(socket as any, (value) => value.t === "ready");
+  socket.send(JSON.stringify({ t: "hello", token, extend: true }));
+  await ready;
+  // The account runs out of credit before the renewal is due.
+  await worker.dispatchFetch("https://speech-relay.internal/test-decline", {
+    headers: session,
+  });
+  try {
+    for (let n = 0; n < 100; n++) {
+      if ((await stats()).admissions - (before.admissions ?? 0) >= 4) break;
+      await Bun.sleep(20);
+    }
+    await Bun.sleep(50);
+    expect((await stats()).admissions - (before.admissions ?? 0)).toBe(4);
+    expect(frames.some((value) => value.t === "extended")).toBe(false);
+    expect(frames.some((value) => value.t === "error")).toBe(false);
+  } finally {
+    await worker.dispatchFetch(
+      "https://speech-relay.internal/test-allow-admission",
+      { headers: session },
+    );
+  }
+  await worker.dispatchFetch("https://speech-relay.internal/revoke", {
+    method: "POST",
+    headers: { ...session, "Content-Type": "application/json" },
+    body: JSON.stringify({
+      userId: account.id,
+      organizationId: account.organization_id,
+    }),
+  });
+  const closed = await stats();
+  // Only the bootstrap window's two leases existed, and each settled once.
+  expect(
+    (closed.settlements ?? 0) +
+      (closed.unknown ?? 0) -
+      (before.settlements ?? 0) -
+      (before.unknown ?? 0),
+  ).toBe(2);
+});
+
+test("pre-hello revoke closes the public socket and late hello cannot open providers", async () => {
+  const name = `prehello-${crypto.randomUUID()}`;
+  const request = (path: string, body?: unknown) =>
+    worker.dispatchFetch(`https://speech-relay.internal${path}`, {
+      method: body === undefined ? "GET" : "POST",
+      headers: {
+        "x-test-session": name,
+        ...(body === undefined ? {} : { "Content-Type": "application/json" }),
+      },
+      ...(body === undefined ? {} : { body: JSON.stringify(body) }),
+    });
+  await request("/test-allow-settlement");
+  const token = "prehello-test-capability";
+  const sessionId = crypto.randomUUID();
+  expect(
+    (
+      await request("/initialize", {
+        sessionId,
+        tokenDigest: new Bun.CryptoHasher("sha256").update(token).digest("hex"),
+        expiresAt: Date.now() + 60000,
+        caller: { user: account },
+        proofVersion: 1,
+      })
+    ).status,
+  ).toBe(200);
+  const before = (await (await request("/test-stats")).json()) as Record<
+    string,
+    number
+  >;
+  const upgrade = await worker.dispatchFetch(
+    "https://speech-relay.internal/ws",
+    { headers: { Upgrade: "websocket", "x-test-session": name } },
+  );
+  expect(upgrade.status).toBe(101);
+  const socket = upgrade.webSocket!;
+  socket.accept();
+  const closed = new Promise<void>((resolve, reject) => {
+    const timer = setTimeout(
+      () => reject(Error("Pre-hello socket stayed open")),
+      2000,
+    );
+    socket.addEventListener(
+      "close",
+      () => {
+        clearTimeout(timer);
+        resolve();
+      },
+      { once: true },
+    );
+  });
+  const revoked = await request("/revoke", {
+    userId: account.id,
+    organizationId: account.organization_id,
+    proofVersion: 1,
+  });
+  expect(revoked.status).toBe(200);
+  expect(await revoked.json()).toMatchObject({
+    revoked: true,
+    retirement: { state: "confirmed", mode: "never_started" },
+  });
+  await closed;
+  try {
+    socket.send(JSON.stringify({ t: "hello", token }));
+  } catch {
+    /* A closed public socket cannot accept a late hello. */
+  }
+  expect(
+    (
+      await worker.dispatchFetch("https://speech-relay.internal/ws", {
+        headers: { Upgrade: "websocket", "x-test-session": name },
+      })
+    ).status,
+  ).toBe(410);
+  const after = (await (await request("/test-stats")).json()) as Record<
+    string,
+    number
+  >;
+  expect(after.sttOpened ?? 0).toBe(before.sttOpened ?? 0);
+});
+
+test("real coordinator forwards STT-only selection and bounds unknown TTS money without confirming proof", async () => {
+  const name = "unknown-tts-selection";
+  const named = (path: string, body?: unknown) =>
+    worker.dispatchFetch(`https://speech-relay.internal${path}`, {
+      method: body === undefined ? "GET" : "POST",
+      headers: {
+        "x-test-session": name,
+        ...(body === undefined ? {} : { "Content-Type": "application/json" }),
+      },
+      ...(body === undefined ? {} : { body: JSON.stringify(body) }),
+    });
+  await named("/test-allow-settlement");
+  await named("/test-unknown-tts");
+  const before = (await (await named("/test-stats")).json()) as any;
+  const initialCount = before.settledAmounts?.length ?? 0;
+  const token = "unknown-tts-test-only";
+  const sessionId = "77777777-7777-4777-8777-777777777777";
+  await named("/initialize", {
+    sessionId,
+    tokenDigest: new Bun.CryptoHasher("sha256").update(token).digest("hex"),
+    expiresAt: Date.now() + 60000,
+    proofVersion: 1,
+    caller: {
+      user: account,
+      credential: {
+        kind: "api_key",
+        credentialId: "test-key",
+        userId: account.id,
+      },
+    },
+  });
+  const upgrade = await worker.dispatchFetch(
+    "https://speech-relay.internal/ws",
+    { headers: { Upgrade: "websocket", "x-test-session": name } },
+  );
+  const socket = upgrade.webSocket!;
+  socket.accept();
+  const ready = next(socket as any, (value) => value.t === "ready");
+  socket.send(JSON.stringify({ t: "hello", token }));
+  await ready;
+  const prepared = next(socket as any, (value) => value.t === "tts_prepared");
+  socket.send(JSON.stringify({ t: "prepare", id: "empty-context" }));
+  await prepared;
+  const revoke = () =>
+    named("/revoke", {
+      userId: account.id,
+      organizationId: account.organization_id,
+      proofVersion: 1,
+    });
+  expect((await revoke()).status).toBe(409);
+  const partial = (await (await named("/test-stats")).json()) as any;
+  expect(partial.settledAmounts.slice(initialCount)).toHaveLength(1);
+  expect(partial.settledAmounts[initialCount].model).toBe("ink-2");
+  await named("/test-force-alarm");
+  await named("/test-force-alarm");
+  const final = (await (await named("/test-stats")).json()) as any;
+  expect(final.settledAmounts.slice(initialCount)).toHaveLength(2);
+  expect(final.settledAmounts[initialCount + 1]).toMatchObject({ cost: 0 });
+  const result = await revoke();
+  expect(result.status).toBe(409);
+  expect(await result.json()).toMatchObject({
+    revoked: false,
+    retirement: { state: "unconfirmed" },
+  });
+});
+
+test("unknown STT drain charges one initial hold and zero for an unused renewal", async () => {
+  const token = "unused-stt-window-capability";
+  const sessionId = "99999999-9999-4999-8999-999999999941";
+  const headers = { "x-test-session": "unused-stt-window" };
+  const request = (path: string, body?: unknown) =>
+    worker.dispatchFetch(`https://speech-relay.internal${path}`, {
+      method: body === undefined ? "GET" : "POST",
+      headers: { ...headers, "Content-Type": "application/json" },
+      ...(body === undefined ? {} : { body: JSON.stringify(body) }),
+    });
+  await request("/test-allow-admission");
+  await request("/test-stt-drain-mode", { unknown: true });
+  let socket: any;
+  try {
+    await request("/initialize", {
+      sessionId,
+      tokenDigest: new Bun.CryptoHasher("sha256").update(token).digest("hex"),
+      expiresAt: Date.now() + 10_400,
+      caller: {
+        user: account,
+        apiKeyId: null,
+        authSource: "combined_cache",
+        appScopeId: null,
+        credential: {
+          kind: "api_key",
+          credentialId: "test-key",
+          userId: account.id,
+        },
+      },
+    });
+    const upgraded = await worker.dispatchFetch(
+      "https://speech-relay.internal/ws",
+      {
+        headers: { ...headers, Upgrade: "websocket" },
+      },
+    );
+    socket = upgraded.webSocket!;
+    socket.accept();
+    const ready = next(socket, (value) => value.t === "ready");
+    const extended = next(socket, (value) => value.t === "extended");
+    socket.send(JSON.stringify({ t: "hello", token, extend: true }));
+    await ready;
+    await extended;
+    socket.send(JSON.stringify({ t: "stop" }));
+    type Charge = {
+      requestId: string;
+      model: string;
+      cost: number;
+      kind: string;
+    };
+    let charges: Charge[] = [];
+    for (let n = 0; n < 100; n++) {
+      const stats = (await (await request("/test-stats")).json()) as {
+        allSettlementCalls?: Charge[];
+      };
+      charges = (stats.allSettlementCalls ?? []).filter((row) =>
+        row.requestId.startsWith(`speech:${sessionId}:`),
+      );
+      if (charges.length === 4) break;
+      await Bun.sleep(20);
+    }
+    expect(charges).toHaveLength(4);
+    expect(new Set(charges.map((row) => row.requestId)).size).toBe(4);
+    const stt = charges.filter((row) => row.model === "ink-2");
+    const expectedHold =
+      Math.round(
+        (60 * 3 * CARTESIA_PUBLISHED_USD_PER_CREDIT * 1.2 + Number.EPSILON) *
+          1e6,
+      ) / 1e6;
+    expect(stt).toHaveLength(2);
+    expect(
+      stt.find((row) => row.requestId === `speech:${sessionId}:stt`),
+    ).toEqual({
+      requestId: `speech:${sessionId}:stt`,
+      model: "ink-2",
+      cost: expectedHold,
+      kind: "unknown",
+    });
+    expect(
+      stt.find((row) => row.requestId === `speech:${sessionId}:stt:1`),
+    ).toEqual({
+      requestId: `speech:${sessionId}:stt:1`,
+      model: "ink-2",
+      cost: 0,
+      kind: "actual",
+    });
+    expect(stt.reduce((sum, row) => sum + row.cost, 0)).toBe(expectedHold);
+    expect(
+      charges
+        .filter((row) => row.model !== "ink-2")
+        .every((row) => row.cost === 0),
+    ).toBe(true);
+  } finally {
+    await request("/test-stt-drain-mode", { unknown: false });
+    socket?.close();
+  }
+});
+
+test("complete STT drain charges exact PCM once and zero for the unused renewed budget", async () => {
+  const sessionId = "99999999-9999-4999-8999-999999999942";
+  const f = await openTestSession({
+    name: "complete-stt-window-amounts",
+    sessionId,
+    expiresAt: Date.now() + 10_400,
+  });
+  try {
+    await f.request("/test-stt-drain-mode", { unknown: false });
+    const ready = next(f.socket as any, (value) => value.t === "ready");
+    const extended = next(f.socket as any, (value) => value.t === "extended");
+    f.socket.send(JSON.stringify({ t: "hello", token: f.token, extend: true }));
+    await ready;
+    await extended;
+    const transcript = next(f.socket as any, (value) => value.t === "stt");
+    f.socket.send(new Uint8Array(3_200));
+    await transcript;
+    f.socket.send(JSON.stringify({ t: "stop" }));
+    type Charge = {
+      requestId: string;
+      model: string;
+      cost: number;
+      kind: string;
+    };
+    let charges: Charge[] = [];
+    for (let n = 0; n < 100; n++) {
+      const stats = (await (await f.request("/test-stats")).json()) as {
+        allSettlementCalls?: Charge[];
+      };
+      charges = (stats.allSettlementCalls ?? []).filter((row) =>
+        row.requestId.startsWith(`speech:${sessionId}:`),
+      );
+      if (charges.length === 4) break;
+      await Bun.sleep(20);
+    }
+    expect(charges).toHaveLength(4);
+    expect(new Set(charges.map((row) => row.requestId)).size).toBe(4);
+    const stt = charges.filter((row) => row.model === "ink-2");
+    const expectedCost =
+      Math.round(
+        (0.1 * 3 * CARTESIA_PUBLISHED_USD_PER_CREDIT * 1.2 + Number.EPSILON) *
+          1e6,
+      ) / 1e6;
+    expect(
+      stt.find((row) => row.requestId === `speech:${sessionId}:stt`),
+    ).toEqual({
+      requestId: `speech:${sessionId}:stt`,
+      model: "ink-2",
+      cost: expectedCost,
+      kind: "actual",
+    });
+    expect(
+      stt.find((row) => row.requestId === `speech:${sessionId}:stt:1`),
+    ).toEqual({
+      requestId: `speech:${sessionId}:stt:1`,
+      model: "ink-2",
+      cost: 0,
+      kind: "actual",
+    });
+    expect(stt.reduce((sum, row) => sum + row.cost, 0)).toBe(expectedCost);
+    expect(charges.every((row) => row.kind === "actual")).toBe(true);
+    expect(
+      charges
+        .filter((row) => row.model !== "ink-2")
+        .every((row) => row.cost === 0),
+    ).toBe(true);
+  } finally {
+    f.socket.close();
+  }
 });

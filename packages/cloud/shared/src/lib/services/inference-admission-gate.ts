@@ -96,6 +96,14 @@ export interface InferenceAdmissionBalanceObservation {
   balanceView?: "funding";
 }
 
+/** Exact live zero-release evidence; an absent/ambiguous lease is not this proof. */
+export interface InferenceAdmissionZeroReleaseReceipt {
+  version: 1;
+  organizationId: string;
+  requestId: string;
+  state: "not_reserved" | "released_zero";
+}
+
 export interface InferenceAdmissionLease {
   organizationId: string;
   requestId: string;
@@ -1261,7 +1269,9 @@ export async function fenceInferenceAdmissionLeaseForSettlement(
 /** Release a lease only when no provider dispatch was attempted. */
 export async function releaseInferenceAdmissionLease(
   lease: InferenceAdmissionLease,
+  onTerminalZero?: (receipt: Readonly<InferenceAdmissionZeroReleaseReceipt>) => void,
 ): Promise<void> {
+  const { organizationId, requestId } = lease;
   if (lease.providerDispatched) {
     throw new InferenceAdmissionGateUnavailableError(
       "Dispatched inference work cannot be released without accounting",
@@ -1273,13 +1283,14 @@ export async function releaseInferenceAdmissionLease(
   ) {
     lease.preProviderCancellationToken = undefined;
     lease.preparedDispatch = undefined;
+    onTerminalZero?.({ version: 1, organizationId, requestId, state: "not_reserved" });
     return;
   }
   const response = await gateFetch(
-    lease.organizationId,
+    organizationId,
     "/release",
     {
-      requestId: lease.requestId,
+      requestId,
       ...(lease.preProviderCancellationToken && {
         preProviderCancellationToken: lease.preProviderCancellationToken,
       }),
@@ -1306,6 +1317,7 @@ export async function releaseInferenceAdmissionLease(
   }
   await parseLeaseTransitionResponse(response, "released");
   lease.preProviderCancellationToken = undefined;
+  onTerminalZero?.({ version: 1, organizationId, requestId, state: "released_zero" });
 }
 
 /**
@@ -1322,6 +1334,7 @@ export async function settleInferenceAdmissionLease(
    * Supplying it avoids a separate balance readback after the debit.
    */
   observedBalance?: InferenceAdmissionBalanceObservation,
+  onTerminalZero?: (receipt: Readonly<InferenceAdmissionZeroReleaseReceipt>) => void,
 ): Promise<void> {
   const balanceBackedUsd = finiteNonNegative(balanceBackedCostUsd, "balanceBackedCostUsd");
   const gateConsumedUsd = finiteNonNegative(gateConsumedCostUsd, "gateConsumedCostUsd");
@@ -1332,7 +1345,7 @@ export async function settleInferenceAdmissionLease(
   }
   if (!lease.providerDispatched) {
     if (balanceBackedUsd === 0 && gateConsumedUsd === 0) {
-      await releaseInferenceAdmissionLease(lease);
+      await releaseInferenceAdmissionLease(lease, onTerminalZero);
       return;
     }
     await markInferenceAdmissionLeaseDispatched(lease);
