@@ -15,6 +15,9 @@ test("native host transport and process lifecycle", () => {
       fileURLToPath(
         new URL("../native-host/surface-channel.test.mjs", import.meta.url),
       ),
+      fileURLToPath(
+        new URL("../native-host/surface-client.test.mjs", import.meta.url),
+      ),
     ],
     { timeout: 30000, stdio: "pipe" },
   );

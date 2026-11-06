@@ -229,7 +229,12 @@ Connections use increasing renderer epochs. Commands have bounded deadlines,
 are delivered once, and are never retried or reconnected automatically. An idle
 pull is held for `SURFACE_PULL_HOLD_MS` (10 s, below the 15 s connection expiry;
 hosts may pass a shorter `pullHoldMs`) and returns early on a new command,
-cancellation, close or account change. Account
+cancellation, close, revoke or new connection; an account change is seen at the
+next owner check, at the latest when the hold ends. The connection expiry is
+renewed when a pull arrives and when it returns, so a client has the full 15 s
+to send its next pull. The client closes the host connection as soon as it
+stops, which ends a held pull even if the request adapter cannot abort it;
+adapters should still pass the signal to their transport. Account
 replacement and close retire pending commands. Losing a delivered effect returns
 `UNCERTAIN_OUTCOME`; a receipt is not proof that the website achieved the goal.
 Complete replies up to the explicit 2 MiB transport limit are accepted; larger
