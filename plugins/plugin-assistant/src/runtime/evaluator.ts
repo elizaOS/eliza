@@ -57,6 +57,7 @@ import {
   DEFAULT_INPUT_RESERVE_TOKENS,
   ElizaError,
   emitStreamingHook,
+  extractJsonObjectSpans,
   extractJsonObjects,
   getModelFallbackChain,
   getStreamingContext,
@@ -3790,9 +3791,13 @@ function trailingEvaluatorEnvelope(text: string): EvaluatorOutput | null {
   // protocol failure and the turn ended on the lookup listing).
   const trimmed = stripTrailingJsonFence(text.trimEnd());
   if (!trimmed.endsWith("}")) return null;
-  const objects = extractJsonObjects(trimmed);
-  if (objects.length !== 1) return null;
-  const candidate = objects[0];
+  // The span scan reads the trailing object as written; the brace-count
+  // scan in `extractJsonObjects` loses it when the prose in front carries
+  // an unclosed `{` or a stray quote.
+  const spans = extractJsonObjectSpans(trimmed);
+  if (spans.length !== 1) return null;
+  const span = spans[0];
+  const candidate = span ? trimmed.slice(span.start, span.end) : undefined;
   if (!candidate || !trimmed.endsWith(candidate)) return null;
   const object = tryParseJson(candidate);
   if (!isEvaluatorEnvelopeObject(object)) return null;
@@ -3939,7 +3944,13 @@ function rejectEvaluatorInvocationMessage(
 function stripTrailingEvaluatorEnvelope(text: string): string {
   const trimmed = text.trimEnd();
   if (!trimmed.endsWith("}")) return text;
-  const candidate = extractJsonObjects(trimmed).at(-1);
+  // Same span scan as the trailing-envelope recovery above: a brace or a
+  // stray quote in the prose must not hide the envelope from the strip,
+  // or the envelope leaks into the user reply with the prose.
+  const lastSpan = extractJsonObjectSpans(trimmed).at(-1);
+  const candidate = lastSpan
+    ? trimmed.slice(lastSpan.start, lastSpan.end)
+    : undefined;
   if (!candidate || !trimmed.endsWith(candidate)) return text;
   let parsed: unknown;
   try {
