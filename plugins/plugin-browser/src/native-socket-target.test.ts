@@ -375,15 +375,12 @@ it("a cancelled request settles only when a cancel-reply peer answers that it st
     });
     await settling;
     await target.settled();
-    // A peer that never answers leaves the fence unconfirmed.
+    // A peer that never answers: the fence ends the connection, which stops
+    // every request it carried, and that teardown is the fence, so a Pause
+    // that waits on it still answers.
     await cancelOne();
-    await expect(target.settled()).rejects.toMatchObject({
-      kind: "UNCERTAIN_OUTCOME",
-      reason: "cancel-unconfirmed",
-    });
-    // An unconfirmed fence ends the connection, which stops every request it
-    // carried, so the next settle recovers without the peer's help.
-    await vi.waitFor(async () => expect(await target.available()).toBe(false));
+    await expect(target.settled()).resolves.toBeUndefined();
+    expect(await target.available()).toBe(false);
     await target.settled();
   } finally {
     socket?.destroy();
@@ -434,10 +431,9 @@ it("an unconfirmed cancel ends the fence before a renderer's Pause gives up, wit
     await rejected;
     // The peer never answers the cancel.
     const started = Date.now();
-    await expect(target.settled()).rejects.toMatchObject({
-      reason: "cancel-unconfirmed",
-    });
+    await expect(target.settled()).resolves.toBeUndefined();
     expect(Date.now() - started).toBeLessThan(RENDERER_PAUSE_TIMEOUT_MS);
+    expect(await target.available()).toBe(false);
   } finally {
     socket?.destroy();
     await target.stop();
