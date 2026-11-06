@@ -548,8 +548,10 @@ export function transitionInteractiveTask(
 		reject("Task belongs to another owner", "TASK_WRONG_OWNER");
 	if (context.expectedRevision !== previous.revision)
 		reject("Task revision changed", "TASK_CONFLICT");
-	if (context.now < previous.updatedAt)
-		reject("Task clock moved backwards", "TASK_CLOCK");
+	// The revision orders the journal and the epoch fences effects; wall time is
+	// audit data and the input to expiry. A clock that steps back must not refuse
+	// a stop, so time never moves backwards in the task: it stays at updatedAt.
+	const now = Math.max(context.now, previous.updatedAt);
 	const task = structuredClone(previous);
 	const unresolved = task.operations.find((op) =>
 		["prepared", "dispatched", "unknown"].includes(op.status),
@@ -575,7 +577,7 @@ export function transitionInteractiveTask(
 					"Resolve the previous operation before acting",
 					"TASK_UNKNOWN_OUTCOME",
 				);
-			checkObservation(task, transition.observation, context.now);
+			checkObservation(task, transition.observation, now);
 			if (unresolved?.status === "prepared") unresolved.status = "cancelled";
 			task.observation = structuredClone(transition.observation);
 			if (transition.type === "resume") task.status = "active";
@@ -619,7 +621,7 @@ export function transitionInteractiveTask(
 				origin: transition.origin,
 				checkRef: transition.checkRef,
 				epoch: task.epoch,
-				grantedAt: context.now,
+				grantedAt: now,
 				retractedAt: null,
 			});
 			task.allowedOrigins.push(transition.origin);
@@ -638,7 +640,7 @@ export function transitionInteractiveTask(
 				unresolved.status = "unknown";
 				task.status = "paused";
 			}
-			grant.retractedAt = context.now;
+			grant.retractedAt = now;
 			task.allowedOrigins = task.allowedOrigins.filter(
 				(item) => item !== transition.origin,
 			);
@@ -655,7 +657,7 @@ export function transitionInteractiveTask(
 				unresolved.status = "unknown";
 			if (transition.type === "revoke") {
 				task.authorization.state = "revoked";
-				task.authorization.revokedAt = new Date(context.now).toISOString();
+				task.authorization.revokedAt = new Date(now).toISOString();
 			}
 			if (!terminal)
 				task.status = transition.type === "cancel" ? "cancelled" : "paused";
@@ -663,7 +665,7 @@ export function transitionInteractiveTask(
 		}
 		case "prepare": {
 			validateProposal(transition.proposal);
-			checkDispatch(task, transition.proposal, context.now);
+			checkDispatch(task, transition.proposal, now);
 			if (unresolved) reject("An operation is already unresolved", "TASK_BUSY");
 			if (
 				task.operations.some((op) => op.proposal.id === transition.proposal.id)
@@ -682,7 +684,7 @@ export function transitionInteractiveTask(
 				unresolved.status !== "prepared"
 			)
 				reject("No matching prepared operation", "TASK_REPLAY");
-			checkDispatch(task, unresolved.proposal, context.now);
+			checkDispatch(task, unresolved.proposal, now);
 			unresolved.status = "dispatched";
 			task.status = "waiting";
 			break;
@@ -736,7 +738,7 @@ export function transitionInteractiveTask(
 			reject("Unknown task transition");
 	}
 	task.revision++;
-	task.updatedAt = context.now;
+	task.updatedAt = now;
 	validateInteractiveTask(task);
 	const operationId =
 		transition.type === "prepare"
@@ -759,7 +761,7 @@ export function transitionInteractiveTask(
 		sequence: task.revision,
 		epoch: task.epoch,
 		kind: transition.type,
-		at: context.now,
+		at: now,
 		status: task.status,
 		...(operationId !== undefined && {
 			operationId,
