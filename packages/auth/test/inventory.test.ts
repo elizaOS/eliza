@@ -10,6 +10,7 @@ import {
   listVaultInventory,
   profileStorageKey,
   readEntryMeta,
+  removeEntryAndDeclaredProfiles,
   removeEntryMeta,
   setEntryMeta,
 } from "../src/vault/inventory.js";
@@ -140,6 +141,30 @@ describe("inventory — persisted metadata and listings", () => {
     });
     const meta = await readEntryMeta(vault, "OPENROUTER_API_KEY");
     expect(meta?.activeProfile).toBeUndefined();
+  });
+
+  it("deletes declared profile rows and leaves an undeclared .profile. key", async () => {
+    const key = "OPENROUTER_API_KEY";
+    await vault.set(key, "parent", { sensitive: true });
+    await vault.set(profileStorageKey(key, "default"), "profile-secret", {
+      sensitive: true,
+    });
+    await vault.set(`${key}.profile.scratch`, "independent", {
+      sensitive: true,
+    });
+    await vault.set(`${key}_BACKUP`, "other-secret", { sensitive: true });
+    await setEntryMeta(vault, key, {
+      profiles: [{ id: "default", label: "Default" }],
+      activeProfile: "default",
+    });
+
+    await removeEntryAndDeclaredProfiles(vault, key);
+
+    expect(await vault.has(key)).toBe(false);
+    expect(await vault.has(profileStorageKey(key, "default"))).toBe(false);
+    expect(await vault.get(`${key}.profile.scratch`)).toBe("independent");
+    expect(await vault.get(`${key}_BACKUP`)).toBe("other-secret");
+    expect(await readEntryMeta(vault, key)).toBe(null);
   });
 
   it("removeEntryMeta drops the meta blob without touching the value", async () => {
