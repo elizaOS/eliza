@@ -9,4 +9,6 @@ ALTER TABLE "webhook_events"
  ADD COLUMN IF NOT EXISTS "delivery_completed_at" timestamp with time zone,
  ADD COLUMN IF NOT EXISTS "delivery_dead_lettered_at" timestamp with time zone;
 --> statement-breakpoint
-ALTER TABLE "webhook_events" ADD CONSTRAINT "webhook_events_delivery_lease_check" CHECK (("delivery_lease_token" IS NULL) = ("delivery_lease_expires_at" IS NULL));
+-- NOT VALID: the add skips the table scan under ACCESS EXCLUSIVE, so webhook
+-- inserts are not blocked while the hot table is checked; 0557 validates it.
+ALTER TABLE "webhook_events" ADD CONSTRAINT "webhook_events_delivery_lease_check" CHECK (("delivery_lease_token" IS NULL) = ("delivery_lease_expires_at" IS NULL)) NOT VALID;

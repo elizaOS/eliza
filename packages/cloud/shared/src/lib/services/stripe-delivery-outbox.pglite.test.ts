@@ -21,7 +21,11 @@ beforeAll(async () => {
     `CREATE TABLE webhook_events(id uuid PRIMARY KEY DEFAULT gen_random_uuid(),event_id text NOT NULL UNIQUE,provider text NOT NULL,event_type text,payload_hash text NOT NULL,source_ip text,processed_at timestamp NOT NULL DEFAULT now(),event_timestamp timestamp,
       app_billing_trigger jsonb,app_billing_completed_at timestamptz,app_billing_next_attempt_at timestamptz NOT NULL DEFAULT now(),app_billing_error_code text)`,
   );
-  for (const tag of ["0555_stripe_delivery_outbox", "0556_stripe_delivery_outbox_due_index"]) {
+  for (const tag of [
+    "0555_stripe_delivery_outbox",
+    "0556_stripe_delivery_outbox_due_index",
+    "0557_stripe_delivery_lease_check_validate",
+  ]) {
     const migration = await readFile(
       new URL(`../../db/migrations/${tag}.sql`, import.meta.url),
       "utf8",
@@ -35,6 +39,29 @@ beforeAll(async () => {
 }, 120_000);
 afterAll(async () => {
   await client.closeDatabaseConnectionsForTests();
+});
+
+test("0555 adds the lease check without a validating scan under the exclusive lock", async () => {
+  const migration = await readFile(
+    new URL("../../db/migrations/0555_stripe_delivery_outbox.sql", import.meta.url),
+    "utf8",
+  );
+  expect(migration).toContain(
+    'CHECK (("delivery_lease_token" IS NULL) = ("delivery_lease_expires_at" IS NULL)) NOT VALID;',
+  );
+  // Each migration is one transaction, so validating in 0555 would scan under its lock.
+  expect(migration).not.toContain("VALIDATE CONSTRAINT");
+  const validate = await readFile(
+    new URL("../../db/migrations/0557_stripe_delivery_lease_check_validate.sql", import.meta.url),
+    "utf8",
+  );
+  expect(validate).toContain('VALIDATE CONSTRAINT "webhook_events_delivery_lease_check"');
+  const constraint = await client
+    .getPgliteClientForTests()
+    .query<{ convalidated: boolean }>(
+      "SELECT convalidated FROM pg_constraint WHERE conname='webhook_events_delivery_lease_check'",
+    );
+  expect(constraint.rows).toEqual([{ convalidated: true }]);
 });
 
 function message(eventId = `evt_${randomUUID().replaceAll("-", "")}`): StripeEventMessage {
