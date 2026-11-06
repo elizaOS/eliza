@@ -10,6 +10,11 @@ const SESSION_TTL_SECONDS = 90;
 const REQUEST_TTL_SECONDS = 120;
 const DEFAULT_POLL_TIMEOUT_MS = 25_000;
 const DEFAULT_RESPONSE_TIMEOUT_MS = 30_000;
+// A message turn runs the agent's model and actions, so it gets the same
+// budget the gateways give a forwarded message turn (MESSAGE_FORWARD_TIMEOUT_MS
+// in gateway-webhook and gateway-discord). It stays under REQUEST_TTL_SECONDS
+// so the queued request outlives the wait.
+const MESSAGE_TURN_RESPONSE_TIMEOUT_MS = 75_000;
 const POLL_INTERVAL_MS = 500;
 
 const SESSION_KEY_PREFIX = `${ENV_PREFIX}:agent:gateway-relay:session:`;
@@ -419,7 +424,9 @@ class AgentGatewayRelayService {
   async routeToSession(
     session: AgentGatewayRelaySession,
     rpc: BridgeRequest,
-    timeoutMs = DEFAULT_RESPONSE_TIMEOUT_MS,
+    timeoutMs = rpc.method === "message.send"
+      ? MESSAGE_TURN_RESPONSE_TIMEOUT_MS
+      : DEFAULT_RESPONSE_TIMEOUT_MS,
   ): Promise<BridgeResponse> {
     const store = this.getStore();
     // Read, do not refresh: only the runtime's own register/poll/respond calls
