@@ -16,7 +16,7 @@ beforeAll(async () => {
   const sources: Array<[RegExp, string]> = [
     [
       /\/services\/inference-billing-fast-path\.ts$/,
-      `export class InferenceBalanceCacheWarmingError extends Error {}`,
+      `export class InferenceBillingUnavailableError extends Error {}`,
     ],
     [
       /\/inference-admission-recovery\.ts$/,
@@ -136,7 +136,6 @@ return {async markProviderDispatched(){bootstrap('dispatches');},async settle(co
       HYPERDRIVE: {
         connectionString: "postgres://boundary-test.invalid/not-used",
       },
-      INFERENCE_STRONG_REVOCATION_ENABLED: "false",
       CARTESIA_API_KEY: "test-provider-boundary",
       VOICE_REALTIME_CARTESIA_VOICE_ID: "test",
       // No account rate: subscription speech sizes reservations at the
