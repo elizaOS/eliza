@@ -1,17 +1,18 @@
-/** The plugin deny list reaches the assistant plugins the host builds in. */
+/**
+ * The host's plugin deny list reaches the assistant plugins it builds in, and
+ * the chat-authority settings are validated before a runtime exists.
+ */
 import { describe, expect, it } from "vitest";
 import { createAssistantPlugins } from "../src/runtime/assistant-plugins.ts";
-import { collectConfiguredDeniedPluginNames } from "../src/runtime/plugin-collector.ts";
 
 const character = { name: "Eliza", bio: [] };
 const names = (deny: string[], env: NodeJS.ProcessEnv = {}) =>
-  createAssistantPlugins(
-    character,
-    collectConfiguredDeniedPluginNames({ plugins: { deny } }, env),
-  ).map((plugin) => plugin.name);
+  createAssistantPlugins(character, { plugins: { deny } }, env).map(
+    (plugin) => plugin.name,
+  );
 
-describe("createAssistantPlugins deny", () => {
-  it("drops each member the deny list or ELIZA_SKIP_PLUGINS names", () => {
+describe("createAssistantPlugins", () => {
+  it("drops each member plugins.deny or ELIZA_SKIP_PLUGINS names", () => {
     const all = names([]);
     expect(all).toEqual(
       expect.arrayContaining([
@@ -34,12 +35,36 @@ describe("createAssistantPlugins deny", () => {
     );
   });
 
-  it.each(["@elizaos/plugin-assistant", "assistant"])(
-    "refuses to boot when %j denies the member that installs the message service",
-    (denied) => {
-      expect(() => names([denied])).toThrow(
+  it.each([
+    [["@elizaos/plugin-assistant"], {}],
+    [["assistant"], {}],
+    [[], { ELIZA_SKIP_PLUGINS: "@elizaos/plugin-assistant" }],
+  ])(
+    "refuses to boot when %j %j denies the member that installs the message service",
+    (deny, env) => {
+      expect(() => names(deny, env)).toThrow(
         expect.objectContaining({ code: "PLUGIN_DENY_UNENFORCEABLE" }),
       );
     },
   );
+
+  it.each([
+    [
+      { ELIZA_CONVERSATION_CALLER_ROLE: "user" },
+      "INVALID_CONVERSATION_CALLER_ROLE",
+    ],
+    [{ ELIZA_ACTION_ALLOWLIST: "" }, "INVALID_ACTION_ALLOWLIST"],
+    [{ ELIZA_ACTION_ALLOWLIST: "[REPLY" }, "INVALID_ACTION_ALLOWLIST"],
+  ])("refuses to boot on the malformed setting %j", (env, code) => {
+    expect(() => names([], env)).toThrow(expect.objectContaining({ code }));
+  });
+
+  it("boots with valid chat-authority settings", () => {
+    expect(
+      names([], {
+        ELIZA_CONVERSATION_CALLER_ROLE: "USER",
+        ELIZA_ACTION_ALLOWLIST: JSON.stringify(["REPLY"]),
+      }),
+    ).toContain("assistant");
+  });
 });

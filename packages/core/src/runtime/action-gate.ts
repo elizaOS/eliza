@@ -95,12 +95,20 @@ let cachedActionAllowlist:
  * exact action names, or `null` when the setting is unset (every action stays
  * subject to its own gates). Unlike `ACTION_ROLE_POLICY`, which can only set
  * minimum roles, the allowlist also refuses an OWNER caller and the agent's
- * own autonomous and trigger turns. Malformed JSON or a non-string entry
- * throws, so a broken setting never disables the allowlist.
+ * own autonomous and trigger turns. An empty value, malformed JSON or a
+ * non-string entry throws, so a broken setting never disables the allowlist.
  */
-export function readActionAllowlist(): ReadonlySet<string> | null {
-	const raw = process.env.ELIZA_ACTION_ALLOWLIST;
-	if (!raw) return null;
+export function readActionAllowlist(
+	env: NodeJS.ProcessEnv = process.env,
+): ReadonlySet<string> | null {
+	const raw = env.ELIZA_ACTION_ALLOWLIST;
+	if (raw === undefined) return null;
+	// An empty value is a policy that failed to render, not "no allowlist".
+	if (raw.trim() === "") {
+		throw new ElizaError("ELIZA_ACTION_ALLOWLIST is set but empty", {
+			code: "INVALID_ACTION_ALLOWLIST",
+		});
+	}
 	if (cachedActionAllowlist?.raw === raw) return cachedActionAllowlist.names;
 	let parsed: unknown;
 	try {

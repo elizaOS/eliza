@@ -62,7 +62,14 @@ describe("ELIZA_ACTION_ALLOWLIST", () => {
 	});
 
 	it("throws on a malformed setting instead of disabling it", () => {
-		for (const raw of ["[REPLY", '{"REPLY":true}', '["REPLY", 3]', '[""]']) {
+		for (const raw of [
+			"",
+			"  ",
+			"[REPLY",
+			'{"REPLY":true}',
+			'["REPLY", 3]',
+			'[""]',
+		]) {
 			process.env.ELIZA_ACTION_ALLOWLIST = raw;
 			expect(() => actionGateRejection(reply, {})).toThrow(
 				expect.objectContaining({ code: "INVALID_ACTION_ALLOWLIST" }),

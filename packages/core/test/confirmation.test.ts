@@ -125,9 +125,11 @@ describe("requireConfirmation", () => {
 
 	it("keeps waiting when the requesting message runs the action again", async () => {
 		const runtime = cacheRuntime();
-		const request = turn("yes, delete Ann Smith");
+		// Its text alone would confirm; only the message id tells it apart.
+		const request = turn("yes");
 		await ask(runtime, request);
 		expect((await ask(runtime, request)).status).toBe("pending");
+		expect((await ask(runtime, turn("yes"))).status).toBe("confirmed");
 	});
 });
 
