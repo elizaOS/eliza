@@ -380,8 +380,8 @@ it("a cancelled request settles only when a cancel-reply peer answers that it st
       kind: "UNCERTAIN_OUTCOME",
       reason: "cancel-unconfirmed",
     });
-    // A connection that ended stops every request it carried.
-    socket.destroy();
+    // An unconfirmed fence ends the connection, which stops every request it
+    // carried, so the next settle recovers without the peer's help.
     await vi.waitFor(async () => expect(await target.available()).toBe(false));
     await target.settled();
   } finally {
