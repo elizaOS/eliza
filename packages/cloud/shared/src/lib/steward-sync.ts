@@ -486,15 +486,16 @@ async function linkVerifiedPhoneForStewardSync(userId: string, phoneNumber: stri
  * `/api/auth/siws/verify` keeps the case-sensitive key verbatim, so the folded
  * lookup cannot see it, step 4 falls through to step 5, and the same human ends
  * up with a second Cloud account — a second wallet identity at every relying
- * party keyed on it. The discriminator is `normalizeWallet`'s: a `0x` address is
- * EVM hex, anything else is base58.
+ * party keyed on it. The discriminator is `normalizeWallet`'s: a `0x` or `0X`
+ * address is EVM hex, anything else is base58.
  */
 async function findUserByStoredWalletAddress(
   walletAddress: string,
 ): Promise<UserWithOrganization | undefined> {
-  return walletAddress.startsWith("0x")
-    ? await usersService.getByWalletAddressWithOrganization(walletAddress)
-    : await usersRepository.findBySolanaWalletAddressWithOrganization(walletAddress);
+  const stored = normalizeWallet(walletAddress);
+  return stored.startsWith("0x")
+    ? await usersService.getByWalletAddressWithOrganization(stored)
+    : await usersRepository.findBySolanaWalletAddressWithOrganization(stored);
 }
 /**
  * Sync a Steward user to the local database.
