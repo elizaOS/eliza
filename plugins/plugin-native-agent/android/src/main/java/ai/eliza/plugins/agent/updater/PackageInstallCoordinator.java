@@ -13,10 +13,6 @@ import java.util.Locale;
 /** Private native install boundary. It has no exported caller or arbitrary URL
  * input. Trusted discovery and safe-activation orchestration sit above it. */
 public abstract class PackageInstallCoordinator {
-  /** Owner-overridable default: how much older, in trusted time, the lane's last
-   * metadata refresh may be than the start of the activation run that commits.
-   * 0 means the run must refresh (NativePreparation.run) before it commits. */
-  public static final long MAX_COMMIT_STALENESS_MS=0;
   protected final Context context;
   private final UpdateJournal journal;
   protected final String signer;
@@ -44,26 +40,26 @@ public abstract class PackageInstallCoordinator {
   protected abstract void verifyRuntime(File file,byte[] runtime,String approvedHosts,String abi)throws Exception;
   protected abstract void verifyRecovery(UpdateJournal.Plan plan,long securityFloor)throws Exception;
   /** Refuses, by throwing, a plan that may no longer install: it reads trusted
-   * time now and requires an "eligible" EvaluatePreparedForCommit with no
-   * metadata refresh older than refreshedAfterLowerMs (commitFreshnessPolicy).
-   * It runs under the journal lock, so it must do no network I/O. */
-  protected abstract void verifyCommitFreshness(UpdateJournal.Plan plan,long generation,long refreshedAfterLowerMs)throws Exception;
+   * time now and requires an "eligible" EvaluatePreparedForCommit under
+   * commitFreshnessPolicy(now,floor,bounds). It runs under the journal lock, so
+   * it must do no network I/O. */
+  protected abstract void verifyCommitFreshness(UpdateJournal.Plan plan,long generation,CommitFreshness bounds)throws Exception;
   /** The policy EvaluatePreparedForCommit reads. */
-  public static byte[] commitFreshnessPolicy(QualifiedClockAnchor.Interval now,long securityFloor,long refreshedAfterLowerMs)throws org.json.JSONException {
+  public static byte[] commitFreshnessPolicy(QualifiedClockAnchor.Interval now,long securityFloor,CommitFreshness bounds)throws org.json.JSONException {
     return new org.json.JSONObject().put("trustedLowerMs",now.lower).put("trustedUpperMs",now.upper).put("securityFloor",securityFloor)
-      .put("refreshedAfterLowerMs",refreshedAfterLowerMs).toString().getBytes(java.nio.charset.StandardCharsets.UTF_8);
+      .put("refreshedAfterLowerMs",bounds.refreshedAfterLowerMs).put("commitByUpperMs",bounds.commitByUpperMs)
+      .toString().getBytes(java.nio.charset.StandardCharsets.UTF_8);
   }
   /** activationStartedLowerMs is the trusted lower bound read when the activation
-   * run began, before it refreshed metadata. */
+   * run began, before it refreshed metadata (CommitFreshness.forActivation). */
   public final int commit(File candidate,File recovery,long generation,long activationStartedLowerMs) throws Exception {
-    if(activationStartedLowerMs<1)throw new IllegalArgumentException("Activation start time required");
-    long refreshedAfter=Math.max(0,activationStartedLowerMs-MAX_COMMIT_STALENESS_MS);
+    CommitFreshness bounds=CommitFreshness.forActivation(activationStartedLowerMs);
     UpdateJournal.Snapshot state=journal.read();
     if(state.phase!=UpdateJournal.Phase.VERIFIED||state.plan==null)throw new IOException("No admitted update");
     verifyPreparedArtifacts(candidate,recovery,state.plan,generation);
     if(!state.plan.baseline.matches(installed(context,target)))throw new IOException("Installed package changed");
     UpdateJournal.FreshnessCheck fresh=(plan,current)->{
-      try{verifyCommitFreshness(plan,current,refreshedAfter);}
+      try{verifyCommitFreshness(plan,current,bounds);}
       catch(Exception refused){throw new IOException("Commit freshness rejected",refused);}
     };
     return install(candidate,state.plan.candidate,state.plan.id,generation,fresh);

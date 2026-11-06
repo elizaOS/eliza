@@ -64,6 +64,16 @@ public final class PreparationFlowTest {
    check(forward.run()==PreparationFlow.Outcome.PREPARED);check(forward.calls.equals(List.of("recoveryDecision","recoveryUnavailable:"+reason,"prune","discover","stage","verify","admit")));
   }
   Fake unknown=new Fake();unknown.current=at(UpdateJournal.Phase.RECOVERY_READY);unknown.recoveryDecision="error";check(unknown.run()==PreparationFlow.Outcome.BUSY);check(unknown.calls.equals(List.of("recoveryDecision")));
+  // Lost prepared or admission state is an error, not a decision: the wait
+  // continues and nothing is quarantined until an owner decision says otherwise.
+  Fake lost=new Fake();lost.current=at(UpdateJournal.Phase.RECOVERY_READY);lost.failAt="recoveryDecision";rejects(lost::run);check(lost.calls.equals(List.of("recoveryDecision")));
+  // A commit refreshes no earlier than its run began and commits within the run bound.
+  CommitFreshness run=CommitFreshness.forActivation(5_000);
+  check(run.refreshedAfterLowerMs==5_000-CommitFreshness.MAX_COMMIT_STALENESS_MS&&run.commitByUpperMs==5_000+CommitFreshness.MAX_ACTIVATION_RUN_MS);
+  check(CommitFreshness.MAX_COMMIT_STALENESS_MS==0&&CommitFreshness.MAX_ACTIVATION_RUN_MS==600_000);
+  check(CommitFreshness.forActivation(1).refreshedAfterLowerMs==1&&CommitFreshness.UNBOUNDED.refreshedAfterLowerMs==0&&CommitFreshness.UNBOUNDED.commitByUpperMs==0);
+  for(long start:new long[]{0,-1,QualifiedClockAnchor.MAX})
+   try{CommitFreshness.forActivation(start);throw new AssertionError("Bad activation start accepted");}catch(IllegalArgumentException expected){assertions++;}
   PreparationFlow.Fence original=idle("stable",0,BASE);
   check(!original.matches(idle("stable",1,BASE)));
   check(!original.matches(idle("stable",0,new UpdateJournal.Identity(2,"b".repeat(64)))));
