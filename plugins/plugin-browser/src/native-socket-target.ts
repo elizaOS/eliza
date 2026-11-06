@@ -475,8 +475,10 @@ export class NativeSocketBrowserTarget implements BrowserTarget {
   /**
    * Resolves once no request this target gave up on can still take effect:
    * the peer answered each one after it stopped, or the connection ended.
-   * Rejects when the peer has not answered by the reply deadline. A peer
-   * without "cancel-reply" answers nothing, so this resolves at once.
+   * Rejects when the peer has not answered by the reply deadline, and then
+   * ends the connection, which stops every request it carried, so a later
+   * call resolves once the close lands. A peer without "cancel-reply"
+   * answers nothing, so this resolves at once.
    */
   async settled(): Promise<void> {
     const entries = [...this.unsettled.values()];
@@ -487,14 +489,16 @@ export class NativeSocketBrowserTarget implements BrowserTarget {
         Promise.all(entries.map((entry) => entry.stopped)),
         new Promise<never>((_resolve, reject) => {
           timer = setTimeout(
-            () =>
+            () => {
+              this.socket?.destroy();
               reject(
                 new BrowserDispatchFailure(
                   "UNCERTAIN_OUTCOME",
                   "Chromium did not confirm that a cancelled request stopped.",
                   { targetId: this.id, reason: "cancel-unconfirmed" },
                 ),
-              ),
+              );
+            },
             Math.max(
               0,
               ...entries.map((entry) => entry.expiresAt - Date.now()),

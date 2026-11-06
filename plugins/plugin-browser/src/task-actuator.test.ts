@@ -116,4 +116,52 @@ describe("NativeTaskActuator cleanup", () => {
       "cancel unconfirmed",
     );
   });
+
+  it("hides guidance even when the browser cannot confirm the fence", async () => {
+    const fail = () => {
+      throw new Error("unexpected call");
+    };
+    const calls: string[] = [];
+    const guideTask = async (input: { kind: string }) => {
+      calls.push(input.kind);
+      return { visible: false };
+    };
+    const actuator = new NativeTaskActuator({
+      target: {
+        bindTask: fail,
+        execute: fail,
+        guideTask: guideTask as never,
+        settled: async () => {
+          calls.push("settled");
+          throw new Error("cancel unconfirmed");
+        },
+      },
+      getTask: fail,
+      policy: fail,
+      nextBindingRevision: fail,
+      resolveValue: fail,
+      verify: fail,
+      recordEvidence: fail,
+    });
+    const owner = {
+      actorId: "actor",
+      agentId: "agent",
+      connector: { source: "browser", accountId: "account" },
+    };
+    // Seed the state a shown guidance leaves behind.
+    const state = actuator as unknown as {
+      bindings: Map<string, unknown>;
+      activeGuidance: Set<string>;
+    };
+    state.bindings.set("task-1", {
+      context: { actorId: "actor", accountId: "account", agentId: "agent" },
+      policy: { tabId: "tab-1" },
+    });
+    state.activeGuidance.add("task-1");
+    await expect(actuator.quiesce({ owner, taskId: "task-1" })).rejects.toThrow(
+      "cancel unconfirmed",
+    );
+    expect(calls).toEqual(["hide", "settled"]);
+    expect(state.activeGuidance.has("task-1")).toBe(false);
+  });
 });
