@@ -1,7 +1,6 @@
 /** Authenticates image requests and delegates the canonical Cloud image transaction. */
 
 import {
-  ApiError,
   failureResponse,
   jsonError,
 } from "@elizaos/cloud-shared/lib/api/cloud-worker-errors";

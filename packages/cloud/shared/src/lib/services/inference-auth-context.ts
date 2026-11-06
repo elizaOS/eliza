@@ -57,11 +57,11 @@ import {
 } from "./inference-auth-cache";
 import {
   assertInferenceCredentialActive,
+  hasInferenceRevocationBoundary,
   type InferenceCredentialCheck,
   InferenceCredentialRevocationUnavailableError,
   InferenceCredentialRevokedError,
   inferenceCredentialRevocationReason,
-  hasInferenceRevocationBoundary,
 } from "./inference-credential-revocation";
 import { isInferencePolicyAdmissionEnabled } from "./inference-funded-budget-admission";
 import { resolveInferenceSessionAuthContext } from "./inference-session-auth-context";

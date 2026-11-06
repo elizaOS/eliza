@@ -31,9 +31,7 @@ import {
   resolveAiProviderSource,
 } from "@elizaos/cloud-shared/lib/providers/language-model";
 import { billUsage } from "@elizaos/cloud-shared/lib/services/ai-billing";
-import {
-  AiPricingCacheUnavailableError,
-} from "@elizaos/cloud-shared/lib/services/ai-pricing/cache";
+import { AiPricingCacheUnavailableError } from "@elizaos/cloud-shared/lib/services/ai-pricing/cache";
 import {
   type AnonymousChatGateCredential,
   type AnonymousChatGateLease,

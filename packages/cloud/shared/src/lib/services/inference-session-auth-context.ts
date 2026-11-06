@@ -35,9 +35,9 @@ import {
 } from "./inference-auth-cache";
 import {
   assertInferenceCredentialActive,
+  hasInferenceRevocationBoundary,
   type InferenceCredentialCheck,
   InferenceCredentialRevokedError,
-  hasInferenceRevocationBoundary,
 } from "./inference-credential-revocation";
 
 interface SessionHydration {

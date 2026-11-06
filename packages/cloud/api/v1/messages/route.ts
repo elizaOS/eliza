@@ -50,9 +50,7 @@ import {
   type RecordSettledInferenceBillingInput,
   recordSettledInferenceBilling,
 } from "@elizaos/cloud-shared/lib/services/ai-billing-settled";
-import {
-  AiPricingCacheUnavailableError,
-} from "@elizaos/cloud-shared/lib/services/ai-pricing/cache";
+import { AiPricingCacheUnavailableError } from "@elizaos/cloud-shared/lib/services/ai-pricing/cache";
 import type { PricingBillingSource } from "@elizaos/cloud-shared/lib/services/ai-pricing-definitions";
 import { appCreditsService } from "@elizaos/cloud-shared/lib/services/app-credits";
 import {

@@ -402,11 +402,11 @@ test(
               policyGeneration?: string;
             };
             if (path === "/policy-fence/begin") {
-              pending.add(body.mutationId!);
+              pending.add(String(body.mutationId));
               return Response.json({ blocked: true });
             }
             if (path === "/policy-fence/commit" || path === "/policy-fence/abort") {
-              pending.delete(body.mutationId!);
+              pending.delete(String(body.mutationId));
               if (path === "/policy-fence/commit" && body.policyGeneration)
                 floor = BigInt(body.policyGeneration) > floor ? BigInt(body.policyGeneration) : floor;
               return Response.json({ committed: true });

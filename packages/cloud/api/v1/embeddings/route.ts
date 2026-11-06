@@ -294,7 +294,8 @@ app.post("/", async (c) => {
         return c.json(
           {
             error: {
-              message: "Organization rate-limit policy is unavailable. Retry shortly.",
+              message:
+                "Organization rate-limit policy is unavailable. Retry shortly.",
               type: "service_unavailable",
               code: "rate_limit_unavailable",
             },

@@ -70,8 +70,7 @@ mock.module(`${lib}/services/usage`, () => ({
 mock.module(`${lib}/utils/logger`, () => ({
   logger: { debug() {}, info() {}, warn() {}, error() {} },
 }));
-mock.module(`${lib}/services/inference-admission-gate`, () => ({
-}));
+mock.module(`${lib}/services/inference-admission-gate`, () => ({}));
 mock.module(`${lib}/services/inference-billing-fast-path`, () => ({
   InferenceBillingUnavailableError: class extends Error {},
 }));

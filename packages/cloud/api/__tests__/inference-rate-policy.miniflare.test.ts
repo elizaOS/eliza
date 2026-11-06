@@ -320,5 +320,4 @@ describe("flags", () => {
       await disabled.dispose();
     }
   });
-
 });

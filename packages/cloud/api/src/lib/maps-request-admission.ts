@@ -4,8 +4,8 @@ import { readStewardSessionToken } from "@elizaos/cloud-shared/auth";
 import { verifyStewardTokenCached } from "@elizaos/cloud-shared/lib/auth/steward-client";
 import { callMapsRequestAllowance } from "@elizaos/cloud-shared/lib/services/inference-admission-gate";
 import {
-  type InferenceCredentialCheck,
   hasInferenceRevocationBoundary,
+  type InferenceCredentialCheck,
 } from "@elizaos/cloud-shared/lib/services/inference-credential-revocation";
 import type { MapsOperation } from "@elizaos/cloud-shared/lib/services/maps/contract";
 import type {
@@ -64,7 +64,9 @@ export async function admitMapsRequest(
   operation: MapsOperation,
 ): Promise<MapsCompletion> {
   if (
-    !hasInferenceRevocationBoundary(c.env as unknown as Record<string, unknown>) ||
+    !hasInferenceRevocationBoundary(
+      c.env as unknown as Record<string, unknown>,
+    ) ||
     !caller.credential
   )
     throw new MapsAdmissionError(

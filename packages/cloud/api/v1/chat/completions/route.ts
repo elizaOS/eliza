@@ -82,9 +82,7 @@ import {
   type recordUsageAnalytics,
 } from "@elizaos/cloud-shared/lib/services/ai-billing";
 import { recordSettledInferenceBilling } from "@elizaos/cloud-shared/lib/services/ai-billing-settled";
-import {
-  AiPricingCacheUnavailableError,
-} from "@elizaos/cloud-shared/lib/services/ai-pricing/cache";
+import { AiPricingCacheUnavailableError } from "@elizaos/cloud-shared/lib/services/ai-pricing/cache";
 import type { PricingBillingSource } from "@elizaos/cloud-shared/lib/services/ai-pricing-definitions";
 import { appCreditsService } from "@elizaos/cloud-shared/lib/services/app-credits";
 import {
@@ -114,10 +112,10 @@ import {
 import { InferenceBillingUnavailableError } from "@elizaos/cloud-shared/lib/services/inference-billing-fast-path";
 import {
   assertInferenceCredentialActive,
+  hasInferenceRevocationBoundary,
   type InferenceCredentialCheck,
   InferenceCredentialRevokedError,
   inferenceCredentialRevocationReason,
-  hasInferenceRevocationBoundary,
 } from "@elizaos/cloud-shared/lib/services/inference-credential-revocation";
 import { isFundedBudgetAdmissionEnabled } from "@elizaos/cloud-shared/lib/services/inference-funded-budget-admission";
 import {
@@ -2161,7 +2159,8 @@ export async function handleChatCompletionsPOST(
             Response.json(
               {
                 error: {
-                  message: "Billing authorization is unavailable. Retry shortly.",
+                  message:
+                    "Billing authorization is unavailable. Retry shortly.",
                   type: "service_unavailable",
                   code: "billing_unavailable",
                   details: { dependency },

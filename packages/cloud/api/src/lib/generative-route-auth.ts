@@ -11,9 +11,7 @@ import type {
   FlatBillingCost,
 } from "@elizaos/cloud-shared/lib/services/ai-billing";
 import type { PricingCacheReadOptions } from "@elizaos/cloud-shared/lib/services/ai-pricing/cache";
-import {
-  AiPricingCacheUnavailableError,
-} from "@elizaos/cloud-shared/lib/services/ai-pricing/cache";
+import { AiPricingCacheUnavailableError } from "@elizaos/cloud-shared/lib/services/ai-pricing/cache";
 import type { GenerativeOperationContext } from "@elizaos/cloud-shared/lib/services/generative-operation";
 import type {
   InferenceAdmissionSnapshot,
