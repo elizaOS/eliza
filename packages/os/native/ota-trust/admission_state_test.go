@@ -169,6 +169,35 @@ func TestRememberedRevocationsCannotDisappear(t *testing.T) {
 	}
 }
 
+// A version 1 state with no lanes, exactly as InitializeAdmissionState wrote
+// it before Refreshed existed, still reads and evaluates.
+func TestRememberedAdmissionReadsEmptyVersion1State(t *testing.T) {
+	dir, v := rememberedFixture(t)
+	current, err := readAdmission(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(current.Lanes) != 0 {
+		t.Fatalf("fixture already has lanes: %+v", current.Lanes)
+	}
+	legacy := admissionStateV1{Version: 1, Repository: current.Repository, Distribution: current.Distribution, Lanes: map[string]admissionFloorV1{}}
+	hash, _ := admissionHash(legacy)
+	data, _ := json.Marshal(admissionEnvelopeV1{State: legacy, Hash: hash})
+	if err = os.WriteFile(filepath.Join(dir, "admission.json"), data, 0600); err != nil {
+		t.Fatal(err)
+	}
+	stored, err := readAdmission(dir)
+	if err != nil || stored.Version != admissionStateVersion || len(stored.Lanes) != 0 {
+		t.Fatalf("empty version 1 state: %+v %v", stored, err)
+	}
+	if result, err := EvaluateRememberedReleaseInterval(dir, v.Release, v.Device, v.Policy); err != nil || result.Decision != "eligible" {
+		t.Fatalf("empty version 1 state: %+v %v", result, err)
+	}
+	if stored, err = readAdmission(dir); err != nil || stored.Version != admissionStateVersion || len(stored.Lanes) != 1 {
+		t.Fatalf("not stored as version 2: %+v %v", stored, err)
+	}
+}
+
 // A state stored before Refreshed existed (version 1) still evaluates. Its
 // lanes read as never refreshed, and the next fetch records a refresh and
 // stores version 2.

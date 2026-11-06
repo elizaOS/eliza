@@ -198,6 +198,10 @@ func readAdmission(directory string) (*admissionState, error) {
 	if err != nil {
 		return nil, err
 	}
+	// Dispatch on the stored version, not on whether the version 2 decode
+	// fails: a version 1 state with no lanes (as InitializeAdmissionState
+	// wrote it before Refreshed existed) decodes and hashes the same under
+	// both shapes.
 	var envelope admissionEnvelope
 	if err = decodeAdmission(data, &envelope); err != nil {
 		legacy, e := readAdmissionV1(data)
@@ -207,6 +211,12 @@ func readAdmission(directory string) (*admissionState, error) {
 		envelope = *legacy
 	} else if digest, e := admissionHash(envelope.State); e != nil || digest != envelope.Hash {
 		return nil, errors.New("admission state checksum mismatch")
+	} else if envelope.State.Version == 1 {
+		legacy, e := readAdmissionV1(data)
+		if e != nil {
+			return nil, e
+		}
+		envelope = *legacy
 	}
 	s := envelope.State
 	if s.Version != admissionStateVersion || !matches(s.Repository, repositoryPattern) || !contains([]string{"launcher", "standalone"}, s.Distribution) || len(s.Lanes) > 2 {
