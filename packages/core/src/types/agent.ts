@@ -97,3 +97,27 @@ export interface Agent extends Character {
 	/** Arbitrary metadata persisted alongside the agent record. */
 	metadata?: Record<string, unknown>;
 }
+
+// --- DACS-Standard (§9.5.7 X402-1..X402-4 & §14.4 DACS-4 Settle) Pre-Flight Guardrail ---
+
+export interface DacsMandateMeta {
+  dacsMandate?: string;
+  dacsSessionId?: string;
+  dacsMaxAmount?: string | bigint;
+}
+
+export function assertDacsSpendMandate(
+  requestedAmount: bigint | string,
+  meta?: DacsMandateMeta
+): void {
+  if (!meta?.dacsMandate && !meta?.dacsSessionId) return; // Unmanaged standard calls pass through
+  
+  const reqAmt = BigInt(requestedAmount);
+  const maxAllowed = BigInt(meta.dacsMaxAmount ?? '0');
+
+  if (meta.dacsMaxAmount !== undefined && reqAmt > maxAllowed) {
+    throw new Error(
+      `[DACS-Standard §9.5.7] Agent action aborted: requested amount (${reqAmt}) exceeds authorized mandate ceiling (${maxAllowed}).`
+    );
+  }
+}
