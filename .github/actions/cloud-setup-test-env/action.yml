@@ -71,13 +71,22 @@ runs:
       if: inputs.setup-db == 'true' && inputs.db-backend == 'postgres'
       shell: bash
       run: |
+        set -euo pipefail
+        endpoint="$(docker context inspect --format '{{json .Endpoints.docker.Host}}')"
+        [[ "$endpoint" == '"unix://'* ]] || { echo 'Remote Docker context refused' >&2; exit 1; }
+        if [[ -n "${DOCKER_HOST:-}" && "$DOCKER_HOST" != unix://* ]]; then exit 1; fi
         docker rm -f eliza-cloud-test-postgres >/dev/null 2>&1 || true
-        docker run \
+        container_id="$(docker run \
           --name eliza-cloud-test-postgres \
+          --label "eliza.e2e.run=$GITHUB_RUN_ID" \
+          --label "eliza.e2e.job=$GITHUB_JOB" \
+          --label "eliza.e2e.attempt=$GITHUB_RUN_ATTEMPT" \
           -e POSTGRES_HOST_AUTH_METHOD=trust \
           -e POSTGRES_DB=postgres \
           -p 5432:5432 \
-          -d pgvector/pgvector:pg16
+          -d pgvector/pgvector:pg16)"
+        [[ "$container_id" =~ ^[a-f0-9]{64}$ ]] || exit 1
+        printf 'CLOUD_E2E_CREATED_CONTAINER_ID=%s\n' "$container_id" >> "$GITHUB_ENV"
         timeout 60 bash -c 'until docker exec eliza-cloud-test-postgres pg_isready -U postgres -d postgres; do sleep 0.5; done'
 
         for attempt in {1..120}; do
@@ -112,3 +121,19 @@ runs:
         DATABASE_URL: postgresql://postgres@127.0.0.1:5432/postgres
         TEST_DATABASE_URL: postgresql://postgres@127.0.0.1:5432/postgres
       run: bun run db:migrate
+
+    - name: Bind the job-owned PostgreSQL fixture database
+      if: inputs.setup-db == 'true' && inputs.db-backend == 'postgres'
+      shell: bash
+      run: |
+        set -euo pipefail
+        node --input-type=module <<'NODE'
+        import {execFileSync} from 'node:child_process';
+        import {writeFileSync} from 'node:fs';
+        import {join} from 'node:path';
+        const id=process.env.CLOUD_E2E_CREATED_CONTAINER_ID;
+        if(!/^[a-f0-9]{64}$/.test(id))throw Error('Missing owned PostgreSQL container');
+        const path=join(process.env.RUNNER_TEMP,`groupd-db-${process.env.GITHUB_RUN_ID}-${process.env.GITHUB_RUN_ATTEMPT}.json`);
+        writeFileSync(path,JSON.stringify({version:1,kind:'job-owned-postgres',containerId:id,containerName:'eliza-cloud-test-postgres',databaseUrl:'postgresql://postgres@127.0.0.1:5432/postgres',runId:process.env.GITHUB_RUN_ID,job:process.env.GITHUB_JOB,attempt:process.env.GITHUB_RUN_ATTEMPT,createdAt:Date.now()}),{flag:'wx',mode:0o600});
+        writeFileSync(process.env.GITHUB_ENV,`CLOUD_E2E_DATABASE_AUTHORITY=${path}\n`,{flag:'a'});
+        NODE

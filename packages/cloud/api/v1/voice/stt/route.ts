@@ -1,4 +1,3 @@
-import { ElevenLabsError } from "@elevenlabs/elevenlabs-js";
 import {
   CLOUDFLARE_STT_MODEL,
   CloudflareSpeechError,
@@ -11,6 +10,7 @@ import {
  */
 
 import {
+  elevenLabsSdkErrorStatus,
   isKnownUnacceptedProviderError,
   isKnownUnacceptedProviderStatus,
 } from "@elizaos/cloud-shared/lib/services/inference-provider-outcome";
@@ -59,7 +59,6 @@ import {
   InsufficientCreditsError,
 } from "@elizaos/cloud-shared/lib/services/credits";
 import { deferredCredentialAdmissionGuard } from "@elizaos/cloud-shared/lib/services/deferred-credential-admission-guard";
-import { getElevenLabsService } from "@elizaos/cloud-shared/lib/services/elevenlabs";
 import { usageService } from "@elizaos/cloud-shared/lib/services/usage";
 import { logger } from "@elizaos/cloud-shared/lib/utils/logger";
 import { fileTypeFromBuffer } from "file-type";
@@ -70,6 +69,7 @@ import {
   getGenerativeExecutionContext,
   getGenerativePricingCacheOptions,
   requireGenerativeRouteCaller,
+  timeSpeechPhase,
 } from "@/api-app/lib/generative-route-auth";
 import {
   calculateCartesiaSttCost,
@@ -514,9 +514,8 @@ async function transcribeRequest(c: AppContext, timings: ServerTimingMetric[]) {
     }
 
     const uploadStartedAt = performance.now();
-    const sizeCheckedRequest = await readRequestWithMultipartLimit(
-      request,
-      multipartBodyLimit,
+    const sizeCheckedRequest = await timeSpeechPhase(c, "upload_read", () =>
+      readRequestWithMultipartLimit(request, multipartBodyLimit),
     );
     timings.push({
       name: "upload",
@@ -535,7 +534,6 @@ async function transcribeRequest(c: AppContext, timings: ServerTimingMetric[]) {
       await requireGenerativeRouteCaller(c, {
         compatibility: "raw",
         rateLimitEndpoint: "strict",
-        awaitWarmingMs: 1500,
         deferStrongCredentialCheck: true,
       }).finally(() => {
         timings.push({
@@ -560,7 +558,9 @@ async function transcribeRequest(c: AppContext, timings: ServerTimingMetric[]) {
 
     let formData: FormData;
     try {
-      formData = await request.formData();
+      formData = await timeSpeechPhase(c, "multipart_decode", () =>
+        request.formData(),
+      );
     } catch (error) {
       // error-policy:J3 malformed multipart bytes are explicit invalid input.
       logger.warn("[Voice STT API] Invalid multipart form data", {
@@ -614,8 +614,12 @@ async function transcribeRequest(c: AppContext, timings: ServerTimingMetric[]) {
       );
     }
 
-    const buffer = Buffer.from(await audioFile.arrayBuffer());
-    const fileTypeResult = await fileTypeFromBuffer(buffer);
+    const buffer = Buffer.from(
+      await timeSpeechPhase(c, "audio_buffer", () => audioFile.arrayBuffer()),
+    );
+    const fileTypeResult = await timeSpeechPhase(c, "audio_sniff", () =>
+      fileTypeFromBuffer(buffer),
+    );
 
     if (!fileTypeResult) {
       logger.warn("[Voice STT API] Unable to detect audio file type", {
@@ -664,7 +668,9 @@ async function transcribeRequest(c: AppContext, timings: ServerTimingMetric[]) {
     let billingEstimate: SttBillingEstimate | undefined;
     const getBillingEstimate = async (): Promise<SttBillingEstimate> => {
       if (billingEstimate) return billingEstimate;
-      const metadata = await parseBuffer(buffer, { mimeType: finalMimeType });
+      const metadata = await timeSpeechPhase(c, "audio_metadata", () =>
+        parseBuffer(buffer, { mimeType: finalMimeType }),
+      );
       const parsedDurationSeconds = metadata.format?.duration;
       const durationSeconds = Number.isFinite(parsedDurationSeconds)
         ? Math.max(parsedDurationSeconds ?? 0, 1)
@@ -802,10 +808,32 @@ async function transcribeRequest(c: AppContext, timings: ServerTimingMetric[]) {
         const rejected =
           rejectedStatus !== undefined &&
           isKnownUnacceptedProviderStatus(rejectedStatus);
-        await (providerWorkMayHaveStarted && settleUnknown && !rejected
-          ? settleUnknown()
-          : reservation.reconcile(0));
+        const settlement =
+          providerWorkMayHaveStarted && settleUnknown && !rejected
+            ? settleUnknown()
+            : reservation.reconcile(0);
         reservation = undefined;
+        // An unknown-outcome debit writes Postgres; on the Worker it runs off
+        // the response path under `waitUntil` like every other settlement.
+        const failureExecutionCtx = getGenerativeExecutionContext(c);
+        if (failureExecutionCtx) {
+          failureExecutionCtx.waitUntil(
+            Promise.resolve(settlement).catch((error: unknown) => {
+              // error-policy:J7 the failure response is already decided; the
+              // lease alarm remains the durable recovery for this settlement.
+              logger.error(
+                "[Voice STT API] Failed-transcription settlement failed",
+                {
+                  error: error instanceof Error ? error.message : String(error),
+                  traceId:
+                    c.get("traceId") ?? c.get("requestId") ?? "unavailable",
+                },
+              );
+            }),
+          );
+        } else {
+          await settlement;
+        }
         logger.warn("[Voice STT API] Settled failed paid transcription", {
           provider: "deepgram",
           providerDispatchState: providerWorkMayHaveStarted
@@ -1040,10 +1068,32 @@ async function transcribeRequest(c: AppContext, timings: ServerTimingMetric[]) {
         const rejected =
           rejectedStatus !== undefined &&
           isKnownUnacceptedProviderStatus(rejectedStatus);
-        await (providerWorkMayHaveStarted && settleUnknown && !rejected
-          ? settleUnknown()
-          : reservation.reconcile(0));
+        const settlement =
+          providerWorkMayHaveStarted && settleUnknown && !rejected
+            ? settleUnknown()
+            : reservation.reconcile(0);
         reservation = undefined;
+        // An unknown-outcome debit writes Postgres; on the Worker it runs off
+        // the response path under `waitUntil` like every other settlement.
+        const failureExecutionCtx = getGenerativeExecutionContext(c);
+        if (failureExecutionCtx) {
+          failureExecutionCtx.waitUntil(
+            Promise.resolve(settlement).catch((error: unknown) => {
+              // error-policy:J7 the failure response is already decided; the
+              // lease alarm remains the durable recovery for this settlement.
+              logger.error(
+                "[Voice STT API] Failed-transcription settlement failed",
+                {
+                  error: error instanceof Error ? error.message : String(error),
+                  traceId:
+                    c.get("traceId") ?? c.get("requestId") ?? "unavailable",
+                },
+              );
+            }),
+          );
+        } else {
+          await settlement;
+        }
         logger.warn("[Voice STT API] Settled failed paid transcription", {
           provider: "cartesia",
           providerDispatchState: providerWorkMayHaveStarted
@@ -1409,6 +1459,11 @@ async function transcribeRequest(c: AppContext, timings: ServerTimingMetric[]) {
     settleUnknown = admission.settleUnknown;
     markProviderDispatched = admission.markProviderDispatched;
 
+    // Only this lane loads the ElevenLabs SDK, so cold requests on the other
+    // providers do not evaluate its module graph.
+    const { getElevenLabsService } = await import(
+      "@elizaos/cloud-shared/lib/services/elevenlabs"
+    );
     const elevenlabs = getElevenLabsService(env);
 
     const startTime = performance.now();
@@ -1515,8 +1570,7 @@ async function transcribeRequest(c: AppContext, timings: ServerTimingMetric[]) {
     if (reservation) {
       // A clear provider rejection (the ElevenLabs SDK error carries the HTTP
       // status) proves nothing was transcribed.
-      const rejectedStatus =
-        error instanceof ElevenLabsError ? error.statusCode : undefined;
+      const rejectedStatus = elevenLabsSdkErrorStatus(error);
       const rejected =
         isKnownUnacceptedProviderError(error) ||
         (rejectedStatus !== undefined &&
@@ -1546,7 +1600,18 @@ async function transcribeRequest(c: AppContext, timings: ServerTimingMetric[]) {
         "toJSON" in apiError && typeof apiError.toJSON === "function"
           ? apiError.toJSON()
           : { error: apiError.message };
-      return Response.json(serialized, { status: apiError.status ?? 500 });
+      // Retryable refusals (cache warming) carry the header clients retry on.
+      return Response.json(serialized, {
+        status: apiError.status ?? 500,
+        ...("retryAfterSeconds" in serialized &&
+        typeof serialized.retryAfterSeconds === "number"
+          ? {
+              headers: {
+                "Retry-After": String(serialized.retryAfterSeconds),
+              },
+            }
+          : {}),
+      });
     }
 
     if (error instanceof CloudflareSpeechError) {
