@@ -6,6 +6,7 @@ import {
   TASK_ACTION_NOT_DISPATCHED,
   type TaskActionProposal,
   type TaskObservation,
+  type TaskOutcome,
   type TaskOwner,
 } from "@elizaos/core/protocol";
 import {
@@ -239,10 +240,7 @@ export class NativeTaskActuator {
         task: InteractiveTask,
         proposal: TaskActionProposal,
         snapshot: TaskBrowserSnapshot,
-      ) => Promise<
-        | { status: "succeeded" | "failed"; evidenceRef: string }
-        | { status: "unknown"; evidenceRef?: string }
-      >;
+      ) => Promise<TaskOutcome>;
       now?: () => number;
       /** Product display name for the browser overlay; host configuration. */
       assistantName?: string;
@@ -736,10 +734,7 @@ export class NativeTaskActuator {
       signal: AbortSignal;
       isCurrent: () => boolean;
     },
-  ): Promise<
-    | { status: "succeeded" | "failed"; evidenceRef: string }
-    | { status: "unknown"; evidenceRef?: string }
-  > {
+  ): Promise<TaskOutcome> {
     const task = this.options.getTask(proposal.taskId);
     const operation = task.operations.find(
       (op) => op.proposal.id === proposal.id,
@@ -788,10 +783,7 @@ export class NativeTaskActuator {
       signal: AbortSignal;
       isCurrent: () => boolean;
     },
-  ): Promise<
-    | { status: "succeeded" | "failed"; evidenceRef: string }
-    | { status: "unknown"; evidenceRef?: string }
-  > {
+  ): Promise<TaskOutcome> {
     let prepared: Awaited<ReturnType<NativeTaskActuator["prepareDispatch"]>>;
     try {
       prepared = await this.prepareDispatch(proposal, context);
