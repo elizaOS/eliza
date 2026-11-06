@@ -550,7 +550,9 @@ export async function initWalletProvider(runtime: IAgentRuntime): Promise<Wallet
       );
     }
 
-    return new LazyTeeWalletProvider(runtime, walletSecretSaltRaw, chains, rpcConfigs);
+    const provider = new LazyTeeWalletProvider(runtime, walletSecretSaltRaw, chains, rpcConfigs);
+    await provider.initialize();
+    return provider;
   }
 
   const privateKeyRaw = runtime.getSetting("EVM_PRIVATE_KEY");
@@ -595,6 +597,11 @@ class LazyTeeWalletProvider extends WalletProvider {
     }
 
     await this.initPromise;
+  }
+
+  /** Initialize the TEE wallet before first use. Call once after construction. */
+  async initialize(): Promise<void> {
+    await this.ensureInitialized();
   }
 
   private async initializeTeeWallet(): Promise<void> {
