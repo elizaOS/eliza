@@ -68,6 +68,7 @@ public class PasswordTransferPlugin extends Plugin {
   private Transfer begin(PluginCall call, boolean exporting) {
     if (destroyed || getActivity() == null || getActivity().isFinishing()) { call.reject("Saved passwords are unavailable", "unavailable"); return null; }
     if (active != null) { call.reject("Finish the current password transfer first", "busy"); return null; }
+    if (!PasswordVaultAccess.admitted(getContext())) { call.reject("Saved passwords are not available here", "not-admitted"); return null; }
     try { active = new Transfer(call, PasswordVaultAccess.get(getContext()), exporting); return active; }
     catch (Exception unavailable) { call.reject("Saved passwords are unavailable", "unavailable"); return null; }
   }
