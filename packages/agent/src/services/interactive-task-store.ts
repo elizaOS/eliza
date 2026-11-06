@@ -447,7 +447,9 @@ export class SqliteInteractiveTaskStore {
    * The owner accepts that the task's unresolved operation stays unknown, for
    * example after sign-out revoked the readback. The task is cancelled if it
    * was not, the operation keeps status "unknown" and nothing records success.
-   * Only the slot is released, so a new task can start.
+   * Only the slot is released, so a new task can start. It is refused while
+   * the authorization is active: readback can still settle the outcome, and
+   * a new task could repeat an effect that already happened. Revoke first.
    */
   acknowledgeUnknown(id: string, context: TaskContext): InteractiveTask {
     return this.transaction(() => {
@@ -458,6 +460,8 @@ export class SqliteInteractiveTaskStore {
       const operation = task.operations.find((op) => op.status === "unknown");
       if (!operation || this.acknowledged(id, operation.proposal.id))
         fail("No unknown operation to acknowledge", "TASK_REPLAY");
+      if (task.authorization.state !== "revoked")
+        fail("Readback can still resolve this outcome", "TASK_UNKNOWN_OUTCOME");
       if (!["completed", "cancelled"].includes(task.status)) {
         const result = transitionInteractiveTask(task, context, {
           type: "cancel",

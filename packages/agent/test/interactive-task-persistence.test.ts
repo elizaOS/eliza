@@ -197,6 +197,15 @@ describe("durable interactive task journal", () => {
         expiresAt: 1_000_000,
       });
       expect(task.operations[0].status).toBe("unknown");
+      // While the authorization is active, readback can still settle the
+      // outcome, so the owner cannot release the slot and repeat the effect.
+      expect(() => runtime.acknowledgeUnknown(task.id, task.revision)).toThrow(
+        expect.objectContaining({ code: "TASK_UNKNOWN_OUTCOME" }),
+      );
+      expect(runtime.get(task.id).revision).toBe(task.revision);
+      expect(() => runtime.create({ ...input, id: "task-2" })).toThrow(
+        /unfinished/,
+      );
       // Sign-out revokes the task, and readback needs an active authorization.
       task = runtime.control(task.id, task.revision, "revoke");
       await expect(
