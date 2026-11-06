@@ -133,6 +133,12 @@ test("speech request gate admits one request, drains cancellation and refuses af
     "SpeechRequestGateTest",
     /^PASS speech request gate/,
   ));
+test("recognizer availability keeps answers, retries unanswered probes and holds demotes", () =>
+  run(
+    ["RecognizerAvailability"],
+    "RecognizerAvailabilityTest",
+    /^PASS recognizer availability/,
+  ));
 test("latency trials link one turn from last user audio to audible playback", () =>
   run(
     ["LiveVadGate", "VoiceLatencyTrials"],
