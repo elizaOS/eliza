@@ -29,7 +29,8 @@ import org.json.JSONObject;
  *   <li>{@link #stop} applies the Stop cutoff to the pipe immediately and reports whether the agent
  *       acknowledged the server-side close; discard drops the captured tail.
  *   <li>{@link #cancelAll} (pause, destroy) discards everything; {@link #interrupt} ends the running
- *       capture with a reason (for example a phone call) without blocking the caller.
+ *       capture with a reason (for example a phone call) without blocking the caller. Either one,
+ *       even with no capture running, refuses an automatic reopen until a user-initiated start.
  * </ul>
  *
  * No Capacitor types: hosts adapt {@link Host}, {@link Started} and {@link Stopped} to their bridge.
@@ -68,6 +69,7 @@ public final class LiveCaptureController {
  private final Map<String,LiveSegmentPipe> pipes=new ConcurrentHashMap<>();
  private LiveVoiceCapture live; // Confined to worker.
  private volatile LiveVoiceCapture current; // The running capture, for interruption off worker.
+ private volatile String interrupted; // A call or pause since this host's last capture: an automatic reopen is refused.
 
  public LiveCaptureController(Host host){this.host=host;}
 
@@ -78,11 +80,16 @@ public final class LiveCaptureController {
 
  /**
   * Starts the reserved capture on the capture worker. With a {@code route}, VAD segments go to the
-  * agent session {@code ticket.id} (room {@code roomId}) instead of the host.
+  * agent session {@code ticket.id} (room {@code roomId}) instead of the host. A {@code reopen} (the
+  * automatic reopen after a busy hold) is refused after a call or pause since the last capture; a
+  * user-initiated start clears that.
   */
- public void start(LiveCaptureAdmission.Ticket ticket,boolean echoCancel,Route route,String roomId,Started result){
+ public void start(LiveCaptureAdmission.Ticket ticket,boolean echoCancel,Route route,String roomId,boolean reopen,Started result){
   final String id=ticket.id;final long epoch=ticket.epoch;
   submit(worker,()->{
+   String since=interrupted;
+   if(reopen&&since!=null){result.refused(CANCELLED.equals(since)?CANCELLED:"Voice was interrupted",CANCELLED.equals(since)?null:since);return;}
+   if(!reopen)interrupted=null;
    if(!host.open(epoch)||!admission.current(ticket)){result.refused(CANCELLED,null);return;}
    if(live!=null){String old=live.captureId();live.stop();live=null;current=null;closePipe(old,true,now());}
    final LiveSegmentPipe pipe;
@@ -137,6 +144,7 @@ public final class LiveCaptureController {
 
  /** Pause or teardown: cancels the reservation and discards the running capture and its pipe. */
  public void cancelAll(){
+  interrupted=CANCELLED;
   admission.cancelAll();
   for(LiveSegmentPipe pipe:pipes.values())pipe.close(true,now());
   submit(worker,()->{if(live!=null){live.stop();live=null;current=null;}for(String id:pipes.keySet())closePipe(id,true,now());},()->{/* Shut down: its last task stopped the capture. */});
@@ -144,6 +152,7 @@ public final class LiveCaptureController {
 
  /** Ends the running capture with {@code reason} (reported through {@link Host#ended}); never blocks. */
  public void interrupt(String reason){
+  interrupted=reason;
   LiveVoiceCapture active=current;
   if(active!=null)submit(stopWorker,()->active.interrupt(reason),()->{/* Shut down: the capture already stopped. */});
  }

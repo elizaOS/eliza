@@ -167,6 +167,9 @@ final class AgentSecureStore implements AutoCloseable {
         try { if (active != null) active.close(); } catch (IOException error) {
             Log.w("ElizaSecureStore", "Could not close secure-store client");
         }
+        // close() alone leaves accept() blocked and the abstract address bound.
+        try { android.system.Os.shutdown(server.getFileDescriptor(), android.system.OsConstants.SHUT_RDWR); }
+        catch (android.system.ErrnoException ignored) { /* Already closed; close() below still runs. */ }
         try { server.close(); } catch (IOException error) {
             Log.w("ElizaSecureStore", "Could not close secure-store listener");
         }
