@@ -486,6 +486,18 @@ export class NotesStore {
       }
       return saved;
     }
+    // On Windows, a file published through a hard link (after its temporary
+    // name is removed) can stay unreplaceable: the next rename over it fails
+    // with EPERM, and each later Notes write fails. Publish through the
+    // link-free directory instead; the flat file is then created by rename.
+    if (process.platform === "win32") {
+      try {
+        return await this.publishDirectoryIfAbsent(document);
+      } catch (error) {
+        // error-policy:J2 preserve the failed filesystem operation as the cause.
+        throw this.writeFailure(error);
+      }
+    }
     const temporaryPath = `${this.filePath}.${process.pid}.${randomUUID()}.tmp`;
     try {
       await this.writeTemporaryDocument(temporaryPath, document);
@@ -534,9 +546,14 @@ export class NotesStore {
       } catch (error) {
         // error-policy:J3 an existing nonempty publication is the explicit
         // concurrent-initializer result; other rename failures are fatal.
+        // Windows reports a rename onto an existing directory as EPERM, so
+        // EPERM is that result only when the publication exists.
         if (
           isNodeErrorWithCode(error, "EEXIST") ||
-          isNodeErrorWithCode(error, "ENOTEMPTY")
+          isNodeErrorWithCode(error, "ENOTEMPTY") ||
+          (process.platform === "win32" &&
+            isNodeErrorWithCode(error, "EPERM") &&
+            (await this.publicationExists(publicationPath)))
         ) {
           return false;
         }
@@ -546,6 +563,16 @@ export class NotesStore {
       return !(await this.flatDocumentExists());
     } finally {
       await this.removeTemporaryDirectory(stagingPath);
+    }
+  }
+
+  private async publicationExists(publicationPath: string): Promise<boolean> {
+    try {
+      return (await fs.stat(publicationPath)).isDirectory();
+    } catch (error) {
+      // error-policy:J3 ENOENT is the explicit absence result.
+      if (isNodeErrorWithCode(error, "ENOENT")) return false;
+      throw error;
     }
   }
 
