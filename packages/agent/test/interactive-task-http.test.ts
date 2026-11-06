@@ -318,6 +318,66 @@ describe("interactive task HTTP host", () => {
     }
   });
 
+  it("a repeated start never reports a cancelled task that keeps the slot as started", async () => {
+    const storage = setup();
+    const runtime = new InteractiveTaskRuntime({
+      owner,
+      store: storage.store,
+      actuator: {
+        capabilities: ["fill"],
+        async observe() {
+          return {
+            id: "view",
+            pageId: "page",
+            origin: "https://example.org",
+            version: 1,
+            inputRevision: 0,
+            observedAt: Date.now(),
+          };
+        },
+        // An invalid reply leaves the step's outcome unknown.
+        async execute() {
+          return {} as Awaited<ReturnType<InteractiveTaskActuator["execute"]>>;
+        },
+      },
+    });
+    const http = await listenTaskHttp(
+      createInteractiveTaskHandler({
+        runtime,
+        authenticate: async () => owner,
+        authorizeGoal: async (ref) => goal(ref),
+      }),
+    );
+    try {
+      expect((await http.call("/tasks", { goalRef: "message" })).status).toBe(
+        201,
+      );
+      const observed = await runtime.observe("task-1", 0);
+      const result = await runtime.execute("task-1", observed.revision, {
+        id: "operation",
+        taskId: "task-1",
+        epoch: observed.epoch,
+        observationId: "view",
+        observationVersion: 1,
+        inputRevision: 0,
+        targetRef: "field",
+        capability: "fill",
+        authorizationId: "grant",
+        expiresAt: Date.now() + 10000,
+      });
+      const cancelled = runtime.control("task-1", result.revision, "cancel");
+      expect(cancelled.status).toBe("cancelled");
+      // The unverified step keeps the slot, but the task can never act.
+      expect(runtime.current()?.id).toBe("task-1");
+      const again = await http.call("/tasks", { goalRef: "message" });
+      expect(again.status).toBe(409);
+      expect(await again.json()).toEqual({ code: "TASK_CONFLICT" });
+    } finally {
+      await http.close();
+      storage.close();
+    }
+  });
+
   it("authenticates controls, commits before dispatch, and fences a late result after pause", async () => {
     const storage = setup();
     const entered =
