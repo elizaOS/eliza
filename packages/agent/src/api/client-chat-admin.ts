@@ -95,8 +95,13 @@ export type OwnerChatCallerRole = "OWNER" | "USER";
  * is for a host whose owner credential only carries an end user's chat (a
  * consumer app's gateway): the turn then speaks as
  * {@link productUserChatEntityId} with a session-sourced USER grant, so
- * OWNER- and ADMIN-gated actions are refused. Any other value throws, so a
- * misspelled setting can never fall back to OWNER.
+ * OWNER- and ADMIN-gated actions are refused in those turns. Any other value
+ * throws, so a misspelled setting can never fall back to OWNER.
+ *
+ * This covers chat turns only (conversation messages and compat chat). Plugin
+ * routes, the context inspector and the other admin APIs still treat the owner
+ * credential as OWNER, so the host must keep that credential off every
+ * non-chat route.
  */
 export function resolveOwnerChatCallerRole(
   env: NodeJS.ProcessEnv = process.env,
