@@ -48,6 +48,26 @@ public final class ParadeeVoice implements AutoCloseable {
         }
     }
 
+    /** True once any voice loaded in this process; the native speech thread pool is fixed then. */
+    private static boolean anyLoaded; // Guarded by ParadeeVoice.class.
+
+    /**
+     * Sets how many threads speech synthesis uses in this process. The native
+     * library reads the count once, when the first voice loads, so call this
+     * before that; afterwards it throws {@link IllegalStateException}. Without
+     * it the library uses one thread per core (at most 16). {@code threads}
+     * must be 1 to 64.
+     */
+    public static synchronized void setThreadCount(int threads) {
+        if (threads < 1 || threads > 64) throw new IllegalArgumentException("Expected 1 to 64 speech threads");
+        if (anyLoaded) throw new IllegalStateException("Speech threads are fixed once a voice has loaded");
+        VoiceNative.setSpeechThreads(threads);
+    }
+
+    private static synchronized void loaded() {
+        anyLoaded = true;
+    }
+
     /** Guards the context pointer so cancel never signals a freed context. */
     private final Object handleLock = new Object();
     private long handle;
@@ -98,6 +118,7 @@ public final class ParadeeVoice implements AutoCloseable {
         voiceId = null;
         language = "en";
         handle = ctx;
+        loaded();
     }
 
     /**
@@ -140,6 +161,7 @@ public final class ParadeeVoice implements AutoCloseable {
         }
         this.voiceId = voiceId;
         handle = ctx;
+        loaded();
     }
 
     /** A scalar field of the native voice-info JSON (a number or a plain string). */
@@ -188,10 +210,14 @@ public final class ParadeeVoice implements AutoCloseable {
      * survives {@link #trimMemory}. Needs libelizainference ABI 21.
      */
     public synchronized void speedRange(float min, float max) {
+        checkSpeedRange(min, max);
+        VoiceNative.nativeParadeeSetVoiceSpeedRange(check(), voiceId == null ? "" : voiceId, min, max);
+    }
+
+    static void checkSpeedRange(float min, float max) {
         if (!(min >= MIN_SPEED && min <= 1f && max >= 1f && max <= MAX_SPEED)) {
             throw new IllegalArgumentException("Expected " + MIN_SPEED + " <= min <= 1 <= max <= " + MAX_SPEED);
         }
-        VoiceNative.nativeParadeeSetVoiceSpeedRange(check(), voiceId == null ? "" : voiceId, min, max);
     }
 
     /** Restores the model's validated speed range (undoes {@link #speedRange}). */
