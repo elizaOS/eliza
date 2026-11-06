@@ -56,6 +56,8 @@ export interface ActionPlan {
  * Provider result cache entry
  */
 export interface ProviderCacheEntry {
+	/** The complete reference body still requires a fresh authorized composition. */
+	referenceBodyDeferred?: true;
 	text?: string;
 	discoveryText?: string;
 	overflowText?: string;

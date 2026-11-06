@@ -30,6 +30,7 @@ import type { EndpointType } from "@elizaos/cloud-shared/lib/services/org-rate-l
 import type { OrganizationInferenceAdmission } from "@elizaos/cloud-shared/lib/services/organization-inference-admission";
 import { logger } from "@elizaos/cloud-shared/lib/utils/logger";
 import type { AppContext } from "@elizaos/cloud-shared/types/cloud-worker-env";
+import { isInferenceTraceId } from "@elizaos/core/protocol";
 
 export interface GenerativeRouteCaller {
   user: {
@@ -421,12 +422,82 @@ export async function admitFlatGenerativeOperation(params: {
   }
 }
 
+const SPEECH_PHASES = [
+  "upload_read",
+  "multipart_decode",
+  "audio_buffer",
+  "audio_sniff",
+  "audio_metadata",
+  "json_decode",
+  "auth_module_load",
+  "auth_resolution",
+  "limiter_module_load",
+  "org_limiter",
+] as const;
+
+/** Optional diagnostics cannot change request results or disclose caller data. */
+export async function timeSpeechPhase<T>(
+  c: AppContext,
+  phase: (typeof SPEECH_PHASES)[number],
+  run: () => Promise<T>,
+): Promise<T> {
+  let route: "stt" | "tts" | undefined;
+  let traceId = "unavailable";
+  let enabled = false;
+  try {
+    const path = new URL(c.req.url).pathname;
+    route =
+      path === "/api/v1/voice/stt"
+        ? "stt"
+        : path === "/api/v1/voice/tts"
+          ? "tts"
+          : undefined;
+    enabled = Boolean(route) && SPEECH_PHASES.includes(phase);
+    const candidate = c.get("traceId") ?? c.get("requestId");
+    if (isInferenceTraceId(candidate)) traceId = candidate;
+  } catch {
+    // Optional diagnostic context failure must not alter the actual operation.
+  }
+  if (!enabled) return run();
+  const start = performance.now();
+  let outcome: "returned" | "threw" = "returned";
+  try {
+    return await run();
+  } catch (error) {
+    outcome = "threw";
+    throw error;
+  } finally {
+    try {
+      const durationMs = Math.round((performance.now() - start) * 10) / 10;
+      if (Number.isFinite(durationMs) && durationMs >= 0) {
+        logger.audit("[CloudSpeech] phase timing", {
+          schema: "cloud_speech_phase_v1",
+          traceId,
+          route,
+          phase,
+          durationMs,
+          outcome,
+        });
+      }
+    } catch {
+      // Best-effort telemetry: preserve the operation's result or original error.
+    }
+  }
+}
+
 /**
- * Cache misses consume the already-coalesced authoritative continuation under
- * one bounded deadline. The continuation does not re-read the combined cache;
- * it returns the origin decision directly. The route invokes the real limiter
- * once after authorization. Wallet proof remains on the compatibility path
- * because replay-protected signatures cannot be cached.
+ * Bounded join of a cold organization admission hydration. Below the client's
+ * 1 s warming retry plus a second request; a slower hydration still returns
+ * the retryable warming contract.
+ */
+export const GENERATIVE_ROUTE_HYDRATION_WAIT_MS = 1_500;
+
+/**
+ * Worker callers are decided by one combined-cache read and never query
+ * Postgres: a cache miss is a retryable 503 while authoritative hydration runs
+ * under `waitUntil`. The route invokes the real limiter once after
+ * authorization. Wallet proof remains on the compatibility path because
+ * replay-protected signatures cannot be cached.
  */
 export async function requireGenerativeRouteCaller(
   c: AppContext,
@@ -435,11 +506,6 @@ export async function requireGenerativeRouteCaller(
     request?: Request;
     compatibility?: "hono" | "raw";
     rateLimitEndpoint?: EndpointType;
-    /**
-     * Override the default bounded wait for the one-shot origin continuation.
-     * Zero preserves an immediate retryable warming response.
-     */
-    awaitWarmingMs?: number;
     /**
      * This route has a mandatory paid admission before provider dispatch and
      * will thread the returned credential into that admission consumer.
@@ -472,21 +538,26 @@ export async function requireGenerativeRouteCaller(
       appScopeId: null,
     };
   }
-  const { resolveInferenceAuthContext } = await import(
-    "@elizaos/cloud-shared/lib/services/inference-auth-context"
+  const { resolveInferenceAuthContext } = await timeSpeechPhase(
+    c,
+    "auth_module_load",
+    () => import("@elizaos/cloud-shared/lib/services/inference-auth-context"),
   );
   const resolveCallerAuth = () =>
     resolveInferenceAuthContext(request, {
       traceId: c.get("traceId") ?? c.get("requestId"),
       cacheOnly: Boolean(executionCtx),
       executionCtx,
-      inlineContinuationDeadlineMs: options.awaitWarmingMs,
       includeVerifiedCredential: options.includeVerifiedCredential === true,
       ...(options.deferStrongCredentialCheck === true
         ? { deferStrongCredentialCheck: true }
         : {}),
     });
-  const resolution = await resolveCallerAuth();
+  const resolution = await timeSpeechPhase(
+    c,
+    "auth_resolution",
+    resolveCallerAuth,
+  );
 
   if (resolution.kind === "authorized") {
     const user = {
@@ -499,18 +570,30 @@ export async function requireGenerativeRouteCaller(
       if (resolution.ctx.apiKeyId) {
         c.set("apiKeyId", resolution.ctx.apiKeyId);
       }
-      if (options.rateLimitEndpoint) {
-        const [{ enforceOrgRateLimit }, { inferenceRateLimitConfig }] =
-          await Promise.all([
+      const rateLimitEndpoint = options.rateLimitEndpoint;
+      if (rateLimitEndpoint) {
+        const [
+          {
+            enforceOrgRateLimit,
+            inferenceRatePolicyProof,
+            OrgRateLimitCacheNotReadyError,
+          },
+          { inferenceRateLimitConfig },
+        ] = await timeSpeechPhase(c, "limiter_module_load", () =>
+          Promise.all([
             import("@elizaos/cloud-shared/lib/middleware/rate-limit"),
             import(
               "@elizaos/cloud-shared/lib/services/inference-admission-snapshot"
             ),
-          ]);
-        const limited = await enforceOrgRateLimit(
-          resolution.ctx.orgId,
-          options.rateLimitEndpoint,
-          {
+          ]),
+        );
+        // Authoritative (origin) authorization carries no admission snapshot,
+        // so the cache-only limiter can find the organization projection cold.
+        // That refusal precedes any dispatch and its hydration already runs
+        // under `waitUntil`: surface the same retryable warming contract that
+        // speech clients replay, never an opaque route failure.
+        const limited = await timeSpeechPhase(c, "org_limiter", () =>
+          enforceOrgRateLimit(resolution.ctx.orgId, rateLimitEndpoint, {
             // Same limiter as chat completions: a shared policy lock and one
             // Durable Object decision. Without a snapshot the locked primary
             // policy supplies the limit. The compatibility path took the
@@ -520,10 +603,39 @@ export async function requireGenerativeRouteCaller(
             executionCtx,
             config: inferenceRateLimitConfig(
               resolution.ctx.admission,
-              options.rateLimitEndpoint,
+              rateLimitEndpoint,
             ),
+            admissionSnapshot: resolution.ctx.admission,
+            // A cold projection would otherwise cost a 503, a 1 s client
+            // sleep and a second full request. Join the same hydration
+            // (policy lock, hold, gate publication, cache write) instead.
+            awaitHydrationMs: GENERATIVE_ROUTE_HYDRATION_WAIT_MS,
             apiKeyId: resolution.ctx.apiKeyId,
-          },
+            apiKeyRateLimit:
+              "apiKeyRateLimit" in resolution.ctx
+                ? resolution.ctx.apiKeyRateLimit
+                : undefined,
+            // Only an API-key context carries a key cap read with its epoch.
+            ratePolicy:
+              "keyHash" in resolution.ctx
+                ? inferenceRatePolicyProof(resolution.ctx)
+                : undefined,
+          }).catch((error: unknown) => {
+            if (!(error instanceof OrgRateLimitCacheNotReadyError)) throw error;
+            throw error.state === "warming"
+              ? new ApiError(
+                  503,
+                  "auth_cache_warming",
+                  "Authorization cache is warming; retry shortly",
+                  { retryable: true, retryAfterSeconds: 1 },
+                )
+              : new ApiError(
+                  503,
+                  "service_unavailable",
+                  "Rate limiter is unavailable",
+                  { retryable: true, retryAfterSeconds: 1 },
+                );
+          }),
         );
         if (limited) {
           throw new ApiError(
@@ -574,7 +686,7 @@ export async function requireGenerativeRouteCaller(
   if (resolution.kind === "warming") {
     throw new ApiError(
       503,
-      "service_unavailable",
+      "auth_cache_warming",
       "Authorization cache is warming; retry shortly",
       { retryable: true, retryAfterSeconds: 1 },
     );
