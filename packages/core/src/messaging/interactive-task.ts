@@ -86,11 +86,22 @@ export interface TaskOriginStep {
 export const MAX_TASK_ORIGIN_GRANTS = 16;
 /** The task keeps the latest steps; the event journal keeps every observed origin. */
 export const MAX_TASK_ORIGIN_CHAIN = 64;
-export interface TaskOperation {
-	proposal: TaskActionProposal;
-	status: TaskOperationStatus;
-	evidenceRef?: string;
-}
+/**
+ * How an operation ended, as an actuator or readback reports it. A resolved
+ * outcome always names its evidence; an unknown one may name what was seen.
+ */
+export type TaskOutcome =
+	| { status: "succeeded" | "failed"; evidenceRef: string }
+	| { status: "unknown"; evidenceRef?: string };
+/** An operation carries evidence only once it ran: never while prepared or dispatched, or once cancelled. */
+export type TaskOperation =
+	| {
+			proposal: TaskActionProposal;
+			status: "prepared" | "dispatched";
+			evidenceRef?: never;
+	  }
+	| { proposal: TaskActionProposal; status: "cancelled"; evidenceRef?: never }
+	| ({ proposal: TaskActionProposal } & TaskOutcome);
 export interface InteractiveTask {
 	schemaVersion: 1;
 	id: string;
@@ -132,12 +143,41 @@ export type TaskTransition =
 	/** Remove an origin an "extend-origin" added; the starting origins stay. */
 	| { type: "retract-origin"; origin: string }
 	| { type: "dispatch"; operationId: string }
-	| {
-			type: "result" | "reconcile";
-			operationId: string;
-			status: "succeeded" | "failed" | "unknown";
-			evidenceRef?: string;
-	  };
+	| ({ type: "result" | "reconcile"; operationId: string } & TaskOutcome);
+
+// Keyed by the union, so a status added to it must be added here too.
+const TASK_STATUSES: readonly unknown[] = Object.keys({
+	active: true,
+	paused: true,
+	blocked: true,
+	waiting: true,
+	completed: true,
+	cancelled: true,
+} satisfies Record<TaskStatus, true>);
+const TASK_OPERATION_STATUSES: readonly unknown[] = Object.keys({
+	prepared: true,
+	dispatched: true,
+	succeeded: true,
+	failed: true,
+	cancelled: true,
+	unknown: true,
+} satisfies Record<TaskOperationStatus, true>);
+type UnresolvedOperation = Extract<
+	TaskOperation,
+	{ status: "prepared" | "dispatched" | "unknown" }
+>;
+function isUnresolved(
+	operation: TaskOperation,
+): operation is UnresolvedOperation {
+	return ["prepared", "dispatched", "unknown"].includes(operation.status);
+}
+/** Transitions a finished task still accepts: they only narrow what it may do. */
+const AFTER_END: readonly TaskTransition["type"][] = [
+	"reconcile",
+	"recover",
+	"revoke",
+	"retract-origin",
+];
 
 function reject(message: string, code = "TASK_INVALID"): never {
 	throw new ElizaError(message, { code });
@@ -348,17 +388,7 @@ export function validateInteractiveTask(value: InteractiveTask): void {
 	counter(value.revision);
 	counter(value.epoch);
 	counter(value.updatedAt);
-	if (
-		![
-			"active",
-			"paused",
-			"blocked",
-			"waiting",
-			"completed",
-			"cancelled",
-		].includes(value.status)
-	)
-		reject("Invalid task status");
+	if (!TASK_STATUSES.includes(value.status)) reject("Invalid task status");
 	const auth = value.authorization;
 	shape(auth, [
 		"decisionId",
@@ -405,35 +435,20 @@ export function validateInteractiveTask(value: InteractiveTask): void {
 		)
 			reject("Invalid operation identity");
 		seen.add(operation.proposal.id);
-		if (
-			![
-				"prepared",
-				"dispatched",
-				"succeeded",
-				"failed",
-				"cancelled",
-				"unknown",
-			].includes(operation.status)
-		)
+		if (!TASK_OPERATION_STATUSES.includes(operation.status))
 			reject("Invalid operation status");
-		if (operation.evidenceRef !== undefined) id(operation.evidenceRef);
-		if (
-			["succeeded", "failed"].includes(operation.status) &&
-			!operation.evidenceRef
-		)
+		if (operation.evidenceRef !== undefined) {
+			id(operation.evidenceRef);
+			if (!["succeeded", "failed", "unknown"].includes(operation.status))
+				reject("Operation has evidence before it ran");
+		} else if (["succeeded", "failed"].includes(operation.status))
 			reject("Resolved operation is missing evidence");
 		if (operation.proposal.epoch > value.epoch)
 			reject("Operation epoch is ahead of the task");
 	}
-	if (
-		value.operations.filter((op) =>
-			["prepared", "dispatched", "unknown"].includes(op.status),
-		).length > 1
-	)
+	if (value.operations.filter(isUnresolved).length > 1)
 		reject("Multiple unresolved task operations");
-	const unresolved = value.operations.find((operation) =>
-		["prepared", "dispatched", "unknown"].includes(operation.status),
-	);
+	const unresolved = value.operations.find(isUnresolved);
 	if ((value.status === "waiting") !== (unresolved?.status === "dispatched"))
 		reject("Waiting task and dispatched operation disagree");
 	if (unresolved?.status === "prepared" && value.status !== "active")
@@ -447,6 +462,15 @@ export function validateInteractiveTask(value: InteractiveTask): void {
 		reject("Blocked task is missing its unknown operation");
 	if (auth.state === "revoked" && ["active", "waiting"].includes(value.status))
 		reject("Revoked task cannot be active");
+	// The fence: a prepared or dispatched operation was planned against this
+	// epoch, this observation and this authorization, so a stale or tampered
+	// record is refused here and not only by the recheck at dispatch.
+	if (
+		(unresolved?.status === "prepared" ||
+			unresolved?.status === "dispatched") &&
+		!matchesTask(value, unresolved.proposal)
+	)
+		reject("Pending operation no longer matches its task");
 }
 export function createInteractiveTask(input: {
 	id: string;
@@ -508,6 +532,33 @@ function recordOriginStep(
 	if (chain.length > MAX_TASK_ORIGIN_CHAIN)
 		chain.splice(0, chain.length - MAX_TASK_ORIGIN_CHAIN);
 }
+function isCurrentPlan(
+	task: InteractiveTask,
+	proposal: TaskActionProposal,
+): boolean {
+	const observed = task.observation;
+	return (
+		observed !== null &&
+		proposal.taskId === task.id &&
+		proposal.epoch === task.epoch &&
+		proposal.observationId === observed.id &&
+		proposal.observationVersion === observed.version &&
+		proposal.inputRevision === observed.inputRevision
+	);
+}
+function isAuthorizedPlan(
+	task: InteractiveTask,
+	proposal: TaskActionProposal,
+): boolean {
+	return (
+		task.authorization.state === "active" &&
+		proposal.authorizationId === task.authorization.decisionId &&
+		task.allowedCapabilities.includes(proposal.capability)
+	);
+}
+function matchesTask(task: InteractiveTask, proposal: TaskActionProposal) {
+	return isCurrentPlan(task, proposal) && isAuthorizedPlan(task, proposal);
+}
 function checkDispatch(
 	task: InteractiveTask,
 	proposal: TaskActionProposal,
@@ -515,22 +566,33 @@ function checkDispatch(
 ): void {
 	if (task.status !== "active" || task.authorization.state !== "active")
 		reject("Task is not authorized to act", "TASK_NOT_ACTIVE");
-	const observed = task.observation;
-	if (
-		!observed ||
-		proposal.taskId !== task.id ||
-		proposal.epoch !== task.epoch ||
-		proposal.observationId !== observed.id ||
-		proposal.observationVersion !== observed.version ||
-		proposal.inputRevision !== observed.inputRevision
-	)
+	if (!isCurrentPlan(task, proposal))
 		reject("Action no longer matches the observed task", "TASK_STALE_ACTION");
-	if (
-		proposal.authorizationId !== task.authorization.decisionId ||
-		!task.allowedCapabilities.includes(proposal.capability)
-	)
+	if (!isAuthorizedPlan(task, proposal))
 		reject("Action is outside task authorization", "TASK_ACTION_DENIED");
+	// Expiry is the one part of this check that time alone can break, so it is
+	// not part of the stored invariant.
 	if (proposal.expiresAt <= now) reject("Action expired", "TASK_STALE_ACTION");
+}
+/** Operations change by replacement, so each status keeps exactly its own fields. */
+function replaceOperation(
+	task: InteractiveTask,
+	operation: TaskOperation,
+	next: TaskOperation,
+): void {
+	task.operations[task.operations.indexOf(operation)] = next;
+}
+function setStatus(
+	task: InteractiveTask,
+	operation: UnresolvedOperation,
+	status: "cancelled" | "dispatched" | "unknown",
+): void {
+	replaceOperation(task, operation, { proposal: operation.proposal, status });
+}
+/** Every transition type has a case (checked at compile time); hosts still pass
+ * transitions from outside the type system, so the default refuses at runtime. */
+function unknownTransition(_transition: never): never {
+	reject("Unknown task transition");
 }
 /** Pure transition. Storage must compare-and-swap revision and fsync before an effect.
  * Actuators independently check the committed proposal against their current page.
@@ -553,17 +615,10 @@ export function transitionInteractiveTask(
 	// a stop, so time never moves backwards in the task: it stays at updatedAt.
 	const now = Math.max(context.now, previous.updatedAt);
 	const task = structuredClone(previous);
-	const unresolved = task.operations.find((op) =>
-		["prepared", "dispatched", "unknown"].includes(op.status),
-	);
+	const unresolved = task.operations.find(isUnresolved);
 	const terminal = ["completed", "cancelled"].includes(task.status);
 	// Narrowing scope stays possible after a task ends, like revocation.
-	if (
-		terminal &&
-		!["reconcile", "recover", "revoke", "retract-origin"].includes(
-			transition.type,
-		)
-	)
+	if (terminal && !AFTER_END.includes(transition.type))
 		reject("Task has ended", "TASK_ENDED");
 	switch (transition.type) {
 		case "observe":
@@ -578,7 +633,8 @@ export function transitionInteractiveTask(
 					"TASK_UNKNOWN_OUTCOME",
 				);
 			checkObservation(task, transition.observation, now);
-			if (unresolved?.status === "prepared") unresolved.status = "cancelled";
+			if (unresolved?.status === "prepared")
+				setStatus(task, unresolved, "cancelled");
 			task.observation = structuredClone(transition.observation);
 			if (transition.type === "resume") task.status = "active";
 			recordOriginStep(task, transition.observation);
@@ -599,7 +655,8 @@ export function transitionInteractiveTask(
 				reject("Origin is already in task scope");
 			if ((task.originGrants?.length ?? 0) >= MAX_TASK_ORIGIN_GRANTS)
 				reject("Too many origin grants for one task", "TASK_ORIGIN_LIMIT");
-			if (unresolved?.status === "prepared") unresolved.status = "cancelled";
+			if (unresolved?.status === "prepared")
+				setStatus(task, unresolved, "cancelled");
 			if (!task.originGrants || !task.originChain) {
 				// The chain starts where the person already is.
 				task.originChain = task.observation
@@ -634,10 +691,11 @@ export function transitionInteractiveTask(
 			);
 			if (!grant) reject("Origin was not granted to this task");
 			task.epoch++;
-			if (unresolved?.status === "prepared") unresolved.status = "cancelled";
+			if (unresolved?.status === "prepared")
+				setStatus(task, unresolved, "cancelled");
 			else if (unresolved?.status === "dispatched") {
 				// Same fence as pause: the effect may have run under the old scope.
-				unresolved.status = "unknown";
+				setStatus(task, unresolved, "unknown");
 				task.status = "paused";
 			}
 			grant.retractedAt = now;
@@ -652,9 +710,10 @@ export function transitionInteractiveTask(
 		case "recover":
 		case "revoke": {
 			task.epoch++;
-			if (unresolved?.status === "prepared") unresolved.status = "cancelled";
+			if (unresolved?.status === "prepared")
+				setStatus(task, unresolved, "cancelled");
 			else if (unresolved?.status === "dispatched")
-				unresolved.status = "unknown";
+				setStatus(task, unresolved, "unknown");
 			if (transition.type === "revoke") {
 				task.authorization.state = "revoked";
 				task.authorization.revokedAt = new Date(now).toISOString();
@@ -685,7 +744,7 @@ export function transitionInteractiveTask(
 			)
 				reject("No matching prepared operation", "TASK_REPLAY");
 			checkDispatch(task, unresolved.proposal, now);
-			unresolved.status = "dispatched";
+			setStatus(task, unresolved, "dispatched");
 			task.status = "waiting";
 			break;
 		}
@@ -706,8 +765,23 @@ export function transitionInteractiveTask(
 			if (transition.status !== "unknown" && !transition.evidenceRef)
 				reject("A resolved outcome requires evidence");
 			if (transition.evidenceRef !== undefined) id(transition.evidenceRef);
-			operation.status = transition.status;
-			operation.evidenceRef = transition.evidenceRef;
+			replaceOperation(
+				task,
+				operation,
+				transition.status === "unknown"
+					? {
+							proposal: operation.proposal,
+							status: "unknown",
+							...(transition.evidenceRef !== undefined && {
+								evidenceRef: transition.evidenceRef,
+							}),
+						}
+					: {
+							proposal: operation.proposal,
+							status: transition.status,
+							evidenceRef: transition.evidenceRef,
+						},
+			);
 			if (transition.type === "reconcile" && transition.status !== "unknown") {
 				// Readback authority must not become effect authority in the same epoch.
 				// Commit the fence with the result so a crash cannot strand a narrower
@@ -735,7 +809,7 @@ export function transitionInteractiveTask(
 			task.epoch++;
 			break;
 		default:
-			reject("Unknown task transition");
+			unknownTransition(transition);
 	}
 	task.revision++;
 	task.updatedAt = now;

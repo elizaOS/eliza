@@ -508,12 +508,7 @@ export class InteractiveTaskRuntime {
           expectedRevision: fence.revision,
           now: this.now(),
         },
-        {
-          type: "reconcile",
-          operationId,
-          status: result.status,
-          evidenceRef: result.evidenceRef,
-        },
+        { type: "reconcile", operationId, ...result },
       ).task;
     } finally {
       this.pending.delete(id);
