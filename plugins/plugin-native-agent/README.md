@@ -38,7 +38,11 @@ opt-in. `PreparationFlow` fences each long operation by generation, installed
 identity and cancellation. It cannot install packages or select a trust authority.
 Admission is not a lasting permission. While a plan is `VERIFIED`, a run refreshes
 metadata instead of preparing and drops the plan when it has expired, been revoked,
-fallen below the security floor or been superseded. Commit runs the host's
+fallen below the security floor or been superseded (the lane published a newer
+sequence, even one this device must still wait for). That refresh adds no wait
+after a success, since the activation run relies on it, so every run while a
+plan is `VERIFIED` fetches metadata and the descriptor: a host that runs
+preparation often pays that network cost each time. Commit runs the host's
 `verifyCommitFreshness` under the journal lock, and a refusal leaves the plan
 `VERIFIED`. The activation run passes its trusted start time to `commit`. The
 lane must have refreshed no more than `CommitFreshness.MAX_COMMIT_STALENESS_MS`
