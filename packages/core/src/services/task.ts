@@ -1,9 +1,9 @@
 /**
  * TaskService: the runtime singleton that polls `queue`-tagged tasks and runs
- * their registered worker when due. Owns the tick loop — a local `setInterval`,
- * a shared task-scheduler daemon, or serverless `runDueTasks()` — plus
- * repeat-task cadence, failure backoff and auto-pause, and overlap suppression
- * for blocking runs. Registered by the basic-capabilities plugin and reached
+ * their registered worker when due. Owns the tick loop — a local timer armed
+ * for the earliest due task, a shared task-scheduler daemon, or serverless
+ * `runDueTasks()` — plus repeat-task cadence, failure backoff and auto-pause,
+ * and overlap suppression for blocking runs. Registered by the basic-capabilities plugin and reached
  * via `runtime.getService(ServiceType.TASK)`.
  */
 
@@ -35,31 +35,80 @@ function resolveDueTime(task: Task): number | null {
 	return Number.isNaN(t) ? null : t;
 }
 
+/** Time (ms) a task last ran: metadata.updatedAt, else the row's updatedAt, else 0. */
+function lastRanAt(task: Task): number {
+	if (typeof task.metadata?.updatedAt === "number") {
+		return task.metadata.updatedAt;
+	}
+	if (typeof task.updatedAt === "number") return task.updatedAt;
+	if (typeof task.updatedAt === "bigint") return Number(task.updatedAt);
+	if (task.updatedAt) return new Date(String(task.updatedAt)).getTime();
+	return 0;
+}
+
+/** Earliest time (ms) a repeat task may run: its interval less notBefore, or an atomic wake. */
+function repeatDueAt(task: Task, atomicWake: boolean): number {
+	const meta = task.metadata as TaskMetadata | undefined;
+	const idealNextRun = lastRanAt(task) + (meta?.updateInterval ?? 0);
+	const wakeAt = atomicWake && !meta?.failureCount ? meta?.wakeAt : undefined;
+	return Math.min(idealNextRun - (meta?.notBefore ?? 0), wakeAt ?? Infinity);
+}
+
+/**
+ * Wake delay (ms) after a task change, and the retry delay for a due task that
+ * did not run (a false shouldRun, a blocking run in progress, a preserved task).
+ * This is the old fixed tick, so no task runs later than before.
+ */
+const MIN_TICK_MS = 1000;
+/** Default longest sleep with a non-empty queue. Rows written by another process are seen within this time. */
+const DEFAULT_MAX_TICK_MS = 60_000;
+/** Largest delay setTimeout accepts. */
+const MAX_TIMEOUT_MS = 2_147_483_647;
+/** Runtime setting that overrides the longest sleep (ms, MIN_TICK_MS to MAX_TIMEOUT_MS). */
+export const TASK_TICK_MAX_MS_SETTING = "TASK_TICK_MAX_MS";
+
+function readMaxTickMs(runtime: IAgentRuntime): number {
+	const raw = runtime.getSetting(TASK_TICK_MAX_MS_SETTING);
+	if (raw == null || raw === "") return DEFAULT_MAX_TICK_MS;
+	const value = Number(raw);
+	if (!(value >= MIN_TICK_MS && value <= MAX_TIMEOUT_MS)) {
+		throw new ElizaError(
+			`${TASK_TICK_MAX_MS_SETTING} must be ${MIN_TICK_MS} to ${MAX_TIMEOUT_MS} milliseconds`,
+			{
+				code: "TASK_TICK_MAX_INVALID",
+				context: { value: String(raw) },
+				severity: "fatal",
+			},
+		);
+	}
+	return value;
+}
+
 /** Opaque handle returned by an injected task-service timer implementation. */
 export type TaskServiceTimerHandle = unknown;
 
 /**
  * Time boundary used by TaskService. Production uses the system clock and
- * interval APIs; deterministic hosts can supply a virtual clock without
+ * timeout APIs; deterministic hosts can supply a virtual clock without
  * replacing task persistence, validation, or worker execution.
  */
 export interface TaskServiceClock {
 	now(): number;
-	setInterval(
+	setTimeout(
 		callback: () => Promise<void>,
-		intervalMs: number,
+		delayMs: number,
 	): TaskServiceTimerHandle;
-	clearInterval(handle: TaskServiceTimerHandle): void;
+	clearTimeout(handle: TaskServiceTimerHandle): void;
 }
 
 const systemTaskServiceClock: TaskServiceClock = {
 	now: () => Date.now(),
-	setInterval: (callback, intervalMs) =>
-		setInterval(() => {
+	setTimeout: (callback, delayMs) =>
+		setTimeout(() => {
 			void callback();
-		}, intervalMs),
-	clearInterval: (handle) =>
-		clearInterval(handle as ReturnType<typeof setInterval>),
+		}, delayMs),
+	clearTimeout: (handle) =>
+		clearTimeout(handle as ReturnType<typeof setTimeout>),
 };
 
 /**
@@ -72,15 +121,17 @@ const systemTaskServiceClock: TaskServiceClock = {
 export class TaskService extends Service {
 	private timer: TaskServiceTimerHandle;
 	private hasTimer = false;
+	/** Time (ms) the armed timer fires. */
+	private timerAt = 0;
+	/** True once startTimer() runs the local timer (not serverless, no daemon). */
+	private localTimer = false;
+	private maxTickMs = DEFAULT_MAX_TICK_MS;
 	private activeTick: Promise<void> | null = null;
 	private readonly clock: TaskServiceClock;
-	private readonly TICK_INTERVAL = 1000; // Check every second
 	/** Tracks task IDs currently being executed to prevent overlapping runs. WHY: blocking tasks must not run again until current run finishes. */
 	private executingTasks: Set<string> = new Set();
 	/** Tracks in-flight task promises so stop() can await a clean drain before runtime.close(). */
 	private executingTaskPromises = new Set<Promise<void>>();
-	/** When false, checkTasks skips the DB query. Set true by markDirty(); start true so first tick always queries. WHY: avoid redundant getTasks every second when nothing changed. */
-	private tasksDirty = true;
 	/** Tracks tasks quarantined for missing workers, preventing repeated diagnostics while pause/delete operations settle. */
 	private quarantinedOrphans = new Set<string>();
 	/**
@@ -213,8 +264,9 @@ export class TaskService extends Service {
 	 * WHY public: initialize() does not start the task service or timer. Daemon entry points
 	 * that need scheduled tasks call getService("task") then startTimer(). Edge/ephemeral
 	 * runtimes typically do not call this.
-	 * Priority: (1) serverless -> no timer, host calls runDueTasks(); (2) daemon present -> register, no local timer; (3) else local setInterval.
+	 * Priority: (1) serverless -> no timer, host calls runDueTasks(); (2) daemon present -> register, no local timer; (3) else a local timer.
 	 * WHY serverless first: no long-lived process; WHY daemon second: one shared getTasks(agentIds) per tick for all agents.
+	 * The local timer sleeps until the earliest due task (at most TASK_TICK_MAX_MS) and markDirty() wakes it.
 	 */
 	startTimer() {
 		if (this.runtime.serverless === true) {
@@ -224,32 +276,88 @@ export class TaskService extends Service {
 			registerTaskSchedulerRuntime(this.runtime, this);
 			return;
 		}
-		if (this.hasTimer) {
-			this.hasTimer = false;
-			this.clock.clearInterval(this.timer);
-		}
+		this.maxTickMs = readMaxTickMs(this.runtime);
+		this.clearTimer();
+		this.localTimer = true;
+		this.armTimer(this.clock.now() + MIN_TICK_MS);
+	}
 
-		this.timer = this.clock.setInterval(async () => {
-			if (this.activeTick) {
-				return;
-			}
-			const tick = this.checkTasks()
-				.catch((error) => {
-					// error-policy:J7 Timer-driven task processing reports failures while
-					// keeping the recurring scheduler alive for the next tick.
-					this.runtime.reportError("TaskService.timer", error, {
-						agentId: this.runtime.agentId,
-					});
-				})
-				.finally(() => {
-					if (this.activeTick === tick) {
-						this.activeTick = null;
-					}
-				});
-			this.activeTick = tick;
-			await tick;
-		}, this.TICK_INTERVAL);
+	/** Make sure a tick runs at or before `at`. A later timer is replaced; an earlier one is kept. */
+	private armTimer(at: number): void {
+		if (this.stopped || !this.localTimer) return;
+		if (this.hasTimer && this.timerAt <= at) return;
+		this.clearTimer();
+		this.timerAt = at;
+		this.timer = this.clock.setTimeout(
+			() => this.onTimer(),
+			Math.max(0, at - this.clock.now()),
+		);
 		this.hasTimer = true;
+	}
+
+	private clearTimer(): void {
+		if (!this.hasTimer) return;
+		this.hasTimer = false;
+		this.clock.clearTimeout(this.timer);
+	}
+
+	private async onTimer(): Promise<void> {
+		this.hasTimer = false;
+		if (this.stopped) return;
+		if (this.activeTick) {
+			// A host runDueTasks() or an earlier tick is still running; tick after it.
+			void this.activeTick.then(() =>
+				this.armTimer(this.clock.now() + MIN_TICK_MS),
+			);
+			return;
+		}
+		const wake: { at: number | null } = {
+			at: this.clock.now() + MIN_TICK_MS,
+		};
+		const tick = this.checkTasks(wake)
+			.catch((error) => {
+				// error-policy:J7 Timer-driven task processing reports failures while
+				// keeping the scheduler alive for the next tick.
+				this.runtime.reportError("TaskService.timer", error, {
+					agentId: this.runtime.agentId,
+				});
+			})
+			.finally(() => {
+				if (this.activeTick === tick) {
+					this.activeTick = null;
+				}
+			});
+		this.activeTick = tick;
+		await tick;
+		if (wake.at !== null) this.armTimer(wake.at);
+	}
+
+	/**
+	 * Next tick time for a non-empty queue: the earliest due task, or now +
+	 * MIN_TICK_MS when a task is already due, capped at now + maxTickMs.
+	 * Paused, quarantined and invalid tasks never run from a tick, so they are
+	 * left out; a resume or fix is a task write, and that calls markDirty().
+	 */
+	private nextWakeAt(tasks: Task[]): number {
+		const now = this.clock.now();
+		const atomicWake = this.runtime.adapter?.supportsAtomicTaskWake === true;
+		let at = now + this.maxTickMs;
+		for (const task of tasks) {
+			if (
+				!task.id ||
+				task.metadata?.paused ||
+				this.quarantinedOrphans.has(task.id) ||
+				task.scheduleError !== undefined ||
+				this.invalidScheduleField(task)
+			) {
+				continue;
+			}
+			const due = task.tags?.includes("repeat")
+				? repeatDueAt(task, atomicWake)
+				: (resolveDueTime(task) ?? now);
+			at = Math.min(at, due > now ? due : now + MIN_TICK_MS);
+		}
+		return at;
 	}
 
 	/**
@@ -569,18 +677,16 @@ export class TaskService extends Service {
 	}
 
 	/**
-	 * Asynchronous method that checks tasks with "queue" tag, validates them, then executes via runTick.
-	 * Skips the DB query when tasksDirty is false. WHY: avoid redundant getTasks every second when nothing changed.
-	 * Only a truly EMPTY queue may disarm the tick: repeat tasks and not-yet-due one-shots become due purely by
-	 * time passing, with no create/update to call markDirty(), so any non-empty result re-arms tasksDirty.
-	 *
-	 * @returns {Promise<void>} Promise that resolves once all tasks are checked and executed
+	 * Checks tasks with the "queue" tag, validates them, then executes via runTick.
+	 * Sets `wake.at` to the next tick time before running. An empty queue sets it to
+	 * null: the timer then sleeps until markDirty(). A failed query leaves the caller's
+	 * retry time.
 	 */
-	private async checkTasks() {
-		if (this.stopped || !this.tasksDirty) {
+	private async checkTasks(wake: { at: number | null }) {
+		if (this.stopped) {
+			wake.at = null;
 			return;
 		}
-		this.tasksDirty = false;
 
 		// WHY queue only: approval/follow-up etc. are stored but run on user trigger or external cron; one place for "scheduled by tick".
 		let allTasks: Task[];
@@ -590,12 +696,8 @@ export class TaskService extends Service {
 				agentIds: [this.runtime.agentId],
 			});
 		} catch (error) {
-			// error-policy:J2 Re-arm the queue before rethrowing with task-query context.
-			// A transient getTasks rejection must NOT permanently disarm the tick:
-			// we already cleared tasksDirty above, so without re-arming a single DB
-			// hiccup would silence every repeat task (incl. the LifeOps heartbeat)
-			// until an unrelated createTask/updateTask happened to call markDirty().
-			this.tasksDirty = true;
+			// error-policy:J2 Rethrow with task-query context. The caller keeps its
+			// retry time, so a transient getTasks rejection does not stop the timer.
 			throw new ElizaError("Task queue query failed", {
 				code: "TASK_QUERY_FAILED",
 				context: { agentId: this.runtime.agentId },
@@ -605,12 +707,12 @@ export class TaskService extends Service {
 		}
 
 		if (!allTasks || allTasks.length === 0) {
-			// Empty queue: stay disarmed until markDirty() (createTask/updateTask) re-arms.
+			// Empty queue: sleep until markDirty() (createTask/updateTask).
+			wake.at = null;
 			return;
 		}
 
-		// Non-empty queue: re-arm so the next tick re-queries and time-based due-ness is observed.
-		this.tasksDirty = true;
+		wake.at = this.nextWakeAt(allTasks);
 
 		if (this.stopped) {
 			return;
@@ -669,35 +771,14 @@ export class TaskService extends Service {
 				continue;
 			}
 
-			// Use updatedAt for lastRan, then the stored fallback.
-			let lastRan: number;
-			if (
-				task.metadata?.updatedAt != null &&
-				typeof task.metadata.updatedAt === "number"
-			) {
-				lastRan = task.metadata.updatedAt;
-			} else if (typeof task.updatedAt === "number") {
-				lastRan = task.updatedAt;
-			} else if (typeof task.updatedAt === "bigint") {
-				lastRan = Number(task.updatedAt);
-			} else if (task.updatedAt) {
-				lastRan = new Date(String(task.updatedAt)).getTime();
-			} else {
-				lastRan = 0;
-			}
-
 			const taskMetadata = task.metadata as TaskMetadata | undefined;
 			const updateIntervalMs = taskMetadata?.updateInterval ?? 0;
-			const notBeforeMs = taskMetadata?.notBefore ?? 0;
 			const notAfterMs = taskMetadata?.notAfter;
-
-			const idealNextRun = lastRan + updateIntervalMs;
-			const wakeAt =
-				this.runtime.adapter?.supportsAtomicTaskWake === true &&
-				!taskMetadata?.failureCount
-					? taskMetadata?.wakeAt
-					: undefined;
-			const earliest = Math.min(idealNextRun - notBeforeMs, wakeAt ?? Infinity);
+			const idealNextRun = lastRanAt(task) + updateIntervalMs;
+			const earliest = repeatDueAt(
+				task,
+				this.runtime.adapter?.supportsAtomicTaskWake === true,
+			);
 
 			if (now < earliest) {
 				continue;
@@ -1054,13 +1135,17 @@ export class TaskService extends Service {
 		}
 	}
 
-	/** Marks the task list as dirty so the next checkTasks tick will re-query the DB. When the daemon is running, notifies it instead of setting local flag. */
+	/**
+	 * Called after a task write. Wakes the local timer within MIN_TICK_MS (the old
+	 * tick bound) so a new or changed task is seen. When the daemon is running,
+	 * notifies it instead.
+	 */
 	markDirty(): void {
 		if (getTaskSchedulerAdapter() != null) {
 			markTaskSchedulerDirty(this.runtime.agentId);
 			return;
 		}
-		this.tasksDirty = true;
+		this.armTimer(this.clock.now() + MIN_TICK_MS);
 	}
 
 	/**
@@ -1185,20 +1270,10 @@ export class TaskService extends Service {
 		const executing = task.id ? this.executingTasks.has(task.id) : false;
 		let nextRunAt: number | undefined;
 		if (task.tags?.includes("repeat")) {
-			let lastRan: number;
 			const meta = task.metadata as TaskMetadata | undefined;
-			if (meta?.updatedAt != null && typeof meta.updatedAt === "number") {
-				lastRan = meta.updatedAt;
-			} else if (typeof task.updatedAt === "number") {
-				lastRan = task.updatedAt;
-			} else if (typeof task.updatedAt === "bigint") {
-				lastRan = Number(task.updatedAt);
-			} else {
-				lastRan = 0;
-			}
 			const interval = meta?.updateInterval ?? 0;
 			const notBefore = meta?.notBefore ?? 0;
-			nextRunAt = lastRan + interval - notBefore;
+			nextRunAt = lastRanAt(task) + interval - notBefore;
 		}
 		return {
 			task,
@@ -1226,10 +1301,8 @@ export class TaskService extends Service {
 	prepareStop() {
 		this.stopped = true;
 		unregisterTaskSchedulerRuntime(this.runtime.agentId, this);
-		if (this.hasTimer) {
-			this.hasTimer = false;
-			this.clock.clearInterval(this.timer);
-		}
+		this.localTimer = false;
+		this.clearTimer();
 	}
 
 	async stop() {
