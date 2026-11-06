@@ -130,6 +130,28 @@ uses only Phonon-2 through `InferenceSession`, with the same request queue and
 cancellation owner. Missing native assets or a failed transcription report an
 error; they never select the platform recognizer or a cloud provider.
 
+`status`, `synthesize` and `transcribe` take an optional `speechLanguage`.
+`status` lists `speechLanguages` and `hearingLanguages`; with `speechLanguage`
+it also loads that voice after it answers. `synthesize` speaks in that
+language's voice (absent is English). `InferenceSession.speedRange(language,
+min, max)` keeps a speed range for one voice across reloads, and
+`ParadeeVoice.setThreadCount` sets the speech thread count before the first
+voice loads.
+
+A host can register its own `@CapacitorPlugin` subclass of
+`ElizaInferencePlugin` and pass its policy through protected hooks: `admit`
+(refuse a request on the worker), `configure` (set up each shared session),
+`describe` (add status fields), `hear` (put its own recognizer in front of
+`Transcription.asr()`), `answerBeforeInstall` (status answers from the APK
+manifest and the bundle installs after it), `failureCode` (the host's own
+rejection codes), `resolved` (for example timing logs), `idleReleaseMillis`
+and `cancelAll`. The defaults keep the behavior above.
+
+Transcription runs on its own hearing worker with its own client of the
+session, so a slow host recognizer never holds synthesis, and a cancel on one
+side never fences the other. Calls into the shared session still serialize on
+its lock: Phonon-2 and Paradee do not run at the same time.
+
 The Eliza app uses its existing `ElizaBionicInferenceServer` shared context.
 Hosts using that server should route speech through it. The optional Capacitor
 transport is for downstream consumers without that server.

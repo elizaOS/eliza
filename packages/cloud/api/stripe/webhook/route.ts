@@ -1,4 +1,4 @@
-/** Verifies Stripe signatures and persists generic billing lookup triggers before the existing queue handoff. */
+/** Verifies Stripe signatures and records each delivery's work and generic billing trigger in one dedupe insert. */
 
 import { webhookEventsRepository } from "@elizaos/cloud-shared/db/repositories/webhook-events";
 import {
@@ -6,7 +6,6 @@ import {
   moneyRateLimit,
   RateLimitPresets,
 } from "@elizaos/cloud-shared/lib/middleware/rate-limit-hono-cloudflare";
-import { enqueue } from "@elizaos/cloud-shared/lib/redis-queue";
 import { appBillingTriggerFromVerifiedEvent } from "@elizaos/cloud-shared/lib/services/app-billing-webhook-intake";
 import {
   isStripeConfigured,
@@ -21,8 +20,6 @@ import type { StripeEventMessage } from "@elizaos/cloud-shared/types/stripe-queu
 import { Hono } from "hono";
 import type Stripe from "stripe";
 import { getAuditDispatcher } from "@/api-app/services/audit-dispatcher-singleton";
-
-const STRIPE_QUEUE_KEY = "stripe-events";
 
 /**
  * Maximum age (seconds) the Stripe `t=` timestamp may be relative to
@@ -69,27 +66,25 @@ async function hashPayload(body: string): Promise<string> {
 /**
  * POST /api/stripe/webhook
  *
- * Cloudflare Workers entry point — verifies the Stripe signature, dedupes
- * by Stripe event ID via webhook_events, then enqueues to Redis and returns
- * 200 immediately. The heavy fan-out (app credits, org credits, revenue
+ * Cloudflare Workers entry point — verifies the Stripe signature, then
+ * records the event's work in its webhook_events dedupe row (the delivery
+ * outbox) in one insert and returns 200. A 200 therefore always means the
+ * work is durable. The heavy fan-out (app credits, org credits, revenue
  * splits, redeemable earnings, cache invalidation, Discord notifications,
  * invoice rows) runs from /api/cron/process-stripe-queue.
  *
  * Idempotency:
  *   1. webhook_events.tryCreate(event_id) catches Stripe's at-least-once
- *      retries before enqueueing — duplicate webhooks return 200 without
- *      sending a queue message.
+ *      retries — a duplicate webhook returns 200 without new work, unless
+ *      its delivery was dead-lettered, which a resend makes due again.
  *   2. The consumer additionally checks each downstream write
  *      (creditsService.getTransactionByStripePaymentIntent, redeemable
- *      earnings dedupeBySourceId) so a queue retry after a partial
+ *      earnings dedupeBySourceId) so a repeat run after a partial
  *      failure cannot double-credit either.
  *
  * Rate limited: AGGRESSIVE (100 req/min per IP).
  */
-export async function handleStripeWebhook(
-  c: AppContext,
-  enqueueEvent: typeof enqueue = enqueue,
-): Promise<Response> {
+export async function handleStripeWebhook(c: AppContext): Promise<Response> {
   const body = await c.req.text();
   const signature = c.req.header("stripe-signature");
 
@@ -182,8 +177,18 @@ export async function handleStripeWebhook(
   const appBilling = await appBillingTriggerFromVerifiedEvent(event, body);
   const receiptKey = appBilling?.receiptKey ?? event.id;
   const payloadHash = await hashPayload(body);
+  const message: StripeEventMessage = {
+    kind: "stripe.event",
+    eventId: event.id,
+    eventType: event.type,
+    event,
+    paymentIntentId: extractPaymentIntentId(event),
+    receivedAt: Date.now(),
+    ...(appBilling ? { appBilling } : {}),
+  };
   const insertResult = await webhookEventsRepository.tryCreate({
     event_id: receiptKey,
+    delivery_payload: message,
     ...(appBilling ? { app_billing_trigger: appBilling.trigger } : {}),
     provider: "stripe",
     event_type: event.type,
@@ -205,48 +210,19 @@ export async function handleStripeWebhook(
           409,
         );
     }
-    logger.debug(
-      `[Stripe Webhook] Duplicate event ${event.id} — skipping enqueue`,
-    );
-    return c.json({ received: true, duplicate: true }, 200);
-  }
-
-  const message: StripeEventMessage = {
-    kind: "stripe.event",
-    eventId: event.id,
-    eventType: event.type,
-    event,
-    paymentIntentId: extractPaymentIntentId(event),
-    receivedAt: Date.now(),
-    ...(appBilling ? { appBilling } : {}),
-  };
-
-  // App billing retains its signed trigger for PostgreSQL recovery. Legacy payments
-  // require a queue retry, so their marker is removed when enqueueing fails.
-  try {
-    await enqueueEvent(STRIPE_QUEUE_KEY, message);
-  } catch (enqueueError) {
-    // error-policy:J2 Generic triggers already have a durable PostgreSQL recovery path.
-    if (appBilling) {
-      logger.error(
-        "[Stripe Webhook] App billing queue handoff failed; durable reconciliation is pending",
-        { eventId: event.id },
+    if (
+      await webhookEventsRepository.reviveDeadStripeDelivery(
+        receiptKey,
+        message,
+      )
+    ) {
+      logger.warn(
+        `[Stripe Webhook] Resend of dead-lettered event ${event.id} is due again`,
       );
-      throw enqueueError;
+      return c.json({ received: true, queued: true }, 200);
     }
-    await webhookEventsRepository
-      .deleteByEventId(receiptKey, "stripe")
-      .catch((rollbackError) => {
-        logger.error(
-          "[Stripe Webhook] enqueue failed AND dedup-marker rollback failed — event may be dropped",
-          { eventId: event.id, rollbackError },
-        );
-      });
-    logger.error(
-      "[Stripe Webhook] enqueue failed — rolled back dedup marker so Stripe retries",
-      { eventId: event.id },
-    );
-    throw enqueueError;
+    logger.debug(`[Stripe Webhook] Duplicate event ${event.id} — no new work`);
+    return c.json({ received: true, duplicate: true }, 200);
   }
 
   return c.json({ received: true, queued: true }, 200);

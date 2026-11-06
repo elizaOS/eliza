@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import { inspect } from "node:util";
 import {
+  CREDENTIAL_SHAPES,
   containsSensitiveText,
   createSecretScrubber,
   createSensitiveTextGate,
@@ -329,6 +330,68 @@ test("capacity refuses more values without forgetting earlier secrets", () => {
   });
   scrubber.clear();
   assert.equal(scrubber.scrub("my code is 482917"), `my code is ${MARK}`);
+});
+
+test("at capacity a forgetting scrubber starts again instead of refusing", () => {
+  const scrubber = createSecretScrubber({ seed: 1, onFull: "forget" });
+  for (let i = 0; i < 128; i++) scrubber.scrub(`my code is ${600000 + i}`);
+  assert.equal(scrubber.size, 128);
+  assert.equal(scrubber.scrub("my code is 482917"), `my code is ${MARK}`);
+  assert.equal(scrubber.size, 1);
+  assert.equal(scrubber.scrub("use 482917 again"), `use ${MARK} again`);
+  assert.equal(scrubber.scrub("use 600000 again"), "use 600000 again");
+
+  const gate = createSensitiveTextGate({ onFull: "forget" });
+  for (let i = 0; i < 129; i++)
+    assert.throws(() => gate.require(`my code is ${600000 + i}`), {
+      code: "SENSITIVE_TEXT",
+    });
+  gate.require("please call me");
+  assert.throws(() => createSecretScrubber({ onFull: "drop" }), TypeError);
+});
+
+test("a host can remember every credential-looking word after a password", () => {
+  const said = "my password is hunter2 and Tr0ub4dor";
+  const first = createSecretScrubber({ seed: 1 });
+  first.remember(said);
+  assert.equal(first.scrub("try Tr0ub4dor now"), "try Tr0ub4dor now");
+
+  const every = createSecretScrubber({ seed: 1, passwordWords: "credential" });
+  every.remember(said);
+  assert.equal(every.scrub("try Tr0ub4dor now"), `try ${MARK} now`);
+  assert.equal(every.scrub("use hunter2"), `use ${MARK}`);
+  every.remember("my password is not working");
+  assert.equal(every.scrub("it is not working"), "it is not working");
+
+  const gate = createSensitiveTextGate({ passwordWords: "credential" });
+  assert.throws(() => gate.require(said));
+  assert.throws(() => gate.require("try Tr0ub4dor now"));
+  assert.throws(
+    () => createSecretScrubber({ passwordWords: "all" }),
+    TypeError,
+  );
+});
+
+test("the shared credential shapes find what the check refuses", () => {
+  assert.deepEqual(
+    CREDENTIAL_SHAPES.map(({ name }) => name),
+    ["provider-key", "private-key", "bearer-token", "signed-web-token"],
+  );
+  assert.ok(Object.isFrozen(CREDENTIAL_SHAPES));
+  for (const text of [
+    "key ghp_fictional0123456789abcdef",
+    "-----BEGIN PRIVATE KEY-----\nfictional",
+    "Bearer fictional0123456789012345",
+    "eyJfictional.eyJfictional.signature",
+  ]) {
+    assert.equal(containsSensitiveText(text), true, text);
+    assert.ok(
+      CREDENTIAL_SHAPES.some(
+        ({ pattern }) => [...text.matchAll(pattern)].length,
+      ),
+      text,
+    );
+  }
 });
 
 test("long credential clauses leave no unredacted suffix", () => {

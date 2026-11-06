@@ -92,16 +92,52 @@ public final class VoiceBundleAssets {
         return install(context, bundleRoot(context));
     }
 
-    private static synchronized Installation install(Context context, File root) throws IOException {
-        byte[] manifestBytes = read(context.getAssets().open(ASSET_ROOT + "/manifest.json"), 1 << 20);
-        JSONObject manifest;
+    /**
+     * The speech languages of the APK's bundle, read from its manifest without
+     * installing anything: "en", then each extra voice. Fast enough for a
+     * status read before the first install.
+     */
+    public static java.util.List<String> packagedLanguages(Context context) throws IOException {
+        java.util.List<String> languages = new java.util.ArrayList<>();
+        languages.add("en");
+        for (String language : voices(parse(read(context.getAssets().open(ASSET_ROOT + "/manifest.json"), 1 << 20))).keySet()) {
+            if (!"en".equals(language)) languages.add(language);
+        }
+        return languages;
+    }
+
+    private static JSONObject parse(byte[] manifestBytes) throws IOException {
         try {
-            manifest = new JSONObject(new String(manifestBytes, StandardCharsets.UTF_8));
+            JSONObject manifest = new JSONObject(new String(manifestBytes, StandardCharsets.UTF_8));
             String format = manifest.getString("format");
             if (!FORMAT.equals(format) && !FORMAT_V2.equals(format)) throw new IOException("Unsupported voice bundle");
+            return manifest;
         } catch (org.json.JSONException error) {
             throw new IOException("Invalid voice bundle manifest", error);
         }
+    }
+
+    /** Extra speech languages (v2 manifests only) to their bundle paths; English is the default voice. */
+    private static java.util.Map<String, String> voices(JSONObject manifest) throws IOException {
+        java.util.Map<String, String> voices = new java.util.TreeMap<>();
+        try {
+            JSONObject extra = FORMAT_V2.equals(manifest.getString("format")) ? manifest.optJSONObject("voices") : null;
+            if (extra != null) {
+                for (java.util.Iterator<String> it = extra.keys(); it.hasNext(); ) {
+                    String language = it.next();
+                    if (!language.matches("[a-z]{2,3}")) throw new IOException("Invalid voice bundle language");
+                    voices.put(language, extra.getString(language));
+                }
+            }
+        } catch (org.json.JSONException error) {
+            throw new IOException("Invalid voice bundle manifest", error);
+        }
+        return voices;
+    }
+
+    private static synchronized Installation install(Context context, File root) throws IOException {
+        byte[] manifestBytes = read(context.getAssets().open(ASSET_ROOT + "/manifest.json"), 1 << 20);
+        JSONObject manifest = parse(manifestBytes);
         if (!root.isDirectory() && !root.mkdirs()) throw new IOException("Voice storage unavailable");
         File stamp = new File(root, "installed-manifest.json");
         boolean verified = stamp.isFile() && Arrays.equals(read(new FileInputStream(stamp), 1 << 20), manifestBytes);
@@ -122,13 +158,8 @@ public final class VoiceBundleAssets {
             }
             String espeak = manifest.optString("espeakDir", "");
             java.util.Map<String, File> voices = new java.util.TreeMap<>();
-            JSONObject extra = FORMAT_V2.equals(manifest.getString("format")) ? manifest.optJSONObject("voices") : null;
-            if (extra != null) {
-                for (java.util.Iterator<String> it = extra.keys(); it.hasNext(); ) {
-                    String language = it.next();
-                    if (!language.matches("[a-z]{2,3}")) throw new IOException("Invalid voice bundle language");
-                    voices.put(language, resolve(root, extra.getString(language)));
-                }
+            for (java.util.Map.Entry<String, String> voice : voices(manifest).entrySet()) {
+                voices.put(voice.getKey(), resolve(root, voice.getValue()));
             }
             return new Installation(
                     root,

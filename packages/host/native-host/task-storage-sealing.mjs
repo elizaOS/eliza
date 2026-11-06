@@ -15,6 +15,7 @@ import {
   rmSync,
   writeFileSync,
 } from "node:fs";
+import { mkdir, open, rename, rm } from "node:fs/promises";
 import { dirname } from "node:path";
 import { NativeHostError } from "./errors.mjs";
 
@@ -172,7 +173,7 @@ const DIRECTORY_SYNC_UNSUPPORTED = new Set([
  * Only "unsupported here" is ignored: an I/O failure such as EIO means the
  * change may not be durable, so the caller must not treat it as written.
  */
-function syncDirectory(directory) {
+export function syncDirectory(directory) {
   let fd;
   try {
     fd = openSync(directory, "r");
@@ -188,16 +189,23 @@ function syncDirectory(directory) {
   }
 }
 
+const temporaryPath = (path) =>
+  `${path}.${process.pid}.${randomBytes(6).toString("hex")}.tmp`;
+
 /**
  * Atomic owner-only write. The data goes to a new 0600 temporary file in the
  * same directory, is synced and renamed over `path`, then the directory is
  * synced. A reader sees the old contents or the new, never a part. A missing
  * directory is created 0700.
+ *
+ * With `verify(text)`, the synced temporary file is read back as UTF-8 and
+ * given to `verify` before the rename. If `verify` throws, the temporary file
+ * is removed, `path` keeps its old contents and the error is thrown.
  */
-export function writePrivateFileSync(path, data) {
+export function writePrivateFileSync(path, data, { verify } = {}) {
   const directory = dirname(path);
   mkdirSync(directory, { recursive: true, mode: 0o700 });
-  const temporary = `${path}.${process.pid}.${randomBytes(6).toString("hex")}.tmp`;
+  const temporary = temporaryPath(path);
   const fd = openSync(temporary, "wx", 0o600);
   try {
     writeFileSync(fd, data);
@@ -209,9 +217,34 @@ export function writePrivateFileSync(path, data) {
   }
   closeSync(fd);
   try {
+    verify?.(readFileSync(temporary, "utf8"));
     renameSync(temporary, path);
   } catch (error) {
     rmSync(temporary, { force: true });
+    throw error;
+  }
+  syncDirectory(directory);
+}
+
+/**
+ * The same atomic owner-only write as `writePrivateFileSync`, for callers
+ * that must not block the event loop. It resolves after the directory sync.
+ */
+export async function writePrivateFile(path, data) {
+  const directory = dirname(path);
+  await mkdir(directory, { recursive: true, mode: 0o700 });
+  const temporary = temporaryPath(path);
+  const handle = await open(temporary, "wx", 0o600);
+  try {
+    try {
+      await handle.writeFile(data);
+      await handle.sync();
+    } finally {
+      await handle.close();
+    }
+    await rename(temporary, path);
+  } catch (error) {
+    await rm(temporary, { force: true });
     throw error;
   }
   syncDirectory(directory);

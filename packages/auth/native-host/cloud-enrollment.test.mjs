@@ -159,6 +159,7 @@ function fixture(override = {}) {
     beforeStart: async () => {
       active = null;
     },
+    answerUnavailableConfig: override.answerUnavailableConfig ?? false,
   });
   return { ...state, auth, pendingStore, state };
 }
@@ -195,6 +196,53 @@ test("unregistered client never sends a login email", async () => {
   });
   await assert.rejects(start(f), { status: 401 });
   assert.equal(f.calls.length, 1);
+});
+test("an unregistered application can be answered as unavailable; Cloud outages still throw", async () => {
+  const configAnswer = (answer) => (path) =>
+    path.endsWith("/config") ? answer() : null;
+  const refused = (status) => () =>
+    Response.json({ error: "invalid_client" }, { status });
+  const mismatch = () =>
+    Response.json({
+      ...binding,
+      environment: "other",
+      codeChallengeMethod: "S256",
+      scopes: ["cloud:user"],
+    });
+  for (const answer of [refused(400), refused(401), refused(403), mismatch]) {
+    // Off by default: the refusal is thrown, as before.
+    await assert.rejects(
+      fixture({ fetch: configAnswer(answer) }).auth.handle("config"),
+      (error) => error.status >= 400,
+    );
+    const f = fixture({
+      fetch: configAnswer(answer),
+      answerUnavailableConfig: true,
+    });
+    assert.deepEqual(await f.auth.handle("config"), {
+      available: false,
+      pending: false,
+      unavailable: "Application account registration is unavailable.",
+    });
+    // A sign-in still stops before any code is sent.
+    await assert.rejects(start(f), (error) => error.status >= 400);
+    assert.equal(
+      f.calls.some((call) => call.path === "/auth/email/send"),
+      false,
+    );
+  }
+  for (const status of [404, 429, 500])
+    await assert.rejects(
+      fixture({
+        fetch: configAnswer(refused(status)),
+        answerUnavailableConfig: true,
+      }).auth.handle("config"),
+      (error) => error.status >= 429,
+    );
+  assert.throws(
+    () => createNativeCloudAuth({ answerUnavailableConfig: "yes" }),
+    TypeError,
+  );
 });
 test("wrong code stays retryable and remote error text is not exposed", async () => {
   let bad = true;

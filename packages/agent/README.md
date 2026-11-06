@@ -14,6 +14,22 @@ Notice consumers use `scripts/mobile-bundle-dependencies.ts` to validate this
 inventory against the bundle and prepared source before reading license files.
 Missing or changed inputs fail validation; source comments are not an inventory.
 
+A host that never loads a package can set `ELIZA_MOBILE_STUB_PLUGINS` to a
+comma-separated list of package names (for example `googleapis,three`). The
+build resolves each one, and its subpaths, to the null-plugin stub, and lists
+them as `hostStubs` in the manifest. A named import from a stub is `undefined`,
+so using it fails with a TypeError; properties read off its default export are
+functions that throw `MOBILE_CAPABILITY_UNAVAILABLE`. The load smoke still runs;
+check the boot and the features you keep too. Known limits:
+
+- `@elizaos/plugin-calendar/format` and `@elizaos/plugin-browser/schema` stay
+  real under a stub of their package, because app code imports them at boot.
+- Do not stub `@elizaos/plugin-workflow` if the host sets
+  `ELIZA_MOBILE_WORKFLOWS=1`.
+- Stubbing `phonemizer` makes Kokoro use its bundled ASCII G2P.
+- `@elizaos/plugin-todos` named imports back the shared todo cutover route;
+  stub it only if the host never uses that route.
+
 Import public runtime, service, role, and operation APIs from `@elizaos/agent`.
 Agent code imports core APIs and catalog maps through `@elizaos/core`.
 `RegistryClientPluginInfo` and `RegistryClientSearchResult` expose the underlying
@@ -226,7 +242,15 @@ four POST routes under `/browser/surface/` require the inbound bearer token and
 normal origin policy. The browser-safe `surface-client.mjs` accepts the host's
 authenticated request adapter and native command handler; it never reads keys.
 Connections use increasing renderer epochs. Commands have bounded deadlines,
-are delivered once, and are never retried or reconnected automatically. Account
+are delivered once, and are never retried or reconnected automatically. An idle
+pull is held for `SURFACE_PULL_HOLD_MS` (10 s, below the 15 s connection expiry;
+hosts may pass a shorter `pullHoldMs`) and returns early on a new command,
+cancellation, close, revoke or new connection; an account change is seen at the
+next owner check, at the latest when the hold ends. The connection expiry is
+renewed when a pull arrives and when it returns, so a client has the full 15 s
+to send its next pull. The client closes the host connection as soon as it
+stops, which ends a held pull even if the request adapter cannot abort it;
+adapters should still pass the signal to their transport. Account
 replacement and close retire pending commands. Losing a delivered effect returns
 `UNCERTAIN_OUTCOME`; a receipt is not proof that the website achieved the goal.
 Complete replies up to the explicit 2 MiB transport limit are accepted; larger

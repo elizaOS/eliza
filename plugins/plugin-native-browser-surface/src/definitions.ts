@@ -379,6 +379,11 @@ export interface ElizaSurfaceManagerPlugin {
   navigate(options: NavigateOptions): Promise<void>;
   /** Reload an existing surface's current page. */
   reloadSurface(options: SurfaceIdOptions): Promise<void>;
+  /**
+   * Android: stops the current page load where it is; a no-op when nothing is loading.
+   * `navigationChanged` follows so the host re-reads `progress`.
+   */
+  stopLoading(options: SurfaceIdOptions): Promise<void>;
   /** Move back in this surface's own history; never replays after a lost reply. */
   goBack(options: SurfaceIdOptions): Promise<void>;
   /** Android: move forward in this surface's own history. */
@@ -488,6 +493,18 @@ export interface ElizaSurfaceManagerPlugin {
           actionId?: string;
           expectedSelector?: string;
           assistantName?: string;
+          /** The host's commit words (a regular expression source, flags `iu`). */
+          commitPattern?: string;
+          /** The one commit the person said yes to, spent by the task bindings. */
+          commitGrant?: {
+            grantId: string;
+            selector?: string;
+            requestTarget?:
+              | { url: string; method: string }
+              | { path: string; method: string };
+            formHash?: string;
+            expiresAt: number;
+          };
           targets: Array<{
             selector: string;
             action: "click" | "fill" | "select" | "scroll" | "follow";

@@ -31,10 +31,28 @@ createNativeCloudAuth, requireNonSensitiveText, pickMessage, fundingError),
 planKeys, planCurrency, planInterval, speechLanguage, multipartPrefix and presentation
 messages, plus speechVoice. A host with its own sign-in passes
 `browserSignIn: false`: `/cloud/login` and `/cloud/login/status` then answer
-404 and no `cloudSiteBase` is used. These are trusted host settings, never
+404 and no `cloudSiteBase` is used. `accountGoogleLink: false` refuses every
+`/cloud/account/methods/google/*` route. `googleSignInRoutes: false` refuses
+`/cloud/native/start` with `method: "google"` and `/cloud/native/google/return`;
+the host then starts and finishes Google sign-in itself, through the enrollment
+that its `createNativeCloudAuth` built. Each refusal is 404
+`{error, code: "internal_sign_in_only"}` before the enrollment or Cloud is
+called. `error` is the host message `browserSignInUnavailable`,
+`accountGoogleLinkUnavailable` or `googleSignInRoutesUnavailable`, or
+"Cloud route not available". These are trusted host settings, never
 renderer input. The host remains responsible for origin admission and authenticating
 requests before this route handler. Native enrollment keeps its own registered
 application identity. Document runtimes are reviewed host-owned artifacts.
+
+A host that must know why an account signed out passes
+`credentialRevocation: {onRevoked, status}`. When Cloud refuses the stored key at the identity check (`GET /api/v1/user` answers 401),
+`await onRevoked({key})` runs inside the credential critical section, before the
+key is cleared, and only while that key is still stored and the account epoch
+has not changed. If it throws, the key stays and `/cloud/account/access` answers
+`unavailable`, so the next check tries again. A 401 from any other request
+clears the key as before and calls nothing. Each signed-out access answer reads
+`status()`; when it says `revoked: true`, the answer is
+`{state: "signed_out", revoked: true, localDataPending}`.
 
 This Node source entrypoint is separate from the browser-safe root SDK. Run `bun run --cwd packages/cloud/sdk test:native-host` for transport and
 private-file tests with synthetic provider responses. Consumer tests cover
@@ -175,14 +193,21 @@ Call the returned route handler's `closeSpeechStreams()` when shutting down a
 host. Streams are private in-memory sessions, not persistent playback jobs:
 request replay protection lasts at most ten minutes and ends on host restart.
 Never automatically restart an uncertain synthesis under a new request identity.
-Two active streams and 32 retained identities bound host resources; capacity
-rejection is explicit. Clients must stop playback on cancellation/account change
+Two active streams and 256 retained identities bound host resources; a finished
+stream whose audio the client has not received still counts as active. A finished
+stream keeps its undelivered audio for 30 s after it finished or was last pulled,
+then only its `done` frame. Capacity rejection is explicit. Clients must stop playback on cancellation/account change
 and discard unfinished media; this transport alone does not implement playback.
 
 `@elizaos/cloud-sdk/native-speech-stream` is the browser-safe counterpart to the
 native session routes. Inject the host's authenticated JSON transport into
 `createNativeSpeechStream`, call `open`/`pull`, and retain the same instance when
-explicitly retrying a lost transport reply. Its request identity and cursor do not
+explicitly retrying a lost transport reply. Each pull request sends `batch: true`
+and gets the frames the host has ready after the cursor (`{cursor, frames}`),
+up to about 512 KiB of base64 audio per reply; `pull` then returns them one at a
+time. A provider failure still delivers the frames read before it. A pull without `batch` keeps the old
+single-frame reply (`{cursor, frame}`). Pulling cursor N tells the host the
+client has every frame before N. Its request identity and cursor do not
 change on transport failure; malformed protocol data stops the session. Concurrent
 pulls share one delivery. A ten-minute client deadline prevents an expired host
 identity from accidentally starting a new synthesis. Pass an account/playback
@@ -202,12 +227,21 @@ must separately authorize and implement their native/renderer read bridge; this
 factory does not enable an HTTP route or change task-read authority.
 Each message detail also carries `state`: Gmail's `historyId` for the message
 and whether it is unread, in the inbox or in the trash (no other labels).
+`./native-host` also exports this reduction (`mailboxState(labels, historyId)`)
+and Cloud's recipient rule:
+`mailAddress(value)` (one bare address, no display name) and
+`mailAddresses(value, required)` (at most 50; the list, or null).
 
 By default the owner's Gmail grant must be exactly read-only (`gmail.readonly`
 plus sign-in identity). A host that sets `hostPolicy.gmailOwnerWrites: true`
 asks Google for `gmail.modify` and `gmail.send` as well, and lets the owner's
 mailbox (`/gmail/list`, `/gmail/read`, `mailboxForAccount`) hold that grant;
 `/gmail/status` then also reports `canChangeMessages` and `canSendMessages`.
+Every `/gmail/status` answer reports the host policy as `ownerWrites` and the
+verdict on the grant as `grant`: `read-only`, `part-write` or `write` (it reads
+mail, and holds none, some or all of the write scopes this host asks for),
+`too-broad` (a scope this host never asks for) or `no-read`.
+`canReadMessages` is true exactly for the first three when connected.
 Agent task reads (`googleForAccount`) also accept that owner grant, so the
 agent can still read the owner's mail. The task port only sends GET reads; it
 has no write operation. Compose, full mail access or any other scope is still
@@ -220,7 +254,14 @@ the owner's reviewed changes (`send`, `archive`, `unarchive`, `trash`,
 operations: `prepare({requestId, proposal})` returns Cloud's `review` and a
 `prepared` receipt to show the owner, `dispatch({requestId, reviewDigest,
 proposal})` performs exactly that review once, and `observe({requestId})` reads
-the canonical receipt. Before each call it checks the signed-in owner, the
+the canonical receipt. A change's receipt also carries `mailbox`, the labels
+it left reduced as a read reduces them (null for send and before dispatch).
+`prepare` refuses a send review without a valid `from`, 1 to 50 recipients in
+`to`, `cc` and `bcc`, a `subject` and file names with a 502. `capabilities()`
+returns Cloud's `attachmentPolicy` (`mimeTypes`, `maximumBytes`,
+`maximumOutgoing`, `maximumTotalBytes`) for outgoing files; a server without it
+fails with a 502, and a failed Google token read with `unavailable`.
+Before each call it checks the signed-in owner, the
 Cloud sign-in and that `accountId` is still the connected grant holding the
 scope the effect needs (`gmail.send` for send, `gmail.modify` otherwise).
 Writes are never retried. Dispatch captures the reviewed input before any

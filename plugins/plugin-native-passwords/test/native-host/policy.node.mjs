@@ -13,7 +13,7 @@ const passwords = path.join(
 );
 const custody = path.join(
   plugin,
-  "../plugin-native-secure-store/android/src/main/java/ai/eliza/plugins/securestore/nativeonly",
+  "../plugin-native-secure-store/android-nativeonly/src/main/java/ai/eliza/plugins/securestore/nativeonly",
 );
 test("autofill admission, matching, generation and request capabilities", (t) => {
   const classes = fs.mkdtempSync(path.join(os.tmpdir(), "password-policy-"));
@@ -29,6 +29,7 @@ test("autofill admission, matching, generation and request capabilities", (t) =>
       classes,
       path.join(custody, "PasswordFacets.java"),
       ...[
+        "PasswordEditorPolicy",
         "PasswordFormPolicy",
         "PasswordMatching",
         "PasswordGenerator",
@@ -47,4 +48,41 @@ test("autofill admission, matching, generation and request capabilities", (t) =>
     },
   );
   assert.match(output, /^\d+ assertions passed/);
+});
+
+test("page script has no path to the host-native vault controls", () => {
+  const bridge = (name) =>
+    [
+      ...fs
+        .readFileSync(path.join(passwords, `${name}.java`), "utf8")
+        .matchAll(/@PluginMethod public void (\w+)/g),
+    ].map((match) => match[1]);
+  assert.deepEqual(bridge("PasswordsPlugin").sort(), [
+    "copy",
+    "list",
+    "lock",
+    "openAutofillSettings",
+    "openEditor",
+    "remove",
+    "reset",
+    "reveal",
+    "save",
+    "status",
+    "unlock",
+  ]);
+  for (const file of [
+    path.join(passwords, "PasswordsPlugin.java"),
+    path.join(
+      plugin,
+      "android-transfer/src/main/java/ai/eliza/plugins/passwords/PasswordTransferPlugin.java",
+    ),
+  ])
+    assert.doesNotMatch(
+      fs.readFileSync(file, "utf8"),
+      /destroy(Vault)?\(|lockAndClose|setAdmission/,
+    );
+  assert.doesNotMatch(
+    fs.readFileSync(path.join(plugin, "src/definitions.ts"), "utf8"),
+    /destroy/i,
+  );
 });

@@ -265,13 +265,14 @@ storage = "sqlite"
 # index_name = "eliza-cloud-embeddings"
 
 # -----------------------------------------------------------------------------
-# Queue: Stripe webhook fan-out runs on Redis (redis-rest in Workers, Railway
-# TCP in non-Worker cloud services, embedded Wadis locally), not Cloudflare
-# Queues. The webhook route LPUSHes a JSON
-# envelope; the `* * * * *` cron fires `/api/cron/process-stripe-queue`
-# which drains a bounded batch via the queue helper in
-# `packages/cloud/shared/src/lib/redis-queue.ts`. Failed messages are retried with
-# attempts++ and demoted to a `:dlq` list after `maxAttempts`.
+# Stripe webhook fan-out is a PostgreSQL outbox, not a cache list: the webhook
+# route writes each verified event's work into its `webhook_events` dedupe row
+# in one insert, and the `* * * * *` cron `/api/cron/process-stripe-queue`
+# leases due rows (FOR UPDATE SKIP LOCKED) through
+# `packages/cloud/shared/src/lib/services/stripe-delivery-outbox.ts`. Failed
+# deliveries retry with backoff and are dead-lettered after `maxAttempts`; a
+# Stripe resend makes a dead-lettered delivery due again. CACHE_KV cannot hold a
+# work queue: its list push and pop refuse.
 # -----------------------------------------------------------------------------
 
 # -----------------------------------------------------------------------------
@@ -789,7 +790,6 @@ ELIZA_ONBOARDING_LOGIN_APP_URL = "https://staging.eliza.app"
 # identity. The protected deployment workflow verifies both before publishing.
 ELIZA_MOBILE_APP_AUTH_ENABLED = "true"
 ELIZA_MOBILE_APP_AUTH_APP_ID = "689a1597-85e7-43ca-b000-8c6392d79465"
-NEXT_PUBLIC_NETWORK = "base"
 NEXT_PUBLIC_SOLANA_RPC_URL = "https://api.mainnet-beta.solana.com"
 GITHUB_ORG_NAME = "eliza-cloud-apps"
 GITHUB_TEMPLATE_REPO = "eliza-cloud-apps/cloud-apps-template"
@@ -798,7 +798,6 @@ APP_BILLING_ENVIRONMENT = "test"
 APP_BILLING_UI_ORIGIN = "https://cloud-staging.eliza.app"
 # Staging canary. Set false for an immediate rollback to the full app router.
 THIN_INFERENCE_ENTRY_ENABLED = "true"
-DATABASE_REGION = "na"
 PAYOUT_TESTNET = "true"
 # Warm-pool claim half (#16961). Staging enablement is the next step of that
 # issue's dependency chain but is sequenced behind draining the residual
