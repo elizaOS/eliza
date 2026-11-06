@@ -53,7 +53,7 @@ public final class InstallReadbackTest {
     // in that window, such as the job requested right after the handoff, keeps
     // it and spends no retry; the platform then commits and installs it.
     UpdateJournal sealed=new UpdateJournal(root.resolve("sealed"),SYNC);sealed.begin(PLAN,OLD,0);
-    sealed.committingWithAction("release-11",3,0,()->{});
+    sealed.committingWithAction("release-11",3,0,FRESH,()->{});
     Platform validating=new Platform(InstallReadback.Session.UNCOMMITTED);
     for(long at:new long[]{0,1000,5000}){validating.elapsed=at;InstallReadback.reconcile(sealed,validating,budget);}
     check(validating.abandoned.isEmpty()&&sealed.read().phase==UpdateJournal.Phase.COMMITTING&&sealed.read().releases==0,"sealed session abandoned while the platform verified it");

@@ -266,10 +266,10 @@ public final class UpdateJournalTest {
     // cleared, the journal is written as version 4 again, and a later release
     // of the same candidate counts from one.
     Path clearedRoot=directory.resolve("retry-cleared");UpdateJournal cleared=new UpdateJournal(clearedRoot,SYNC);
-    for(int attempt=1;attempt<UpdateJournal.MAX_INSTALL_ATTEMPTS_PER_CANDIDATE;attempt++){cleared.begin(plan("stable"),OLD,0);cleared.committing("release-11",3,0);cleared.reconcileInstallerResult("release-11",3,OLD,false,null,UpdateJournal.InstallerFailure.RETRYABLE);}
+    for(int attempt=1;attempt<UpdateJournal.MAX_INSTALL_ATTEMPTS_PER_CANDIDATE;attempt++){cleared.begin(plan("stable"),OLD,0);cleared.committingWithAction("release-11",3,0,FRESH,()->{});cleared.reconcileInstallerResult("release-11",3,OLD,false,null,UpdateJournal.InstallerFailure.RETRYABLE);}
     check(cleared.read().releases==UpdateJournal.MAX_INSTALL_ATTEMPTS_PER_CANDIDATE-1);
     check(java.nio.ByteBuffer.wrap(Files.readAllBytes(clearedRoot.resolve("journal"))).getInt(4)==5);
-    cleared.begin(plan("stable"),OLD,0);cleared.committing("release-11",3,0);cleared.reconcile("release-11",3,NEW,false);
+    cleared.begin(plan("stable"),OLD,0);cleared.committingWithAction("release-11",3,0,FRESH,()->{});cleared.reconcile("release-11",3,NEW,false);
     check(cleared.read().phase==UpdateJournal.Phase.PROBATION);check(cleared.read().releases==0);check(cleared.read().releasedCandidate.isEmpty());
     check(java.nio.ByteBuffer.wrap(Files.readAllBytes(clearedRoot.resolve("journal"))).getInt(4)==4);
     cleared.installedHealthy(cleared.read(),NEW);check(new UpdateJournal(clearedRoot,SYNC).read().releases==0);
