@@ -2,7 +2,8 @@
   "sources": [
     "packages/cloud/shared/src/lib/services/account-deletion-saga.ts",
     "packages/cloud/shared/src/lib/services/account-deletion.ts",
-    "packages/cloud/shared/src/db/repositories/account-deletion-requests.ts"
+    "packages/cloud/shared/src/db/repositories/account-deletion-requests.ts",
+    "packages/cloud/shared/src/lib/services/account-deletion-provider-adapters.ts"
   ],
   "implementationTests": [
     "packages/cloud/shared/src/lib/services/__tests__/account-deletion-lane-starvation.pglite.test.ts",
@@ -17,7 +18,7 @@
       "invariants": [
         "CompletionHasEveryReceipt",
         "ReceiptsStayOrdered",
-        "PurgeRequiresAuthority",
+        "RetainedAdmissionReceipt",
         "ReceiptMatchesPhase",
         "ErasureIsTerminal"
       ],
@@ -33,7 +34,7 @@
       "invariants": [
         "CompletionHasEveryReceipt",
         "ReceiptsStayOrdered",
-        "PurgeRequiresAuthority",
+        "RetainedAdmissionReceipt",
         "ReceiptMatchesPhase",
         "ErasureIsTerminal"
       ],
@@ -61,7 +62,7 @@
       "invariants": [
         "CompletionHasEveryReceipt",
         "ReceiptsStayOrdered",
-        "PurgeRequiresAuthority",
+        "RetainedAdmissionReceipt",
         "ReceiptMatchesPhase",
         "ErasureIsTerminal"
       ],
@@ -81,5 +82,12 @@
         }
       ]
     }
-  ]
+  ],
+  "bounds": {
+    "assumptions": [
+      "The initial state assumes the account_authority receipt has already committed. RetainedAdmissionReceipt checks retention of this initial fact; it is not a live-dispatch authorization proof.",
+      "Phase admission, completion and final erasure have separate authority checks. Authority changes after claim and provider-specific dispatch checks are not proved by the retained receipt invariant.",
+      "All 17 phase identities, two worker lanes, three generations per phase and one coordination fault; provider effects remain abstract."
+    ]
+  }
 }
