@@ -188,6 +188,57 @@ test("a delayed first dispatch receives its own full original retry window", asy
   expect(calls.map((call) => (call.at - epoch) / hour)).toEqual([26, 48]);
 });
 
+/** Override only the database clock so application and primary time can diverge. */
+async function withDatabaseClock(at: number, run: () => Promise<void>) {
+  const pg = db.getPgliteClientForTests();
+  await pg.exec(`
+    CREATE SCHEMA checkout_test_clock;
+    CREATE TABLE checkout_test_clock.time(value timestamptz NOT NULL);
+    CREATE FUNCTION checkout_test_clock.clock_timestamp() RETURNS timestamptz
+      LANGUAGE sql VOLATILE AS 'SELECT value FROM checkout_test_clock.time';
+    SET search_path=checkout_test_clock,public,pg_catalog;
+  `);
+  try {
+    await db.dbWrite.execute(
+      sql`INSERT INTO checkout_test_clock.time(value) VALUES (${new Date(at)})`,
+    );
+    await run();
+  } finally {
+    await pg.exec(
+      "SET search_path=public; DROP SCHEMA checkout_test_clock CASCADE",
+    );
+  }
+}
+
+test("first dispatch is timestamped by the primary despite an application clock ahead", async () => {
+  setSystemTime(epoch + 48 * hour);
+  await withDatabaseClock(epoch, async () => {
+    expect((await request()).status).toBe(500);
+    expect((await order()).provider_started_at?.getTime()).toBe(epoch);
+    expect(calls).toHaveLength(1);
+  });
+});
+
+test("a slow application clock cannot authorize an expired ambiguous or started retry", async () => {
+  await withDatabaseClock(epoch, async () => {
+    expect((await request()).status).toBe(500);
+    const row = await order();
+    await db.dbWrite.execute(
+      sql`UPDATE checkout_test_clock.time SET value=${new Date(epoch + 25 * hour)}`,
+    );
+    setSystemTime(epoch + hour);
+    expect((await request()).status).toBe(500);
+    expect(calls).toHaveLength(1);
+    await db.dbWrite.execute(
+      sql`UPDATE stripe_checkout_orders SET status='provider_started' WHERE id=${row.id}`,
+    );
+    await expect(service.markProviderStarted(row.id)).rejects.toThrow(
+      "read-only reconciliation",
+    );
+    expect((await order()).provider_started_at?.getTime()).toBe(epoch);
+  });
+});
+
 test("recovery searches the entire original retry window, including a late accepted retry", async () => {
   await request();
   setSystemTime(epoch + 22 * hour);

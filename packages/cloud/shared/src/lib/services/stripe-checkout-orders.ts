@@ -331,14 +331,16 @@ export class StripeCheckoutOrdersService {
   }
 
   async markProviderStarted(orderId: string): Promise<void> {
-    const now = new Date();
-    const earliestSafeStart = new Date(now.getTime() - STRIPE_CHECKOUT_PROVIDER_RETRY_WINDOW_MS);
+    // The final pre-provider authorization and the immutable first dispatch
+    // share the primary database clock. A slow application worker must not
+    // extend the original provider idempotency window on a later retry.
+    const earliestSafeStart = sql`clock_timestamp() - (${STRIPE_CHECKOUT_PROVIDER_RETRY_WINDOW_MS} * interval '1 millisecond')`;
     const [row] = await dbWrite
       .update(stripeCheckoutOrders)
       .set({
         status: "provider_started",
-        provider_started_at: sql`COALESCE(${stripeCheckoutOrders.provider_started_at}, ${now})`,
-        updated_at: now,
+        provider_started_at: sql`COALESCE(${stripeCheckoutOrders.provider_started_at}, clock_timestamp())`,
+        updated_at: sql`clock_timestamp()`,
       })
       .where(
         and(
@@ -346,7 +348,7 @@ export class StripeCheckoutOrdersService {
           or(
             eq(stripeCheckoutOrders.status, "quoted"),
             and(
-              eq(stripeCheckoutOrders.status, "provider_ambiguous"),
+              inArray(stripeCheckoutOrders.status, ["provider_started", "provider_ambiguous"]),
               gt(stripeCheckoutOrders.provider_started_at, earliestSafeStart),
             ),
           ),
@@ -355,12 +357,6 @@ export class StripeCheckoutOrdersService {
       .returning({ id: stripeCheckoutOrders.id });
     if (!row) {
       const existing = await this.get(orderId);
-      if (
-        existing?.status === "provider_started" &&
-        existing.provider_started_at &&
-        existing.provider_started_at > earliestSafeStart
-      )
-        return;
       if (existing?.status === "provider_started" || existing?.status === "provider_ambiguous") {
         throw new StripeCheckoutAuthorityError(
           "STRIPE_CHECKOUT_RECONCILIATION_REQUIRED",
