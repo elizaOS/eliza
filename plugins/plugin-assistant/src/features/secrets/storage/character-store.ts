@@ -1,12 +1,14 @@
 /**
  * Character Settings Storage
  *
- * Stores global secrets in the character's settings.secrets object.
- * This is the primary storage for agent-level configuration and API keys.
+ * Stores global secrets for the agent: the encrypted record with its config
+ * in memory for this runtime (never in `character.settings`, so no character
+ * export, serializer or import carries it), and the live string through
+ * `runtime.setSetting(key, value, true)` so `runtime.getSetting` returns it.
+ * Keys loaded at boot stay as plain strings in `character.settings.secrets`.
  *
- * Note: This implementation directly accesses character.settings rather than
- * using getSetting()/setSetting() because those methods don't support object
- * values - they only return primitives (string | boolean | number | null).
+ * Note: This implementation reads character.settings directly for the
+ * records because getSetting() only returns primitives, not objects.
  */
 
 import type { IAgentRuntime } from "@elizaos/core";
@@ -25,6 +27,15 @@ import { PermissionDeniedError } from "../types.ts";
 import { BaseSecretStorage } from "./interface.ts";
 
 const SECRETS_KEY = "secrets";
+/**
+ * Encrypted records written by this store, per runtime. They are not in
+ * `settings.secrets`: the runtime aliases it to `character.secrets` and
+ * `getSetting` reads only strings from there, so a record there was unreadable
+ * by every plugin and replaced a key loaded at boot. They are not in any other
+ * `settings` key either: the agent export strips only the declared secret
+ * containers, so a record there would ship in a credential-free bundle.
+ */
+const RECORDS = new WeakMap<IAgentRuntime, Record<string, StoredSecret>>();
 const METADATA_KEY = "__secrets_metadata";
 
 /**
@@ -75,15 +86,13 @@ export class CharacterSettingsStorage extends BaseSecretStorage {
   async exists(key: string, context: SecretContext): Promise<boolean> {
     this.assertGlobalAccess(key, "read", context);
     this.ensureSettingsStructure();
-    const secrets = this.getSecretsObject();
-    return key in secrets;
+    return key in this.getStoreObject() || key in this.getSecretsObject();
   }
 
   async get(key: string, context: SecretContext): Promise<string | null> {
     this.assertGlobalAccess(key, "read", context);
     this.ensureSettingsStructure();
-    const secrets = this.getSecretsObject();
-    const stored = secrets[key];
+    const stored = this.getStoreObject()[key] ?? this.getSecretsObject()[key];
 
     if (stored === undefined || stored === null) {
       return null;
@@ -127,8 +136,8 @@ export class CharacterSettingsStorage extends BaseSecretStorage {
   ): Promise<boolean> {
     this.assertGlobalAccess(key, "write", context);
     this.ensureSettingsStructure();
-    const secrets = this.getSecretsObject();
-    const existingStored = secrets[key];
+    const store = this.getStoreObject();
+    const existingStored = store[key] ?? this.getSecretsObject()[key];
     const existingConfig =
       typeof existingStored === "object" ? existingStored.config : undefined;
 
@@ -148,8 +157,9 @@ export class CharacterSettingsStorage extends BaseSecretStorage {
       config: fullConfig,
     };
 
-    // Store directly in character.settings.secrets
-    secrets[key] = storedSecret;
+    store[key] = storedSecret;
+    // The live string is what `runtime.getSetting` hands to plugins.
+    this.runtime.setSetting(key, value, true);
 
     logger.debug(`[CharacterSettingsStorage] Set secret: ${key}`);
     return true;
@@ -158,13 +168,16 @@ export class CharacterSettingsStorage extends BaseSecretStorage {
   async delete(key: string, context: SecretContext): Promise<boolean> {
     this.assertGlobalAccess(key, "delete", context);
     this.ensureSettingsStructure();
+    const store = this.getStoreObject();
     const secrets = this.getSecretsObject();
 
-    if (!(key in secrets)) {
+    if (!(key in store) && !(key in secrets)) {
       return false;
     }
 
+    delete store[key];
     delete secrets[key];
+    this.runtime.setSetting(key, null, true);
 
     logger.debug(`[CharacterSettingsStorage] Deleted secret: ${key}`);
     return true;
@@ -172,10 +185,15 @@ export class CharacterSettingsStorage extends BaseSecretStorage {
 
   async list(context: SecretContext): Promise<SecretMetadata> {
     this.assertGlobalAccess("*", "read", context);
-    const secrets = this.getSecretsObject();
+    const store = this.getStoreObject();
     const metadata: SecretMetadata = {};
 
-    for (const [key, stored] of Object.entries(secrets)) {
+    for (const [key, stored] of [
+      ...Object.entries(store),
+      ...Object.entries(this.getSecretsObject()).filter(
+        ([key]) => !(key in store),
+      ),
+    ]) {
       if (key === METADATA_KEY) {
         continue;
       }
@@ -211,8 +229,7 @@ export class CharacterSettingsStorage extends BaseSecretStorage {
     context: SecretContext,
   ): Promise<SecretConfig | null> {
     this.assertGlobalAccess(key, "read", context);
-    const secrets = this.getSecretsObject();
-    const stored = secrets[key];
+    const stored = this.getStoreObject()[key] ?? this.getSecretsObject()[key];
 
     if (!stored) {
       return null;
@@ -232,8 +249,8 @@ export class CharacterSettingsStorage extends BaseSecretStorage {
   ): Promise<boolean> {
     this.assertGlobalAccess(key, "write", context);
     this.ensureSettingsStructure();
-    const secrets = this.getSecretsObject();
-    const stored = secrets[key];
+    const store = this.getStoreObject();
+    const stored = store[key] ?? this.getSecretsObject()[key];
 
     if (!stored) {
       return false;
@@ -250,13 +267,24 @@ export class CharacterSettingsStorage extends BaseSecretStorage {
       ...storedSecret.config,
       ...config,
     };
-    secrets[key] = storedSecret;
+    store[key] = storedSecret;
 
     return true;
   }
 
+  /** Encrypted records this store wrote for this runtime (in memory only). */
+  private getStoreObject(): Record<string, StoredSecret> {
+    let records = RECORDS.get(this.runtime);
+    if (!records) {
+      records = {};
+      RECORDS.set(this.runtime, records);
+    }
+    return records;
+  }
+
   /**
-   * Get the secrets object from character settings
+   * Get the secrets object from character settings: keys loaded at boot
+   * (plain strings) and records written there by earlier versions.
    *
    * Accesses character.settings.secrets directly instead of using getSetting()
    * because getSetting() only returns primitives, not objects.
