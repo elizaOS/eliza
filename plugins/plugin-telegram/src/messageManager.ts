@@ -41,6 +41,7 @@ import {
   summarizeOutboundAttachmentUrl,
   toWellFormedUnicode,
   type UUID,
+  validateUuid,
 } from "@elizaos/core";
 import { lifeOpsPassiveConnectorsEnabled } from "@elizaos/host/protocol";
 import type {
@@ -591,6 +592,118 @@ export class MessageManager {
       this.runtime,
       this.telegramMessageMemoryKey(chatId, messageId),
     );
+  }
+
+  /** Cache key naming the merged reply row that holds a delivered message. */
+  private mergedReplyKey(
+    chatId: number | string,
+    messageId: number | string,
+  ): string {
+    return `${this.telegramMessageMemoryKey(chatId, messageId)}:merged-reply`;
+  }
+
+  /**
+   * The stored row for a Telegram message: its per-message row, else the
+   * agent reply it was merged into (a reply stored once under the message
+   * service's response id), else the per-message id. The merge records a
+   * plain key per delivered message id, because metadata array matching is
+   * adapter-specific: plugin-sqlite compares each value with `===`.
+   */
+  async resolveMessageMemoryId(
+    chatId: number | string,
+    messageId: number | string,
+  ): Promise<UUID> {
+    const id = this.messageMemoryId(chatId, messageId);
+    if (await this.runtime.getMemoryById(id)) return id;
+    const merged = validateUuid(
+      await this.runtime.getCache<string>(
+        this.mergedReplyKey(chatId, messageId),
+      ),
+    );
+    return merged && (await this.runtime.getMemoryById(merged)) ? merged : id;
+  }
+
+  /**
+   * The stored copy an edit of one Telegram message may replace: its own row,
+   * or a merged reply that holds only that message. A merged reply that lists
+   * several chunked messages holds text an edit of one chunk would overwrite,
+   * so it has no single stored copy to replace.
+   */
+  async storedCopyForEdit(
+    chatId: number | string,
+    messageId: number | string,
+  ): Promise<Memory | null> {
+    const id = await this.resolveMessageMemoryId(chatId, messageId);
+    const stored = await this.runtime.getMemoryById(id);
+    if (!stored) return null;
+    const ids = (
+      stored.metadata as { telegramMessageIds?: unknown } | undefined
+    )?.telegramMessageIds;
+    if (
+      id !== this.messageMemoryId(chatId, messageId) &&
+      Array.isArray(ids) &&
+      ids.length > 1
+    ) {
+      return null;
+    }
+    return stored;
+  }
+
+  /**
+   * Port of plugin-discord's reply merge: the message service and this
+   * delivery write the same reply id concurrently and SQL keeps the first
+   * insert, so read the stored winner and add the delivery facts to it.
+   */
+  private async mergeIntoCanonicalReply(memory: Memory): Promise<Memory> {
+    const id = memory.id as UUID;
+    let existing = await this.runtime.getMemoryById(id);
+    if (!existing) {
+      await this.runtime.createMemory(memory, "messages");
+      existing = await this.runtime.getMemoryById(id);
+    }
+    if (
+      !existing ||
+      existing.agentId !== this.runtime.agentId ||
+      existing.entityId !== this.runtime.agentId ||
+      existing.roomId !== memory.roomId
+    ) {
+      throw new ElizaError("Telegram reply memory does not match delivery", {
+        code: "TELEGRAM_REPLY_MEMORY_MISMATCH",
+        context: { memoryId: id, found: Boolean(existing) },
+      });
+    }
+    const merged: Memory = {
+      ...existing,
+      content: {
+        ...existing.content,
+        source: memory.content.source,
+        inReplyTo: memory.content.inReplyTo,
+        // The delivery's attachments exclude any Telegram refused, so the
+        // merged row records only what was delivered.
+        ...(memory.content.attachments !== undefined
+          ? { attachments: memory.content.attachments }
+          : {}),
+      },
+      metadata: {
+        ...(existing.metadata ?? {}),
+        ...(memory.metadata ?? {}),
+      } as Memory["metadata"],
+    };
+    const updated = await this.runtime.updateMemory({
+      id,
+      content: merged.content,
+      metadata: merged.metadata,
+    });
+    if (!updated) {
+      throw new ElizaError(
+        "Telegram reply delivery metadata was not persisted",
+        {
+          code: "TELEGRAM_REPLY_METADATA_NOT_PERSISTED",
+          context: { memoryId: id },
+        },
+      );
+    }
+    return merged;
   }
 
   private telegramUpdateDedupeKey(
@@ -1506,9 +1619,82 @@ export class MessageManager {
     chatType: string;
     threadId?: string;
     inReplyTo: UUID;
+    /** The inbound chat; only a reply delivered back into it is merged. */
+    inboundChatId: number | string;
   }): Promise<Memory[]> {
     const memories: Memory[] = [];
     const content = this.deliveredContent(args.content);
+    // One dialogue row per reply, as in plugin-discord: the message service
+    // stores the reply under content.responseId, so a text reply delivered
+    // back into the inbound chat merges its Telegram ids into that row
+    // instead of adding a second row that renders the reply twice in every
+    // later prompt. A chunked reply keeps its text once and lists every id.
+    const [first] = args.sentMessages;
+    const canonicalReplyId =
+      first &&
+      args.content.text?.trim() &&
+      args.sentMessages.every((sent) =>
+        [args.inboundChatId, this.currentChatId(args.inboundChatId)]
+          .map(String)
+          .includes(String(sent.chat.id)),
+      )
+        ? (validateUuid(args.content.responseId) ?? undefined)
+        : undefined;
+    // A turn can call back more than once with the same responseId. Only the
+    // first delivery merges into the message service's row; a later one is
+    // another delivered message and keeps per-message rows, so its text and
+    // Telegram ids are not lost.
+    const prior = canonicalReplyId
+      ? await this.runtime.getMemoryById(canonicalReplyId)
+      : null;
+    const priorIds = (
+      prior?.metadata as { telegramMessageIds?: unknown } | undefined
+    )?.telegramMessageIds;
+    const alreadyMerged = Array.isArray(priorIds) && priorIds.length > 0;
+    if (canonicalReplyId && first && !alreadyMerged) {
+      const merged = await this.mergeIntoCanonicalReply({
+        id: canonicalReplyId,
+        entityId: this.runtime.agentId,
+        agentId: this.runtime.agentId,
+        roomId: args.roomId,
+        content: {
+          ...content,
+          source: "telegram",
+          inReplyTo: args.inReplyTo,
+          channelType: args.channelType,
+          metadata: { accountId: this.accountId },
+        },
+        metadata: {
+          type: "message",
+          source: "telegram",
+          accountId: this.accountId,
+          provider: "telegram",
+          scope: "room",
+          timestamp: first.date * 1000,
+          fromBot: true,
+          fromId: this.runtime.agentId,
+          sourceId: this.runtime.agentId,
+          chatType: args.chatType,
+          messageIdFull: first.message_id.toString(),
+          telegram: {
+            chatId: first.chat.id,
+            messageId: first.message_id.toString(),
+            threadId: args.threadId,
+          },
+          telegramChatId: String(first.chat.id),
+          telegramMessageIds: args.sentMessages.map((sent) =>
+            sent.message_id.toString(),
+          ),
+        } as Memory["metadata"],
+        createdAt: first.date * 1000,
+      });
+      for (const sent of args.sentMessages)
+        await this.runtime.setCache(
+          this.mergedReplyKey(sent.chat.id, sent.message_id),
+          canonicalReplyId,
+        );
+      return [merged];
+    }
     for (const sentMessage of args.sentMessages) {
       const responseMemory: Memory = {
         id: createUniqueUuid(
@@ -1904,12 +2090,9 @@ export class MessageManager {
               }),
           inReplyTo:
             "reply_to_message" in message && message.reply_to_message
-              ? createUniqueUuid(
-                  this.runtime,
-                  this.telegramMessageMemoryKey(
-                    telegramChatId,
-                    message.reply_to_message.message_id,
-                  ),
+              ? await this.resolveMessageMemoryId(
+                  telegramChatId,
+                  message.reply_to_message.message_id,
                 )
               : undefined,
         },
@@ -2016,6 +2199,7 @@ export class MessageManager {
             chatType: chat.type,
             threadId,
             inReplyTo: messageId,
+            inboundChatId: chat.id,
           });
         } catch (cause) {
           // error-policy:J2 Preserve transport or persistence failure context
@@ -2359,6 +2543,7 @@ export class MessageManager {
         chatType: chat.type,
         threadId,
         inReplyTo: messageId,
+        inboundChatId: chat.id,
       });
     };
     const callback = createTelegramCompactProgressCallback({
@@ -2639,12 +2824,9 @@ export class MessageManager {
           channelType: getChannelType(reaction.chat as Chat),
           text: `Reacted with: ${reactionLabel}`,
           source: "telegram",
-          inReplyTo: createUniqueUuid(
-            this.runtime,
-            this.telegramMessageMemoryKey(
-              reaction.chat.id,
-              reaction.message_id,
-            ),
+          inReplyTo: await this.resolveMessageMemoryId(
+            reaction.chat.id,
+            reaction.message_id,
           ),
           metadata: { accountId: this.accountId },
         },

@@ -3,7 +3,13 @@
  * assistant, and PGlite runtime. Deterministic model fixtures and captured
  * Telegraf send calls replace external services; polling and Telegram are not run.
  */
-import { type Content, ModelType } from "@elizaos/core";
+import {
+  type Content,
+  createUniqueUuid,
+  type Memory,
+  ModelType,
+  type UUID,
+} from "@elizaos/core";
 import { createAssistantPlugin } from "@elizaos/plugin-assistant";
 import { MessageManager } from "@elizaos/plugin-telegram";
 import type { DeterministicModelFixture } from "@elizaos/testing/models";
@@ -43,10 +49,22 @@ async function driveTelegramTurn(options: {
   fixtures?: DeterministicModelFixture[];
   /** Reply content the message service hands to the connector callback. */
   replyContent?: Content;
+  /**
+   * Replies handed to the callback in order. Each one's row is first written
+   * under its responseId, as the assistant message service stores a reply.
+   */
+  processorReplies?: Content[];
+  /** Make Telegram refuse every photo send. */
+  failPhotos?: boolean;
+  /** Filter metadata like plugin-sqlite: each value by `===`. */
+  sqliteMetadataFilter?: boolean;
 }): Promise<{
   delivered: DeliveredTelegramMessage[];
   photos: Array<{ chatId: number | string; filename?: string }>;
   chatId: number;
+  /** The agent's stored message rows in the inbound chat's room. */
+  agentRows: () => Promise<Memory[]>;
+  manager: MessageManager;
 }> {
   const harness = track(
     await createTestRuntimeWithModelProvider({
@@ -54,6 +72,25 @@ async function driveTelegramTurn(options: {
       fixtures: options.fixtures,
     }),
   );
+
+  if (options.sqliteMetadataFilter) {
+    // plugin-sqlite filters metadata with \`md[k] !== v\` (records.ts), so an
+    // array value never matches; PGlite's \`@>\` containment hides that.
+    const runtime = harness.runtime;
+    const getMemories = runtime.getMemories.bind(runtime);
+    runtime.getMemories = async (params) => {
+      const rows = await getMemories(params);
+      const wanted = params.metadata;
+      if (!wanted) return rows;
+      return rows.filter((row) =>
+        Object.entries(wanted).every(
+          ([key, value]) =>
+            (row.metadata as Record<string, unknown> | undefined)?.[key] ===
+            value,
+        ),
+      );
+    };
+  }
 
   // The bot is only touched for DM replies / media; a group text reply goes
   // out via `ctx.telegram` (captured below), so `apiRoot` is never hit. Point
@@ -76,6 +113,7 @@ async function driveTelegramTurn(options: {
       chatId: number | string,
       photo: { filename?: string },
     ): Promise<unknown> => {
+      if (options.failPhotos) throw new Error("Bad Request: wrong file");
       photos.push({ chatId, filename: photo.filename });
       return { message_id: 900 + photos.length, chat: { id: chatId }, date: 0 };
     },
@@ -125,9 +163,41 @@ async function driveTelegramTurn(options: {
       return undefined as never;
     };
   }
+  const processorReplies = options.processorReplies;
+  if (processorReplies && messageService) {
+    const replyRoomId = createUniqueUuid(harness.runtime, chat.id.toString());
+    messageService.handleMessage = async (runtime, _memory, callback) => {
+      for (const reply of processorReplies) {
+        const id = reply.responseId as UUID | undefined;
+        if (id && !(await runtime.getMemoryById(id))) {
+          await runtime.createMemory(
+            {
+              id,
+              entityId: runtime.agentId,
+              agentId: runtime.agentId,
+              roomId: replyRoomId,
+              content: reply,
+            },
+            "messages",
+          );
+        }
+        await callback?.(reply);
+      }
+      return undefined as never;
+    };
+  }
   await manager.handleMessage(ctx, { forceReply: true });
 
-  return { delivered, photos, chatId: chat.id };
+  const roomId = createUniqueUuid(harness.runtime, chat.id.toString());
+  const agentRows = async () =>
+    (
+      await harness.runtime.getMemories({
+        tableName: "messages",
+        roomId,
+        count: 50,
+      })
+    ).filter((memory) => memory.entityId === harness.runtime.agentId);
+  return { delivered, photos, chatId: chat.id, agentRows, manager };
 }
 
 describe("telegram connector loop (keyless)", () => {
@@ -163,6 +233,122 @@ describe("telegram connector loop (keyless)", () => {
       delivered[0]?.chatId,
       "the reply went back to the inbound chat",
     ).toBe(chatId);
+  }, 60_000);
+
+  it("stores a delivered reply once in the chat's room", async () => {
+    // No MarkdownV2-escapable characters, so wire and stored text match.
+    const replyText = "Hello from the deterministic model provider";
+    const { delivered, agentRows, manager, chatId } = await driveTelegramTurn({
+      inboundText: "Hello agent, please reply.",
+      fixtures: [
+        {
+          name: "telegram-reply-once",
+          match: { modelType: ModelType.RESPONSE_HANDLER },
+          response: {
+            contexts: ["simple"],
+            intents: [],
+            replyText,
+            candidateActionNames: [],
+          },
+        },
+      ],
+    });
+    expect(delivered.map((message) => message.text)).toEqual([replyText]);
+    // The message service stores the reply under its responseId; the
+    // delivery must land on that row rather than add a second one, or every
+    // later turn's transcript shows the reply twice.
+    const rows = await agentRows();
+    expect(rows.map((memory) => memory.content.text)).toEqual([replyText]);
+    expect(
+      (rows[0]?.metadata as Record<string, unknown> | undefined)
+        ?.telegramMessageIds,
+    ).toEqual(["1"]);
+    // A reply-to, reaction or edit of the delivered Telegram message resolves
+    // to that one stored row.
+    expect(await manager.resolveMessageMemoryId(chatId, 1)).toBe(rows[0]?.id);
+  }, 60_000);
+
+  it("keeps a second delivered message of the same response as its own row", async () => {
+    const responseId = "5c0e1a42-6d2f-4a7b-8c1d-2e3f4a5b6c71";
+    const { delivered, agentRows, manager, chatId } = await driveTelegramTurn({
+      inboundText: "Where is my order?",
+      processorReplies: [
+        { text: "Checking your order now", responseId },
+        { text: "Order 42 has shipped", responseId },
+      ],
+    });
+    expect(delivered.map((message) => message.text)).toEqual([
+      "Checking your order now",
+      "Order 42 has shipped",
+    ]);
+    const rows = await agentRows();
+    expect(rows.map((row) => row.content.text).sort()).toEqual(
+      ["Checking your order now", "Order 42 has shipped"].sort(),
+    );
+    const first = await manager.resolveMessageMemoryId(chatId, 1);
+    const second = await manager.resolveMessageMemoryId(chatId, 2);
+    expect(first).toBe(responseId);
+    expect(second).not.toBe(first);
+    expect(rows.map((row) => row.id)).toContain(second);
+  }, 60_000);
+
+  it("records an attachment Telegram refused as not delivered on the merged row", async () => {
+    const responseId = "6d1f2b53-7e3a-4b8c-9d2e-3f4a5b6c7d82";
+    const { agentRows } = await driveTelegramTurn({
+      inboundText: "Send me the chart.",
+      failPhotos: true,
+      processorReplies: [
+        {
+          text: "Here is the chart",
+          responseId,
+          attachments: [
+            {
+              id: "chart",
+              url: "https://example.invalid/chart.png",
+              contentType: "image",
+            },
+          ],
+        },
+      ],
+    });
+    const rows = await agentRows();
+    const merged = rows.find((row) => row.id === responseId);
+    expect(merged?.content.text).toBe("Here is the chart");
+    expect(merged?.content.attachments ?? []).toEqual([]);
+  }, 60_000);
+
+  it("gives an edit of one chunk of a merged reply no stored copy to overwrite", async () => {
+    const responseId = "7e2a3c64-8f4b-4c9d-8e3f-4a5b6c7d8e93";
+    const longText = Array.from({ length: 900 }, (_, i) => `word${i}`).join(
+      " ",
+    );
+    const { delivered, manager, chatId } = await driveTelegramTurn({
+      inboundText: "Tell me everything.",
+      processorReplies: [{ text: longText, responseId }],
+    });
+    expect(delivered.length).toBeGreaterThan(1);
+    // Every chunk still resolves to the one merged row for reply-to and reactions.
+    expect(await manager.resolveMessageMemoryId(chatId, 2)).toBe(responseId);
+    // An edit of one chunk must not replace the whole reply's stored text.
+    expect(await manager.storedCopyForEdit(chatId, 2)).toBeNull();
+  }, 60_000);
+
+  // lovecity08 on #38646: on plugin-sqlite the metadata array lookup never
+  // matches, so reply-to, reactions and edits lost the merged row.
+  it("resolves every chunk of a merged reply when metadata filters compare by value, as on SQLite", async () => {
+    const responseId = "8f3b4d75-9a5c-4dae-9f4a-5b6c7d8e9fa4";
+    const longText = Array.from({ length: 900 }, (_, i) => `word${i}`).join(
+      " ",
+    );
+    const { delivered, manager, chatId } = await driveTelegramTurn({
+      inboundText: "Tell me everything.",
+      processorReplies: [{ text: longText, responseId }],
+      sqliteMetadataFilter: true,
+    });
+    expect(delivered.length).toBeGreaterThan(1);
+    for (let id = 1; id <= delivered.length; id++)
+      expect(await manager.resolveMessageMemoryId(chatId, id)).toBe(responseId);
+    expect(await manager.storedCopyForEdit(chatId, 2)).toBeNull();
   }, 60_000);
 
   it("delivers escaped Markdown and adjacent emphasis without changing visible characters", async () => {

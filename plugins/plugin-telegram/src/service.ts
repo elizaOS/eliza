@@ -3517,10 +3517,14 @@ export class TelegramService extends Service {
       );
       // Return the stored message with the new text, so the caller updates the
       // agent's memory of it like the Slack and Discord edits do.
-      const storedId = messageManager.messageMemoryId(chatId, params.messageId);
       let stored: Memory | null;
       try {
-        stored = await runtime.getMemoryById(storedId);
+        // A merged reply spanning several chunks has no single stored copy
+        // this edit could replace (see storedCopyForEdit).
+        stored = await messageManager.storedCopyForEdit(
+          chatId,
+          params.messageId,
+        );
       } catch (error) {
         // error-policy:J4 the Telegram edit already happened; a failed lookup
         // of the stored copy is reported, not turned into a failed edit.
@@ -3538,7 +3542,6 @@ export class TelegramService extends Service {
             src: "plugin:telegram",
             chatId,
             messageId: params.messageId,
-            storedId,
           },
           "Edited Telegram message has no stored copy to update",
         );
