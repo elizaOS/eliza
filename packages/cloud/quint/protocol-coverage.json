@@ -1,7 +1,7 @@
 [
   {
     "id": "cloud-protocol-billing-reservations",
-    "model": "packages/cloud/formal/models/billing_reservations.qnt",
+    "model": "packages/cloud/quint/billing_reservations.qnt",
     "sources": [
       "packages/cloud/shared/src/lib/services/credits.ts",
       "packages/cloud/shared/src/lib/utils/credit-reservation.ts",
@@ -18,7 +18,7 @@
   },
   {
     "id": "cloud-protocol-billing-sweep",
-    "model": "packages/cloud/formal/models/billing_sweep.qnt",
+    "model": "packages/cloud/quint/billing_sweep.qnt",
     "sources": [
       "packages/cloud/shared/src/lib/services/credits.ts",
       "packages/cloud/shared/src/lib/services/__tests__/credits-reconcile.test.ts"
@@ -34,7 +34,7 @@
   },
   {
     "id": "cloud-protocol-authorization-intents",
-    "model": "packages/cloud/formal/models/authorization_intents.qnt",
+    "model": "packages/cloud/quint/authorization_intents.qnt",
     "sources": [
       "packages/cloud/shared/src/lib/services/oauth-intents.ts",
       "packages/cloud/shared/src/lib/services/approval-requests.ts"
@@ -50,7 +50,7 @@
   },
   {
     "id": "cloud-protocol-agent-lifecycle",
-    "model": "packages/cloud/formal/models/agent_lifecycle.qnt",
+    "model": "packages/cloud/quint/agent_lifecycle.qnt",
     "sources": [
       "packages/cloud/services/agent-server/src/agent-manager.ts",
       "packages/cloud/services/agent-server/src/agent-lifecycle.ts",
@@ -68,7 +68,7 @@
   },
   {
     "id": "cloud-protocol-operator-routing",
-    "model": "packages/cloud/formal/models/operator_routing.qnt",
+    "model": "packages/cloud/quint/operator_routing.qnt",
     "sources": [
       "packages/cloud/services/operator/capabilities/redis.ts",
       "packages/cloud/services/operator/capabilities/reconciler.ts",
@@ -90,7 +90,7 @@
   },
   {
     "id": "cloud-protocol-inference-budget",
-    "model": "packages/cloud/formal/models/inference_budget.qnt",
+    "model": "packages/cloud/quint/inference_budget.qnt",
     "sources": [
       "packages/cloud/api/src/inference-admission-budget.ts",
       "packages/cloud/shared/src/lib/services/inference-funding-budget-protocol.ts"
@@ -106,7 +106,7 @@
   },
   {
     "id": "cloud-protocol-a2a-task-store",
-    "model": "packages/cloud/formal/models/a2a_task_store.qnt",
+    "model": "packages/cloud/quint/a2a_task_store.qnt",
     "sources": [
       "packages/cloud/api/src/a2a-task-state.ts",
       "packages/cloud/shared/src/lib/services/cloudflare-a2a-task-store.ts"
@@ -124,7 +124,7 @@
   },
   {
     "id": "cloud-protocol-agent-routing",
-    "model": "packages/cloud/formal/models/agent_routing.qnt",
+    "model": "packages/cloud/quint/agent_routing.qnt",
     "sources": [
       "packages/cloud/services/agent-server/src/agent-routing.ts",
       "packages/cloud/services/agent-server/src/agent-manager.ts",
@@ -142,7 +142,7 @@
   },
   {
     "id": "cloud-protocol-shutdown-sequence",
-    "model": "packages/cloud/formal/models/shutdown_sequence.qnt",
+    "model": "packages/cloud/quint/shutdown_sequence.qnt",
     "sources": [
       "packages/cloud/services/agent-server/src/agent-shutdown.ts",
       "packages/cloud/services/agent-server/src/index.ts",
@@ -162,7 +162,7 @@
   },
   {
     "id": "cloud-flow-organization-credit-reservations",
-    "model": "packages/cloud/formal/models/billing_reservations.qnt",
+    "model": "packages/cloud/quint/billing_reservations.qnt",
     "sources": [
       "packages/cloud/shared/src/lib/services/credits.ts",
       "packages/cloud/shared/src/lib/utils/credit-reservation.ts"
@@ -179,7 +179,7 @@
   },
   {
     "id": "cloud-flow-reservation-recovery-sweep",
-    "model": "packages/cloud/formal/models/billing_sweep.qnt",
+    "model": "packages/cloud/quint/billing_sweep.qnt",
     "sources": ["packages/cloud/shared/src/lib/services/credits.ts"],
     "invariants": ["safety"],
     "status": "partial",
@@ -371,7 +371,7 @@
   },
   {
     "id": "cloud-flow-oauth-intents",
-    "model": "packages/cloud/formal/models/authorization_intents.qnt",
+    "model": "packages/cloud/quint/authorization_intents.qnt",
     "sources": [
       "packages/cloud/shared/src/lib/services/oauth-intents.ts",
       "packages/cloud/shared/src/db/repositories/oauth-intents.ts",
@@ -391,7 +391,7 @@
   },
   {
     "id": "cloud-flow-signed-approvals",
-    "model": "packages/cloud/formal/models/authorization_intents.qnt",
+    "model": "packages/cloud/quint/authorization_intents.qnt",
     "sources": [
       "packages/cloud/shared/src/lib/services/approval-requests.ts",
       "packages/cloud/shared/src/db/repositories/approval-requests.ts",
@@ -486,7 +486,7 @@
   },
   {
     "id": "cloud-flow-a2a-task-storage",
-    "model": "packages/cloud/formal/models/a2a_task_store.qnt",
+    "model": "packages/cloud/quint/a2a_task_store.qnt",
     "sources": [
       "packages/cloud/api/src/a2a-task-state.ts",
       "packages/cloud/shared/src/lib/services/cloudflare-a2a-task-store.ts",
@@ -507,7 +507,7 @@
   },
   {
     "id": "cloud-flow-inference-funding-budget",
-    "model": "packages/cloud/formal/models/inference_budget.qnt",
+    "model": "packages/cloud/quint/inference_budget.qnt",
     "sources": [
       "packages/cloud/api/src/inference-admission-budget.ts",
       "packages/cloud/shared/src/lib/services/inference-funding-budget-protocol.ts",
@@ -601,7 +601,7 @@
   },
   {
     "id": "cloud-flow-agent-runtime-lifecycle",
-    "model": "packages/cloud/formal/models/agent_lifecycle.qnt",
+    "model": "packages/cloud/quint/agent_lifecycle.qnt",
     "sources": [
       "packages/cloud/services/agent-server/src/agent-manager.ts",
       "packages/cloud/services/agent-server/src/agent-routing.ts",
@@ -620,7 +620,7 @@
   },
   {
     "id": "cloud-flow-operator-placement-routing",
-    "model": "packages/cloud/formal/models/operator_routing.qnt",
+    "model": "packages/cloud/quint/operator_routing.qnt",
     "sources": [
       "packages/cloud/services/operator/capabilities/redis.ts",
       "packages/cloud/services/operator/capabilities/reconciler.ts",

@@ -1,9 +1,9 @@
 # Cloud protocol models
 
-Nine finite Quint models cover selected cloud protocols. Each model has a
+Finite Quint models cover selected cloud protocols. Each model has a
 checked `.cases.json` sidecar with source links, safety invariants, assumptions
 and simulation bounds. Reviewed gaps remain in
-[`../quint/protocol-coverage.json`](../quint/protocol-coverage.json).
+[`protocol-coverage.json`](protocol-coverage.json).
 
 From the repository root, run the shared checker.
 
