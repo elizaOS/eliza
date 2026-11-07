@@ -1,23 +1,13 @@
-import { AutonomousSystemOverseer } from "../src/services/autonomousOverseer";
-
-const CHECK_INTERVAL = parseInt(process.env.OVERSEER_INTERVAL_MS || "120000", 10);
-
-const overseer = new AutonomousSystemOverseer({
-  checkIntervalMs: CHECK_INTERVAL,
-  autoHealEnabled: true,
-});
-
-overseer.startAutonomousLoop();
-
-// Handle graceful shutdown signals
-process.on("SIGINT", () => {
-  console.log("\n[AUTONOMOUS OVERSEER] Gracefully shutting down...");
-  overseer.stopAutonomousLoop();
-  process.exit(0);
-});
-
-process.on("SIGTERM", () => {
-  console.log("\n[AUTONOMOUS OVERSEER] Received SIGTERM. Stopping loops...");
-  overseer.stopAutonomousLoop();
-  process.exit(0);
-});
+/**
+ * Safety block: the previous implementation supplied no real process-health
+ * evidence and reported proposed repairs as completed. Do not launch it.
+ * Re-enable only after measured probes, tenant-owned persisted jobs,
+ * verified provider adapters and audited recovery tests are integrated.
+ */
+console.error(JSON.stringify({
+  service: "valhalla-autonomous-overseer",
+  status: "blocked_not_ready",
+  autoHealEnabled: false,
+  reason: "Measured health probes and verified recovery integration are not implemented."
+}));
+process.exitCode = 1;
