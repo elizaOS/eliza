@@ -160,6 +160,7 @@ export function toNeutralLayout(
 		}
 		case "followups": {
 			const buttons: NeutralButton[] = [];
+			let anyDropped = false;
 			for (const o of block.options) {
 				if (o.kind === "navigate") {
 					const url = opts.resolveNavigateUrl?.(o.payload);
@@ -173,8 +174,12 @@ export function toNeutralLayout(
 				});
 				if (callbackData)
 					buttons.push({ label: o.label, callbackData, style: "secondary" });
+				else anyDropped = true;
 			}
-			return { rows: chunk(buttons, perRow).map((b) => ({ buttons: b })) };
+			return {
+				rows: chunk(buttons, perRow).map((b) => ({ buttons: b })),
+				needsFallback: anyDropped,
+			};
 		}
 		case "task": {
 			// Without a resolvable link the card is dashboard-only; its bare
