@@ -143,11 +143,6 @@ whole record only if that snapshot still matches. Both check ownership inside th
 lock before and after storage. A failed post-check can follow a committed write;
 reconcile using the durable enrollment/revocation receipt. This class validates
 shape, not server authenticity: only trusted host verification may supply a record.
-`ownerIdentity(snapshot)` returns the record owner's stable identity, the same bytes
-as the gateway's `verifiedOwnerIdentity` (`cloud-owner-v1:` and the SHA-256 of
-`[authority,userId,organizationId]`), or null for no record. Use it, not a host copy;
-`bun run --cwd plugins/plugin-native-secure-store test:native-identity` holds it to
-the JavaScript on a JVM.
 No legacy credential slot is read or migrated, no broker route is registered, and
 no product policy or encrypted task database is enabled. Java credential strings
 cannot be reliably erased from memory. Keep all writers in one Android process.
@@ -171,8 +166,7 @@ then the wrapped copy. A wrapped copy whose entry is gone throws
 `adopt(from, to, databaseId, step)` copies one key generation to another account,
 reads it back, runs the host step (for example a file move), and only then erases
 the source. A repeat after a stop resumes; a target with a different key is left
-unchanged. Reserve a new directory and alias prefix for per-slot custody. `isPerSlot()` tells
-the two modes apart.
+unchanged. Reserve a new directory and alias prefix for per-slot custody.
 Read-only accessors name a slot's custody without reading its data key:
 `wrappingKeyAlias(accountId, databaseId)` (per-slot only), `keyProtection(...)`
 (the wrapping key's `KeyInfo`, or null when it is absent; per-slot only) and

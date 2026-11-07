@@ -10,6 +10,7 @@ let status = "active",
   signal: AbortController;
 let response: () => Promise<Response> = async () =>
   Response.json({ admitted: true });
+const policyTransaction = { mapsTransaction: true };
 const caller = {
   user: { id: "maps-user", organization_id: "maps-org" },
   apiKeyId: "maps-key",
@@ -25,21 +26,24 @@ mock.module(
     withOrganizationPolicyReadAdmission: async (
       _org: string,
       _expected: unknown,
-      operation: (policy: unknown) => Promise<unknown>,
+      operation: (policy: unknown, tx: unknown) => Promise<unknown>,
     ) => {
       locked = true;
       try {
-        return await operation({
-          subscriptionFunded: status === "active",
-          authority: {
-            generation: "1",
-            effectiveFrom: "2020-01-01T00:00:00Z",
-            effectiveUntil: expiry,
+        return await operation(
+          {
+            subscriptionFunded: status === "active",
+            authority: {
+              generation: "1",
+              effectiveFrom: "2020-01-01T00:00:00Z",
+              effectiveUntil: expiry,
+            },
+            get balance() {
+              throw Error("Maps must not read monetary allowance");
+            },
           },
-          get balance() {
-            throw Error("Maps must not read monetary allowance");
-          },
-        });
+          policyTransaction,
+        );
       } finally {
         locked = false;
       }
@@ -49,11 +53,18 @@ mock.module(
 mock.module(
   "@elizaos/cloud-shared/lib/services/subscription-entitlement-token",
   () => ({
-    readOrganizationEntitlementSummary: async () => ({
-      plan: { status },
-      rateTier: "selected_test",
-      effectiveUntil: new Date(expiry),
-    }),
+    readOrganizationEntitlementSummary: async (
+      _org: string,
+      options: { transaction?: unknown } = {},
+    ) => {
+      expect(locked).toBe(true);
+      expect(options.transaction).toBe(policyTransaction);
+      return {
+        plan: { status },
+        rateTier: "selected_test",
+        effectiveUntil: new Date(expiry),
+      };
+    },
   }),
 );
 mock.module(
