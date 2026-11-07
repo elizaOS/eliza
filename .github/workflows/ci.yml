@@ -69,6 +69,13 @@ jobs:
         run: bun run verify
       - name: Formatting
         run: bun run format:check
+      - name: Setup Java for TLC
+        uses: actions/setup-java@b843ebf9b913146b38da2eaa7aeddf76074ae1ad
+        with:
+          distribution: temurin
+          java-version: "21"
+      - name: TLA+ models of core protocols
+        run: bun run --cwd packages/core test:tla
       - name: Prompt secret scan
         run: node packages/scripts/check-prompt-secrets.ts
       - name: Validate CI Bun version pin contract

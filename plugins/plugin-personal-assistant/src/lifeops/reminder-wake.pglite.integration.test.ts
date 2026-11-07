@@ -509,10 +509,10 @@ it("committed create and snooze reconcile the same task, then deliver once at it
     );
     const clock = {
       now: () => now,
-      setInterval: () => {
+      setTimeout: () => {
         throw Error("No second timer");
       },
-      clearInterval: () => {},
+      clearTimeout: () => {},
     };
     let scheduler = new TaskService(runtime, clock);
     const tick = async () => {
@@ -727,10 +727,10 @@ it("quiet-blocked due work consumes its wake without a one-second retry loop", a
     });
     const scheduler = new TaskService(f.runtime, {
       now: () => now,
-      setInterval: () => {
+      setTimeout: () => {
         throw Error("No new clock");
       },
-      clearInterval: () => {},
+      clearTimeout: () => {},
     });
     const tick = async () => {
       vi.setSystemTime(now);

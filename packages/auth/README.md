@@ -69,6 +69,10 @@ A finished sign-in returns `{status: "authenticated", connected: true, created}`
 `created` is Cloud's `accountCreated` from the mobile connect grant: `true` when
 this sign-in made the Cloud account, `false` when it existed. It is kept with the
 pending receipt for `resume`, and it is absent when Cloud did not send it.
+With `answerUnavailableConfig: true`, `config` answers
+`{available: false, pending: false, unavailable}` (the `error8` message) when
+Cloud does not know or confirm the binding: HTTP 400, 401 or 403, or a binding
+that does not match. Other failures still throw, and `start` still refuses.
 
 Google sign-in is API-only and off by default. Configure `googleRedirectUri`
 (an https address, or loopback `http://127.0.0.1|localhost|[::1]` with its exact

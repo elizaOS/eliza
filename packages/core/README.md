@@ -3,70 +3,47 @@
 The Node runtime kernel: plugin registration, authorization, state composition,
 model dispatch, memory, cancellation and effect settlement.
 
-Use `@elizaos/core` for the Node runtime and `@elizaos/core/protocol` for
-browser-safe contracts and pure helpers. Renderer speech consumers use
-`@elizaos/core/speech` for speech text helpers and structured errors without
-loading the complete protocol catalog; task choice widget consumers use
-`@elizaos/core/task-widgets` the same way. Internal modules import their defining
-files directly. Implementation leaves are private; JSON catalog assets retain
-explicit data exports. Hosts compose database adapters, model providers and
-`@elizaos/plugin-assistant` explicitly.
+## Entry points
 
-`@elizaos/core/read-memo` exposes the same `SingleFlightMemo` used by runtime
-reads. Hosts retain owner-scoped keys and source invalidation; rejected reads
-evict themselves so the next explicit read can retry.
+| Import                                                                 | Contents                                                                                           |
+| ---------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------- |
+| `@elizaos/core`                                                        | The Node runtime (`AgentRuntime`), plugin and service types, model request guards                  |
+| `@elizaos/core/protocol`                                               | Browser-safe contracts and pure helpers, including `TaskEventReader` and `admitTaskChoiceResponse` |
+| `@elizaos/core/logging`                                                | Logger types and credential redaction for browser log sinks                                        |
+| `@elizaos/core/security/redact`                                        | Secret and credential redaction                                                                    |
+| `@elizaos/core/speech`                                                 | Speech text helpers and structured speech errors                                                   |
+| `@elizaos/core/view-interaction`                                       | Renderer routing and completed-action handoff contracts                                            |
+| `@elizaos/core/task-events`, `@elizaos/core/task-widgets`              | Task activity and task choice widget contracts                                                     |
+| `@elizaos/core/read-memo`                                              | `SingleFlightMemo`, the read coalescing used by runtime reads                                      |
+| `@elizaos/core/schema-types`                                           | JSON value, action-parameter schema and view-capability types (type-only)                          |
+| `@elizaos/core/permissions`                                            | Permission IDs, types and guards                                                                   |
+| `@elizaos/core/catalog/*.json`, `@elizaos/core/restart-exit-code.json` | Shipped data catalogs                                                                              |
 
-Browser log sinks use `@elizaos/core/logging` for the canonical logger types and
-credential redaction. `@elizaos/core/view-interaction` exposes renderer routing
-and completed-action handoff contracts without the full protocol catalog.
-`@elizaos/core/schema-types` exposes the JSON value, action-parameter schema,
-generated-object schema and view-capability types as a type-only leaf entry.
+The leaf entries load without the full protocol catalog. Every other module is
+private; internal modules import their defining files directly.
 
-Model providers use request guards from `@elizaos/core`. The protocol entry
-exports only their types, so browser code does not load the Node turn context.
+## Boundaries
 
-HTTP lifecycle, native platform detection and library policy, build variants,
-process guards, restart, application configuration and boot environment resolution live
-in `@elizaos/host`, with browser-safe configuration in `@elizaos/host/protocol`.
-Portable acoustic processing lives in `@elizaos/voice`.
-Cross-domain DTOs and validation live in `@elizaos/contracts`. Core imports none
-of these owners.
+Core imports no host. HTTP lifecycle, platform detection, process guards,
+restart, application configuration and boot environment live in `@elizaos/host`
+(browser-safe configuration in `@elizaos/host/protocol`); acoustic processing in
+`@elizaos/voice`; cross-domain DTOs in `@elizaos/contracts`. Hosts compose
+database adapters, model providers and `@elizaos/plugin-assistant` explicitly.
 
-Runtime settings are per-agent. Explicit host environment fallbacks remain for
-the secret/PII master switches and process execution policies; per-agent switch
-values take precedence. Model context, authorization evidence and effect receipts
-remain complete. Source restoration requires its original authorized binding.
+Runtime settings are per-agent; per-agent values take precedence over the few
+explicit host environment fallbacks (secret/PII master switches and process
+execution policies). Model context, authorization evidence and effect receipts
+stay complete.
 
-Pass-through model results honor cancellation when their lazy `text` promise is
-consumed, including after the provider body completes or while finish metadata
-is pending. Cancelled text rejects with the owning signal's original reason.
+## Development
 
-`asRecord` accepts plain records; `asObjectRecord` also accepts class and built-in
-object instances. Both reject arrays and null. `hasPlainObjectTag` checks the
-object tag. Persisted canonical JSON bytes retain their existing meaning;
-`stableJsonString` returns `undefined` for JSON-invisible root values.
-
-From the repository root:
+Integration tests live in `test/`. `scripts/verify-package.ts` packs the package
+into a temporary consumer and checks the published exports and runtime
+initialization. Live model checks are opt-in (`test:e2e`, `*.live.test.ts`).
 
 ```bash
 bun run --cwd packages/core build
 bun run --cwd packages/core test
 bun run --cwd packages/core typecheck
 bun run --cwd packages/core lint:check
-bun run verify
 ```
-
-The browser-safe protocol exports `TaskEventReader` and `mergeTaskEventPage` for
-read-only task activity feeds. Inject a task ID/cursor read transport and a state
-observer; call `start(taskId)`, `refresh()` for explicit retry, and `stop()` on
-teardown. The reader validates every page against the shared event protocol,
-retains admitted history on failure, fences stale replies across task switches,
-and polls until a terminal task has no unknown outcome. It never runs task actions.
-Hosts own activity labels, layout, reading position, error copy, and task-control
-refresh policy. Observer snapshots are detached from the admitted history.
-
-`admitTaskChoiceResponse` in the browser-safe protocol barrel validates optional reply widgets, enforces a host-supplied count limit and binds every widget to the requesting task ID/epoch. It returns detached widget data. Hosts retain count policy, UI and error wording; successful admission grants no execution authority.
-
-Integration checks live in `test/`; unit `.test.ts` files have been removed from
-`src/`. Packed-consumer verification exercises published exports and runtime
-initialization. Live model checks remain opt-in.

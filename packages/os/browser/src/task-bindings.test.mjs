@@ -1,7 +1,11 @@
 import assert from "node:assert/strict";
 import { createHash } from "node:crypto";
 import test from "node:test";
-import { COMMIT_GRANT_MAX_MS, createTaskBindings } from "./task-bindings.mjs";
+import {
+  COMMIT_GRANT_MAX_MS,
+  COMMIT_PATTERN_MAX_LENGTH,
+  createTaskBindings,
+} from "./task-bindings.mjs";
 
 const origin = "https://bank.example";
 const context = {
@@ -43,6 +47,7 @@ async function fixture(records = new Map(), scope = {}) {
           { selector: "#amount", action: "fill" },
           { selector: "#plan", action: "select" },
         ],
+        ...scope.binding,
       },
     },
     () => true,
@@ -287,4 +292,25 @@ test("a grant's request target and form hash are checked and reach the page", as
         }),
       ),
     );
+});
+
+test("the host's commit words reach the page policy only as a valid bounded pattern", async () => {
+  const pattern = "\\b(pagar|confirmar|enviar)\\b";
+  const f = await fixture(new Map(), { binding: { commitPattern: pattern } });
+  const scoped = await f.authority.scope(f.command());
+  assert.equal(scoped.command.taskPolicy.commitPattern, pattern);
+  // Without one the policy carries none.
+  const plain = await fixture();
+  assert.equal(
+    "commitPattern" in
+      (await plain.authority.scope(plain.command())).command.taskPolicy,
+    false,
+  );
+  for (const commitPattern of [
+    "",
+    "(",
+    7,
+    "a".repeat(COMMIT_PATTERN_MAX_LENGTH + 1),
+  ])
+    await refused(fixture(new Map(), { binding: { commitPattern } }));
 });

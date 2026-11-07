@@ -1,10 +1,14 @@
 /** Maintains native profile registration and consumes each browser command once across worker restarts. */
 
 import { createCommandHandler } from "./command-handler.mjs";
+import { createEffectWatch } from "./effect-watch.mjs";
 import { NativeConnection } from "./native-connection.mjs";
 import { nativeHost } from "./runtime-config.mjs";
 
-const handleCommand = createCommandHandler(chrome);
+// Registered at the worker's top level, so every request wakes it.
+const handleCommand = createCommandHandler(chrome, {
+  effects: createEffectWatch(chrome),
+});
 chrome.runtime.onMessage.addListener((message, sender, reply) => {
   if (message?.type === "task-guide-answer") {
     // The page receives only whether the value-free answer reached the host.
@@ -62,6 +66,7 @@ const connection = new NativeConnection({
         "reload",
         "close",
         "cancel",
+        "cancel-reply",
         "task-bind",
         "task-guide",
         "task-guide-label",
@@ -70,6 +75,7 @@ const connection = new NativeConnection({
         "task-protected-fill",
         "task-expected-target",
         "task-commit-grant",
+        "task-commit-pattern",
         "task-guide-keep-clear",
         "task-origins",
       ],

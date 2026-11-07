@@ -106,18 +106,8 @@ const TRAJECTORY_CONTEXT_MANAGER_KEY = Symbol.for(
 	"elizaos.trajectoryContextManager",
 );
 
-function initContextManagerSync(): ITrajectoryContextManager {
+function createTrajectoryContextManager(): ITrajectoryContextManager {
 	return new AsyncContextManager<TrajectoryContext | undefined>();
-}
-
-function getOrCreateContextManager(): ITrajectoryContextManager {
-	// The shared global slot is the single source of truth (no module-local
-	// cache): under a duplicated core bundle every copy must observe the same
-	// manager, and `setTrajectoryContextManager` must be visible everywhere.
-	return getAmbientSingleton(
-		TRAJECTORY_CONTEXT_MANAGER_KEY,
-		initContextManagerSync,
-	);
 }
 
 export function setTrajectoryContextManager(
@@ -126,19 +116,27 @@ export function setTrajectoryContextManager(
 	setAmbientSingleton(TRAJECTORY_CONTEXT_MANAGER_KEY, manager);
 }
 
+/**
+ * The shared global slot is the single source of truth (no module-local
+ * cache): under a duplicated core bundle every copy must observe the same
+ * manager, and `setTrajectoryContextManager` must be visible everywhere.
+ */
 export function getTrajectoryContextManager(): ITrajectoryContextManager {
-	return getOrCreateContextManager();
+	return getAmbientSingleton(
+		TRAJECTORY_CONTEXT_MANAGER_KEY,
+		createTrajectoryContextManager,
+	);
 }
 
 export function runWithTrajectoryContext<T>(
 	context: TrajectoryContext | undefined,
 	fn: () => T | Promise<T>,
 ): T | Promise<T> {
-	return getOrCreateContextManager().run(context, fn);
+	return getTrajectoryContextManager().run(context, fn);
 }
 
 export function getTrajectoryContext(): TrajectoryContext | undefined {
-	return getOrCreateContextManager().active();
+	return getTrajectoryContextManager().active();
 }
 
 export function memoizeTurnWork<T>(
@@ -187,7 +185,7 @@ export function runWithTrajectoryPurpose<T>(
 	purpose: string,
 	fn: () => T | Promise<T>,
 ): T | Promise<T> {
-	const manager = getOrCreateContextManager();
+	const manager = getTrajectoryContextManager();
 	return manager.run({ ...manager.active(), purpose }, fn);
 }
 
@@ -196,6 +194,6 @@ export function runWithTrajectoryPurpose<T>(
  * Mutates in place so nested useModel calls pick up the correct stage.
  */
 export function setTrajectoryPurpose(purpose: string): void {
-	const ctx = getOrCreateContextManager().active();
+	const ctx = getTrajectoryContextManager().active();
 	if (ctx) ctx.purpose = purpose;
 }

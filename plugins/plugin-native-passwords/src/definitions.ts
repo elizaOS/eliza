@@ -19,6 +19,8 @@ export interface PasswordEntrySummary {
   username: string;
   bindings: PasswordBinding[];
   updatedAt: number;
+  /** Pass to `openEditor` to edit this entry. Changes on every write; 0 for an older record. */
+  revision: number;
 }
 
 export type PasswordAutofillSelection =
@@ -67,6 +69,16 @@ export interface PasswordSaveResult {
   length?: number;
 }
 
+/** Names one entry at the revision the UI read. */
+export interface PasswordEditorInput {
+  entryId: string;
+  expectedRevision: number;
+}
+
+export type PasswordEditorResult =
+  | { status: "saved"; id: string; revision: number }
+  | { status: "cancelled" };
+
 export type PasswordsErrorCode =
   | "locked"
   | "cancelled"
@@ -74,6 +86,9 @@ export type PasswordsErrorCode =
   | "invalid"
   | "key-invalidated"
   | "busy"
+  | "conflict"
+  /** The host's admission rule refused this vault entry (see the README). */
+  | "not-admitted"
   | "unavailable";
 
 export interface ElizaPasswordsPlugin {
@@ -83,10 +98,11 @@ export interface ElizaPasswordsPlugin {
   lock(): Promise<{ locked: true }>;
   list(): Promise<{ entries: PasswordEntrySummary[] }>;
   save(input: PasswordSaveInput): Promise<PasswordSaveResult>;
-  /** Native protected creation form. No secret or draft is supplied through the bridge. */
-  openEditor(): Promise<
-    { status: "saved"; id: string } | { status: "cancelled" }
-  >;
+  /**
+   * Native protected form. No input creates an entry; `PasswordEditorInput` edits one and rejects
+   * with `conflict` if it changed since that revision. No secret or draft crosses the bridge.
+   */
+  openEditor(input?: PasswordEditorInput): Promise<PasswordEditorResult>;
   remove(input: { id: string }): Promise<{ removed: true }>;
   /**
    * Deletes the vault only when it can never be decrypted again (its key was lost or

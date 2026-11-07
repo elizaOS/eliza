@@ -82,10 +82,7 @@ import {
   type recordUsageAnalytics,
 } from "@elizaos/cloud-shared/lib/services/ai-billing";
 import { recordSettledInferenceBilling } from "@elizaos/cloud-shared/lib/services/ai-billing-settled";
-import {
-  AiPricingCacheUnavailableError,
-  AiPricingCacheWarmingError,
-} from "@elizaos/cloud-shared/lib/services/ai-pricing/cache";
+import { AiPricingCacheUnavailableError } from "@elizaos/cloud-shared/lib/services/ai-pricing/cache";
 import type { PricingBillingSource } from "@elizaos/cloud-shared/lib/services/ai-pricing-definitions";
 import { appCreditsService } from "@elizaos/cloud-shared/lib/services/app-credits";
 import {
@@ -112,13 +109,13 @@ import {
   type InferenceAuthTelemetry,
   resolveInferenceAuthContext,
 } from "@elizaos/cloud-shared/lib/services/inference-auth-context";
-import { InferenceBalanceCacheWarmingError } from "@elizaos/cloud-shared/lib/services/inference-billing-fast-path";
+import { InferenceBillingUnavailableError } from "@elizaos/cloud-shared/lib/services/inference-billing-fast-path";
 import {
   assertInferenceCredentialActive,
+  hasInferenceRevocationBoundary,
   type InferenceCredentialCheck,
   InferenceCredentialRevokedError,
   inferenceCredentialRevocationReason,
-  isInferenceStrongRevocationEnabled,
 } from "@elizaos/cloud-shared/lib/services/inference-credential-revocation";
 import { isFundedBudgetAdmissionEnabled } from "@elizaos/cloud-shared/lib/services/inference-funded-budget-admission";
 import {
@@ -142,9 +139,7 @@ import {
   admitOrganizationInference,
   InferenceAdmissionUnavailableError,
   InferenceAffiliateCacheUnavailableError,
-  InferenceAffiliateCacheWarmingError,
   InferencePricingCacheUnavailableError,
-  InferencePricingCacheWarmingError,
 } from "@elizaos/cloud-shared/lib/services/organization-inference-admission";
 import { settlementDigest } from "@elizaos/cloud-shared/lib/services/settlement-digest";
 import {
@@ -220,10 +215,6 @@ interface PooledInferenceCredential extends PooledLanguageModelCredential {
   credentialId: string;
   label: string;
 }
-
-type PooledInferenceCredentialResolution =
-  | { kind: "ready"; credential: PooledInferenceCredential | null }
-  | { kind: "warming" | "unavailable" };
 
 function buildProviderReconciliationMetadata(
   provider: string,
@@ -1107,9 +1098,9 @@ async function selectPooledInferenceCredential(params: {
   sessionKey: string;
   requirePooledCredential: boolean;
   executionCtx?: { waitUntil(promise: Promise<unknown>): void };
-}): Promise<PooledInferenceCredentialResolution> {
+}): Promise<PooledInferenceCredential | null> {
   const providerId = resolvePooledDirectProviderForModel(params.model);
-  if (!providerId) return { kind: "ready", credential: null };
+  if (!providerId) return null;
   const selectionParams = {
     organizationId: params.organizationId,
     providerId,
@@ -1121,36 +1112,27 @@ async function selectPooledInferenceCredential(params: {
       : {}),
   };
   if (params.executionCtx) {
+    // Pooled credentials are additive. A cold optional pool hydrates under
+    // waitUntil while this request uses the configured platform credential;
+    // only deployments with no platform fallback wait for the pool inline.
     const resolution = await getTeamPoolRegistry().selectCredentialCacheOnly(
       selectionParams,
-      { executionCtx: params.executionCtx },
+      {
+        executionCtx: params.executionCtx,
+        awaitCold: params.requirePooledCredential,
+      },
     );
-    if (resolution.kind !== "ready") {
-      // Pooled credentials are additive. A cold optional pool hydrates under
-      // waitUntil while this request uses the configured platform credential;
-      // only deployments with no platform fallback must wait for the pool.
-      return params.requirePooledCredential
-        ? resolution
-        : { kind: "ready", credential: null };
-    }
-    return {
-      kind: "ready",
-      credential: resolution.credential
-        ? toPooledInferenceCredential(
-            params.organizationId,
-            resolution.credential,
-          )
-        : null,
-    };
+    if (resolution.kind !== "ready" || !resolution.credential) return null;
+    return toPooledInferenceCredential(
+      params.organizationId,
+      resolution.credential,
+    );
   }
   const selected =
     await getTeamPoolRegistry().selectCredential(selectionParams);
-  return {
-    kind: "ready",
-    credential: selected
-      ? toPooledInferenceCredential(params.organizationId, selected)
-      : null,
-  };
+  return selected
+    ? toPooledInferenceCredential(params.organizationId, selected)
+    : null;
 }
 
 async function recordPooledInferenceSuccess(
@@ -1332,10 +1314,9 @@ export async function handleChatCompletionsPOST(
         )
       : undefined;
 
-    // 1. Authenticate (+ moderation). API-key and Steward-session requests
-    // resolve auth + org + moderation from a combined cache decision. On one
-    // true cold miss, Workers may consume the retained authoritative decision
-    // under a bounded deadline; its cache projection remains off-path.
+    // 1. Authenticate. API-key and Steward-session requests resolve auth, org
+    // and account standing from a combined cache decision. A true cold miss is
+    // decided by the primary once; its cache projection remains off-path.
     let user: { id: string; organization_id: string };
     let apiKey: { id: string } | null;
     let admissionSnapshot: InferenceAdmissionSnapshot | undefined;
@@ -1351,32 +1332,15 @@ export async function handleChatCompletionsPOST(
     const deferStrongCredentialCheck =
       requestIsValid &&
       Boolean(options.executionCtx) &&
-      isInferenceStrongRevocationEnabled();
+      hasInferenceRevocationBoundary();
     const resolution = await resolveInferenceAuthContext(req, {
       traceId,
       executionCtx: options.executionCtx,
-      cacheOnly: Boolean(options.executionCtx),
       deferStrongCredentialCheck,
       onTelemetry: (telemetry) => {
         authTelemetry = telemetry;
       },
     });
-    if (resolution.kind === "warming") {
-      return attachPreforwardTelemetry(
-        addCorsHeaders(
-          Response.json(
-            {
-              error: {
-                message: "Authorization cache is warming. Retry shortly.",
-                type: "service_unavailable",
-                code: "auth_cache_warming",
-              },
-            },
-            { status: 503, headers: { "Retry-After": "1" } },
-          ),
-        ),
-      );
-    }
     if (resolution.kind === "suspended") {
       const denial = resolveInferenceAuthStandingDenial(resolution, {
         route: "chat_completions",
@@ -1537,10 +1501,9 @@ export async function handleChatCompletionsPOST(
             Response.json(
               {
                 error: {
-                  message:
-                    "Rate-limit authorization cache is warming. Retry shortly.",
+                  message: "Rate limiter is unavailable. Retry shortly.",
                   type: "service_unavailable",
-                  code: "rate_limit_cache_warming",
+                  code: "rate_limit_unavailable",
                 },
               },
               { status: 503, headers: { "Retry-After": "1" } },
@@ -1664,24 +1627,15 @@ export async function handleChatCompletionsPOST(
     // hot-path cache is no longer flag-gated); pinned to the name-pattern set.
     const skipCatalogLookup = modelUsesReasoningTokens(model) && !fundedBudget;
     const monetizedAppPromise = requestedAppId
-      ? options.executionCtx
-        ? options.requiredAppId
-          ? appsService.getByIdCacheOnly(requestedAppId, {
+      ? (options.requiredAppId
+          ? appsService.getById(requestedAppId, {
               executionCtx: options.executionCtx,
             })
-          : appsService.getAuthorizedMonetizedAppForUserCacheOnly(
-              requestedAppId,
-              user,
-              { executionCtx: options.executionCtx },
-            )
-        : options.requiredAppId
-          ? appsService
-              .getById(requestedAppId)
-              .then((app) => ({ kind: "ready" as const, app: app ?? null }))
-          : appsService
-              .getAuthorizedMonetizedAppForUser(requestedAppId, user)
-              .then((app) => ({ kind: "ready" as const, app: app ?? null }))
-      : Promise.resolve({ kind: "ready" as const, app: null });
+          : appsService.getAuthorizedMonetizedAppForUser(requestedAppId, user, {
+              executionCtx: options.executionCtx,
+            })
+        ).then((app) => app ?? null)
+      : Promise.resolve(null);
     const platformCredentialConfigured =
       hasLanguageModelProviderConfigured(model);
     const pooledCredentialPromise = selectPooledInferenceCredential({
@@ -1740,29 +1694,9 @@ export async function handleChatCompletionsPOST(
       return attachPreforwardTelemetry(orgRateLimited);
     }
 
-    const [appResolution, pooledCredentialResolution, modelCatalogResolution] =
+    const [resolvedApp, pooledCredential, modelCatalogResolution] =
       unwrapConcurrentPromise(await dependencyResolutionsPromise);
-    if (
-      appResolution.kind !== "ready" ||
-      pooledCredentialResolution.kind !== "ready"
-    ) {
-      return attachPreforwardTelemetry(
-        addCorsHeaders(
-          Response.json(
-            {
-              error: {
-                message:
-                  "Inference dependency cache is warming. Retry shortly.",
-                type: "service_unavailable",
-                code: "inference_dependency_cache_warming",
-              },
-            },
-            { status: 503, headers: { "Retry-After": "1" } },
-          ),
-        ),
-      );
-    }
-    monetizedApp = appResolution.app;
+    monetizedApp = resolvedApp;
     if (
       options.requiredAppId &&
       (!monetizedApp ||
@@ -1786,7 +1720,6 @@ export async function handleChatCompletionsPOST(
     }
     appId = monetizedApp?.id ?? null;
     useAppCredits = Boolean(monetizedApp);
-    const pooledCredential = pooledCredentialResolution.credential;
     const modelSupportedParameters =
       modelCatalogResolution.kind === "ready"
         ? modelCatalogResolution.model?.supported_parameters
@@ -2202,18 +2135,14 @@ export async function handleChatCompletionsPOST(
         );
       }
       if (
-        error instanceof InferenceBalanceCacheWarmingError ||
-        error instanceof AiPricingCacheWarmingError ||
+        error instanceof InferenceBillingUnavailableError ||
         error instanceof AiPricingCacheUnavailableError
       ) {
         const dependency =
-          error instanceof InferencePricingCacheWarmingError ||
           error instanceof InferencePricingCacheUnavailableError ||
-          error instanceof AiPricingCacheWarmingError ||
           error instanceof AiPricingCacheUnavailableError
             ? "pricing"
-            : error instanceof InferenceAffiliateCacheWarmingError ||
-                error instanceof InferenceAffiliateCacheUnavailableError
+            : error instanceof InferenceAffiliateCacheUnavailableError
               ? "affiliate_policy"
               : "balance";
         logger.warn("[Chat Completions] billing dependency failed closed", {
@@ -2234,9 +2163,10 @@ export async function handleChatCompletionsPOST(
             Response.json(
               {
                 error: {
-                  message: "Billing authorization is warming. Retry shortly.",
+                  message:
+                    "Billing authorization is unavailable. Retry shortly.",
                   type: "service_unavailable",
-                  code: "billing_cache_warming",
+                  code: "billing_unavailable",
                   details: { dependency },
                 },
               },
@@ -2409,7 +2339,7 @@ export async function handleChatCompletionsPOST(
     }
     if (
       error instanceof InferenceAdmissionUnavailableError ||
-      error instanceof InferenceBalanceCacheWarmingError
+      error instanceof InferenceBillingUnavailableError
     ) {
       logger.error(
         "[Chat Completions] provider-boundary admission failed closed",

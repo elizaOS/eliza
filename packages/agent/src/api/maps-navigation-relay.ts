@@ -46,6 +46,9 @@ const unavailable = () =>
   );
 
 function relayFor(runtime: IAgentRuntime): Relay {
+  // A mobile host may stub plugin-maps; its named imports are then undefined.
+  if (typeof MapsService !== "function")
+    throw new DeviceActionError("Maps service unavailable");
   const maps = runtime.getService<MapsService>(MapsService.serviceType);
   if (!maps) throw new DeviceActionError("Maps service unavailable");
   const previous = relays.get(runtime);

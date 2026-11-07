@@ -2066,6 +2066,8 @@ export const BIP39_WORD_INDEX: ReadonlyMap<string, number> = new Map(
 
 /** Valid BIP-39 mnemonic word counts (128–256 bits of entropy). */
 const VALID_WORD_COUNTS = new Set([12, 15, 18, 21, 24]);
+/** The same counts, longest first, for window search. */
+const MNEMONIC_WINDOW_SIZES = [24, 21, 18, 15, 12] as const;
 
 /**
  * Validate a BIP-39 mnemonic: every word must be in the wordlist AND the
@@ -2120,34 +2122,43 @@ export interface MnemonicSpan {
  */
 export function findAllMnemonicPhrases(text: string): MnemonicSpan[] {
 	const tokens = [...text.matchAll(/[a-zA-Z]{3,8}/g)];
+	const count = tokens.length;
+	// Prefix counts make each window's adjacency and wordlist checks O(1):
+	// brokenLinks[k] counts tokens 1..k-1 not whitespace-adjacent to their
+	// predecessor; unknownWords[k] counts tokens 0..k-1 outside the wordlist. A
+	// window with an unknown word cannot pass mnemonicValid, so it is skipped
+	// before the checksum.
+	const words = new Array<string>(count);
+	const brokenLinks = new Uint32Array(count + 1);
+	const unknownWords = new Uint32Array(count + 1);
+	for (let j = 0; j < count; j += 1) {
+		const token = tokens[j];
+		words[j] = token[0].toLowerCase();
+		unknownWords[j + 1] =
+			unknownWords[j] + (BIP39_WORD_INDEX.has(words[j]) ? 0 : 1);
+		let broken = 0;
+		if (j > 0) {
+			const prev = tokens[j - 1];
+			const gapStart = prev.index + prev[0].length;
+			if (!/^\s+$/.test(text.slice(gapStart, token.index))) broken = 1;
+		}
+		brokenLinks[j + 1] = brokenLinks[j] + broken;
+	}
 	const spans: MnemonicSpan[] = [];
 	let i = 0;
-	while (i < tokens.length) {
+	while (i < count) {
 		let matched = false;
-		for (const count of [24, 21, 18, 15, 12]) {
-			if (i + count > tokens.length) continue;
-			let adjacent = true;
-			for (let j = i + 1; j < i + count; j += 1) {
-				const prev = tokens[j - 1];
-				const cur = tokens[j];
-				const gapStart = (prev.index ?? 0) + prev[0].length;
-				if (!/^\s+$/.test(text.slice(gapStart, cur.index ?? 0))) {
-					adjacent = false;
-					break;
-				}
-			}
-			if (!adjacent) continue;
-			const phrase = tokens
-				.slice(i, i + count)
-				.map((t) => t[0].toLowerCase())
-				.join(" ");
-			if (mnemonicValid(phrase)) {
-				const first = tokens[i];
-				const last = tokens[i + count - 1];
-				const start = first.index ?? 0;
-				const end = (last.index ?? 0) + last[0].length;
-				spans.push({ value: text.slice(start, end), start, end });
-				i += count;
+		for (const size of MNEMONIC_WINDOW_SIZES) {
+			const end = i + size;
+			if (end > count) continue;
+			if (brokenLinks[end] !== brokenLinks[i + 1]) continue;
+			if (unknownWords[end] !== unknownWords[i]) continue;
+			if (mnemonicValid(words.slice(i, end).join(" "))) {
+				const last = tokens[end - 1];
+				const start = tokens[i].index;
+				const spanEnd = last.index + last[0].length;
+				spans.push({ value: text.slice(start, spanEnd), start, end: spanEnd });
+				i = end;
 				matched = true;
 				break;
 			}

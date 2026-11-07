@@ -78,13 +78,9 @@ interface CloudVideoResponse {
 }
 
 /**
- * Ride through the cloud's transient cold-cache warming for a media call. This
- * box runs text on Cerebras, so the cloud's per-model generative admission
- * cache goes cold between rare video/music calls; the first one throws
- * "Generative admission cache is warming; retry shortly" (or a
- * billing/auth-cache warming message) that clears within ~1s on retry — the
- * client companion to the server escape in #18249, mirroring the image
- * handlers (#18323/#18325). A non-warming error still fails fast.
+ * Retry a media call twice on the cloud's typed transient refusal
+ * (`service_unavailable`: the admission Durable Object or primary was briefly
+ * unreachable). Any other error fails fast.
  */
 async function retryMediaWarming<T>(
   fn: () => Promise<T>,
@@ -95,10 +91,6 @@ async function retryMediaWarming<T>(
     try {
       return await fn();
     } catch (err) {
-      const message = err instanceof Error ? err.message : String(err);
-      // Prefer the structured warming code the cloud sets on the thrown API
-      // error (billing_cache_warming / auth_cache_warming / service_unavailable);
-      // fall back to the message text for SDK shapes that don't surface a code.
       const errRecord = err as {
         code?: unknown;
         error?: { code?: unknown; type?: unknown };
@@ -106,15 +98,11 @@ async function retryMediaWarming<T>(
       const code = String(
         errRecord?.code ?? errRecord?.error?.code ?? errRecord?.error?.type ?? "",
       );
-      const isWarming =
-        code === "billing_cache_warming" ||
-        code === "auth_cache_warming" ||
-        code === "service_unavailable" ||
-        /warming|admission cache/i.test(message);
+      const isWarming = code === "service_unavailable";
       if (isWarming && warmingRetries < 2) {
         warmingRetries++;
         logger.warn(
-          `[ELIZAOS_CLOUD] ${label} cold-cache warming, retry ${warmingRetries}/2...`,
+          `[ELIZAOS_CLOUD] ${label} transient unavailability, retry ${warmingRetries}/2...`,
         );
         await new Promise((r) => setTimeout(r, 1500));
         continue;

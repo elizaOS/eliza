@@ -87,13 +87,64 @@ export type Place = Readonly<{
   attribution: string;
   fetchedAt: number;
 }>;
+/** One public-transport ride, from the provider's published timetables. */
+export type TransitDetails = Readonly<{
+  /** Line name riders see, e.g. "M1". */
+  line: string;
+  /** Vehicle kind, e.g. "bus", "subway", "train", "ferry". */
+  vehicle: string;
+  headsign?: string;
+  departureStop: string;
+  arrivalStop: string;
+  /** ISO 8601 departure and arrival. */
+  departureTime?: string;
+  arrivalTime?: string;
+  stopCount?: number;
+  /** Operator line colour, `#rrggbb`. */
+  color?: string;
+}>;
 export type RouteStep = Readonly<{
   instruction: string;
   coordinate: Coordinate;
   /** Length of this step, from its maneuver to the next one. */
   distanceMeters: number;
   maneuver?: Maneuver;
+  /** Present on the ride steps of a transit route. */
+  transit?: TransitDetails;
 }>;
+/** Validated transit ride details, or a typed refusal. */
+export function transitDetails(value: unknown): TransitDetails {
+  const t = (value ?? {}) as Record<string, unknown>;
+  const time = (v: unknown) =>
+    v === undefined || (boundedText(v, 40) && Number.isFinite(Date.parse(v)));
+  if (
+    !value ||
+    typeof value !== "object" ||
+    !boundedText(t.line, 100) ||
+    !boundedText(t.vehicle, 50) ||
+    !boundedText(t.departureStop, 200) ||
+    !boundedText(t.arrivalStop, 200) ||
+    (t.headsign !== undefined && !boundedText(t.headsign, 200)) ||
+    !time(t.departureTime) ||
+    !time(t.arrivalTime) ||
+    (t.stopCount !== undefined &&
+      (!Number.isInteger(t.stopCount) || (t.stopCount as number) < 0)) ||
+    (t.color !== undefined &&
+      (typeof t.color !== "string" || !/^#[0-9a-f]{6}$/i.test(t.color)))
+  )
+    throw new MapsFailure("invalid-response", "A transit ride is invalid.");
+  return {
+    line: t.line as string,
+    vehicle: t.vehicle as string,
+    departureStop: t.departureStop as string,
+    arrivalStop: t.arrivalStop as string,
+    ...(t.headsign ? { headsign: t.headsign as string } : {}),
+    ...(t.departureTime ? { departureTime: t.departureTime as string } : {}),
+    ...(t.arrivalTime ? { arrivalTime: t.arrivalTime as string } : {}),
+    ...(t.stopCount !== undefined ? { stopCount: t.stopCount as number } : {}),
+    ...(t.color ? { color: (t.color as string).toLowerCase() } : {}),
+  };
+}
 export type Route = Readonly<{
   providerId: string;
   id: string;
@@ -106,7 +157,10 @@ export type Route = Readonly<{
   steps: readonly RouteStep[];
   attribution: string;
   fetchedAt: number;
+  /** `none` for free-flow durations; otherwise the provider's traffic capability. */
   traffic: ProviderCapabilities["traffic"];
+  /** Free-flow duration when `traffic` is not `none`, to show the delay. */
+  staticDurationSeconds?: number;
 }>;
 export interface MapsProvider {
   readonly providerId: string;
