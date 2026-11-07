@@ -133,7 +133,7 @@ export const mapsViewTransport: MapsViewTransport = {
         "maps-search-places",
         {
           query,
-          limit: 24,
+          limit: 20,
           ...(cursor ? { cursor } : {}),
           ...(provider
             ? {

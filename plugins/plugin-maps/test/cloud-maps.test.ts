@@ -4,13 +4,15 @@
  * guarded transport, MapsService and the actions are the real modules.
  */
 import type { IAgentRuntime, Memory } from "@elizaos/core";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { mapsAction, mapsNavigationAction } from "../src/action.js";
 import {
   ELIZA_CLOUD_MAPS_ATTRIBUTION,
   ElizaCloudMapsAdapter,
 } from "../src/cloud-adapter.js";
+import { mapsViewTransport } from "../src/components/maps-view-data.js";
 import { MapsError } from "../src/errors.js";
+import { serverInteract } from "../src/interact.js";
 import type { MapsDeviceNavigation } from "../src/navigation.js";
 import { MapsService } from "../src/service.js";
 import type { SavedPlaceStore } from "../src/store.js";
@@ -95,6 +97,24 @@ function cloud(
 }
 
 const unusedStore = {} as SavedPlaceStore;
+
+/** The agent's `/api/views/maps/interact` broker for the view's requests. */
+const viewBroker = vi.hoisted(() => ({
+  runtime: undefined as IAgentRuntime | undefined,
+}));
+vi.mock("@elizaos/ui", () => ({
+  fetchWithCsrf: async (_url: string, init: RequestInit) => {
+    const { capability, params } = JSON.parse(String(init.body));
+    const result = await serverInteract(capability, params, {
+      runtime: viewBroker.runtime,
+    });
+    return Response.json({
+      requestId: "view-request",
+      success: result.success,
+      result,
+    });
+  },
+}));
 
 function runtimeWith(service: MapsService): IAgentRuntime {
   return { getService: () => service } as unknown as IAgentRuntime;
@@ -758,6 +778,28 @@ describe("phone navigation actions", () => {
       ["reroute"],
       ["stop"],
       ["select", "Port Hercule"],
+    ]);
+  });
+});
+
+describe("Maps view search", () => {
+  it("sends a result limit that Cloud accepts", async () => {
+    const { adapter, requests } = cloud(() =>
+      Response.json({
+        providerId: "eliza-cloud-osm",
+        attribution: ELIZA_CLOUD_MAPS_ATTRIBUTION,
+        places: [PLACE],
+      }),
+    );
+    const service = new MapsService(undefined, unusedStore);
+    service.registerAdapter(adapter);
+    viewBroker.runtime = runtimeWith(service);
+    const result = await mapsViewTransport.search("Casino");
+    expect(result.page.places.map((place) => place.name)).toEqual([
+      "Casino de Monte-Carlo",
+    ]);
+    expect(requests.map((request) => request.body)).toEqual([
+      { query: "Casino", limit: 20 },
     ]);
   });
 });
