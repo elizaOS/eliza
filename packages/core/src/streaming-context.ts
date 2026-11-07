@@ -378,6 +378,11 @@ export function runWithStreamingContext<T>(
 		context?.actionConstraints === parent.actionConstraints
 	) {
 		context = { ...context, actionConstraints: new Map() };
+	} else if (sameTurn && parent?.abortSignal && !context?.abortSignal) {
+		// Policy is registered lazily, so a turn without it still owns
+		// cancellation; a same-turn scope with no signal of its own keeps it.
+		const base = context ?? { messageId: parent.messageId };
+		context = { ...base, abortSignal: parent.abortSignal };
 	}
 	return manager.run(context, fn);
 }
