@@ -20,6 +20,9 @@ function readPage(selector) {
       const own = getComputedStyle(element);
       if (own.visibility === "hidden" || own.visibility === "collapse")
         return false;
+      // A display:contents element generates no box, so it has no client
+      // rects; its content renders in the nearest ancestor box.
+      let box = null;
       for (
         let ancestor = element;
         ancestor;
@@ -27,8 +30,9 @@ function readPage(selector) {
       ) {
         const style = getComputedStyle(ancestor);
         if (style.display === "none" || style.opacity === "0") return false;
+        if (!box && style.display !== "contents") box = ancestor;
       }
-      return element.getClientRects().length > 0;
+      return box !== null && box.getClientRects().length > 0;
     };
     if (!visible(root))
       return {
