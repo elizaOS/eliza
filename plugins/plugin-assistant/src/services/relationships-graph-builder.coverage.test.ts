@@ -304,7 +304,10 @@ describe("createNativeRelationshipsGraphService", () => {
           id: ALICE,
           names: ["Alice Chen"],
           metadata: {
-            platformIdentities: [{ platform: "Discord", handle: "@alice" }],
+            platformIdentities: [
+              { platform: "Discord", handle: "@alice" },
+              { platform: "X", handle: "@alicechen" },
+            ],
           },
         },
         [BOB]: {
@@ -340,6 +343,15 @@ describe("createNativeRelationshipsGraphService", () => {
     expect(byPlatform.relationships).toEqual([]);
     expect(byPlatform.stats.totalRelationships).toBe(0);
     expect(byPlatform.people[0]?.relationshipCount).toBe(0);
+
+    // CONTACT search and ?platform= pass the platform as the user wrote it.
+    for (const platform of ["Discord", "X", "x", "Twitter"]) {
+      const snapshot = await service.getGraphSnapshot({ platform });
+      expect(
+        snapshot.people.map((person) => person.primaryEntityId),
+        platform,
+      ).toEqual([ALICE]);
+    }
 
     const bySearch = await service.getGraphSnapshot({ search: "BOB" });
     expect(bySearch.people.map((person) => person.primaryEntityId)).toEqual([
