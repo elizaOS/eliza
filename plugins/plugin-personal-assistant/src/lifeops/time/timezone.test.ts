@@ -1,5 +1,6 @@
 /**
- * Coverage for the planner "Z" time-zone alias in timezone.ts.
+ * Coverage for the planner "Z" time-zone alias in timezone.ts, and for the
+ * free-text scan reading a zone only where the text names one.
  *
  * A planner that reads an ISO timestamp such as "2026-08-19T14:00:00Z"
  * stamps the definition timeZone field "Z". The exact-token path
@@ -44,5 +45,99 @@ describe("free-text time-zone scan ignores a bare z", () => {
       expect(extractExplicitTimeZoneFromText(sentence)).toBeNull();
       expect(inferTimeZoneFromLocationText(sentence)).toBeNull();
     }
+  });
+});
+
+describe("free-text time-zone scan ignores ordinary words", () => {
+  // Each sentence holds a word that is also a zone alias ("CT", "PT",
+  // "central", "mountain", "Denver") or the last segment of an IANA zone name
+  // (Antarctica/Casey, Indian/Christmas, Pacific/Wake,
+  // America/North_Dakota/Center). None of them names a zone here.
+  it.each([
+    "remind me about my CT scan tomorrow at 10am",
+    "book a PT session every monday at 9am",
+    "go for a run in Central Park tomorrow at 7am",
+    "go mountain biking saturday at 8am",
+    "call Denver back tomorrow at 5pm",
+    "find three slots to meet Casey next week",
+    "propose times for the Christmas party sync next week",
+    "find a slot after I wake up tomorrow",
+    "coffee at the community center next week",
+    // A bare number before the word is a count, not a clock time.
+    "book 2 mountain bike sessions saturday at 8am",
+    "remind me to buy 2 Central Park Zoo tickets tomorrow at 10am",
+    "find 2 pacific coast trail hikes next week",
+    "order 3 Berlin guidebooks next week",
+    // "am" and "pm" mark a clock time only after an hour.
+    "I am central to the launch next week",
+    "I am central to the project and need to call Casey tomorrow",
+    // A region word after "in" is part of a place when a name follows it,
+    // and "morning PT" is usually a session.
+    "lunch in Mountain View next week",
+    "find three slots while I'm in central London",
+    "find slots while I'm in eastern Europe next week",
+    "remind me about my morning PT tomorrow",
+    "I ran three times in Central Park this week",
+    // A region word or abbreviation after "in" and a preposition is a place
+    // or a team unless a calendar word or a clock time follows the
+    // preposition (CT and MT are also Connecticut and Montana).
+    "lunch in Central for the team next week",
+    "meet in Eastern at the HQ",
+    "hike in Mountain on Saturday morning",
+    "lunch in PT for the team next week",
+    "meet in ET at the HQ",
+    "hike in MT on Saturday morning",
+    "find slots while I'm in CT for the weekend",
+  ])("infers no zone from %j", (sentence) => {
+    expect(extractExplicitTimeZoneFromText(sentence)).toBeNull();
+    expect(inferTimeZoneFromLocationText(sentence)).toBeNull();
+  });
+});
+
+describe("free-text time-zone scan reads a zone where the text names one", () => {
+  it.each([
+    ["call mom at 10am PT", "America/Los_Angeles"],
+    ["call the bank at 9 a.m. PT", "America/Los_Angeles"],
+    ["standup at 3:30 central", "America/Chicago"],
+    ["dentist at 9 am Eastern time", "America/New_York"],
+    ["sync at 2pm mountain time", "America/Denver"],
+    ["review at 4pm EST", "America/New_York"],
+    ["meet at 5pm New York time", "America/New_York"],
+    ["remind me at 9am while I'm in Chicago", "America/Chicago"],
+    ["standup at 5 central", "America/Chicago"],
+    ["send the report by 5 ET", "America/New_York"],
+    ["remind me at noon PT", "America/Los_Angeles"],
+    ["call at midnight PT", "America/Los_Angeles"],
+    ["standup at 5 o'clock PT", "America/Los_Angeles"],
+    ["call at noon Pacific", "America/Los_Angeles"],
+    ["lunch at noon eastern", "America/New_York"],
+    ["call at 10am, PT", "America/Los_Angeles"],
+    ["call mom at 10 am PT", "America/Los_Angeles"],
+    ["standup at 3:30 pm central", "America/Chicago"],
+    ["set my timezone to Pacific", "America/Los_Angeles"],
+    ["change my time zone to eastern", "America/New_York"],
+    ["my time zone is Central, find three slots next week", "America/Chicago"],
+    ["all times in CT", "America/Chicago"],
+    ["find three slots next week, all times are in PT", "America/Los_Angeles"],
+    ["while I'm in PT next week find slots with Ryan", "America/Los_Angeles"],
+    ["meeting is in ET tomorrow", "America/New_York"],
+    ["schedule in Pacific for next week", "America/Los_Angeles"],
+    ["find three slots with Ryan while I'm in ET", "America/New_York"],
+    ["the review is in Pacific at 3pm", "America/Los_Angeles"],
+    ["the review is in PT at 3pm", "America/Los_Angeles"],
+    ["schedule in PT for next week", "America/Los_Angeles"],
+    ["the standup is in ET next Monday", "America/New_York"],
+  ])("reads %j as %s", (sentence, timeZone) => {
+    expect(extractExplicitTimeZoneFromText(sentence)).toBe(timeZone);
+  });
+
+  it.each([
+    ["while I'm in Tokyo next week find slots with Ryan", "Asia/Tokyo"],
+    ["while I'm in Tokyo, find three slots with Ryan", "Asia/Tokyo"],
+    ["find three slots, Berlin time", "Europe/Berlin"],
+    ["Tokyo", "Asia/Tokyo"],
+    ["set my timezone to Tokyo", "Asia/Tokyo"],
+  ])("infers %j as %s", (sentence, timeZone) => {
+    expect(inferTimeZoneFromLocationText(sentence)).toBe(timeZone);
   });
 });
