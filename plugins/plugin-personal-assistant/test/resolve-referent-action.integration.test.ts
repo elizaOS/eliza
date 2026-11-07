@@ -32,6 +32,7 @@ import {
   type RealTestRuntimeResult,
 } from "../../../packages/app/test/helpers/real-runtime.ts";
 import { resolveReferentAction } from "../src/actions/resolve-referent.js";
+import { gatherImplicitReferentCandidates } from "../src/lifeops/implicit-referents/candidate-sources.js";
 import { resolveOwnerFactStore } from "../src/lifeops/owner/fact-store.js";
 
 let testRuntime: RealTestRuntimeResult;
@@ -53,11 +54,18 @@ function ownerMessage(text: string): Memory {
 
 async function seedFact(
   text: string,
-  metadata: { confidence?: number; keywords?: string[]; validAt?: string },
-): Promise<void> {
+  metadata: {
+    confidence?: number;
+    keywords?: string[];
+    validAt?: string;
+    extractionStatus?: "source_invalidated";
+    extractionReviewRequired?: boolean;
+  },
+): Promise<UUID> {
+  const id = crypto.randomUUID() as UUID;
   await runtime.createMemory(
     {
-      id: crypto.randomUUID() as UUID,
+      id,
       entityId: runtime.agentId as UUID,
       agentId: runtime.agentId as UUID,
       roomId: ROOM_ID,
@@ -72,6 +80,7 @@ async function seedFact(
     } as unknown as Memory,
     "facts",
   );
+  return id;
 }
 
 async function runHandler(text: string) {
@@ -186,5 +195,42 @@ describe("RESOLVE_REFERENT action (real runtime)", () => {
     const result = await runHandler("Book the usual travel for me.");
     expect(result?.success).toBe(true);
     expect(["resolved", "ask"]).toContain(result?.data?.decision);
+  });
+
+  it("leaves out facts that evidence reconciliation retired", async () => {
+    // Reconciliation keeps a fact row when its source message is deleted or
+    // edited and only marks it retired; the FACTS provider skips such rows.
+    const deletedSource = await seedFact(
+      "Owner's usual lunch is the window seat at Kaito at noon.",
+      {
+        confidence: 0.95,
+        keywords: ["usual", "lunch", "kaito"],
+        extractionStatus: "source_invalidated",
+      },
+    );
+    const editedSource = await seedFact(
+      "Owner's usual lunch is the ramen counter at Tsuta at 1pm.",
+      {
+        confidence: 0.9,
+        keywords: ["usual", "lunch", "tsuta"],
+        extractionReviewRequired: true,
+      },
+    );
+    const live = await seedFact(
+      "Owner's usual lunch is the patio at Verde at 12:30.",
+      { confidence: 0.6, keywords: ["usual", "lunch", "verde"] },
+    );
+
+    const ids = (await gatherImplicitReferentCandidates(runtime)).map(
+      (candidate) => candidate.id,
+    );
+    expect(ids).toContain(live);
+    expect(ids).not.toContain(deletedSource);
+    expect(ids).not.toContain(editedSource);
+
+    const result = await runHandler("Book the usual lunch.");
+    expect(result?.success).toBe(true);
+    expect(String(result?.text)).not.toContain("Kaito");
+    expect(String(result?.text)).not.toContain("Tsuta");
   });
 });

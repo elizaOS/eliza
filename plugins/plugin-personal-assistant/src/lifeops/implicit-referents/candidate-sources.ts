@@ -19,7 +19,7 @@
  */
 
 import type { FactMetadata, IAgentRuntime, Memory } from "@elizaos/core";
-import { toWellFormedUnicode } from "@elizaos/core";
+import { isActiveMemoryEvidence, toWellFormedUnicode } from "@elizaos/core";
 import { resolveOwnerFactStore } from "../owner/fact-store.js";
 import type {
   ImplicitReferentCandidate,
@@ -165,6 +165,7 @@ export async function gatherImplicitReferentCandidates(
     includeEmbedding: false,
   });
   const factCandidates = factMemories
+    .filter((memory) => isActiveMemoryEvidence(memory))
     .map((memory, index) => factToCandidate(memory, index))
     .filter(
       (candidate): candidate is ImplicitReferentCandidate => candidate !== null,
