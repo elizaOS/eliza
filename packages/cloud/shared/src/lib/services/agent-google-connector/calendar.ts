@@ -25,7 +25,6 @@ type GoogleCalendarEventDate = {
 
 type GoogleCalendarApiEvent = {
   id?: string;
-  etag?: string;
   status?: string;
   summary?: string;
   description?: string;
@@ -263,7 +262,6 @@ function normalizeGoogleCalendarEvent(
     timezone: start.timeZone || end.timeZone,
     htmlLink: event.htmlLink?.trim() || null,
     conferenceLink: readConferenceLink(event),
-    etag: event.etag?.trim() || null,
     organizer: event.organizer
       ? {
           email: event.organizer.email?.trim() || null,
@@ -310,7 +308,7 @@ export async function fetchManagedGoogleCalendarFeed(args: {
     timeMin: args.timeMin,
     timeMax: args.timeMax,
     fields:
-      "nextPageToken,items(id,etag,status,summary,description,location,htmlLink,hangoutLink,iCalUID,recurringEventId,created,start,end,organizer(email,displayName,self),attendees(email,displayName,responseStatus,self,organizer,optional),conferenceData(entryPoints(uri)))",
+      "nextPageToken,items(id,status,summary,description,location,htmlLink,hangoutLink,iCalUID,recurringEventId,created,start,end,organizer(email,displayName,self),attendees(email,displayName,responseStatus,self,organizer,optional),conferenceData(entryPoints(uri)))",
     timeZone: args.timeZone,
   });
 
@@ -534,7 +532,7 @@ async function fetchManagedGoogleCalendarEvent(args: {
 }): Promise<ManagedGoogleCalendarEvent | null> {
   const params = new URLSearchParams({
     fields:
-      "id,etag,status,summary,description,location,htmlLink,hangoutLink,iCalUID,recurringEventId,created,start,end,organizer(email,displayName,self),attendees(email,displayName,responseStatus,self,organizer,optional),conferenceData(entryPoints(uri))",
+      "id,status,summary,description,location,htmlLink,hangoutLink,iCalUID,recurringEventId,created,start,end,organizer(email,displayName,self),attendees(email,displayName,responseStatus,self,organizer,optional),conferenceData(entryPoints(uri))",
   });
   const response = await googleFetch({
     organizationId: args.organizationId,
@@ -565,8 +563,6 @@ export async function updateManagedGoogleCalendarEvent(args: {
     displayName?: string;
     optional?: boolean;
   }>;
-  /** The event `etag` the caller read; Google refuses a newer revision with 412. */
-  ifMatch?: string;
 }): Promise<{ event: ManagedGoogleCalendarEvent }> {
   const ONE_HOUR_MS = 60 * 60 * 1000;
   const needsExistingEventContext =
@@ -621,10 +617,7 @@ export async function updateManagedGoogleCalendarEvent(args: {
     url: `${GOOGLE_CALENDAR_EVENTS_ENDPOINT}/${encodeURIComponent(args.calendarId)}/events/${encodeURIComponent(args.eventId)}?conferenceDataVersion=1`,
     options: {
       method: "PATCH",
-      headers: {
-        "Content-Type": "application/json",
-        ...(args.ifMatch ? { "If-Match": args.ifMatch } : {}),
-      },
+      headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
         ...(args.title !== undefined ? { summary: args.title } : {}),
         ...(args.description !== undefined ? { description: args.description } : {}),
@@ -652,8 +645,6 @@ export async function deleteManagedGoogleCalendarEvent(args: {
   grantId?: string;
   calendarId: string;
   eventId: string;
-  /** The event `etag` the caller read; Google refuses a newer revision with 412. */
-  ifMatch?: string;
 }): Promise<{ ok: true }> {
   await googleFetch({
     organizationId: args.organizationId,
@@ -663,7 +654,6 @@ export async function deleteManagedGoogleCalendarEvent(args: {
     url: `${GOOGLE_CALENDAR_EVENTS_ENDPOINT}/${encodeURIComponent(args.calendarId)}/events/${encodeURIComponent(args.eventId)}`,
     options: {
       method: "DELETE",
-      ...(args.ifMatch ? { headers: { "If-Match": args.ifMatch } } : {}),
     },
   });
   return { ok: true };

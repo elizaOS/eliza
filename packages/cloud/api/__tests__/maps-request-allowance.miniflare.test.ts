@@ -278,6 +278,31 @@ describe("Maps shared allowance", () => {
         .status,
     ).toBe(503);
   });
+  test("Maps has its own limits when shared plan limits are off", async () => {
+    const gate = "maps-only-rate-policy";
+    await post(
+      "/test/config",
+      {
+        ELIZA_CLOUD_PLAN_RATE_LIMITS: "",
+        ELIZA_CLOUD_MAPS_PLAN_RATE_LIMITS: JSON.stringify({
+          selected: true,
+          plans: {
+            default: {
+              burst: { capacity: 1, refillPerSecond: 0.001 },
+              sustained: { capacity: 10, refillPerSecond: 1 },
+            },
+          },
+        }),
+      },
+      gate,
+    );
+    expect((await post("/maps/admit", mapsRequest("first"), gate)).status).toBe(
+      200,
+    );
+    expect(
+      (await post("/maps/admit", mapsRequest("second"), gate)).status,
+    ).toBe(429);
+  });
   test("Maps requires selected burst and sustained configuration as well as an allowance", async () => {
     const absentOrUnselected = [
       "",

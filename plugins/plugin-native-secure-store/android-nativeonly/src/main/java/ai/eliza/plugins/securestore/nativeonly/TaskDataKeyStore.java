@@ -63,9 +63,6 @@ public final class TaskDataKeyStore {
     return new TaskDataKeyStore(directory, aliasPrefix, preferStrongBox);
   }
 
-  /** True for {@link #perSlot} custody, where {@link #remove} and {@link #destroy} delete the slot's Keystore entry. */
-  public boolean isPerSlot() { return shared == null; }
-
   /** Returns null without creating a missing key. The host must refuse an existing database in that case. */
   public Key read(String accountId, String databaseId) throws Exception {
     synchronized (JsonCredentialSlots.LOCK) {

@@ -243,41 +243,6 @@ Use `prompt=select_account` for a user gesture before the App Link and
 `mfa=exchange` to finish a required second factor through the existing exchange
 and MFA endpoints. An MFA-required response carries no session tokens.
 
-Native Google sign-in with Play services can do the Cloud half in one call,
-`POST /api/v1/app-auth/mobile/google`, and connect Gmail and Calendar in the
-same step:
-
-1. `POST /steward/auth/oauth/google/native/challenge` (as today) gives
-   `challengeId`, `nonce` and `serverClientId`.
-2. On the phone, Credential Manager returns an id_token carrying that nonce.
-   `Identity.getAuthorizationClient().authorize(...)` with the connector scopes
-   and `requestOfflineAccess(<serverClientId>, true)` returns a
-   `serverAuthCode`. `GET /api/v1/app-auth/mobile/google` returns Cloud's
-   `serverClientId` and `scopes`; it is Cloud's `GOOGLE_CLIENT_ID`, and it must
-   be the same web client as Steward's `GOOGLE_CLIENT_ID`.
-3. `POST /api/v1/app-auth/mobile/google` with
-   `{clientId, environment, redirectUri, state, codeVerifier, deviceName?,
-   steward: {clientId, challengeId, idToken, codeVerifier}, serverAuthCode?}`.
-   Cloud verifies the identity with Steward (signed, with the caller's edge IP).
-   It then syncs the Cloud user and organization and records the app
-   connection. It issues and exchanges a mobile App Auth grant (same lineage,
-   TTL and inactive-until-acknowledged key as `connect` + `mobile/token`) and
-   stores the Google connection when the code belongs to the same Google
-   account (`sub`) and the user owns the organization. Finally it revokes the
-   temporary Steward session. The answer is
-   `{success, status: "signed_in", credentialId, secret, expiresAt, scopes,
-   acknowledgeBy, code, accountCreated, google?}`. `google` is
-   `{connected: true, connectionId, email, scopes, refreshTokenIssued}` or
-   `{connected: false, code}`; a Google failure never fails the sign-in. A
-   second factor answers `{success: true, status: "mfa_required", mfa}` with no
-   key.
-4. `POST /api/v1/app-auth/mobile/ack` (as today) activates the key.
-
-This needs no new setting beyond those above: `GOOGLE_CLIENT_ID` /
-`GOOGLE_CLIENT_SECRET` on the API Worker and, on Steward,
-`STEWARD_GOOGLE_NATIVE_CLIENT_IDS` mapping the Steward app client to the
-Android OAuth client ids.
-
 Native email sign-in is a six-digit code typed into the app:
 
 - `POST /steward/auth/email/code/send` with `{email, tenantId?, captchaToken?}`
