@@ -551,8 +551,9 @@ export class DurableDraftController<Recovery = unknown> {
    * A changed binding, queued edit or in-flight send refuses that handoff.
    */
   async flush(current: () => boolean = () => true): Promise<void> {
-    await this.opening;
     const binding = this.active;
+    await this.opening;
+    if (this.active !== binding) throw new Error(this.messages.changed);
     if (!binding) {
       if (!current() || this.text() || this.held)
         throw new Error(this.messages.storageUnavailable);

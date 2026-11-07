@@ -1406,3 +1406,22 @@ describe("DurableDraftController passive update handoff", () => {
     expect(f.saved()).toBeNull();
   });
 });
+
+
+it("passive flush refuses a binding replacement during its opening read", async () => {
+  let release!: () => void;
+  const gate = new Promise<void>((resolve) => { release = resolve; });
+  const c = new DurableDraftController(
+    async (key) => ({
+      async read() { if (key === "first") await gate; return null; },
+      async save() { throw new Error("No write expected"); },
+    }),
+    () => "", () => {}, () => {},
+  );
+  const opening = c.open("first");
+  const flushing = c.flush();
+  await c.open("second");
+  release();
+  await opening;
+  await expect(flushing).rejects.toThrow();
+});
