@@ -411,17 +411,24 @@ func admissionShape(value any, typ reflect.Type) bool {
 	switch typ.Kind() {
 	case reflect.Struct:
 		object, ok := value.(map[string]any)
-		if !ok || len(object) != typ.NumField() {
+		if !ok {
 			return false
 		}
+		// A field tagged "-" is not stored and must not appear.
+		stored := 0
 		for i := 0; i < typ.NumField(); i++ {
 			field := typ.Field(i)
-			v, present := object[field.Tag.Get("json")]
+			name := field.Tag.Get("json")
+			if name == "-" {
+				continue
+			}
+			stored++
+			v, present := object[name]
 			if !present || !admissionShape(v, field.Type) {
 				return false
 			}
 		}
-		return true
+		return len(object) == stored
 	case reflect.Slice:
 		array, ok := value.([]any)
 		if !ok || len(array) > 4096 {

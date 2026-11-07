@@ -680,16 +680,34 @@ export interface GenerateTextParams {
 	/**
 	 * When true the call streams its result and is parsed incrementally with
 	 * per-field start/done events ({@link import("./streaming").StructuredFieldEventCallbacks}).
-	 * The runtime wires safe fields to downstream consumers and the
-	 * forced-skeleton emitter (W8). Stage-1 `replyText` is deliberately held
-	 * until routing and effect validation complete; adapters that cannot stream
-	 * ignore the flag and return the result whole. Distinct from `stream` (raw
-	 * token stream) — `streamStructured` is "stream + structured field tracking".
+	 * The runtime releases only the caller's {@link streamFields} to downstream
+	 * consumers, subject to {@link streamFieldGate}; every other envelope byte
+	 * stays inside the runtime. Adapters that cannot stream ignore the flag and
+	 * return the result whole. Distinct from `stream` (raw token stream) —
+	 * `streamStructured` is "stream + structured field tracking".
 	 *
-	 * Producer: `@elizaos/core` message service (Stage-1 call).
+	 * Producer: Stage-1 message handler (RESPONSE_HANDLER call).
 	 * Consumer: local-inference engine (W4) + the runtime's field-event plumbing.
 	 */
 	streamStructured?: boolean;
+	/**
+	 * The user-visible top-level fields of a {@link streamStructured} envelope.
+	 * Each streams to chunk consumers as it is generated when the
+	 * {@link responseSkeleton} declares it a free string, or, with `partKinds`,
+	 * when its value is an ordered `[{kind, value}]` parts array (only parts of
+	 * those kinds stream, and the first other part ends the attempt's stream).
+	 * Without it a structured call streams nothing. Each attempt carries its
+	 * own `streamRevision`; the caller's final result stays authoritative.
+	 */
+	streamFields?: readonly StructuredStreamField[];
+	/**
+	 * Decides per attempt whether {@link streamFields} may stream, from the
+	 * complete envelope fields generated before the first of them (`null` for
+	 * unstructured prose output). An allowed attempt streams only that first
+	 * top-level value. Lets a caller stream only answers whose routing is
+	 * already settled. Runtime-only: never sent to providers.
+	 */
+	streamFieldGate?: StructuredStreamGate;
 	/**
 	 * Per-span sampler overrides for the {@link responseSkeleton}. Derived from
 	 * the skeleton's per-position kinds (every `enum` / `number` / `boolean` span
@@ -710,6 +728,21 @@ export interface GenerateTextParams {
 	 */
 	spanSamplerPlan?: SpanSamplerPlan;
 }
+
+/** A user-visible field of a structured stream (see `streamFields`). */
+export interface StructuredStreamField {
+	field: string;
+	/** Part kinds whose `value` streams when the field is a parts array. */
+	partKinds?: readonly string[];
+}
+
+/**
+ * Decides whether structured stream fields may start, from the complete
+ * top-level envelope fields that precede them (`null` for unstructured prose).
+ */
+export type StructuredStreamGate = (
+	preceding: Readonly<Record<string, unknown>> | null,
+) => boolean;
 
 /** Shared only by dispatches within one useModel call, including router delegates. */
 export const MODEL_PROVIDER_ATTEMPTS: unique symbol = Symbol.for(

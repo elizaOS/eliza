@@ -435,6 +435,85 @@ test("independent host HTTP authentication, disk ownership restart, stale-accoun
     await rm(root, { recursive: true, force: true });
   }
 });
+test("sign-out stops a room's turn even after its request closed, and only rooms sent a message", async () => {
+  const requests = [];
+  const held = [];
+  // A second conversation that is never sent a message has no turn to stop.
+  const idle = "22222222-2222-4222-8222-222222222222";
+  let conversations = 0;
+  const upstream = http.createServer(async (req, res) => {
+    let raw = "";
+    for await (const chunk of req) raw += chunk;
+    requests.push({ url: req.url, body: raw ? JSON.parse(raw) : null });
+    res.setHeader("Content-Type", "application/json");
+    // The turn runs upstream until it is aborted; its reply never comes.
+    if (req.url.endsWith("/messages")) return held.push(res);
+    res.end(
+      JSON.stringify(
+        req.url === "/api/conversations"
+          ? ++conversations === 1
+            ? { conversation: { id, roomId: id } }
+            : { conversation: { id: idle, roomId: idle } }
+          : { aborted: true },
+      ),
+    );
+  });
+  const target = await listen(upstream);
+  const server = createLocalAgentGateway({
+    hostPolicy: policy,
+    upstream: target,
+    token: "upstream-authority",
+    inboundToken: "host-authority",
+    credentialGate: async () => "a",
+    cloudHandler: async (_req, res, url, { json }) => {
+      if (url.pathname !== "/identity/logout") return false;
+      json(res, 200, { disconnected: true });
+      return true;
+    },
+  });
+  const base = await listen(server);
+  const post = (path, body = {}, signal) =>
+    fetch(base + path, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: "Bearer host-authority",
+      },
+      body: JSON.stringify(body),
+      signal,
+    });
+  const until = async (check) => {
+    for (let i = 0; i < 200 && !check(); i++)
+      await new Promise((resolve) => setTimeout(resolve, 10));
+    assert.ok(check());
+  };
+  try {
+    assert.equal((await post("/conversations")).status, 200);
+    assert.equal((await post("/conversations")).status, 200);
+    const renderer = new AbortController();
+    const message = post(
+      `/conversations/${id}/messages`,
+      { text: "hello" },
+      renderer.signal,
+    ).catch(() => null);
+    await until(() => held.length === 1);
+    // The renderer goes away (reload, closed panel) while the turn runs.
+    renderer.abort();
+    await message;
+    await until(() => held[0].destroyed || held[0].writableEnded);
+    assert.equal((await post("/identity/logout")).status, 200);
+    await until(() => requests.some((r) => r.url === `/api/turns/${id}/abort`));
+    assert.deepEqual(
+      requests.filter((r) => r.url.endsWith("/abort")),
+      [{ url: `/api/turns/${id}/abort`, body: { reason: "cloud-logout" } }],
+    );
+  } finally {
+    for (const res of held) res.destroy();
+    await close(server);
+    await close(upstream);
+  }
+});
+
 test("runtime supervisor starts real processes in isolated account storage and stops only its child", async () => {
   const root = await mkdtemp(join(tmpdir(), "native-runtime-e2e-"));
   let owner = "first";
@@ -691,6 +770,73 @@ test("a host request scope wraps each whole request, also its later async work",
       }),
     TypeError,
   );
+});
+
+test("a rejecting async request scope answers 500 once and never runs the handler twice", async () => {
+  const unhandled = [];
+  const onUnhandled = (reason) => unhandled.push(reason);
+  process.on("unhandledRejection", onUnhandled);
+  let handled = 0;
+  let lateNext;
+  const gateway = createLocalAgentGateway({
+    hostPolicy: policy,
+    upstream: "http://127.0.0.1:9",
+    token: "upstream-authority",
+    inboundToken: "host-authority",
+    requestScope: async (req, _res, next) => {
+      await Promise.resolve();
+      if (req.headers["x-test-case"] === "reject-before") {
+        lateNext = next;
+        throw new Error("host scope rejected");
+      }
+      if (req.headers["x-test-case"] === "reject-after") {
+        await next();
+        throw new Error("host scope rejected after the handler");
+      }
+      if (req.headers["x-test-case"] === "twice") {
+        await next();
+        return next();
+      }
+      return next();
+    },
+    fetchImpl: async () => {
+      handled += 1;
+      return Response.json({});
+    },
+  });
+  const base = await listen(gateway);
+  try {
+    const call = (testCase = "plain") =>
+      fetch(`${base}/health`, {
+        headers: {
+          Authorization: "Bearer host-authority",
+          "X-Test-Case": testCase,
+        },
+        // Without an answer the request would hang; fail instead.
+        signal: AbortSignal.timeout(5_000),
+      });
+    const rejected = await call("reject-before");
+    assert.equal(rejected.status, 500);
+    assert.deepEqual(await rejected.json(), {
+      error: "Local agent unavailable",
+    });
+    assert.equal(handled, 0);
+    // A failed scope cannot start the handler later.
+    assert.throws(() => lateNext(), /Request handler already started/);
+    assert.equal(handled, 0);
+    // A rejection after the handler answered does not answer again.
+    assert.equal((await call("reject-after")).status, 200);
+    assert.equal(handled, 1);
+    assert.equal((await call("twice")).status, 200);
+    assert.equal(handled, 2);
+    assert.equal((await call()).status, 200);
+    assert.equal(handled, 3);
+    await new Promise((resolve) => setImmediate(resolve));
+    assert.deepEqual(unhandled, []);
+  } finally {
+    process.off("unhandledRejection", onUnhandled);
+    await close(gateway);
+  }
 });
 
 test("read-only private JSON enforces real file owner, mode, symlink and byte boundaries", async (t) => {

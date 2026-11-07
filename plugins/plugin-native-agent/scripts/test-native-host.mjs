@@ -36,6 +36,7 @@ try {
     "runtime/RuntimeInstallationIdentity",
     "runtime/NativeRuntimeEmbeddings",
     "updater/UpdateJournal",
+    "updater/CommitFreshness",
     "updater/InstallReadback",
     "updater/QualifiedClockAnchor",
     "updater/JobRunRegistry",

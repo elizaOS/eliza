@@ -13,6 +13,7 @@ import { describe, expect, it, vi } from "vitest";
 import { BrowserDispatchFailure } from "./dispatch-types";
 import {
   androidNativeBrowserSocketPath,
+  CANCEL_CONFIRM_MAX_MS,
   COMMIT_GRANT_MAX_MS,
   commitFormHash,
   currentPageFromTabs,
@@ -318,6 +319,127 @@ it("negotiates cancellation and sends a fence for an aborted native request", as
     await rm(directory, { recursive: true, force: true });
   }
 });
+
+it("a cancelled request settles only when a cancel-reply peer answers that it stopped", async () => {
+  const directory = await mkdtemp(join(tmpdir(), "native-cancel-reply-"));
+  const socketPath = join(directory, "browser.sock");
+  const target = new NativeSocketBrowserTarget(() => {}, {
+    registrationMs: 1000,
+    heartbeatMs: 10000,
+    replyMs: 300,
+  });
+  let socket: Socket | undefined;
+  try {
+    await target.start({ ELIZA_BROWSER_NATIVE_SOCKET: socketPath });
+    socket = createConnection(socketPath);
+    const peer = socketFrames(socket);
+    peer.send({
+      type: "hello",
+      protocol: 2,
+      extensionId: "pmldpcoefklbdbgmggcejkfoinmjfeio",
+      profileId: "cancel-reply-profile",
+      capabilities: ["list", "cancel", "cancel-reply"],
+      nonce: "hello",
+    });
+    await vi.waitFor(() => expect(peer.messages[0]?.type).toBe("hello-ack"));
+    const commands = () =>
+      peer.messages.filter((message) => message.type === "command");
+    const cancelOne = async () => {
+      const controller = new AbortController();
+      const running = target.execute(
+        { subaction: "list" },
+        { signal: controller.signal },
+      );
+      const rejected = expect(running).rejects.toMatchObject({
+        reason: "request-cancelled",
+      });
+      const before = commands().length;
+      await vi.waitFor(() => expect(commands()).toHaveLength(before + 1));
+      controller.abort();
+      await rejected;
+      return commands().at(-1)?.id;
+    };
+    // The caller's request ends at once; the fence waits for the peer.
+    const id = await cancelOne();
+    let settled = false;
+    const settling = target.settled().then(() => {
+      settled = true;
+    });
+    await new Promise((resolve) => setTimeout(resolve, 50));
+    expect(settled).toBe(false);
+    peer.send({
+      type: "result",
+      id,
+      ok: false,
+      error: { kind: "STALE_REF", reason: "request-cancelled" },
+    });
+    await settling;
+    await target.settled();
+    // A peer that never answers: the fence ends the connection, which stops
+    // every request it carried, and that teardown is the fence, so a Pause
+    // that waits on it still answers.
+    await cancelOne();
+    await expect(target.settled()).resolves.toBeUndefined();
+    expect(await target.available()).toBe(false);
+    await target.settled();
+  } finally {
+    socket?.destroy();
+    await target.stop();
+    await rm(directory, { recursive: true, force: true });
+  }
+});
+
+it("an unconfirmed cancel ends the fence before a renderer's Pause gives up, with the default reply deadline", async () => {
+  // The renderer waits 10 s for a Pause (TASK_PAUSE_TIMEOUT_MS); the default
+  // reply deadline is 30 s, so the fence must not wait for it.
+  const RENDERER_PAUSE_TIMEOUT_MS = 10_000;
+  expect(CANCEL_CONFIRM_MAX_MS).toBeLessThanOrEqual(
+    RENDERER_PAUSE_TIMEOUT_MS / 2,
+  );
+  const directory = await mkdtemp(join(tmpdir(), "native-cancel-cap-"));
+  const socketPath = join(directory, "browser.sock");
+  const target = new NativeSocketBrowserTarget(() => {}, {
+    registrationMs: 1000,
+    heartbeatMs: 60000,
+  });
+  let socket: Socket | undefined;
+  try {
+    await target.start({ ELIZA_BROWSER_NATIVE_SOCKET: socketPath });
+    socket = createConnection(socketPath);
+    const peer = socketFrames(socket);
+    peer.send({
+      type: "hello",
+      protocol: 2,
+      extensionId: "pmldpcoefklbdbgmggcejkfoinmjfeio",
+      profileId: "cancel-cap-profile",
+      capabilities: ["list", "cancel", "cancel-reply"],
+      nonce: "hello",
+    });
+    await vi.waitFor(() => expect(peer.messages[0]?.type).toBe("hello-ack"));
+    const controller = new AbortController();
+    const running = target.execute(
+      { subaction: "list" },
+      { signal: controller.signal },
+    );
+    const rejected = expect(running).rejects.toMatchObject({
+      reason: "request-cancelled",
+    });
+    await vi.waitFor(() =>
+      expect(peer.messages.some((m) => m.type === "command")).toBe(true),
+    );
+    controller.abort();
+    await rejected;
+    // The peer never answers the cancel.
+    const started = Date.now();
+    await expect(target.settled()).resolves.toBeUndefined();
+    expect(Date.now() - started).toBeLessThan(RENDERER_PAUSE_TIMEOUT_MS);
+    expect(await target.available()).toBe(false);
+  } finally {
+    socket?.destroy();
+    await target.stop();
+    await rm(directory, { recursive: true, force: true });
+  }
+}, 15_000);
 
 it("does not send a cancellable request to an older native peer", async () => {
   const directory = await mkdtemp(join(tmpdir(), "native-no-cancel-"));
@@ -1933,6 +2055,153 @@ describe("NativeTaskActuator over the native socket", () => {
           (message) => message.command.subaction === "click",
         ),
       ).toHaveLength(1);
+    } finally {
+      await browser.close();
+    }
+  });
+
+  it("refuses a reviewed target the browser cannot check unless the host says omit", async () => {
+    for (const policy of [undefined, "refuse"] as const) {
+      const refusals: TaskActionRefusal[] = [];
+      const browser = await actuatorOverSocket(
+        ["task-bind", "task-guide", "task-action-feedback"],
+        {
+          ...(policy ? { unsupportedExpectedTarget: policy } : {}),
+          onNotDispatched: (refusal) => refusals.push(refusal),
+        },
+      );
+      try {
+        await expect(
+          browser.click({ expectedSelector: "#pay" }),
+        ).rejects.toMatchObject({ code: "TASK_ACTION_NOT_DISPATCHED" });
+        expect(refusals.map((refusal) => refusal.reason)).toEqual([
+          "expected-target-unsupported",
+        ]);
+        expect(
+          browser
+            .sent("command")
+            .filter((message) => message.command.subaction === "click"),
+        ).toHaveLength(0);
+      } finally {
+        await browser.close();
+      }
+    }
+  });
+
+  it("under omit still refuses a selector that is not a reviewed binding target", async () => {
+    const refusals: TaskActionRefusal[] = [];
+    const browser = await actuatorOverSocket(
+      ["task-bind", "task-guide", "task-action-feedback"],
+      {
+        unsupportedExpectedTarget: "omit",
+        onNotDispatched: (refusal) => refusals.push(refusal),
+      },
+    );
+    try {
+      await expect(
+        browser.click({ expectedSelector: "#elsewhere" }),
+      ).rejects.toMatchObject({ code: "TASK_ACTION_NOT_DISPATCHED" });
+      // The binding check runs first: the reason is not the unsupported check.
+      expect(refusals).toEqual([
+        {
+          taskId: browser.taskId,
+          proposalId: "operation-1",
+          capability: "browser.click",
+          source: "actuator",
+          reason: "target-not-reviewed",
+        },
+      ]);
+      expect(
+        browser
+          .sent("command")
+          .filter((message) => message.command.subaction === "click"),
+      ).toHaveLength(0);
+    } finally {
+      await browser.close();
+    }
+  });
+
+  it("under omit sends a reviewed target's action without the selector the browser cannot check", async () => {
+    const refusals: TaskActionRefusal[] = [];
+    const browser = await actuatorOverSocket(
+      ["task-bind", "task-guide", "task-action-feedback"],
+      {
+        unsupportedExpectedTarget: "omit",
+        describeAction: () => "I will press the button.",
+        onNotDispatched: (refusal) => refusals.push(refusal),
+      },
+    );
+    try {
+      expect(await browser.click({ expectedSelector: "#pay" })).toMatchObject({
+        status: "succeeded",
+      });
+      expect(refusals).toEqual([]);
+      const clicks = browser
+        .sent("command")
+        .filter((message) => message.command.subaction === "click");
+      expect(clicks).toHaveLength(1);
+      expect(clicks[0].command).toMatchObject({ subaction: "click", id: "1" });
+      expect(clicks[0].command).not.toHaveProperty("expectedSelector");
+      expect(clicks[0].command).not.toHaveProperty("actionText");
+    } finally {
+      await browser.close();
+    }
+  });
+
+  it("never sends a commit grant under omit, since its reviewed control goes unchecked", async () => {
+    const refusals: TaskActionRefusal[] = [];
+    const browser = await actuatorOverSocket(
+      ["task-bind", "task-guide", "task-action-feedback", "task-commit-grant"],
+      {
+        unsupportedExpectedTarget: "omit",
+        onNotDispatched: (refusal) => refusals.push(refusal),
+        commitGrant: (task, proposal) => ({
+          grantId: "yes-1",
+          taskId: task.id,
+          epoch: task.epoch,
+          origin: "https://bills.example",
+          targetRef: proposal.targetRef,
+          selector: "#pay",
+          subaction: "click",
+          expiresAt: Date.now() + 30000,
+        }),
+      },
+    );
+    try {
+      await expect(
+        browser.click({ expectedSelector: "#pay" }),
+      ).rejects.toMatchObject({ code: "TASK_ACTION_NOT_DISPATCHED" });
+      expect(refusals).toMatchObject([
+        { source: "actuator", reason: "commit-grant-mismatch" },
+      ]);
+      expect(
+        browser
+          .sent("command")
+          .filter((message) => message.command.subaction === "click"),
+      ).toHaveLength(0);
+    } finally {
+      await browser.close();
+    }
+  });
+
+  it("keeps the reviewed target on a browser that checks it, even under omit", async () => {
+    const browser = await actuatorOverSocket(
+      [
+        "task-bind",
+        "task-guide",
+        "task-action-feedback",
+        "task-expected-target",
+      ],
+      { unsupportedExpectedTarget: "omit" },
+    );
+    try {
+      expect(await browser.click({ expectedSelector: "#pay" })).toMatchObject({
+        status: "succeeded",
+      });
+      const clicked = browser
+        .sent("command")
+        .find((message) => message.command.subaction === "click");
+      expect(clicked?.command).toMatchObject({ expectedSelector: "#pay" });
     } finally {
       await browser.close();
     }

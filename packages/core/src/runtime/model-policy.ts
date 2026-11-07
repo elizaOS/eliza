@@ -6,6 +6,7 @@ import {
 	ModelType,
 	type ModelTypeName,
 	type ResponseSkeleton,
+	type StructuredStreamField,
 	TEXT_GENERATION_MODEL_TYPES,
 	type TextStreamResult,
 } from "../types/model.js";
@@ -47,32 +48,36 @@ export class NoModelProviderConfiguredError extends ElizaError {
 export const TEXT_GENERATION_MODEL_KEYS: readonly string[] =
 	TEXT_GENERATION_MODEL_TYPES;
 
-export const DEFAULT_RESPONSE_SKELETON_STREAM_FIELDS = new Set([
-	"text",
-	"messageToUser",
-]);
-
-export function resolveResponseSkeletonStreamFields(
+/**
+ * The caller-declared stream fields a structured call may release, by field
+ * name, with the part kinds that stream when the value is a parts array.
+ * A free-string field streams only when the skeleton declares it one; a
+ * field with `partKinds` also streams when the skeleton declares any other
+ * value shape for it (the extractor walks only a `[{kind, value}]` array).
+ */
+export function resolveStructuredStreamFields(
 	skeleton: ResponseSkeleton | undefined,
-): string[] {
-	if (!skeleton) {
-		return [];
-	}
+	requested: readonly StructuredStreamField[] | undefined,
+): { fields: string[]; parts: Record<string, readonly string[]> } {
 	const fields: string[] = [];
-	const seen = new Set<string>();
-	for (const span of skeleton.spans) {
-		const key = span.key;
-		if (
-			span.kind === "free-string" &&
-			key &&
-			DEFAULT_RESPONSE_SKELETON_STREAM_FIELDS.has(key) &&
-			!seen.has(key)
-		) {
-			seen.add(key);
-			fields.push(key);
+	const parts: Record<string, readonly string[]> = {};
+	if (!skeleton || !requested?.length) {
+		return { fields, parts };
+	}
+	for (const { field, partKinds } of requested) {
+		if (fields.includes(field)) continue;
+		const span = skeleton.spans.find((entry) => entry.key === field);
+		if (!span) continue;
+		if (span.kind === "free-string") {
+			fields.push(field);
+			continue;
+		}
+		if (partKinds?.length) {
+			fields.push(field);
+			parts[field] = partKinds;
 		}
 	}
-	return fields;
+	return { fields, parts };
 }
 
 export function isTextStreamResult(

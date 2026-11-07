@@ -993,7 +993,11 @@ try {
     runtime,
     actuator: plannedActuator,
     taskId: plannedTask.id,
-    authorizeAction: () => permitted,
+    // At dispatch only the host's spent grant authorizes; a bare true refuses.
+    authorizeAction: (_input, context) =>
+      context.phase === "dispatch"
+        ? permitted && context.authorize()
+        : permitted,
     planStep: ({ page: view }) => {
       const choice = view.controls.find((c) => c.options);
       if (!choice.options.some((o) => o.label === "German" && o.selected))
@@ -1061,7 +1065,9 @@ try {
     workflow.authorizeAction = (_input, context) => {
       assert.equal(context.signal, workflow.signal);
       assert.equal(context.taskId, plannedTask.id);
-      return permitted;
+      return context.phase === "dispatch"
+        ? permitted && context.authorize()
+        : permitted;
     };
     const paused = runtime.get(plannedTask.id);
     await runtime.observe(paused.id, paused.revision, true);
@@ -1140,7 +1146,8 @@ try {
         runtime,
         actuator: plannedActuator,
         taskId: plannedTask.id,
-        authorizeAction: () => true,
+        authorizeAction: (_input, context) =>
+          context.phase === "dispatch" ? context.authorize() : true,
         planStep: ({ page: view }) => ({
           status: "act",
           kind: "agent-action",

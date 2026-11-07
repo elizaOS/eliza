@@ -37,6 +37,7 @@ import {
   SubscriptionRedeemError,
   serviceLimitMessage,
   serviceLimitNextChange,
+  subscriptionGrantFromSnapshot,
   subscriptionSummary,
   subscriptionView,
   verifyEntitlement,
@@ -1594,6 +1595,15 @@ test("subscription codes normalize like Cloud; redemption responses and refusals
       .code,
     "already-redeemed",
   );
+  assert.equal(
+    redeemFailureForStatus(409, { code: "subscription_grant_paid_plan_active" })
+      .code,
+    "paid-plan-active",
+  );
+  assert.equal(
+    redeemFailureForStatus(409, { code: "idempotency_conflict" }).code,
+    "invalid",
+  );
   assert.equal(redeemFailureForStatus(409, {}).code, "invalid");
   const limited = redeemFailureForStatus(429, {
     error: "rate_limited",
@@ -1624,61 +1634,90 @@ test("subscription codes normalize like Cloud; redemption responses and refusals
     redeemFailureMessage(new Error("ABCD-EFGH-JKMN-PQRS")),
     /ABCD/,
   );
+  assert.match(
+    redeemFailureMessage(new SubscriptionRedeemError("paid-plan-active")),
+    /already has a paid plan/,
+  );
+  assert.match(
+    redeemFailureMessage(new SubscriptionRedeemError("ended")),
+    /has ended for this account/,
+  );
   const grant = {
+    planKey: "plus_monthly",
+    startsAt: "2026-10-14T00:00:00.000Z",
     endsAt: "2027-04-14T00:00:00.000Z",
     paidPlanTakesPrecedence: false,
   };
   assert.deepEqual(
-    redeemResultFromResponse({
-      success: true,
-      replayed: false,
-      grant,
-      entitlement: {
-        plan: { name: "Plus" },
-        effectiveUntil: "2027-05-01T00:00:00.000Z",
+    redeemResultFromResponse(
+      {
+        success: true,
+        replayed: false,
+        grant,
+        entitlement: {
+          plan: { name: "Plus" },
+          effectiveUntil: "2027-05-01T00:00:00.000Z",
+        },
       },
-    }),
+      NOW,
+    ),
     {
       planEndsAt: Date.parse("2027-05-01T00:00:00.000Z"),
       replayed: false,
+      planKey: "plus_monthly",
+      startsAt: Date.parse(grant.startsAt),
       grantEndsAt: Date.parse(grant.endsAt),
       paidPlanTakesPrecedence: false,
       planName: "Plus",
     },
   );
   assert.equal(
-    redeemResultFromResponse({ success: true, replayed: true, grant })
+    redeemResultFromResponse({ success: true, replayed: true, grant }, NOW)
       .planEndsAt,
     Date.parse(grant.endsAt),
   );
   assert.equal(
-    redeemResultFromResponse({
-      success: true,
-      replayed: true,
-      grant: { ...grant, paidPlanTakesPrecedence: true },
-    }).planEndsAt,
+    redeemResultFromResponse(
+      {
+        success: true,
+        replayed: true,
+        grant: { ...grant, paidPlanTakesPrecedence: true },
+      },
+      NOW,
+    ).planEndsAt,
     null,
+  );
+  // A replay of a revoked grant, or of one whose window has ended, is "ended".
+  assert.throws(
+    () =>
+      redeemResultFromResponse(
+        { success: true, replayed: true, grant: { ...grant, revoked: true } },
+        NOW,
+      ),
+    (error) => error.code === "ended",
   );
   assert.throws(
     () =>
-      redeemResultFromResponse({
-        success: true,
-        replayed: true,
-        grant: { ...grant, revoked: true },
-      }),
-    (error) => error.code === "invalid",
+      redeemResultFromResponse(
+        { success: true, replayed: true, grant },
+        Date.parse(grant.endsAt),
+      ),
+    (error) => error.code === "ended",
   );
   assert.throws(
-    () => redeemResultFromResponse({ success: true, grant }),
+    () => redeemResultFromResponse({ success: true, grant }, NOW),
     (error) => error.code === "unavailable",
   );
   assert.equal(
-    redeemResultFromResponse({
-      success: true,
-      replayed: false,
-      grant,
-      entitlement: { plan: { name: "Bad\u0007" } },
-    }).planName,
+    redeemResultFromResponse(
+      {
+        success: true,
+        replayed: false,
+        grant,
+        entitlement: { plan: { name: "Bad\u0007" } },
+      },
+      NOW,
+    ).planName,
     null,
   );
   assert.match(
@@ -1698,6 +1737,116 @@ test("subscription codes normalize like Cloud; redemption responses and refusals
       planName: null,
     }),
     /current paid plan stays in effect/,
+  );
+});
+
+test("the snapshot grant is active only before its end, and unknown when Cloud does not say", () => {
+  const at = (ms) => new Date(ms).toISOString();
+  const limits = (grant, completed = NOW) => ({
+    data: {
+      v2: { snapshotCompletedAt: at(completed), ...(grant && { grant }) },
+    },
+  });
+  const available = (value) => ({
+    status: "available",
+    source: "subscription_grants",
+    observedAt: at(NOW),
+    value: {
+      grantId: "grant-1",
+      planKey: "plus_monthly",
+      catalogVersion: "v1",
+      startsAt: at(NOW - 86_400_000),
+      endsAt: at(NOW + 86_400_000),
+      paidPlanTakesPrecedence: false,
+      allowance: {
+        status: "available",
+        value: {
+          periodStart: at(NOW - 86_400_000),
+          periodEnd: at(NOW + 86_400_000),
+          state: "open",
+          granted: "25.000000",
+          unreserved: "24.500000",
+          currency: "USD",
+        },
+      },
+      ...value,
+    },
+  });
+  assert.deepEqual(
+    subscriptionGrantFromSnapshot(limits(available()), { now: NOW }),
+    {
+      status: "active",
+      planKey: "plus_monthly",
+      startsAt: at(NOW - 86_400_000),
+      endsAt: at(NOW + 86_400_000),
+      paidPlanTakesPrecedence: false,
+      allowance: {
+        periodStart: at(NOW - 86_400_000),
+        periodEnd: at(NOW + 86_400_000),
+        granted: "25.000000",
+        unreserved: "24.500000",
+        currency: "USD",
+      },
+    },
+  );
+  // A lifetime grant has no end.
+  assert.equal(
+    subscriptionGrantFromSnapshot(limits(available({ endsAt: null })), {
+      now: NOW,
+    }).endsAt,
+    null,
+  );
+  assert.deepEqual(
+    subscriptionGrantFromSnapshot(
+      limits({
+        status: "not_applicable",
+        reason: "no_active_subscription_grant",
+      }),
+      { now: NOW },
+    ),
+    { status: "none" },
+  );
+  // Ended at the device clock, or at Cloud's later snapshot clock.
+  assert.deepEqual(
+    subscriptionGrantFromSnapshot(limits(available()), {
+      now: NOW + 86_400_000,
+    }),
+    { status: "none" },
+  );
+  assert.deepEqual(
+    subscriptionGrantFromSnapshot(limits(available(), NOW + 86_400_000), {
+      now: NOW,
+    }),
+    { status: "none" },
+  );
+  // An older Cloud, an outage or a damaged grant is never "no grant".
+  for (const snapshot of [
+    limits(undefined),
+    limits({ status: "unavailable" }),
+    limits(available({ planKey: "team_yearly" })),
+    limits(available({ startsAt: "yesterday" })),
+    limits(available({ endsAt: at(NOW - 2 * 86_400_000) })),
+    limits(available({ paidPlanTakesPrecedence: "no" })),
+    {},
+  ])
+    assert.deepEqual(
+      subscriptionGrantFromSnapshot(snapshot, {
+        now: NOW,
+        planKeys: ["plus_monthly", "pro_monthly"],
+      }),
+      { status: "unknown" },
+    );
+  // An unreadable allowance leaves the grant readable.
+  assert.equal(
+    subscriptionGrantFromSnapshot(
+      limits(
+        available({
+          allowance: { status: "available", value: { granted: "lots" } },
+        }),
+      ),
+      { now: NOW },
+    ).allowance,
+    null,
   );
 });
 

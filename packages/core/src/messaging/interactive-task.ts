@@ -133,6 +133,13 @@ export type TaskTransition =
 	| { type: "observe"; observation: TaskObservation }
 	| { type: "resume"; observation: TaskObservation }
 	| { type: "pause" | "cancel" | "recover" | "revoke" | "complete" }
+	/**
+	 * Trusted host only: a new epoch for a new browser binding, for example a
+	 * new action target. The task stays active and needs a fresh observation.
+	 * The guide never pauses a task to take a new binding: a pause is her Stop
+	 * or a host safety stop, and only her Resume ends it.
+	 */
+	| { type: "rebind" }
 	| { type: "prepare"; proposal: TaskActionProposal }
 	/**
 	 * Trusted host only, after its own safety check of this exact origin passed.
@@ -709,6 +716,20 @@ export function transitionInteractiveTask(
 			task.allowedOrigins = task.allowedOrigins.filter(
 				(item) => item !== transition.origin,
 			);
+			task.observation = null;
+			break;
+		}
+		case "rebind": {
+			if (task.status !== "active" || task.authorization.state !== "active")
+				reject("Only an active task can take a new binding", "TASK_NOT_ACTIVE");
+			if (unresolved && ["dispatched", "unknown"].includes(unresolved.status))
+				reject(
+					"Resolve the previous operation before a new binding",
+					"TASK_UNKNOWN_OUTCOME",
+				);
+			if (unresolved?.status === "prepared")
+				setStatus(task, unresolved, "cancelled");
+			task.epoch++;
 			task.observation = null;
 			break;
 		}

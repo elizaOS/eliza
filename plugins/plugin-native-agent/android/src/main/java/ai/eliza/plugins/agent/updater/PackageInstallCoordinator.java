@@ -39,12 +39,30 @@ public abstract class PackageInstallCoordinator {
   protected abstract void verifyPair(UpdateJournal.Plan plan,long generation,byte[] candidate,byte[] recovery)throws Exception;
   protected abstract void verifyRuntime(File file,byte[] runtime,String approvedHosts,String abi)throws Exception;
   protected abstract void verifyRecovery(UpdateJournal.Plan plan,long securityFloor)throws Exception;
-  public final int commit(File candidate,File recovery,long generation) throws Exception {
+  /** Refuses, by throwing, a plan that may no longer install: it reads trusted
+   * time now and requires an "eligible" EvaluatePreparedForCommit under
+   * commitFreshnessPolicy(now,floor,bounds). It runs under the journal lock, so
+   * it must do no network I/O. */
+  protected abstract void verifyCommitFreshness(UpdateJournal.Plan plan,long generation,CommitFreshness bounds)throws Exception;
+  /** The policy EvaluatePreparedForCommit reads. */
+  public static byte[] commitFreshnessPolicy(QualifiedClockAnchor.Interval now,long securityFloor,CommitFreshness bounds)throws org.json.JSONException {
+    return new org.json.JSONObject().put("trustedLowerMs",now.lower).put("trustedUpperMs",now.upper).put("securityFloor",securityFloor)
+      .put("refreshedAfterLowerMs",bounds.refreshedAfterLowerMs).put("commitByUpperMs",bounds.commitByUpperMs)
+      .toString().getBytes(java.nio.charset.StandardCharsets.UTF_8);
+  }
+  /** activationStartedLowerMs is the trusted lower bound read when the activation
+   * run began, before it refreshed metadata (CommitFreshness.forActivation). */
+  public final int commit(File candidate,File recovery,long generation,long activationStartedLowerMs) throws Exception {
+    CommitFreshness bounds=CommitFreshness.forActivation(activationStartedLowerMs);
     UpdateJournal.Snapshot state=journal.read();
     if(state.phase!=UpdateJournal.Phase.VERIFIED||state.plan==null)throw new IOException("No admitted update");
     verifyPreparedArtifacts(candidate,recovery,state.plan,generation);
     if(!state.plan.baseline.matches(installed(context,target)))throw new IOException("Installed package changed");
-    return install(candidate,state.plan.candidate,state.plan.id,generation,false);
+    UpdateJournal.FreshnessCheck fresh=(plan,current)->{
+      try{verifyCommitFreshness(plan,current,bounds);}
+      catch(Exception refused){throw new IOException("Commit freshness rejected",refused);}
+    };
+    return install(candidate,state.plan.candidate,state.plan.id,generation,fresh);
   }
   /** Reusable preparation verification; commit repeats it against current bytes. */
   public final void verifyPreparedArtifacts(File candidate,File recovery,UpdateJournal.Plan plan,long generation)throws Exception {
@@ -64,9 +82,10 @@ public abstract class PackageInstallCoordinator {
     }
     verify(recovery,state.plan.recovery,state.plan.distribution,recoveryRuntime);
     if(!state.plan.candidate.matches(installed(context,target)))throw new IOException("Installed candidate changed before recovery");
-    return install(recovery,state.plan.recovery,state.plan.id,state.channelGeneration,true);
+    return install(recovery,state.plan.recovery,state.plan.id,state.channelGeneration,null);
   }
-  private int install(File file,UpdateJournal.Identity identity,String plan,long generation,boolean recovery) throws Exception {
+  /** fresh is null for a recovery, which installs only the authorized recovery. */
+  private int install(File file,UpdateJournal.Identity identity,String plan,long generation,UpdateJournal.FreshnessCheck fresh) throws Exception {
     DevicePolicyManager policy=context.getSystemService(DevicePolicyManager.class);
     if(policy==null||!policy.isDeviceOwnerApp(context.getPackageName()))throw new IOException("Device-owner installation authority unavailable");
     PackageInstaller installer=context.getPackageManager().getPackageInstaller();
@@ -86,15 +105,16 @@ public abstract class PackageInstallCoordinator {
       int callbackFlags=PendingIntent.FLAG_UPDATE_CURRENT;
       if(Build.VERSION.SDK_INT>=31)callbackFlags|=PendingIntent.FLAG_MUTABLE;
       PendingIntent callback=PendingIntent.getBroadcast(context,id,intent,callbackFlags);
-      if(recovery)journal.recoveringWithAction(plan,id,()->session.commit(callback.getIntentSender()));
-      else journal.committingWithAction(plan,id,generation,()->session.commit(callback.getIntentSender()));
+      if(fresh==null)journal.recoveringWithAction(plan,id,()->session.commit(callback.getIntentSender()));
+      else journal.committingWithAction(plan,id,generation,fresh,()->session.commit(callback.getIntentSender()));
       return id;
     } catch(Exception failure) {
       // A throw from Session.commit does not prove the platform refused it, and
       // abandoning could race an install already under way. A session never
-      // handed off is abandoned here; after a handoff, readback abandons it only
-      // once the platform has reported it uncommitted for long enough, since a
-      // sealed session reads uncommitted while the platform verifies it.
+      // handed off, including one refused as stale, is abandoned here and leaves
+      // the plan VERIFIED; after a handoff, readback abandons it only once the
+      // platform has reported it uncommitted for long enough, since a sealed
+      // session reads uncommitted while the platform verifies it, and decides the rest.
       if(!(failure instanceof UpdateJournal.HandoffFailed))try{installer.abandonSession(id);}catch(Exception ignored){}
       try{reconcilePending(context,target,journal,observationBudgetMs);}catch(Exception reconciliation){failure.addSuppressed(reconciliation);}
       throw failure;

@@ -1,5 +1,6 @@
 /** Real HTTP + SQLite integration. The controlled actuator is not Chromium. */
 import { mkdtempSync, rmSync } from "node:fs";
+import { createConnection, type Socket } from "node:net";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { DatabaseSync } from "node:sqlite";
@@ -21,6 +22,14 @@ import {
 import { SqliteInteractiveTaskStore } from "../src/services/interactive-task-store.ts";
 import { SqliteMessageInteractionSessionStore } from "../src/services/sqlite-message-interaction-session-store.ts";
 import { listenTaskHttp } from "./fixtures/task-http-server.ts";
+
+// The real Chromium transport and task actuator, over a loopback peer.
+const { NativeSocketBrowserTarget } = await import(
+  "../../../plugins/plugin-browser/src/native-socket-target.ts"
+);
+const { NativeTaskActuator } = await import(
+  "../../../plugins/plugin-browser/src/task-actuator.ts"
+);
 
 const owner = {
   actorId: "actor",
@@ -309,6 +318,66 @@ describe("interactive task HTTP host", () => {
     }
   });
 
+  it("a repeated start never reports a cancelled task that keeps the slot as started", async () => {
+    const storage = setup();
+    const runtime = new InteractiveTaskRuntime({
+      owner,
+      store: storage.store,
+      actuator: {
+        capabilities: ["fill"],
+        async observe() {
+          return {
+            id: "view",
+            pageId: "page",
+            origin: "https://example.org",
+            version: 1,
+            inputRevision: 0,
+            observedAt: Date.now(),
+          };
+        },
+        // An invalid reply leaves the step's outcome unknown.
+        async execute() {
+          return {} as Awaited<ReturnType<InteractiveTaskActuator["execute"]>>;
+        },
+      },
+    });
+    const http = await listenTaskHttp(
+      createInteractiveTaskHandler({
+        runtime,
+        authenticate: async () => owner,
+        authorizeGoal: async (ref) => goal(ref),
+      }),
+    );
+    try {
+      expect((await http.call("/tasks", { goalRef: "message" })).status).toBe(
+        201,
+      );
+      const observed = await runtime.observe("task-1", 0);
+      const result = await runtime.execute("task-1", observed.revision, {
+        id: "operation",
+        taskId: "task-1",
+        epoch: observed.epoch,
+        observationId: "view",
+        observationVersion: 1,
+        inputRevision: 0,
+        targetRef: "field",
+        capability: "fill",
+        authorizationId: "grant",
+        expiresAt: Date.now() + 10000,
+      });
+      const cancelled = runtime.control("task-1", result.revision, "cancel");
+      expect(cancelled.status).toBe("cancelled");
+      // The unverified step keeps the slot, but the task can never act.
+      expect(runtime.current()?.id).toBe("task-1");
+      const again = await http.call("/tasks", { goalRef: "message" });
+      expect(again.status).toBe(409);
+      expect(await again.json()).toEqual({ code: "TASK_CONFLICT" });
+    } finally {
+      await http.close();
+      storage.close();
+    }
+  });
+
   it("authenticates controls, commits before dispatch, and fences a late result after pause", async () => {
     const storage = setup();
     const entered =
@@ -478,6 +547,61 @@ describe("interactive task HTTP host", () => {
       expect((await request).status).toBe(409);
       expect(runtime.get("task-1").status).toBe("paused");
       expect(runtime.get("task-1").revision).toBe(1);
+    } finally {
+      await http.close();
+      storage.close();
+    }
+  });
+
+  it("a Stop fences a paused task whose resume is still reading the page", async () => {
+    const storage = setup();
+    const observed = deferred<void>();
+    const release = deferred<void>();
+    const runtime = new InteractiveTaskRuntime({
+      owner,
+      store: storage.store,
+      actuator: {
+        capabilities: [],
+        async observe() {
+          observed.resolve();
+          await release.promise;
+          return {
+            id: "view-1",
+            pageId: "page",
+            origin: "https://example.org",
+            version: 1,
+            inputRevision: 0,
+            observedAt: Date.now(),
+          };
+        },
+        async execute() {
+          throw new Error("No actuator capability");
+        },
+      },
+    });
+    runtime.create(goal("message-1"));
+    runtime.control("task-1", 0, "pause");
+    const http = await listenTaskHttp(
+      createInteractiveTaskHandler({
+        runtime,
+        authenticate: async () => owner,
+        authorizeGoal: async (ref) => goal(ref),
+      }),
+    );
+    try {
+      const resume = http.call("/tasks/task-1/resume", { expectedRevision: 1 });
+      await observed.promise;
+      const stop = await http.call("/tasks/current/pause", {});
+      expect(stop.status).toBe(200);
+      expect(await stop.json()).toMatchObject({
+        task: { status: "paused", revision: 2 },
+      });
+      release.resolve();
+      expect((await resume).ok).toBe(false);
+      expect(runtime.get("task-1")).toMatchObject({
+        status: "paused",
+        revision: 2,
+      });
     } finally {
       await http.close();
       storage.close();
@@ -657,15 +781,19 @@ it.each(["pause", "close"] as const)(
       expect(client.snapshot()).toMatchObject({ error: "pause failed" });
       expect(client.isPaused()).toBe(false);
       expect(client.currentTaskId()).toBeNull();
+      // Every Stop fences, a paused task too: it starts a new epoch even
+      // while an earlier cleanup is unconfirmed, and answers only when its
+      // own cleanup is confirmed.
       const failedRevision = runtime.get("task-1").revision;
       expect(await client.control("pause")).toBe(false);
-      expect(runtime.get("task-1").revision).toBe(failedRevision);
+      expect(runtime.get("task-1").revision).toBe(failedRevision + 1);
       fail = false;
       expect(await client.control("pause")).toBe(true);
-      expect(runtime.get("task-1").revision).toBe(failedRevision);
+      expect(runtime.get("task-1").revision).toBe(failedRevision + 2);
       const beforeRepeatedPause = calls;
       expect(await client.control("pause")).toBe(true);
-      expect(calls).toBe(beforeRepeatedPause);
+      expect(runtime.get("task-1").revision).toBe(failedRevision + 3);
+      expect(calls).toBe(beforeRepeatedPause + 1);
       fail = true;
       const cancelled = await http.call("/tasks/task-1/cancel", {
         expectedRevision: runtime.get("task-1").revision,
@@ -680,15 +808,17 @@ it.each(["pause", "close"] as const)(
       expect(refreshed.status).toBe(200);
       expect(await refreshed.json()).toEqual({ task: null });
       expect(runtime.get("task-1").revision).toBe(revision);
-      expect(calls).toBe(8);
-      // A retried cleanup keeps the reason of the control that started it.
+      expect(calls).toBe(9);
+      // A retried cleanup keeps the reason of the control that started it;
+      // each new Stop starts its own.
       expect(reasons).toEqual([
         command,
         "close",
         "close",
         "close",
-        "close",
-        "close",
+        "pause",
+        "pause",
+        "pause",
         "cancel",
         "cancel",
       ]);
@@ -883,3 +1013,270 @@ it.each(["reply", "lost-reply", "pause-timeout"])(
   },
   20_000,
 );
+
+describe("shared task lifecycle client", () => {
+  const messages = {
+    start: "start failed",
+    pause: "pause failed",
+    resume: "resume failed",
+    cancel: "cancel failed",
+  };
+  function host(
+    observe: InteractiveTaskActuator["observe"] = async () => {
+      throw new Error("unexpected observe");
+    },
+  ) {
+    const f = setup();
+    const runtime = new InteractiveTaskRuntime({
+      owner,
+      store: f.store,
+      actuator: {
+        capabilities: [],
+        observe,
+        execute: async () => {
+          throw new Error("unexpected execute");
+        },
+        quiesce: async () => {},
+      },
+    });
+    return { f, runtime };
+  }
+
+  it.each(["confirmed", "refused"])(
+    "a refresh never drops a Close that waits for a pending start (%s)",
+    async (outcome) => {
+      const { f, runtime } = host();
+      const created = deferred<void>();
+      const authorizing = deferred<void>();
+      const deferredSent = deferred<void>();
+      const deferredReply = deferred<void>();
+      const http = await listenTaskHttp(
+        createInteractiveTaskHandler({
+          runtime,
+          authenticate: async () => owner,
+          authorizeGoal: async (ref) => {
+            authorizing.resolve();
+            await created.promise;
+            return goal(ref);
+          },
+        }),
+      );
+      const paths: string[] = [];
+      let pauses = 0;
+      const states: TaskLifecycleState[] = [];
+      const client = new TaskLifecycle(
+        async (path, body) => {
+          paths.push(path);
+          if (path === "/tasks/current/pause" && ++pauses === 2) {
+            deferredSent.resolve();
+            await deferredReply.promise;
+            if (outcome === "refused") throw new Error("Task HTTP 503");
+          }
+          const response = await http.call(path, body);
+          if (!response.ok) throw new Error(`Task HTTP ${response.status}`);
+          return response.json();
+        },
+        (state) => states.push(state),
+        messages,
+      );
+      try {
+        const starting = client.start("bill");
+        await authorizing.promise;
+        // Close finds no task yet; it waits for the start to settle.
+        expect(await client.control("close")).toBe(true);
+        created.resolve();
+        await starting;
+        await deferredSent.promise;
+        const before = paths.length;
+        await client.refresh();
+        expect(await client.start("bill")).toBe(false);
+        expect(paths).toHaveLength(before);
+        deferredReply.resolve();
+        await vi.waitFor(() =>
+          expect(client.snapshot()).toMatchObject(
+            outcome === "confirmed"
+              ? { pending: false, error: "", task: { status: "paused" } }
+              : { pending: false, error: "pause failed" },
+          ),
+        );
+        expect(runtime.get("task-1").status).toBe(
+          outcome === "confirmed" ? "paused" : "active",
+        );
+      } finally {
+        created.resolve();
+        deferredReply.resolve();
+        await http.close();
+        f.close();
+      }
+    },
+  );
+
+  it("start never reports another goal's task as started", async () => {
+    const { f, runtime } = host();
+    runtime.create(goal("goal/a"));
+    runtime.control("task-1", 0, "pause");
+    const http = await listenTaskHttp(
+      createInteractiveTaskHandler({
+        runtime,
+        authenticate: async () => owner,
+        authorizeGoal: async (ref) => goal(ref),
+      }),
+    );
+    const client = new TaskLifecycle(
+      async (path, body) => {
+        const response = await http.call(path, body);
+        if (!response.ok) throw new Error(`Task HTTP ${response.status}`);
+        return response.json();
+      },
+      () => {},
+      messages,
+    );
+    try {
+      expect(await client.start("goal/b")).toBe(false);
+      expect(client.snapshot()).toMatchObject({
+        error: "start failed",
+        task: { id: "task-1", status: "paused" },
+      });
+      // The task of her own goal is kept, as after a lost creation reply.
+      expect(await client.start("goal/a")).toBe(true);
+      expect(client.snapshot()).toMatchObject({
+        error: "",
+        task: { id: "task-1", status: "paused" },
+      });
+    } finally {
+      await http.close();
+      f.close();
+    }
+  });
+
+  it("cancel is not refused when a planner step lands between its requests", async () => {
+    let version = 0;
+    const { f, runtime } = host(async () => ({
+      id: `view-${++version}`,
+      pageId: "page",
+      origin: "https://example.org",
+      version,
+      inputRevision: 0,
+      observedAt: Date.now(),
+    }));
+    runtime.create(goal("goal/a"));
+    const http = await listenTaskHttp(
+      createInteractiveTaskHandler({
+        runtime,
+        authenticate: async () => owner,
+        authorizeGoal: async (ref) => goal(ref),
+      }),
+    );
+    const client = new TaskLifecycle(
+      async (path, body) => {
+        const reply = await (await http.call(path, body)).json();
+        // The planner observes the page right after each read of the task.
+        if (path.startsWith("/tasks/current"))
+          await runtime
+            .observe("task-1", runtime.get("task-1").revision)
+            .catch(() => undefined);
+        return reply;
+      },
+      () => {},
+      messages,
+    );
+    try {
+      expect(await client.control("cancel")).toBe(true);
+      expect(runtime.get("task-1").status).toBe("cancelled");
+    } finally {
+      await http.close();
+      f.close();
+    }
+  });
+
+  it("answers a Pause and then a Cancel when Chromium never confirms a cancelled request", async () => {
+    const storage = setup();
+    const directory = mkdtempSync(join(tmpdir(), "eliza-task-cancel-reply-"));
+    const target = new NativeSocketBrowserTarget(() => {}, {
+      registrationMs: 1000,
+      heartbeatMs: 60000,
+      cancelConfirmMs: 200,
+    });
+    let peer: Socket | undefined;
+    const runtime = new InteractiveTaskRuntime({
+      owner,
+      store: storage.store,
+      actuator: Object.assign(
+        new NativeTaskActuator({
+          target,
+          getTask: (id: string) => runtime.get(id),
+        } as unknown as ConstructorParameters<typeof NativeTaskActuator>[0]),
+        { capabilities: [] },
+      ) as unknown as InteractiveTaskActuator,
+    });
+    const http = await listenTaskHttp(
+      createInteractiveTaskHandler({
+        runtime,
+        authenticate: async () => owner,
+        authorizeGoal: async (ref) => goal(ref),
+      }),
+    );
+    try {
+      await target.start({
+        ELIZA_BROWSER_NATIVE_SOCKET: join(directory, "browser.sock"),
+      });
+      peer = createConnection(join(directory, "browser.sock"));
+      const frames: Array<Record<string, unknown>> = [];
+      let buffer = Buffer.alloc(0);
+      peer.on("data", (chunk: Buffer) => {
+        buffer = Buffer.concat([buffer, chunk]);
+        while (
+          buffer.length >= 4 &&
+          buffer.length >= 4 + buffer.readUInt32LE(0)
+        ) {
+          const length = buffer.readUInt32LE(0);
+          frames.push(JSON.parse(buffer.subarray(4, length + 4).toString()));
+          buffer = buffer.subarray(length + 4);
+        }
+      });
+      const hello = Buffer.from(
+        JSON.stringify({
+          type: "hello",
+          protocol: 2,
+          extensionId: "pmldpcoefklbdbgmggcejkfoinmjfeio",
+          profileId: "cancel-reply-profile",
+          capabilities: ["list", "cancel", "cancel-reply"],
+          nonce: "hello",
+        }),
+      );
+      const prefix = Buffer.alloc(4);
+      prefix.writeUInt32LE(hello.length);
+      peer.write(Buffer.concat([prefix, hello]));
+      await vi.waitFor(() => expect(frames[0]?.type).toBe("hello-ack"));
+      runtime.create(goal("read-page"));
+      // A request is cancelled, and the peer never answers that it stopped.
+      const controller = new AbortController();
+      const running = target
+        .execute({ subaction: "list" }, { signal: controller.signal })
+        .catch((error: unknown) => error);
+      await vi.waitFor(() =>
+        expect(frames.some((frame) => frame.type === "command")).toBe(true),
+      );
+      controller.abort();
+      await running;
+      const paused = await http.call("/tasks/current/pause", {});
+      expect(paused.status).toBe(200);
+      expect(await paused.json()).toMatchObject({
+        task: { id: "task-1", status: "paused" },
+      });
+      // The fence ended the connection; the Cancel right after it answers.
+      expect(await target.available()).toBe(false);
+      const cancelled = await http.call("/tasks/task-1/cancel", {
+        expectedRevision: runtime.get("task-1").revision,
+      });
+      expect(cancelled.status).toBe(200);
+      expect(runtime.get("task-1").status).toBe("cancelled");
+    } finally {
+      peer?.destroy();
+      await target.stop();
+      await http.close();
+      storage.close();
+      rmSync(directory, { recursive: true, force: true });
+    }
+  });
+});

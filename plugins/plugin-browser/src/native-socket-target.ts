@@ -36,6 +36,7 @@ export { commitFormHash } from "./commit-form-hash.js";
 export const NATIVE_SOCKET_FAILURE_REASONS = [
   "reply-timeout",
   "request-cancelled",
+  "cancel-unconfirmed",
   "profile-unavailable",
   "connection-lost",
   "frame-inventory-incomplete",
@@ -160,6 +161,14 @@ export interface NativeTaskBinding extends NativeTaskContext {
 }
 /** Longest life of a consented-commit grant, from the person's yes to its use. */
 export const COMMIT_GRANT_MAX_MS = 60000;
+/**
+ * The longest a fence waits for a cancel-reply peer to confirm that a
+ * cancelled request stopped, before it ends the connection instead, which is
+ * then the fence. It stays well under the 10 s a renderer gives a Pause, and
+ * the fence then resolves, so a Pause that the host saved is never shown as
+ * failed.
+ */
+export const CANCEL_CONFIRM_MAX_MS = 5000;
 /**
  * A host-issued, single-use grant for one commit (a submit, or a fill or
  * select that sends its form) the person explicitly said yes to. The host
@@ -414,6 +423,14 @@ export class NativeSocketBrowserTarget implements BrowserTarget {
   private profileId: string | null = null;
   private advertised = new Set<string>();
   private pending = new Map<string, NativeReply>();
+  /**
+   * Requests given up on (cancelled or timed out) whose peer, one that
+   * advertised "cancel-reply", has not yet answered that they stopped.
+   */
+  private unsettled = new Map<
+    string,
+    { stopped: Promise<void>; stop: () => void; expiresAt: number }
+  >();
   private offers = new Map<
     string,
     { tabId: string; stepId: string; revision: number; answerIds: string[] }
@@ -436,6 +453,8 @@ export class NativeSocketBrowserTarget implements BrowserTarget {
       heartbeatMs: number;
       /** How long a dispatched request waits for the peer's reply. */
       replyMs?: number;
+      /** How long a fence waits for a cancel to be confirmed; capped at the reply deadline. */
+      cancelConfirmMs?: number;
     } = { registrationMs: 30000, heartbeatMs: 90000 },
   ) {}
 
@@ -463,6 +482,44 @@ export class NativeSocketBrowserTarget implements BrowserTarget {
     capabilities.has(command.subaction) &&
     this.advertised.has(command.subaction) &&
     (!command.id || /^\d+$/.test(command.id));
+  /**
+   * Resolves once no request this target gave up on can still take effect:
+   * the peer answered each one after it stopped, or the connection ended.
+   * When the peer has not answered within the cancel-confirm deadline
+   * (`CANCEL_CONFIRM_MAX_MS`, or the reply deadline when shorter), this ends
+   * the connection, which stops every request it carried, and resolves: the
+   * teardown is the fence. Ending the connection also fails every other
+   * request still pending on it, so their callers see an uncertain outcome.
+   * A peer without "cancel-reply" answers nothing, so this resolves at once.
+   */
+  async settled(): Promise<void> {
+    const entries = [...this.unsettled.values()];
+    if (!entries.length) return;
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    try {
+      await Promise.race([
+        Promise.all(entries.map((entry) => entry.stopped)),
+        new Promise<void>((resolve) => {
+          timer = setTimeout(
+            () => {
+              // The peer stops every request of a connection that ended, and
+              // the only connection carries every unsettled request.
+              this.socket?.destroy();
+              for (const entry of this.unsettled.values()) entry.stop();
+              this.unsettled.clear();
+              resolve();
+            },
+            Math.max(
+              0,
+              ...entries.map((entry) => entry.expiresAt - Date.now()),
+            ),
+          );
+        }),
+      ]);
+    } finally {
+      clearTimeout(timer);
+    }
+  }
   /** Whether the registered profile advertised `capability`. False while no profile is registered. */
   hasCapability(capability: string): boolean {
     return this.advertised.has(capability);
@@ -684,6 +741,9 @@ export class NativeSocketBrowserTarget implements BrowserTarget {
           { targetId: this.id },
         ),
       );
+      // The peer stops every request of a connection that ended.
+      for (const entry of this.unsettled.values()) entry.stop();
+      this.unsettled.clear();
       for (const pending of this.pending.values()) {
         clearTimeout(pending.timer);
         pending.reject(
@@ -752,6 +812,11 @@ export class NativeSocketBrowserTarget implements BrowserTarget {
       throw new Error(
         "Native browser result arrived without profile registration.",
       );
+    const given = this.unsettled.get(message.id);
+    if (given) {
+      this.unsettled.delete(message.id);
+      given.stop();
+    }
     const pending = this.pending.get(message.id);
     if (!pending) return;
     this.pending.delete(message.id);
@@ -923,6 +988,22 @@ export class NativeSocketBrowserTarget implements BrowserTarget {
           return;
         // This is a best-effort fence, not proof that an already-dispatched effect
         // was undone. The caller still receives an uncertain outcome.
+        if (this.advertised.has("cancel-reply")) {
+          let stop!: () => void;
+          const stopped = new Promise<void>((resolve) => {
+            stop = resolve;
+          });
+          this.unsettled.set(id, {
+            stopped,
+            stop,
+            expiresAt:
+              Date.now() +
+              Math.min(
+                this.liveness.replyMs ?? 30000,
+                this.liveness.cancelConfirmMs ?? CANCEL_CONFIRM_MAX_MS,
+              ),
+          });
+        }
         void sender.send({ type: "cancel", id }).catch(() => socket.destroy());
       };
       const finish =
