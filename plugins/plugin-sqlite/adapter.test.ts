@@ -2667,7 +2667,8 @@ it("keeps entity name lookups inside the requested agent and honors an explicit 
     agentId,
     names: [`Patron ${index}`],
   }));
-  await adapter.createEntities(entities);
+  const exact = { id: id(), agentId, names: ["Patron"] };
+  await adapter.createEntities([...entities, exact]);
   const storage = await adapter.getConnection();
   await storage.set("entities", id(), {
     id: id(),
@@ -2685,7 +2686,10 @@ it("keeps entity name lookups inside the requested agent and honors an explicit 
     query: "patron",
     agentId,
   });
-  expect(all).toHaveLength(11);
+  // Omitted limit uses the contract default of 10, not the full match set.
+  // Exact matches come first, as the IDatabaseAdapter contract requires.
+  expect(all).toHaveLength(10);
+  expect(all[0]?.id).toBe(exact.id);
   expect(all.every((entity) => entity.agentId === agentId)).toBe(true);
 
   expect(

@@ -854,10 +854,20 @@ export abstract class SQLiteRecordAdapter extends DatabaseAdapter<IStorage> {
         return names.some((name) => name.toLowerCase().includes(q));
       },
     );
-    // An omitted limit is the complete match set. An explicit limit, including
-    // 0, is a page — `limit ?` treated 0 as "no page" and returned every row.
-    if (params.limit === undefined) return matches;
-    return matches.slice(0, Math.max(0, params.limit));
+    // IDatabaseAdapter contract: limit defaults to 10 and exact
+    // (case-insensitive) matches come first, as the Postgres adapter does.
+    // An explicit limit, including 0, is a page — `limit ?` treated 0 as
+    // "no page" and returned every row. The sort is stable, so the remaining
+    // matches keep storage order.
+    const limit = params.limit ?? 10;
+    const isExact = (entity: Entity) =>
+      ((entity as Entity & { names?: string[] }).names ?? []).some(
+        (name: string) => name.toLowerCase() === q,
+      );
+    const ranked = [...matches].sort(
+      (a, b) => Number(isExact(b)) - Number(isExact(a)),
+    );
+    return ranked.slice(0, Math.max(0, limit));
   }
 
   async queryEntities(params: {
