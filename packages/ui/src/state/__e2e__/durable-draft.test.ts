@@ -79,7 +79,11 @@ function fixture() {
 function queuedRestoreFixture(savedText: string | null = null) {
   let text = "";
   let saved = savedText === null ? null : record(savedText);
-  let commitRestore: (() => void) | undefined;
+  const updates: Array<{
+    apply(): void;
+    acknowledge(error?: Error): void;
+  }> = [];
+  let immediateAcknowledgement = false;
   const store: DurableDraftStore = {
     async read() {
       return saved;
@@ -96,28 +100,48 @@ function queuedRestoreFixture(savedText: string | null = null) {
   const c = new DurableDraftController(
     async () => store,
     () => text,
-    (value, expected, current) =>
-      new Promise<void>((resolve) => {
-        commitRestore = () => {
+    (value, expected, current) => {
+      let acknowledge!: (error?: Error) => void;
+      const completion = new Promise<void>((resolve, reject) => {
+        acknowledge = (error) => error ? reject(error) : resolve();
+      });
+      updates.push({
+        apply() {
           if (
             (!current || current()) &&
             (expected === undefined || text === expected)
           )
             text = value;
-          resolve();
-        };
-      }),
+        },
+        acknowledge,
+      });
+      return immediateAcknowledgement ? undefined : completion;
+    },
     () => {},
   );
   return {
     c,
+    store,
     get: () => text,
     saved: () => saved,
     type(value: string) {
       text = value;
       c.edit(value);
     },
-    commit: () => commitRestore?.(),
+    takeUpdate() {
+      const update = updates.shift();
+      if (!update) throw new Error("No queued editor update");
+      return update;
+    },
+    acknowledgeImmediately() {
+      immediateAcknowledgement = true;
+    },
+    commit() {
+      const update = updates.shift();
+      if (!update) throw new Error("No queued editor update");
+      update.apply();
+      update.acknowledge();
+    },
   };
 }
 
@@ -934,7 +958,274 @@ describe("DurableDraftController queued UI restores", () => {
   });
 });
 
+describe("DurableDraftController asynchronous restore ownership", () => {
+  async function openSaved(text: string) {
+    const f = queuedRestoreFixture(text);
+    const opening = f.c.open("one");
+    await tick();
+    f.commit();
+    await opening;
+    return f;
+  }
+
+  it("waits for review restoration and leaves a retired binding untouched", async () => {
+    const f = queuedRestoreFixture("Saved message");
+    f.type("Current message");
+    await f.c.open("one");
+    let completed = false;
+    const restoring = Promise.resolve(f.c.restoreSaved()).then(() => {
+      completed = true;
+    });
+    await tick();
+    expect(completed).toBe(false);
+    expect(f.c.state.conflict).toBe(true);
+    await expect(f.c.hold("Current message")).rejects.toThrow();
+    f.c.retire();
+    f.type("Other binding message");
+    f.commit();
+    await restoring;
+    expect(f.get()).toBe("Other binding message");
+    expect(f.saved()?.text).toBe("Saved message");
+  });
+
+  it.each([false, true])(
+    "expires a review update after unconfirmed acknowledgement (void=%s)",
+    async (voidHost) => {
+      const f = queuedRestoreFixture("Saved message");
+      f.type("Current message");
+      await f.c.open("one");
+      if (voidHost) f.acknowledgeImmediately();
+      const restoring = f.c.restoreSaved();
+      const update = f.takeUpdate();
+      update.acknowledge();
+      await restoring;
+      expect(f.c.state.conflict).toBe(true);
+      update.apply();
+      expect(f.get()).toBe("Current message");
+    },
+  );
+
+  it("keeps both copies when typing changes during review restoration", async () => {
+    const f = queuedRestoreFixture("Saved message");
+    f.type("Current message");
+    await f.c.open("one");
+    const restoring = f.c.restoreSaved();
+    f.type("Newer unsent message");
+    f.commit();
+    await restoring;
+    expect(f.get()).toBe("Newer unsent message");
+    expect(f.saved()?.text).toBe("Saved message");
+    expect(f.c.state.savedText).toBe("Saved message");
+    expect(f.c.state.conflict).toBe(true);
+  });
+
+  it("keeps the send held until release restoration completes", async () => {
+    const f = await openSaved("Unsent message");
+    await f.c.hold("Unsent message");
+    f.type("");
+    const releasing = f.c.release();
+    expect(f.c.release()).toBe(releasing);
+    expect(f.c.holding).toBe(true);
+    await expect(f.c.hold("")).rejects.toThrow();
+    await expect(f.c.flush()).rejects.toThrow();
+    f.commit();
+    await releasing;
+    expect(f.c.holding).toBe(false);
+    expect(f.get()).toBe("Unsent message");
+    expect(f.saved()?.text).toBe("Unsent message");
+    expect(f.saved()?.sending).not.toBe(true);
+  });
+
+  it("retains the unsent copy for review when a release update is skipped", async () => {
+    const f = await openSaved("Unsent message");
+    await f.c.hold("Unsent message");
+    f.type("");
+    const releasing = f.c.release();
+    const rejected = expect(releasing).rejects.toThrow();
+    f.type("Newer unsent message");
+    f.commit();
+    await rejected;
+    expect(f.get()).toBe("Newer unsent message");
+    expect(f.saved()?.text).toBe("Unsent message\nNewer unsent message");
+    expect(f.c.state.conflict).toBe(true);
+    expect(f.c.holding).toBe(false);
+  });
+
+  it("retires a failed release update before any delayed host application", async () => {
+    const f = await openSaved("Unsent message");
+    await f.c.hold("Unsent message");
+    f.type("");
+    const releasing = f.c.release();
+    const rejected = expect(releasing).rejects.toThrow("Host rejected update");
+    const update = f.takeUpdate();
+    update.acknowledge(new Error("Host rejected update"));
+    await rejected;
+    update.apply();
+    expect(f.get()).toBe("");
+    expect(f.saved()?.text).toBe("Unsent message");
+    expect(f.c.state.conflict).toBe(true);
+  });
+
+  it.each(["before", "after"])(
+    "keeps failed release preservation in review when its save fails %s writing",
+    async (failure) => {
+      const f = await openSaved("Unsent message");
+      await f.c.hold("Unsent message");
+      f.type("");
+      const save = f.store.save;
+      f.store.save = async (expected, text, signal, write) => {
+        if (failure === "after") await save.call(f.store, expected, text, signal, write);
+        throw new Error("Storage unavailable");
+      };
+      const releasing = f.c.release();
+      const rejected = expect(releasing).rejects.toThrow();
+      f.type("Newer unsent message");
+      f.commit();
+      await rejected;
+      expect(f.get()).toBe("Newer unsent message");
+      expect(f.c.holding).toBe(false);
+      expect(f.c.state.conflict).toBe(true);
+      // The known non-dispatch still owns this mark during conflict review.
+      expect(f.c.state.unsettled).toBe(false);
+      await expect(f.c.hold("Newer unsent message")).rejects.toThrow();
+      await expect(f.c.flush()).rejects.toThrow();
+    },
+  );
+
+  it("leaves a failed release unmark in review and refuses another send", async () => {
+    const f = fixture();
+    f.external("Unsent message");
+    await f.c.open("one");
+    await f.c.hold("Unsent message");
+    f.set("");
+    f.store.save = async () => { throw new Error("Storage unavailable"); };
+    await f.c.release();
+    expect(f.get()).toBe("Unsent message");
+    expect(f.saved()?.sending).toBe(true);
+    expect(f.c.state.unsettled).toBe(true);
+    expect(f.c.holding).toBe(false);
+    await expect(f.c.hold("Unsent message")).rejects.toThrow();
+    await expect(f.c.flush()).rejects.toThrow();
+  });
+
+  it("waits for a consume clear before admitting the form effect", async () => {
+    const f = await openSaved("Reviewed form");
+    let completed = false;
+    const consuming = f.c.consume("Reviewed form").then(() => {
+      completed = true;
+    });
+    await tick();
+    expect(completed).toBe(false);
+    expect(f.c.state.consuming).toBe(true);
+    await expect(f.c.consume("Reviewed form")).rejects.toThrow();
+    f.commit();
+    await consuming;
+    expect(f.get()).toBe("");
+    expect(f.saved()?.text).toBe("");
+    expect(f.c.state.consuming).toBe(false);
+  });
+
+  it("rolls back consume when the host skips its update after newer typing", async () => {
+    const f = await openSaved("Reviewed form");
+    const consuming = f.c.consume("Reviewed form");
+    const rejected = expect(consuming).rejects.toThrow(/Nothing was sent/);
+    await tick();
+    f.type("Newer unsent message");
+    f.commit();
+    await rejected;
+    expect(f.get()).toBe("Newer unsent message");
+    expect(f.saved()?.text).toBe("Newer unsent message");
+    expect(f.c.state.conflict).toBe(true);
+  });
+
+  it.each([false, true])(
+    "rolls back an unconfirmed consume and expires its update (void=%s)",
+    async (voidHost) => {
+      const f = await openSaved("Reviewed form");
+      if (voidHost) f.acknowledgeImmediately();
+      const consuming = f.c.consume("Reviewed form");
+      const rejected = expect(consuming).rejects.toThrow(/Nothing was sent/);
+      await tick();
+      const update = f.takeUpdate();
+      update.acknowledge();
+      await rejected;
+      update.apply();
+      expect(f.get()).toBe("Reviewed form");
+      expect(f.saved()?.text).toBe("Reviewed form");
+    },
+  );
+
+  it("retires the update when the host authority predicate throws at completion", async () => {
+    const f = await openSaved("Reviewed form");
+    let failAuthority = false;
+    const consuming = f.c.consume("Reviewed form", () => {
+      if (failAuthority) throw new Error("Authority check failed");
+      return true;
+    });
+    const rejected = expect(consuming).rejects.toThrow("Authority check failed");
+    await tick();
+    const update = f.takeUpdate();
+    update.apply();
+    failAuthority = true;
+    update.acknowledge();
+    await rejected;
+    failAuthority = false;
+    f.type("Reviewed form");
+    update.apply();
+    expect(f.get()).toBe("Reviewed form");
+    expect(f.saved()?.text).toBe("Reviewed form");
+  });
+
+  it("restores reviewed text when the host rejects after applying a clear", async () => {
+    const f = await openSaved("Reviewed form");
+    const consuming = f.c.consume("Reviewed form");
+    const rejected = expect(consuming).rejects.toThrow("Host rejected update");
+    await tick();
+    const update = f.takeUpdate();
+    update.apply();
+    update.acknowledge(new Error("Host rejected update"));
+    await rejected;
+    expect(f.get()).toBe("");
+    expect(f.saved()?.text).toBe("Reviewed form");
+    expect(f.c.state.savedText).toBe("Reviewed form");
+    expect(f.c.state.conflict).toBe(true);
+  });
+});
+
 describe("DurableDraftController consume", () => {
+  it("waits for a retired consume and retains its failed receipt until a newer write", async () => {
+    const f = fixture();
+    f.external("Reviewed form");
+    await f.c.open("one");
+    let release!: () => void;
+    const gate = new Promise<void>((resolve) => { release = resolve; });
+    const save = f.store.save;
+    f.store.save = async (expected, text, signal, write) => {
+      if (text === "") await gate;
+      return save.call(f.store, expected, text, signal, write);
+    };
+    const consuming = f.c.consume("Reviewed form");
+    const consumed = expect(consuming).rejects.toThrow(/Nothing was sent/);
+    await tick();
+    f.c.retire();
+    f.set("Reviewed form");
+    await f.c.open("one");
+    let completed = false;
+    const flushing = f.c.flush().finally(() => { completed = true; });
+    const flushed = expect(flushing).rejects.toThrow();
+    await tick();
+    expect(completed).toBe(false);
+    release();
+    await consumed;
+    await flushed;
+    await expect(f.c.flush()).rejects.toThrow();
+    await f.c.retry();
+    f.set("Replacement draft");
+    await tick();
+    await f.c.flush();
+    expect(f.saved()?.text).toBe("Replacement draft");
+  });
+
   it("clears the saved copy only for the reviewed text", async () => {
     const f = fixture();
     f.external("Reviewed form");
