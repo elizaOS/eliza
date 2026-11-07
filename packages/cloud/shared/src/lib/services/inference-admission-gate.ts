@@ -1389,10 +1389,11 @@ export async function settleInferenceAdmissionLease(
 
 /** Maps has a distinct nonmonetary counter in the organization gate. Never retry an ambiguous admission. */
 export async function callMapsRequestAllowance(
-  namespace: RuntimeDurableObjectNamespace,
   request: import("./maps-request-policy").MapsAllowanceRequest,
   outcome?: import("./maps-request-policy").MapsUsageOutcome,
 ): Promise<Response> {
+  if (!getCloudBinding("INFERENCE_ADMISSION_GATES"))
+    return Response.json({ error: { code: "maps_allowance_unconfigured" } }, { status: 503 });
   return gateFetch(
     request.organizationId,
     outcome ? "/maps/usage" : "/maps/admit",
@@ -1400,7 +1401,7 @@ export async function callMapsRequestAllowance(
       ...request,
       ...(outcome && { outcome }),
     },
-    namespace.getByName(request.organizationId),
+    gateStub(request.organizationId),
     AbortSignal.timeout(GATE_OPERATION_TIMEOUT_MS),
   );
 }

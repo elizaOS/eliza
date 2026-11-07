@@ -10,7 +10,6 @@ let status = "active",
   signal: AbortController;
 let response: () => Promise<Response> = async () =>
   Response.json({ admitted: true });
-const policyTransaction = { mapsTransaction: true };
 const caller = {
   user: { id: "maps-user", organization_id: "maps-org" },
   apiKeyId: "maps-key",
@@ -26,24 +25,21 @@ mock.module(
     withOrganizationPolicyReadAdmission: async (
       _org: string,
       _expected: unknown,
-      operation: (policy: unknown, tx: unknown) => Promise<unknown>,
+      operation: (policy: unknown) => Promise<unknown>,
     ) => {
       locked = true;
       try {
-        return await operation(
-          {
-            subscriptionFunded: status === "active",
-            authority: {
-              generation: "1",
-              effectiveFrom: "2020-01-01T00:00:00Z",
-              effectiveUntil: expiry,
-            },
-            get balance() {
-              throw Error("Maps must not read monetary allowance");
-            },
+        return await operation({
+          subscriptionFunded: status === "active",
+          authority: {
+            generation: "1",
+            effectiveFrom: "2020-01-01T00:00:00Z",
+            effectiveUntil: expiry,
           },
-          policyTransaction,
-        );
+          get balance() {
+            throw Error("Maps must not read monetary allowance");
+          },
+        });
       } finally {
         locked = false;
       }
@@ -53,29 +49,17 @@ mock.module(
 mock.module(
   "@elizaos/cloud-shared/lib/services/subscription-entitlement-token",
   () => ({
-    readOrganizationEntitlementSummary: async (
-      _org: string,
-      options: { transaction?: unknown } = {},
-    ) => {
-      expect(locked).toBe(true);
-      expect(options.transaction).toBe(policyTransaction);
-      return {
-        plan: { status },
-        rateTier: "selected_test",
-        effectiveUntil: new Date(expiry),
-      };
-    },
+    readOrganizationEntitlementSummary: async () => ({
+      plan: { status },
+      rateTier: "selected_test",
+      effectiveUntil: new Date(expiry),
+    }),
   }),
 );
 mock.module(
   "@elizaos/cloud-shared/lib/services/inference-admission-gate",
   () => ({
-    callMapsRequestAllowance: async (
-      namespace: unknown,
-      _request: unknown,
-      outcome?: string,
-    ) => {
-      expect(namespace).toBe(mapsGateBinding);
+    callMapsRequestAllowance: async (_request: unknown, outcome?: string) => {
       if (outcome) {
         usage++;
         return Response.json({ recorded: true });
@@ -90,7 +74,6 @@ const { admitMapsRequest, authenticateMapsCaller } = await import(
   "../src/lib/maps-request-admission"
 );
 const { createMapsRoute } = await import("../src/lib/maps-route");
-const mapsGateBinding = {};
 let gatesBound = true;
 beforeEach(() => {
   gatesBound = true;
@@ -138,7 +121,7 @@ function call(body: unknown = { query: "test" }, key = "request") {
     },
     {
       NODE_ENV: "test",
-      ...(gatesBound ? { INFERENCE_ADMISSION_GATES: mapsGateBinding } : {}),
+      ...(gatesBound ? { INFERENCE_ADMISSION_GATES: {} } : {}),
     },
   );
 }

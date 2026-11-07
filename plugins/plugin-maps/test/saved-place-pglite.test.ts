@@ -5,6 +5,12 @@
  */
 
 import {
+  createUniqueUuid,
+  type DocumentRequesterContext,
+  readDocumentMutationSnapshot,
+  type UUID,
+} from "@elizaos/core";
+import {
   createTestRuntime,
   type TestRuntimeResult,
 } from "@elizaos/testing/runtime";
@@ -346,5 +352,123 @@ describe("saved-place durable CAS on PGlite", () => {
     ).toEqual(["Work"]);
     // Repeating the current state is still a replay.
     expect((await save("Work")).replayed).toBe(true);
+  });
+
+  it("keeps the ledger out of owner document access and upgrades legacy rows", async () => {
+    const { runtime } = harness;
+    const service = new MapsService(runtime);
+    const owner: DocumentRequesterContext = {
+      agentId: runtime.agentId,
+      requesterEntityId: "99999999-9999-4999-a999-999999999999" as UUID,
+      requesterRoomIds: [],
+      requesterRole: "OWNER",
+    };
+    const asRuntime: DocumentRequesterContext = {
+      ...owner,
+      requesterEntityId: runtime.agentId,
+      requesterRole: "RUNTIME",
+    };
+    const ownerListing = async () =>
+      (
+        await runtime.adapter.queryDocuments({
+          ...owner,
+          limit: 100,
+          offset: 0,
+        })
+      ).documents.filter(
+        (document) =>
+          document.metadata?.source === "plugin-maps.saved-place-state.v1",
+      );
+
+    // A ledger stored before the marker existed is still owner-visible.
+    const legacyOwner = "77777777-7777-4777-a777-777777777777";
+    const legacyId = createUniqueUuid(
+      runtime,
+      `maps:saved-places:owner:${legacyOwner}`,
+    ) as UUID;
+    await service.savePlace({
+      ownerEntityId: legacyOwner,
+      roomId: ROOM_ID,
+      place,
+      label: "Legacy home",
+    });
+    const marked = await runtime.adapter.getDocument({
+      ...asRuntime,
+      documentId: legacyId,
+    });
+    expect(marked?.metadata).toMatchObject({ runtimeInternal: true });
+    const snapshot = marked && readDocumentMutationSnapshot(marked);
+    if (!marked || !snapshot) throw new Error("missing maps ledger");
+    const { runtimeInternal: _marker, ...legacyMetadata } =
+      marked.metadata as Record<string, unknown>;
+    expect(
+      (
+        await runtime.adapter.compareAndSwapDocument({
+          ...asRuntime,
+          documentId: legacyId,
+          expected: snapshot,
+          replacement: { ...marked, metadata: legacyMetadata },
+        })
+      ).status,
+    ).toBe("updated");
+    expect((await ownerListing()).map((document) => document.id)).toContain(
+      legacyId,
+    );
+
+    // The next Maps write rewrites the marker on the legacy row.
+    await service.savePlace({
+      ownerEntityId: legacyOwner,
+      roomId: ROOM_ID,
+      place: { ...place, providerPlaceId: "pglite-place-2", name: "Work" },
+      label: "Work",
+    });
+    const upgraded = await runtime.adapter.getDocument({
+      ...asRuntime,
+      documentId: legacyId,
+    });
+    expect(upgraded?.metadata).toMatchObject({ runtimeInternal: true });
+    const upgradedSnapshot = upgraded && readDocumentMutationSnapshot(upgraded);
+    if (!upgraded || !upgradedSnapshot) throw new Error("missing maps ledger");
+
+    expect(await ownerListing()).toEqual([]);
+    expect(
+      await runtime.adapter.getDocument({ ...owner, documentId: legacyId }),
+    ).toBeNull();
+    expect(
+      (
+        await runtime.adapter.compareAndSwapDocument({
+          ...owner,
+          documentId: legacyId,
+          expected: upgradedSnapshot,
+          replacement: {
+            ...upgraded,
+            content: { text: "edited" },
+            metadata: {
+              ...upgraded.metadata,
+              documentRevision: upgradedSnapshot.revision + 1,
+            } as typeof upgraded.metadata,
+          },
+        })
+      ).status,
+    ).toBe("forbidden");
+    expect(
+      (
+        await runtime.adapter.deleteDocumentWithSnapshot({
+          ...owner,
+          documentId: legacyId,
+          expected: upgradedSnapshot,
+        })
+      ).status,
+    ).toBe("forbidden");
+
+    await service.savePlace({
+      ownerEntityId: legacyOwner,
+      roomId: ROOM_ID,
+      place: { ...place, providerPlaceId: "pglite-place-3", name: "Gym" },
+      label: "Gym",
+    });
+    expect(
+      (await service.listSavedPlaces(legacyOwner)).map((saved) => saved.label),
+    ).toEqual(["Legacy home", "Work", "Gym"]);
   });
 });
