@@ -1,0 +1,52 @@
+[
+  {
+    "id": "core-NotificationDurability",
+    "model": "packages/core/quint/NotificationDurability.qnt",
+    "sources": [
+      "packages/core/src/services/notification.ts",
+      "packages/core/src/types/notification.ts",
+      "packages/core/test/notification.test.ts"
+    ],
+    "invariants": [
+      "ValidSequences",
+      "ReadMarksReferenceRows",
+      "PublishedWasCommitted",
+      "UncertaintyFencesMutation",
+      "DurableFence",
+      "StoppedHasNoProvisionalRows",
+      "SuccessAfterAcknowledgement"
+    ],
+    "status": "partial",
+    "limitations": [
+      "A single serial owner is explicit. Concurrent independent NotificationService instances writing the same agent cache need a separate cross-process ownership model.",
+      "Hydration begins with a valid version-2 snapshot. Legacy migration, malformed coordinate rejection, group coalescing, expiry and notification category/priority policy remain separately test-covered and not modeled here.",
+      "Rows project title/body/data content to identity plus a read mark. Alias mutation of returned or input objects is outside this projection.",
+      "Storage operations are atomic but their outcome may be ambiguous to the caller. Restart in this case assumes a successful read of the durable version-2 snapshot.",
+      "Ordinary synchronous list/getUnreadCount APIs can observe provisional in-memory work. The DurableFence invariant concerns the quiescent native and durable-read APIs.",
+      "Conformance executes all 69 existing real SQLite/runtime tests. Named fault injection gates real API effects, and is not exhaustive schedule equivalence."
+    ]
+  },
+  {
+    "id": "core-NativeNotificationCursor",
+    "model": "packages/core/quint/NativeNotificationCursor.qnt",
+    "sources": [
+      "packages/core/src/services/notification.ts",
+      "packages/core/src/types/notification.ts",
+      "packages/core/test/notification.test.ts"
+    ],
+    "invariants": [
+      "SequenceBounds",
+      "ReturnedRowsWithinFence",
+      "IncompleteAlwaysAdvances",
+      "CompleteConsumesFence",
+      "FailedPageDoesNotAdvance"
+    ],
+    "status": "partial",
+    "limitations": [
+      "The finite capacity one represents the item/byte page boundary. Real tests check the actual encoded envelope and native byte limits without truncating records.",
+      "A sequence cursor can skip deleted/expired/superseded rows when no retained row exists at that sequence. The fence remains fixed across later appends.",
+      "Malformed arbitrary cursor numbers, unknown record fields and Unicode byte encoding are checked by existing implementation tests, outside the finite value domain.",
+      "Changing the inbox epoch invalidates old cursors. After that error the client must explicitly begin a new snapshot, which is outside this one-cursor model."
+    ]
+  }
+]
