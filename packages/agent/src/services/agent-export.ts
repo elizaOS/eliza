@@ -909,6 +909,51 @@ async function extractAgentData(
     }
   }
 
+  // The adapter owns the complete type inventory, including plugin namespaces.
+  const allMemories: Memory[] = [];
+  const memoryIdSet = new Set<string>();
+  for (const tableName of await memoryTypesForExport(db)) {
+    const memories = await db.getMemories({
+      agentId,
+      tableName,
+      includeEmbedding: false,
+    });
+    if (tableName === "document_fragments") {
+      memories.push(
+        ...(await db.getMemories({
+          agentId,
+          tableName,
+          metadata: { fragmentRole: "source-segment" },
+          includeEmbedding: false,
+        })),
+      );
+    }
+    for (const mem of memories) {
+      if (mem.id && !memoryIdSet.has(mem.id)) {
+        memoryIdSet.add(mem.id);
+        const exported = { ...mem, embedding: undefined, type: tableName };
+        allMemories.push(exported);
+      }
+    }
+  }
+
+  logger.info(`[agent-export] Found ${allMemories.length} memories`);
+
+  // A message keeps its author after the author leaves the room: the agent
+  // orchestrator unlinks legacy sub-agent entities but keeps their transcript
+  // memories. Export that author too, so import does not give the message a
+  // random author id that no entity row carries.
+  const missingAuthorIds = [
+    ...new Set(allMemories.map((memory) => memory.entityId)),
+  ].filter((entityId): entityId is UUID =>
+    Boolean(entityId && !entityMap.has(entityId)),
+  );
+  if (missingAuthorIds.length > 0) {
+    for (const entity of await db.getEntitiesByIds(missingAuthorIds)) {
+      if (entity.id) entityMap.set(entity.id, entity);
+    }
+  }
+
   // Relationships may point at a user who is not a room participant or a
   // metadata subject. Export that endpoint too so import never mints a
   // relationship to a random, nonexistent entity.
@@ -965,36 +1010,6 @@ async function extractAgentData(
     }
   }
   logger.info(`[agent-export] Found ${allComponents.length} components`);
-
-  // The adapter owns the complete type inventory, including plugin namespaces.
-  const allMemories: Memory[] = [];
-  const memoryIdSet = new Set<string>();
-  for (const tableName of await memoryTypesForExport(db)) {
-    const memories = await db.getMemories({
-      agentId,
-      tableName,
-      includeEmbedding: false,
-    });
-    if (tableName === "document_fragments") {
-      memories.push(
-        ...(await db.getMemories({
-          agentId,
-          tableName,
-          metadata: { fragmentRole: "source-segment" },
-          includeEmbedding: false,
-        })),
-      );
-    }
-    for (const mem of memories) {
-      if (mem.id && !memoryIdSet.has(mem.id)) {
-        memoryIdSet.add(mem.id);
-        const exported = { ...mem, embedding: undefined, type: tableName };
-        allMemories.push(exported);
-      }
-    }
-  }
-
-  logger.info(`[agent-export] Found ${allMemories.length} memories`);
 
   // 7. Relationships. The reflection evaluator records relationships between
   // the agent's users as well, so every row touching an exported entity is
