@@ -114,6 +114,50 @@ describe("financial holding grounding", () => {
     },
   );
 
+  // The provider's data keeps the exact uiAmount; its text shows the rounded
+  // figure, which is the amount the model can repeat.
+  it.each([
+    [
+      "solana-wallet",
+      "0.052342",
+      "0.05",
+      { items: [{ symbol: "SOL", uiAmount: 0.052341872 }] },
+    ],
+    [
+      "BIRDEYE_WALLET_PORTFOLIO",
+      "1.2346",
+      "1.23",
+      { portfolio: { items: [{ symbol: "SOL", uiAmount: 1.23456789 }] } },
+    ],
+    [
+      "BIRDEYE_TRADE_PORTFOLIO",
+      "1.2346",
+      "1.23",
+      { portfolio: { items: [{ symbol: "SOL", uiAmount: 1.23456789 }] } },
+    ],
+  ])(
+    "grounds a holding in the amount the %s provider shows (%s), not in a rounding it does not show (%s)",
+    (name, shown, unshown, data) => {
+      const providers = { [name]: { data } };
+      expect(
+        egress(
+          `Your wallet holds ${shown} SOL.`,
+          "what's in my wallet?",
+          ["wallet"],
+          providers,
+        ),
+      ).toEqual({ verdict: "allow" });
+      expect(
+        egress(
+          `Your wallet holds ${unshown} SOL.`,
+          "what's in my wallet?",
+          ["wallet"],
+          providers,
+        ),
+      ).toEqual({ verdict: "reject", kind: "financial_holding" });
+    },
+  );
+
   it("reads a turn with wallet observations as a wallet turn", () => {
     const providers = {
       "get-balance": { data: { token: "SOL", balance: 5 } },

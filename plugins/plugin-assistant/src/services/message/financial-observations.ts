@@ -68,14 +68,40 @@ function holding(symbol: unknown, amount: unknown): Holding | undefined {
     : { symbol: symbol.trim().toUpperCase(), amount: normalized };
 }
 
-function portfolioHoldings(value: unknown): Holding[] {
+/** A normalized decimal rounded half up to `places`, as a provider displays it. */
+function rounded(amount: string, places: number): string {
+  const [whole, fraction = ""] = amount.split(".");
+  if (fraction.length <= places) return amount;
+  const units =
+    BigInt(whole + fraction.slice(0, places)) +
+    (fraction[places] >= "5" ? 1n : 0n);
+  const digits = units.toString().padStart(places + 1, "0");
+  return (
+    decimal(`${digits.slice(0, -places)}.${digits.slice(-places)}`) ?? amount
+  );
+}
+
+/**
+ * A provider's data keeps each exact uiAmount while its text shows the model
+ * the amount rounded to `displayedPlaces`; a reply may state either figure.
+ */
+function portfolioHoldings(
+  value: unknown,
+  displayedPlaces?: number,
+): Holding[] {
   if (!isObjectRecord(value) || value.success === false) return [];
   const data = isObjectRecord(value.data) ? value.data : value;
   if (!Array.isArray(data.items)) return [];
   return data.items.flatMap((item) => {
     if (!isObjectRecord(item)) return [];
     const observed = holding(item.symbol, item.uiAmount);
-    return observed ? [observed] : [];
+    if (!observed) return [];
+    return displayedPlaces === undefined
+      ? [observed]
+      : [
+          observed,
+          { ...observed, amount: rounded(observed.amount, displayedPlaces) },
+        ];
   });
 }
 
@@ -112,12 +138,14 @@ function observedHoldings(
       const observed = holding(data.token, data.balance);
       if (observed) observations.push(observed);
     } else if (name === "solana-wallet") {
-      observations.push(...portfolioHoldings(data));
+      // plugin-wallet chains/solana/providers/wallet.ts shows toFixed(6).
+      observations.push(...portfolioHoldings(data, 6));
     } else if (
       name === "BIRDEYE_WALLET_PORTFOLIO" ||
       name === "BIRDEYE_TRADE_PORTFOLIO"
     ) {
-      observations.push(...portfolioHoldings(data.portfolio));
+      // plugin-wallet analytics/birdeye/providers/portfolio-factory.ts shows toFixed(4).
+      observations.push(...portfolioHoldings(data.portfolio, 4));
     }
   }
   return observations;
