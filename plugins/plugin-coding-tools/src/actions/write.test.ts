@@ -10,6 +10,7 @@ import {
 } from "@elizaos/core";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { setupEnv, type TestEnv } from "./__tests__/helpers.js";
+import { readFileHandler } from "./read.js";
 import { writeFileHandler } from "./write.js";
 
 function makeWriteRouter(
@@ -208,6 +209,60 @@ describe("WRITE", () => {
     expect(result.success).toBe(true);
     const onDisk = await fs.readFile(file, "utf8");
     expect(onDisk).toBe("fresh");
+  });
+
+  it("refuses overwrite=true after a partial READ and allows it after a complete one", async () => {
+    const file = path.join(env.tmpDir, "partially-read.txt");
+    const original = Array.from(
+      { length: 200 },
+      (_, i) => `line ${i + 1}`,
+    ).join("\n");
+    await fs.writeFile(file, original, "utf8");
+
+    const partial = await readFileHandler(env.runtime, env.message, undefined, {
+      parameters: { file_path: file, limit: 10 },
+    });
+    expect(partial.success).toBe(true);
+
+    const refused = await writeFileHandler(
+      env.runtime,
+      env.message,
+      undefined,
+      {
+        parameters: {
+          file_path: file,
+          content: "line 1\nline 2\nedited",
+          overwrite: true,
+        },
+      },
+    );
+    expect(refused.success).toBe(false);
+    expect(refused.text).toContain("read only in part");
+    expect(await fs.readFile(file, "utf8")).toBe(original);
+
+    const complete = await readFileHandler(
+      env.runtime,
+      env.message,
+      undefined,
+      {
+        parameters: { file_path: file },
+      },
+    );
+    expect(complete.success).toBe(true);
+    const accepted = await writeFileHandler(
+      env.runtime,
+      env.message,
+      undefined,
+      {
+        parameters: {
+          file_path: file,
+          content: "replaced on purpose",
+          overwrite: true,
+        },
+      },
+    );
+    expect(accepted.success).toBe(true);
+    expect(await fs.readFile(file, "utf8")).toBe("replaced on purpose");
   });
 
   it("rejects stale reads when the file was modified externally", async () => {

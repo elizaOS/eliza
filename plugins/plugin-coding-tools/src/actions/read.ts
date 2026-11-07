@@ -487,6 +487,7 @@ async function readFileContent(
       mtimeMs: before.mtimeMs,
       size: before.size,
       revision: currentRevision,
+      complete: !window.hasMore && window.start === 0,
     });
     logger.debug(
       `${CODING_TOOLS_LOG_PREFIX} READ ${checked.resolved} unit=${unit} offset=${offset} end=${window.end} sourceBytesRead=${window.sourceBytesRead}`,
