@@ -338,7 +338,10 @@ Staging rejects unknown fixtures, invalid packages and existing output files; it
 
 `runtime.EmbeddedRuntimeService` integrates the existing NativeRuntimeSession and
 EmbeddedRuntimeGroup with Android Service lifecycle, foreground dispatch, status,
-endpoint-bound requests and local health snapshots. When the runtime is available,
+endpoint-bound requests and local health snapshots. A request refused before dispatch
+throws `NativeRuntimeSession.NotReadyException`; a host bridge rejects it with
+`NotReadyException.CODE` (`RUNTIME_NOT_READY`), which `createRuntimeJsonClient` may send once
+after startup. A request cancelled after dispatch stays a plain `LifecycleException`. When the runtime is available,
 status reports `requestBodyLimit`: the stock `RuntimeRequestDispatcher.MAX_BODY_TEXT_UNITS`
 a host uses with this service. The host's serialization is what is counted, and
 Android org.json escapes `/`, so a renderer that checks a body's `JSON.stringify`
