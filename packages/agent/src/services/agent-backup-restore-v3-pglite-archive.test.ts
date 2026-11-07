@@ -119,6 +119,24 @@ async function extractionFixture(payload = gzipSync(archive(minimumEntries))) {
   };
 }
 
+/** Settles to "resolved", the rejection code, or "hung" after a bounded wait. */
+async function settledCode(pending: Promise<unknown>): Promise<string> {
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  try {
+    return await Promise.race([
+      pending.then(
+        () => "resolved",
+        (error: unknown) => String((error as { code?: unknown }).code ?? error),
+      ),
+      new Promise<string>((resolve) => {
+        timer = setTimeout(() => resolve("hung"), 60_000);
+      }),
+    ]);
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
 afterEach(async () => {
   for (const db of databases) await db.close();
   databases.clear();
@@ -292,6 +310,68 @@ describe("physical PGlite archive", () => {
     await expect(
       fs.stat(path.join(attemptRoot, "components/database")),
     ).rejects.toMatchObject({ code: "ENOENT" });
+  });
+
+  it("settles and releases the attempt when the archive fails inside a record", async () => {
+    // One record inflates to many decoder chunks, so its write still waits on
+    // the reader when the parser rejects the repeated path.
+    const bulk = "x".repeat(4 * 1024 * 1024);
+    const { input, finish } = await extractionFixture(
+      gzipSync(
+        archive([
+          ...minimumEntries,
+          { name: "/base/1/1259", payload: bulk },
+          { name: "/base/1/1259", payload: bulk },
+        ]),
+      ),
+    );
+    expect(input.receipt.dataFrameCount).toBe(1);
+    const duplicate = "AGENT_BACKUP_RESTORE_V3_PGLITE_ARCHIVE_DUPLICATE";
+    expect(
+      await settledCode(extractAgentBackupRestoreV3CandidateDatabase(input)),
+    ).toBe(duplicate);
+    // The retry reaches the archive again instead of a still-held lock.
+    expect(
+      await settledCode(extractAgentBackupRestoreV3CandidateDatabase(input)),
+    ).toBe(duplicate);
+    await expect(fs.stat(finish)).rejects.toMatchObject({ code: "ENOENT" });
+  });
+
+  it("settles and releases the attempt when cancelled inside a record", async () => {
+    const { input } = await extractionFixture(
+      gzipSync(
+        archive([
+          ...minimumEntries,
+          { name: "/base/1/1259", payload: "x".repeat(8 * 1024 * 1024) },
+        ]),
+      ),
+    );
+    const abort = new AbortController();
+    const link = fs.link.bind(fs);
+    // Cancel once pg_control is published, while the decoder still owes the
+    // reader most of the record.
+    const published = vi
+      .spyOn(fs, "link")
+      .mockImplementation(async (from, to) => {
+        await link(from, to);
+        if (path.basename(String(to)) === "pg_control") abort.abort();
+      });
+    let cancelled: string;
+    try {
+      cancelled = await settledCode(
+        extractAgentBackupRestoreV3CandidateDatabase({
+          ...input,
+          control: { ...input.control, signal: abort.signal },
+        }),
+      );
+    } finally {
+      published.mockRestore();
+    }
+    expect(abort.signal.aborted).toBe(true);
+    expect(cancelled).toMatch(/_(ABORTED|INTERRUPTED)$/);
+    expect(
+      await settledCode(extractAgentBackupRestoreV3CandidateDatabase(input)),
+    ).toBe("resolved");
   });
 
   it(
