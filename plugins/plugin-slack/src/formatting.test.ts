@@ -37,6 +37,22 @@ describe("markdownToSlackMrkdwn bare URLs", () => {
   });
 });
 
+describe("markdownToSlackMrkdwn control tokens", () => {
+  it("escapes ! control tokens instead of passing them through", () => {
+    expect(markdownToSlackMrkdwn("hi <!channel>")).toBe("hi &lt;!channel&gt;");
+    expect(markdownToSlackMrkdwn("hi <!everyone>")).toBe(
+      "hi &lt;!everyone&gt;",
+    );
+  });
+  it("keeps !date tokens, which ping nobody", () => {
+    expect(
+      markdownToSlackMrkdwn(
+        "Meeting <!date^1798000000^{date_short}|Dec 22> today",
+      ),
+    ).toBe("Meeting <!date^1798000000^{date_short}|Dec 22> today");
+  });
+});
+
 describe("markdown links in inline code", () => {
   it("keeps examples literal while converting links outside code", () => {
     expect(
