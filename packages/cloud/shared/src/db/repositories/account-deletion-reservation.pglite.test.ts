@@ -23,13 +23,16 @@ import {
   apps,
   userDatabaseStatusEnum,
 } from "../schemas/apps";
+import { discordConnections } from "../schemas/discord-connections";
 import { mobileAppAuthGrants } from "../schemas/mobile-app-auth-grants";
 import { nativeAppPublishers } from "../schemas/native-app-publishers";
 import { organizationBalanceRevisionSequence, organizations } from "../schemas/organizations";
 import { providerAdmissions } from "../schemas/provider-admissions";
+import { userCharacters } from "../schemas/user-characters";
 import { userSessions } from "../schemas/user-sessions";
 import { users } from "../schemas/users";
 import { accountDeletionRequestsRepository } from "./account-deletion-requests";
+import { discordConnectionsRepository } from "./discord-connections";
 
 const organizationId = "10000000-0000-4000-8000-000000000001";
 const userId = "20000000-0000-4000-8000-000000000001";
@@ -108,6 +111,8 @@ beforeAll(async () => {
       accountDeletionRequests,
       apiKeys,
       apps,
+      discordConnections,
+      userCharacters,
       appDeploymentStatusEnum,
       appReviewStatusEnum,
       userDatabaseStatusEnum,
@@ -548,6 +553,42 @@ describe("personal account deletion reservation", () => {
       id: "50000000-0000-4000-8000-000000000099",
       organization_id: otherOrganizationId,
     });
+  });
+
+  test("takes the organization's Discord bot out of gateway assignments once deletion activates", async () => {
+    const connection = (podName: string | null) => ({
+      organization_id: organizationId,
+      application_id: `app-${podName ?? "unassigned"}`,
+      bot_token_encrypted: "encrypted",
+      encrypted_dek: "dek",
+      token_nonce: "nonce",
+      token_auth_tag: "tag",
+      encryption_key_id: "key",
+      assigned_pod: podName,
+    });
+    await dbWrite.insert(discordConnections).values([connection("pod-a"), connection(null)]);
+    try {
+      expect(await discordConnectionsRepository.findByAssignedPod("pod-a")).toHaveLength(1);
+      expect(await discordConnectionsRepository.findActiveUnassigned()).toHaveLength(1);
+
+      const reserved = await accountDeletionRequestsRepository.reservePersonalAccountDeletion(
+        reservationInput("50000000-0000-4000-8000-0000000000d1", "discord"),
+      );
+      expect(reserved.outcome).toBe("reserved");
+      await expect(activateReservation("discord")).resolves.toMatchObject({
+        outcome: "activated",
+      });
+
+      // The gateway disconnects any bot missing from its assignments, so the
+      // deleting account's bot stops answering people during the window.
+      expect(await discordConnectionsRepository.findByAssignedPod("pod-a")).toEqual([]);
+      expect(await discordConnectionsRepository.findActiveUnassigned()).toEqual([]);
+      expect(await discordConnectionsRepository.assignUnassignedToPod("pod-b")).toBeNull();
+    } finally {
+      await dbWrite
+        .delete(discordConnections)
+        .where(eq(discordConnections.organization_id, organizationId));
+    }
   });
 
   test("reserves without mutation, then atomically fences after package acknowledgement", async () => {

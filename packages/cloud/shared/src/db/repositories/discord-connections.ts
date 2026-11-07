@@ -1,5 +1,5 @@
 /** Persists Discord connections and produces validated gateway assignment records. */
-import { and, eq, inArray, isNull, sql } from "drizzle-orm";
+import { and, eq, inArray, isNull, type SQL, sql } from "drizzle-orm";
 import { getEncryptionService } from "../../lib/services/secrets/encryption";
 import { logger } from "../../lib/utils/logger";
 import { db } from "../client";
@@ -38,6 +38,20 @@ interface DecryptedAssignment {
 
 /** Valid connection status values (matches migration CHECK constraint) */
 type ConnectionStatus = "pending" | "connecting" | "connected" | "disconnected" | "error";
+
+/**
+ * A gateway serves a bot only while its organization may take new work. An
+ * organization in account deletion (recovery window or later) is fenced: its
+ * bot drops off every pod's assignments, the gateway disconnects it on the
+ * next poll, and a cancelled deletion brings it back.
+ */
+const organizationAllowsNewWork: SQL = sql`EXISTS (
+  SELECT 1 FROM organizations o
+  WHERE o.id = ${discordConnections.organization_id}
+    AND o.is_active = true
+    AND o.account_lifecycle_state = 'active'
+    AND o.account_deletion_request_id IS NULL
+)`;
 
 export const discordConnectionsRepository = {
   async create(input: CreateConnectionInput): Promise<DiscordConnection> {
@@ -101,7 +115,13 @@ export const discordConnectionsRepository = {
     return db
       .select()
       .from(discordConnections)
-      .where(and(eq(discordConnections.is_active, true), isNull(discordConnections.assigned_pod)));
+      .where(
+        and(
+          eq(discordConnections.is_active, true),
+          isNull(discordConnections.assigned_pod),
+          organizationAllowsNewWork,
+        ),
+      );
   },
 
   async findByAssignedPod(podName: string): Promise<DiscordConnection[]> {
@@ -109,7 +129,11 @@ export const discordConnectionsRepository = {
       .select()
       .from(discordConnections)
       .where(
-        and(eq(discordConnections.is_active, true), eq(discordConnections.assigned_pod, podName)),
+        and(
+          eq(discordConnections.is_active, true),
+          eq(discordConnections.assigned_pod, podName),
+          organizationAllowsNewWork,
+        ),
       );
   },
 
@@ -130,6 +154,7 @@ export const discordConnectionsRepository = {
         SELECT id FROM discord_connections
         WHERE is_active = true
           AND assigned_pod IS NULL
+          AND ${organizationAllowsNewWork}
         ORDER BY created_at ASC
         LIMIT 1
         FOR UPDATE SKIP LOCKED
