@@ -9,13 +9,15 @@ module PostDeliveryTasks {
   type State = {
     task: int -> str,
     room: int -> int,
-    admission: int -> str,
+    scopedAdmissionValid: bool,
+    explicitAdmissionValid: bool,
+    runtimeIndex: Set[int],
+    roomIndex: int -> Set[int],
     aborted: Set[int],
     invoked: Set[int],
     cooperative: Set[int],
     permission: int -> str,
     effects: Set[int],
-    failures: Set[int],
     boundary: int -> str,
     roomDrain: int -> str,
     roomBatch: int -> Set[int],
@@ -25,18 +27,30 @@ module PostDeliveryTasks {
     quarantined: bool
   }
   var s: State
-  pure def pending(v: State): Set[int] = Tasks.filter(t => Set("queued", "waiting", "running").contains(v.task.get(t)))
-  pure def roomPending(v: State, r: int): Set[int] = pending(v).filter(t => v.room.get(t) == r)
+  pure def pending(v: State): Set[int] = v.runtimeIndex
+  pure def roomPending(v: State, r: int): Set[int] = v.roomIndex.get(r)
+  // Both concrete indexes are removed in one synchronous finally callback.
+  // A settled callback's cooperation selector cannot affect any future action.
+  pure def settleTask(v: State, t: int): State = {
+    ...v,
+    task: v.task.set(t, "settled"),
+    runtimeIndex: v.runtimeIndex.exclude(Set(t)),
+    roomIndex: if (v.room.get(t) == 0) v.roomIndex
+      else v.roomIndex.set(v.room.get(t), v.roomIndex.get(v.room.get(t)).exclude(Set(t))),
+    cooperative: v.cooperative.exclude(Set(t))
+  }
   action init = s' = {
     task: Tasks.mapBy(_ => "new"),
     room: Tasks.mapBy(_ => 0),
-    admission: Tasks.mapBy(_ => "none"),
+    scopedAdmissionValid: true,
+    explicitAdmissionValid: true,
+    runtimeIndex: Set(),
+    roomIndex: Rooms.mapBy(_ => Set()),
     aborted: Set(),
     invoked: Set(),
     cooperative: Set(),
     permission: Tasks.mapBy(_ => "unknown"),
     effects: Set(),
-    failures: Set(),
     boundary: Rooms.mapBy(_ => "none"),
     roomDrain: Rooms.mapBy(_ => "idle"),
     roomBatch: Rooms.mapBy(_ => Set()),
@@ -59,7 +73,14 @@ module PostDeliveryTasks {
       ...s,
       task: s.task.set(t, "queued"),
       room: s.room.set(t, r),
-      admission: s.admission.set(t, mode),
+      // Admission mode is an argument, not retained tracker state. Sticky
+      // witnesses retain the guard obligations without distinct alias states.
+      scopedAdmissionValid: s.scopedAdmissionValid and
+        (r == 0 or Set("explicit", "ambient").contains(mode)),
+      explicitAdmissionValid: s.explicitAdmissionValid and
+        (not(ExplicitOwnership) or not(Set("ambient", "unscoped").contains(mode))),
+      runtimeIndex: s.runtimeIndex.union(Set(t)),
+      roomIndex: if (r == 0) s.roomIndex else s.roomIndex.set(r, s.roomIndex.get(r).union(Set(t))),
       cooperative: if (cooperative) s.cooperative.union(Set(t)) else s.cooperative
     }
   }
@@ -100,11 +121,7 @@ module PostDeliveryTasks {
     all {
       s.task.get(t) == "queued",
       s.aborted.contains(t),
-      s' = {
-        ...s,
-        task: s.task.set(t, "settled"),
-        failures: s.failures.union(Set(t))
-      }
+      s' = settleTask(s, t)
     },
     all {
       s.task.get(t) == "queued",
@@ -134,13 +151,7 @@ module PostDeliveryTasks {
     },
     all {
       s.task.get(t) == "running",
-      s' = {
-        ...s,
-        task: s.task.set(t, "settled"),
-        failures: if (s.cooperative.contains(t) and s.aborted.contains(t))
-          s.failures.union(Set(t))
-        else s.failures
-      }
+      s' = settleTask(s, t)
     }
   }
   // Effects can occur before completion or failure. Cancellation only prevents
@@ -153,14 +164,11 @@ module PostDeliveryTasks {
       effects: s.effects.union(Set(t))
     }
   }
-  // Rejected callbacks are reported, observed, and removed from both indexes.
+  // Rejected callbacks are reported and removed from both indexes. The error
+  // history belongs to the diagnostic sink, not retained task-tracker state.
   action RejectTask(t: int): bool = all {
     Set("running", "waiting").contains(s.task.get(t)),
-    s' = {
-      ...s,
-      task: s.task.set(t, "settled"),
-      failures: s.failures.union(Set(t))
-    }
+    s' = settleTask(s, t)
   }
   action BeginRoomDrain(r: int): bool = all {
     s.roomDrain.get(r) == "idle", s.boundary.get(r) == "none",
@@ -252,25 +260,28 @@ module PostDeliveryTasks {
   val TypeOK = and {
     Tasks.forall(t => Set("new", "queued", "waiting", "running", "settled").contains(s.task.get(t))),
     Tasks.forall(t => Set(0, 1, 2).contains(s.room.get(t))),
-    Tasks.forall(t => Set("none", "explicit", "ambient", "unscoped", "diagnostic").contains(s.admission.get(t))),
     Tasks.forall(t => Set("unknown", "yes", "no").contains(s.permission.get(t))),
     Rooms.forall(r => Set("none", "pending", "delivered", "failed", "closed").contains(s.boundary.get(r))),
     Rooms.forall(r => Set("idle", "waiting", "returned", "rejected").contains(s.roomDrain.get(r))),
     Set("idle", "waiting", "returned", "rejected").contains(s.runtimeDrain),
-    s.aborted.subseteq(Tasks), s.invoked.subseteq(Tasks), s.effects.subseteq(Tasks), s.failures.subseteq(Tasks)
+    s.aborted.subseteq(Tasks), s.invoked.subseteq(Tasks), s.effects.subseteq(Tasks), s.runtimeIndex.subseteq(Tasks),
+    Rooms.forall(r => s.roomIndex.get(r).subseteq(Tasks))
   }
-  val ScopedAdmission = Tasks.forall(t => s.task.get(t) != "new" and s.room.get(t) != 0 implies Set("explicit", "ambient").contains(s.admission.get(t)))
-  val ExplicitModeEnforced = ExplicitOwnership implies Tasks.forall(t => not(Set("ambient", "unscoped").contains(s.admission.get(t))))
+  val ScopedAdmission = s.scopedAdmissionValid
+  val ExplicitModeEnforced = s.explicitAdmissionValid
   val EffectsRequireInvocation = s.effects.subseteq(s.invoked)
   val FailedDeliveryBlocksEffects = Tasks.forall(t => s.permission.get(t) == "no" implies not(s.effects.contains(t)))
   val AbortedBeforeInvocationHasNoEffect = s.aborted.exclude(s.invoked).intersect(s.effects).size() == 0
-  val TaskIndexesAgree = pending(s).size() == roomPending(s, 1).size() + roomPending(s, 2).size() + pending(s).filter(t => s.room.get(t) == 0).size()
+  val TaskIndexesAgree = and {
+    s.runtimeIndex == Tasks.filter(t => Set("queued", "waiting", "running").contains(s.task.get(t))),
+    Rooms.forall(r => s.roomIndex.get(r) == s.runtimeIndex.filter(t => s.room.get(t) == r))
+  }
   val CapturedSettlementRetained = Tasks.forall(t => s.task.get(t) == "waiting" and s.boundary.get(s.room.get(t)) == "closed" implies s.permission.get(t) != "unknown")
   temporal QuarantineIsFinal = always((s.quarantined implies next(s.quarantined)).orKeep(s))
   temporal QuarantineRetainsPending = always((not(s.quarantined) and next(s.quarantined) implies pending(s).subseteq(next(pending(s)))).orKeep(s))
   temporal NoAdmissionAfterQuarantine = always((s.quarantined implies Tasks.forall(t => s.task.get(t) == "new" implies next(s.task).get(t) == "new")).orKeep(s))
-  temporal RuntimeReturnsEmpty = always((s.runtimeDrain == "waiting" and next(s.runtimeDrain) == "returned" implies pending(s).size() == 0).orKeep(s))
-  temporal RoomReturnsEmpty = Rooms.forall(r => always((s.roomDrain.get(r) == "waiting" and next(s.roomDrain).get(r) == "returned" implies roomPending(s, r).size() == 0).orKeep(s)))
+  temporal RuntimeReturnsEmpty = always((s.runtimeDrain != "returned" and next(s.runtimeDrain) == "returned" implies pending(s).size() == 0).orKeep(s))
+  temporal RoomReturnsEmpty = Rooms.forall(r => always((s.roomDrain.get(r) != "returned" and next(s.roomDrain).get(r) == "returned" implies roomPending(s, r).size() == 0).orKeep(s)))
   temporal Fairness = and {
     Tasks.forall(t => AdvanceTask(t).weakFair(s)),
     Rooms.forall(r => ResolveDelivery(r, true).weakFair(s)),

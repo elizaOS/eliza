@@ -69,5 +69,11 @@
 		"Concurrent observers of the same room drain, multiple delivery cycles, callback result values and JS garbage collection are outside these bounds.",
 		"Registration may occur while draining or after an earlier successful drain. Empty-at-return properties apply to the return transition, not forever afterward.",
 		"Conformance checks exercise named real queue/promise traces; they do not establish full bisimulation between arbitrary JavaScript schedules and the finite model."
-	]
+	],
+	"abstraction": {
+		"admission": "All explicit, ambient, unscoped and diagnostic inputs remain nondeterministic. Valid aliases merge after sticky scoped/explicit guard witnesses are computed, because the tracker does not retain admission mode.",
+		"indexes": "Runtime and room pending sets are stored independently and checked against task phases and room identities. Registration and finally cleanup update them atomically, matching synchronous Set operations.",
+		"terminalCallbacks": "The cooperation selector is forgotten after settlement because no later transition reads it. Failure-ID history is omitted because it belongs to the diagnostic sink and does not control the tracker; real tests assert error reporting.",
+		"progress": "With finite one-start observers, eventual permanent quiescence is equivalent to the explicitly retained per-observer leads-to obligations."
+	}
 }
