@@ -553,12 +553,14 @@ export class KokoroFfiRuntime implements KokoroRuntime {
 		}
 		const ipa = args.phonemes.phonemes;
 		const phonemeCount = Array.from(ipa).length;
-		if (phonemeCount === 0 || phonemeCount > 510) {
+		// The native graph caps wrapped input at 510 symbols (two pads), so
+		// the IPA itself may hold at most 508 codepoints.
+		if (phonemeCount === 0 || phonemeCount > 508) {
 			throw new ElizaError(
-				"[KokoroFfiRuntime] Speech input must contain 1 to 510 IPA codepoints; split the complete utterance before synthesis.",
+				"[KokoroFfiRuntime] Speech input must contain 1 to 508 IPA codepoints; split the complete utterance before synthesis.",
 				{
 					code: "KOKORO_PHRASE_TOO_LARGE",
-					context: { phonemeCount, maximum: 510 },
+					context: { phonemeCount, maximum: 508 },
 				},
 			);
 		}
