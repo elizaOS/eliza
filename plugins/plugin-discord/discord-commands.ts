@@ -214,14 +214,32 @@ export async function handleGuildCreate(
 		source: "discord",
 	};
 
-	service.runtime.emitEvent([DiscordEventTypes.WORLD_JOINED], {
-		runtime: service.runtime,
-		source: "discord",
-		world: standardizedData.world,
-		rooms: standardizedData.rooms,
-		entities: standardizedData.entities,
-		server: fullGuild,
-	} as EventPayload);
+	try {
+		await service.runtime.emitEvent([DiscordEventTypes.WORLD_JOINED], {
+			runtime: service.runtime,
+			source: "discord",
+			world: standardizedData.world,
+			rooms: standardizedData.rooms,
+			entities: standardizedData.entities,
+			server: fullGuild,
+		} as EventPayload);
+	} catch (emitError) {
+		service.runtime.reportError("discord:emit-event", emitError, {
+			accountId: service.accountId ?? "default",
+			events: DiscordEventTypes.WORLD_JOINED,
+			guildId: fullGuild.id,
+			guildName: fullGuild.name,
+		});
+	}
 
-	service.runtime.emitEvent([EventType.WORLD_JOINED], standardizedData);
+	try {
+		await service.runtime.emitEvent([EventType.WORLD_JOINED], standardizedData);
+	} catch (emitError) {
+		service.runtime.reportError("discord:emit-event", emitError, {
+			accountId: service.accountId ?? "default",
+			events: EventType.WORLD_JOINED,
+			guildId: fullGuild.id,
+			guildName: fullGuild.name,
+		});
+	}
 }
