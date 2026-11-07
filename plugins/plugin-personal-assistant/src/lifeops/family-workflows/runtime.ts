@@ -350,7 +350,8 @@ export class FamilyWorkflowRuntimeService extends Service {
       );
     }
     const school = getSchoolSourceFactRuntimeService(this.runtime);
-    if (school) claims.push(...(await school.listFacts()).map(schoolClaim));
+    if (school)
+      claims.push(...(await school.listCurrentFacts()).map(schoolClaim));
     const agreements = getAgreementKnowledgeService(this.runtime);
     if (agreements) {
       for (const obligation of await agreements.listApprovedObligations()) {

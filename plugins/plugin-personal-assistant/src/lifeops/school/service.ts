@@ -280,6 +280,97 @@ function bundleMatches(
     canonicalSchoolJson(bundle.items) === canonicalSchoolJson(input.items)
   );
 }
+/**
+ * Resolves a notice's revisions without writing anything: the highest
+ * authority wins, then the highest version. Equal top revisions with different
+ * material contradict each other; every other revision is superseded.
+ */
+function resolveNoticeFacts(
+  noticeKey: string,
+  facts: readonly SourceFact[],
+): {
+  resolution: SchoolNoticeResolution;
+  top: SchoolFactProjection[];
+  current: SchoolFactProjection[];
+  superseded: SchoolFactProjection[];
+} {
+  const projections = facts.map(schoolFactProjection);
+  const highestAuthority = Math.max(
+    ...projections.map((projection) =>
+      authorityRank(projection.fact.authority),
+    ),
+  );
+  const authorityWinners = projections.filter(
+    (projection) =>
+      authorityRank(projection.fact.authority) === highestAuthority,
+  );
+  const highestVersion = Math.max(
+    ...authorityWinners.map((projection) => projection.fact.version.sequence),
+  );
+  const top = authorityWinners.filter(
+    (projection) => projection.fact.version.sequence === highestVersion,
+  );
+  const distinctMaterials = new Set(
+    top.map((projection) => projection.materialSha256),
+  );
+  if (distinctMaterials.size > 1) {
+    const contradictionFactIds = top
+      .map((projection) => projection.fact.id)
+      .sort();
+    const topIds = new Set(contradictionFactIds);
+    const superseded = projections.filter(
+      (projection) => !topIds.has(projection.fact.id),
+    );
+    return {
+      resolution: {
+        noticeKey,
+        state: "conflicted",
+        currentFactIds: [],
+        supersededFactIds: superseded
+          .map((projection) => projection.fact.id)
+          .sort(),
+        contradictionFactIds,
+        materialSha256: null,
+        extraction: null,
+        childEntityId: null,
+      },
+      top,
+      current: [],
+      superseded,
+    };
+  }
+  const winner = top[0];
+  const current = projections.filter(
+    (projection) => projection.materialSha256 === winner.materialSha256,
+  );
+  const currentIds = new Set(current.map((projection) => projection.fact.id));
+  const superseded = projections.filter(
+    (projection) => !currentIds.has(projection.fact.id),
+  );
+  const state =
+    winner.payload.extraction.kind === "cancellation"
+      ? "cancelled"
+      : winner.payload.childResolutionStatus === "resolved"
+        ? "active"
+        : "needs_clarification";
+  return {
+    resolution: {
+      noticeKey,
+      state,
+      currentFactIds: current.map((projection) => projection.fact.id).sort(),
+      supersededFactIds: superseded
+        .map((projection) => projection.fact.id)
+        .sort(),
+      contradictionFactIds: [],
+      materialSha256: winner.materialSha256,
+      extraction: winner.payload.extraction,
+      childEntityId: winner.childEntityId,
+    },
+    top,
+    current,
+    superseded,
+  };
+}
 export interface SchoolSourceFactServiceDependencies {
   runtime: IAgentRuntime;
   agentId: string;
@@ -514,45 +605,11 @@ export class SchoolSourceFactService {
         { noticeKey },
       );
     }
-    const projections = facts.map(schoolFactProjection);
-    const highestAuthority = Math.max(
-      ...projections.map((projection) =>
-        authorityRank(projection.fact.authority),
-      ),
+    const { resolution, top, current, superseded } = resolveNoticeFacts(
+      noticeKey,
+      facts,
     );
-    const authorityWinners = projections.filter(
-      (projection) =>
-        authorityRank(projection.fact.authority) === highestAuthority,
-    );
-    const highestVersion = Math.max(
-      ...authorityWinners.map((projection) => projection.fact.version.sequence),
-    );
-    const top = authorityWinners.filter(
-      (projection) => projection.fact.version.sequence === highestVersion,
-    );
-    const distinctMaterials = new Set(
-      top.map((projection) => projection.materialSha256),
-    );
-    let resolution: SchoolNoticeResolution;
-    if (distinctMaterials.size > 1) {
-      const contradictionFactIds = top
-        .map((projection) => projection.fact.id)
-        .sort();
-      const topIds = new Set(contradictionFactIds);
-      const supersededFactIds = projections
-        .filter((projection) => !topIds.has(projection.fact.id))
-        .map((projection) => projection.fact.id)
-        .sort();
-      resolution = {
-        noticeKey,
-        state: "conflicted",
-        currentFactIds: [],
-        supersededFactIds,
-        contradictionFactIds,
-        materialSha256: null,
-        extraction: null,
-        childEntityId: null,
-      };
+    if (resolution.state === "conflicted") {
       for (let left = 0; left < top.length; left += 1) {
         for (let right = left + 1; right < top.length; right += 1) {
           await this.deps.repository.linkFacts({
@@ -570,34 +627,6 @@ export class SchoolSourceFactService {
         }
       }
     } else {
-      const winner = top[0];
-      const current = projections.filter(
-        (projection) => projection.materialSha256 === winner.materialSha256,
-      );
-      const currentIds = new Set(
-        current.map((projection) => projection.fact.id),
-      );
-      const superseded = projections.filter(
-        (projection) => !currentIds.has(projection.fact.id),
-      );
-      const state =
-        winner.payload.extraction.kind === "cancellation"
-          ? "cancelled"
-          : winner.payload.childResolutionStatus === "resolved"
-            ? "active"
-            : "needs_clarification";
-      resolution = {
-        noticeKey,
-        state,
-        currentFactIds: current.map((projection) => projection.fact.id).sort(),
-        supersededFactIds: superseded
-          .map((projection) => projection.fact.id)
-          .sort(),
-        contradictionFactIds: [],
-        materialSha256: winner.materialSha256,
-        extraction: winner.payload.extraction,
-        childEntityId: winner.childEntityId,
-      };
       for (const currentFact of current) {
         for (const prior of superseded) {
           await this.deps.repository.linkFacts({
@@ -671,6 +700,39 @@ export class SchoolSourceFactService {
   }
   async listFacts(stableFactKey?: string): Promise<SourceFact[]> {
     return this.deps.repository.listFacts(stableFactKey);
+  }
+  /**
+   * Facts a reader may present as current. A school notice keeps only its
+   * resolved revisions (both sides of an unresolved contradiction), never a
+   * revision that a correction or cancellation superseded.
+   */
+  async listCurrentFacts(): Promise<SourceFact[]> {
+    const facts = await this.deps.repository.listFacts();
+    const notices = new Map<string, SourceFact[]>();
+    for (const fact of facts) {
+      if (!fact.stableFactKey.startsWith(SCHOOL_NOTICE_FACT_PREFIX)) continue;
+      notices.set(fact.stableFactKey, [
+        ...(notices.get(fact.stableFactKey) ?? []),
+        fact,
+      ]);
+    }
+    const currentIds = new Set<string>();
+    for (const [stableFactKey, revisions] of notices) {
+      const { resolution } = resolveNoticeFacts(
+        stableFactKey.slice(SCHOOL_NOTICE_FACT_PREFIX.length),
+        revisions,
+      );
+      for (const id of resolution.state === "conflicted"
+        ? resolution.contradictionFactIds
+        : resolution.currentFactIds) {
+        currentIds.add(id);
+      }
+    }
+    return facts.filter(
+      (fact) =>
+        !fact.stableFactKey.startsWith(SCHOOL_NOTICE_FACT_PREFIX) ||
+        currentIds.has(fact.id),
+    );
   }
   async listActionBundles(noticeKey?: string): Promise<ActionBundle[]> {
     return this.deps.repository.listActionBundles(noticeKey);
@@ -885,6 +947,9 @@ export class SchoolSourceFactRuntimeService extends Service {
   }
   listFacts(): Promise<SourceFact[]> {
     return this.school.listFacts();
+  }
+  listCurrentFacts(): Promise<SourceFact[]> {
+    return this.school.listCurrentFacts();
   }
 }
 export function getSchoolSourceFactRuntimeService(
