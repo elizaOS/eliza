@@ -1,8 +1,9 @@
 /**
  * Cuts the streaming token feed into speakable phrases so TTS can start before
  * the model finishes a sentence: it breaks at the first clause/sentence-final
- * punctuation or a hard word cap, whichever comes first. Feeds the voice
- * scheduler's phrase pipeline.
+ * punctuation or a hard word cap, whichever comes first, but never inside a
+ * number ("$1,299", "3.14", "10:30"). Feeds the voice scheduler's phrase
+ * pipeline.
  */
 import type { PhonemeTokenizer } from "./phoneme-tokenizer";
 import type {
@@ -86,6 +87,8 @@ export class PhraseChunker {
 	private readonly maxTokensPerPhrase: number;
 	private readonly tokenizer: PhonemeTokenizer | null;
 	private phonemeCount = 0;
+	/** A cut that fell inside a number; the next piece that does not continue the number releases it. */
+	private heldCut: Phrase["terminator"] | null = null;
 	/**
 	 * T3 — time-budget flush. `firstTokenAtMs` is captured on the first
 	 * `push()` after an empty buffer; once `clock() - firstTokenAtMs >=
@@ -137,27 +140,48 @@ export class PhraseChunker {
 	}
 
 	push(token: AcceptedToken): Phrase | null {
-		if (this.buffer.length === 0) {
-			this.firstTokenAtMs = this.clock();
+		// A held cut ends the phrase before the first piece that does not
+		// continue the number. A piece that ends a phrase itself joins it.
+		if (
+			this.heldCut !== null &&
+			!/^\p{Nd}/u.test(token.text) &&
+			!this.endsWithTerminator(token.text)
+		) {
+			const phrase = this.flushAs(this.heldCut);
+			this.append(token);
+			return phrase;
 		}
-		this.buffer.push(token);
+		this.append(token);
 
+		// A cut never falls inside a number: "$1,", "3." and "10:" wait for the
+		// next piece, so "$1,299", "3.14" and "10:30" reach TTS in one phrase.
+		// The scheduler's time-budget timer still flushes a held cut.
+		const cut = this.dueCut(token);
+		this.heldCut = null;
+		if (cut === null) return null;
+		if (/\p{Nd}[,.:]?$/u.test(this.tailText())) {
+			this.heldCut = cut;
+			return null;
+		}
+		return this.flushAs(cut);
+	}
+
+	private dueCut(token: AcceptedToken): Phrase["terminator"] | null {
 		// Punctuation always wins — a `, . ! ?` boundary forces a flush even
 		// in phoneme-stream mode.
 		if (this.endsWithTerminator(token.text)) {
-			return this.flushAs("punctuation");
+			return "punctuation";
 		}
 
-		if (this.chunkOn === "phoneme-stream" && this.tokenizer !== null) {
-			const phonemes = this.tokenizer.tokenize(token.text, token.index);
-			this.phonemeCount += phonemes.length;
-			if (this.phonemeCount >= this.phonemesPerChunk) {
-				return this.flushAs("phoneme-stream");
-			}
+		if (
+			this.chunkOn === "phoneme-stream" &&
+			this.phonemeCount >= this.phonemesPerChunk
+		) {
+			return "phoneme-stream";
 		}
 
 		if (this.buffer.length >= this.maxTokensPerPhrase) {
-			return this.flushAs("max-cap");
+			return "max-cap";
 		}
 
 		// T3 — time-budget flush. Re-uses the `"max-cap"` terminator because
@@ -166,7 +190,7 @@ export class PhraseChunker {
 		// flush" is what max-cap already means.
 		const budget = this.currentBudgetMs();
 		if (budget > 0 && this.clock() - this.firstTokenAtMs >= budget) {
-			return this.flushAs("max-cap");
+			return "max-cap";
 		}
 		return null;
 	}
@@ -225,6 +249,7 @@ export class PhraseChunker {
 		const kept = this.buffer.filter((t) => t.index < fromIndex);
 		if (kept.length === this.buffer.length) return;
 		this.buffer = kept;
+		this.heldCut = null;
 		this.phonemeCount = 0;
 		if (this.buffer.length === 0) {
 			this.firstTokenAtMs = 0;
@@ -238,6 +263,7 @@ export class PhraseChunker {
 
 	reset(): void {
 		this.buffer = [];
+		this.heldCut = null;
 		this.phonemeCount = 0;
 		this.firstTokenAtMs = 0;
 		this.phrasesEmitted = 0;
@@ -249,9 +275,34 @@ export class PhraseChunker {
 		return this.terminators.has(last);
 	}
 
+	/** Text of the last two pieces: enough to see a digit before a one-char separator piece. */
+	private tailText(): string {
+		return this.buffer
+			.slice(-2)
+			.map((t) => t.text)
+			.join("");
+	}
+
+	private append(token: AcceptedToken): void {
+		if (this.buffer.length === 0) {
+			this.firstTokenAtMs = this.clock();
+		}
+		this.buffer.push(token);
+		if (this.chunkOn === "phoneme-stream" && this.tokenizer !== null) {
+			this.phonemeCount += this.tokenizer.tokenize(
+				token.text,
+				token.index,
+			).length;
+		}
+	}
+
 	private flushAs(terminator: Phrase["terminator"]): Phrase {
+		// A held cut is where the phrase ends, also when the end of the reply
+		// or the time budget releases it.
+		const boundary = this.heldCut ?? terminator;
 		const tokens = this.buffer;
 		this.buffer = [];
+		this.heldCut = null;
 		this.phonemeCount = 0;
 		this.firstTokenAtMs = 0;
 		this.phrasesEmitted++;
@@ -263,7 +314,7 @@ export class PhraseChunker {
 			text,
 			fromIndex,
 			toIndex,
-			terminator,
+			terminator: boundary,
 		};
 		return phrase;
 	}

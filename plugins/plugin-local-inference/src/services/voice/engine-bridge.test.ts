@@ -26,7 +26,7 @@ import {
 } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { fakeFfi } from "./__test-helpers__/fake-ffi";
 import {
 	EngineVoiceBridge,
@@ -387,6 +387,132 @@ describe("EngineVoiceBridge direct synthesis guard", () => {
 		expect(transcript).toBe("Hello, say hello back.");
 		expect(observedSampleRate).toBe(24_000);
 		expect(observedSamples).toBe(24_000);
+	});
+});
+
+describe("EngineVoiceBridge phrase boundaries inside numbers", () => {
+	let bundleRoot: string;
+
+	beforeEach(() => {
+		bundleRoot = mkdtempSync(path.join(tmpdir(), "eliza-engine-bridge-"));
+		writePresetBundle(bundleRoot);
+	});
+
+	afterEach(() => {
+		rmSync(bundleRoot, { recursive: true, force: true });
+	});
+
+	/** Streams reply pieces one by one, as `engine.ts` does, and records the phrases sent to TTS. */
+	async function stream(
+		pieces: string[],
+	): Promise<{ bridge: EngineVoiceBridge; spoken: Phrase[] }> {
+		const spoken: Phrase[] = [];
+		const backend: TtsBackend = {
+			async synthesize({ phrase }) {
+				spoken.push(phrase);
+				return {
+					phraseId: phrase.id,
+					fromIndex: phrase.fromIndex,
+					toIndex: phrase.toIndex,
+					pcm: new Float32Array(1),
+					sampleRate: 24_000,
+				};
+			},
+		};
+		const bridge = EngineVoiceBridge.start({
+			bundleRoot,
+			useFfiBackend: false,
+			lifecycleLoaders: lifecycleLoadersOk(),
+			backendOverride: backend,
+		});
+		await bridge.arm();
+		let index = 0;
+		for (const text of pieces) {
+			await bridge.pushAcceptedToken({ index: index++, text });
+		}
+		return { bridge, spoken };
+	}
+
+	/** Streams one whole reply and returns the text of each phrase sent to TTS. */
+	async function speak(pieces: string[]): Promise<string[]> {
+		const { bridge, spoken } = await stream(pieces);
+		await bridge.settle();
+		return spoken.map(({ text }) => text);
+	}
+
+	// Tokenizers emit the separator as its own piece.
+	it.each([
+		[
+			"a thousands separator",
+			["It", " costs", " $", "1", ",", "299", "."],
+			"It costs $1,299.",
+		],
+		["a decimal point", ["Pi", " is", " 3", ".", "14", "."], "Pi is 3.14."],
+		["a clock colon", ["Call", " at", " 10", ":", "30", "."], "Call at 10:30."],
+	])("keeps %s inside one phrase", async (_separator, pieces, phrase) => {
+		expect(await speak(pieces)).toEqual([phrase]);
+	});
+
+	it("does not let the 8-piece phrase cap cut a number spelled one digit per piece", async () => {
+		// Qwen and Gemma tokenizers emit one digit per piece.
+		expect(
+			await speak([
+				"Your",
+				" meeting",
+				" is",
+				" at",
+				" ",
+				"1",
+				"0",
+				":",
+				"3",
+				"0",
+				".",
+			]),
+		).toEqual(["Your meeting is at 10:30."]);
+		expect(
+			await speak([
+				"The",
+				" code",
+				" is",
+				" ",
+				"4",
+				"8",
+				"2",
+				"9",
+				"1",
+				"7",
+				" now",
+				".",
+			]),
+		).toEqual(["The code is 482917", " now."]);
+	});
+
+	it("still ends a phrase at punctuation after a number when no digit follows", async () => {
+		expect(await speak(["Room", " 4", ",", " please", "."])).toEqual([
+			"Room 4,",
+			" please.",
+		]);
+		expect(await speak(["I", " have", " 3", "."])).toEqual(["I have 3."]);
+	});
+
+	it("labels a held cut as punctuation when the end of the reply or the time budget releases it", async () => {
+		const ended = await stream(["I", " have", " 3", "."]);
+		await ended.bridge.settle();
+		expect(
+			ended.spoken.map(({ text, terminator }) => [text, terminator]),
+		).toEqual([["I have 3.", "punctuation"]]);
+
+		// A slow model: the scheduler's time-budget timer releases the cut
+		// before the next piece arrives.
+		const slow = await stream(["I", " have", " 3", "."]);
+		await vi.waitFor(() => expect(slow.spoken).toHaveLength(1), {
+			timeout: 5_000,
+		});
+		expect(
+			slow.spoken.map(({ text, terminator }) => [text, terminator]),
+		).toEqual([["I have 3.", "punctuation"]]);
+		await slow.bridge.settle();
 	});
 });
 
