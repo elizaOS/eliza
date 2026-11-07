@@ -131,10 +131,19 @@ function googleCapabilitiesForAccount(
     ...stringArray(meta.googleCapabilities),
   ];
   const scopes = stringArray(meta.grantedScopes);
-  if (scopes.some((scope) => scope.includes("calendar"))) {
+  // Match exact calendar scope suffixes: "calendar" substring matching would
+  // grant read to settings-only scopes and mishandle readonly/write pairs.
+  const CALENDAR_EVENT_READ = /\/calendar(\.events)?(\.readonly)?$/;
+  const CALENDAR_EVENT_WRITE = /\/calendar(\.events)?$/;
+  if (scopes.some((scope) => CALENDAR_EVENT_READ.test(scope))) {
     values.push("google.calendar.read");
   }
-  if (scopes.some((scope) => scope.includes("calendar.events"))) {
+  if (
+    scopes.some(
+      (scope) =>
+        CALENDAR_EVENT_WRITE.test(scope) && !scope.endsWith(".readonly"),
+    )
+  ) {
     values.push("google.calendar.write");
   }
   if (scopes.some((scope) => scope.includes("gmail.readonly"))) {
