@@ -87,7 +87,10 @@ import {
   isClockOperation,
   validateClockResult,
 } from "./clock-contract.ts";
-import { FILES_OPERATION_TYPES } from "./files-browser-contract.ts";
+import {
+  FILES_CAPABILITY,
+  FILES_OPERATION_TYPES,
+} from "./files-browser-contract.ts";
 import {
   DeviceActionError,
   type DeviceActionPayload,
@@ -1761,6 +1764,7 @@ export class DeviceActionService {
           NOTES_QUERY_CAPABILITY,
           NOTES_SEARCH_CAPABILITY,
           CALENDAR_AVAILABILITY_CAPABILITY,
+          FILES_CAPABILITY,
           NAMED_TARGET_CAPABILITY,
           CALENDAR_NAMED_READ_CAPABILITY,
           REMINDER_CAPABILITY,

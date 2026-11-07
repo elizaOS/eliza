@@ -314,6 +314,7 @@ export {
   setDeviceReadReplyConversation,
   withDeviceActionTurn,
 } from "./services/device-actions/service.ts";
+export { FILES_CAPABILITY } from "./services/device-actions/files-browser-contract.ts";
 // Canonical device tools are shared by all app hosts; native capabilities select availability.
 export { deviceActionTools } from "./services/device-actions/tools.ts";
 export * from "./services/evaluator.ts";
