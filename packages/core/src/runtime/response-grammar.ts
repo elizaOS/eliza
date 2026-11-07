@@ -713,11 +713,13 @@ function escapeGbnfClassChar(value: string): string {
 			case "]":
 				out += "\\]";
 				break;
+			// llama.cpp reads only \x \u \U \t \r \n \\ \" \[ \] after a
+			// backslash and rejects the whole grammar on `\-` or `\^`.
 			case "-":
-				out += "\\-";
+				out += "\\x2d";
 				break;
 			case "^":
-				out += "\\^";
+				out += "\\x5e";
 				break;
 			case "\n":
 				out += "\\n";
