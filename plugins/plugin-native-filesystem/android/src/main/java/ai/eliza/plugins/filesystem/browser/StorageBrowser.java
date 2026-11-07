@@ -155,7 +155,7 @@ public final class StorageBrowser {
   File source=resolve(path,false);validName(name);if(name.startsWith("."))throw new IllegalArgumentException("Invalid name");if(!source.exists())throw new java.io.FileNotFoundException();
   File destination=new File(source.getParentFile(),name);
   if(isLink(destination))throw new IllegalStateException("exists");
-  if(destination.exists()&&!destination.getCanonicalPath().equals(source.getCanonicalPath())&&!name.equalsIgnoreCase(source.getName()))throw new IllegalStateException("exists");
+  if(destination.exists()&&!Files.isSameFile(source.toPath(),destination.toPath()))throw new IllegalStateException("exists");
   if(!source.renameTo(destination))throw new IOException("Rename failed");
   return relative(destination);
  }
