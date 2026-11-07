@@ -415,6 +415,8 @@ export function validateChatImages(images: unknown): string | null {
         return `Thumbnail too large (max ${MAX_IMAGE_DATA_BYTES / 1048576} MB)`;
       if (!BASE64_RE.test(tData))
         return "Thumbnail data contains invalid base64 characters";
+      if (base64DecodesToZeroBytes(tData))
+        return "Thumbnail data decodes to zero bytes";
       if (
         typeof tMime !== "string" ||
         !tMime.toLowerCase().startsWith("image/")
