@@ -13,7 +13,9 @@ import {
   type Content,
   type createMessageMemory,
   executePlannedToolCall,
+  extractJsonObjectSpans,
   ModelType,
+  parseJsonObject,
 } from "@elizaos/core";
 import { extractCompatTextContent } from "./compat-utils.ts";
 
@@ -24,7 +26,73 @@ export type FallbackParsedAction = {
 
 type RuntimeActionLike = Action;
 
-async function rewriteFallbackActionText(args: {
+/** The bodies of every fenced block, in document order, or [] when none. */
+function extractFencedBodies(value: string): string[] {
+  const bodies: string[] = [];
+  let searchFrom = 0;
+  while (true) {
+    const opener = value.indexOf("```", searchFrom);
+    if (opener < 0) break;
+    let bodyStart = opener + 3;
+    if (value.slice(bodyStart, bodyStart + 4).toLowerCase() === "json") {
+      bodyStart += 4;
+    }
+    while (bodyStart < value.length && value[bodyStart]?.trim() === "") {
+      bodyStart += 1;
+    }
+    const closer = value.indexOf("```", bodyStart);
+    if (closer < 0) break;
+    let bodyEnd = closer;
+    while (bodyEnd > bodyStart && value[bodyEnd - 1]?.trim() === "") {
+      bodyEnd -= 1;
+    }
+    bodies.push(value.slice(bodyStart, bodyEnd));
+    searchFrom = closer + 3;
+  }
+  return bodies;
+}
+
+/**
+ * First object carrying a non-empty `response` string, or null when none
+ * does. A fenced block still wins over the first span: when the prose
+ * before the fence quotes a JSON snippet, the first span is the snippet,
+ * not the answer, so reading it first regressed fenced replies. Among
+ * fenced blocks the LAST one carrying a `response` wins: the model may
+ * restate a draft in an earlier fence and give the final answer in a
+ * later one, and the earlier fence must not suppress it. Only when no
+ * fenced block carries a `response` string do we fall back to scanning
+ * every span, each read through the tolerant object reader so
+ * string-escape repairs still apply inside a span.
+ */
+function firstResponseObject(raw: string): { response?: unknown } | null {
+  let lastFenced: { response?: unknown } | null = null;
+  for (const fencedBody of extractFencedBodies(raw)) {
+    const fenced = parseJsonObject<{ response?: unknown }>(fencedBody);
+    if (
+      fenced &&
+      typeof fenced.response === "string" &&
+      fenced.response.trim()
+    ) {
+      lastFenced = fenced;
+    }
+  }
+  if (lastFenced !== null) return lastFenced;
+  for (const { start, end } of extractJsonObjectSpans(raw)) {
+    const candidate = parseJsonObject<{ response?: unknown }>(
+      raw.slice(start, end),
+    );
+    if (
+      candidate &&
+      typeof candidate.response === "string" &&
+      candidate.response.trim()
+    ) {
+      return candidate;
+    }
+  }
+  return null;
+}
+
+export async function rewriteFallbackActionText(args: {
   runtime: AgentRuntime;
   actionName: string;
   text: string;
@@ -77,8 +145,16 @@ async function rewriteFallbackActionText(args: {
       signal: args.abortSignal,
       providerOptions: { eliza: { thinking: "off" } },
     });
-    const parsed = JSON.parse(String(raw).trim()) as { response?: unknown };
-    return typeof parsed.response === "string" && parsed.response.trim()
+    // Read the reply with the shared tolerant object reader: a bare
+    // JSON.parse throws when the model wraps the object in prose or a
+    // fence, and the catch below then replaces the action's actual
+    // result with the generic fallback text. The prose may itself quote
+    // a JSON payload before the fenced answer, so the first object
+    // region is not necessarily the rewrite — a fenced block wins, and
+    // only then do we scan every span for the first object carrying a
+    // non-empty `response` string.
+    const parsed = firstResponseObject(String(raw));
+    return typeof parsed?.response === "string" && parsed.response.trim()
       ? parsed.response.trim()
       : fallback();
   } catch (err) {
