@@ -386,3 +386,8 @@ configuration explicitly retains the existing audience for installed clients.
 Other deployments must configure their clients to verify their chosen audience
 and issuer. Change these together during a client migration. This token presents
 plan state; it does not grant API access or replace per-request authorization.
+
+Direct EVM sweeps retain one signed transaction per chain and sender until its
+successful receipt is observed. Other sweeps from that wallet wait; pending nonce
+ambiguity or legacy identity conflicts require reconciliation without replacing
+signed bytes. Different senders proceed independently.
