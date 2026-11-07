@@ -25,7 +25,7 @@ afterEach(() => {
 	stopTaskScheduler();
 });
 
-// TaskService.tla OneShotAtMostOnce: runDueTasks() during a daemon runTick.
+// TaskService.qnt OneShotAtMostOnce: runDueTasks() during a daemon runTick.
 it("a host runDueTasks during a daemon tick does not run a one-shot twice", async () => {
 	const f = await createTestRuntime({ characterName: "DaemonOneShot" });
 	const entered = latch(),
@@ -63,7 +63,7 @@ it("a host runDueTasks during a daemon tick does not run a one-shot twice", asyn
 	}
 });
 
-// TaskService.tla OneShotAtMostOnce (Recheck): a stale snapshot of a one-shot
+// TaskService.qnt OneShotAtMostOnce (Recheck): a stale snapshot of a one-shot
 // that another run executed and deleted does not run it again.
 it("a stale snapshot does not rerun a one-shot that already ran", async () => {
 	const f = await createTestRuntime({ characterName: "StaleOneShot" });
@@ -106,7 +106,7 @@ it("a stale snapshot does not rerun a one-shot that already ran", async () => {
 	}
 });
 
-// TaskService.tla OneShotDeletedAfterRun: a failed re-read of a one-shot is a
+// TaskService.qnt OneShotDeletedAfterRun: a failed re-read of a one-shot is a
 // failure, not absence; the row stays and a later run executes it.
 it("a failed one-shot re-read keeps the task for a later run", async () => {
 	const f = await createTestRuntime({ characterName: "RecheckFails" });
@@ -143,7 +143,7 @@ it("a failed one-shot re-read keeps the task for a later run", async () => {
 	}
 });
 
-// TaskService.tla BlockingNoOverlap: executeTaskById during a timer tick.
+// TaskService.qnt BlockingNoOverlap: executeTaskById during a timer tick.
 it("executeTaskById does not overlap a blocking repeat task's tick run", async () => {
 	const f = await createTestRuntime({ characterName: "BlockingById" });
 	const entered = latch(),
@@ -192,7 +192,7 @@ it("executeTaskById does not overlap a blocking repeat task's tick run", async (
 	}
 });
 
-// TaskScheduler.tla OneRunTickPerService: a restarted scheduler dispatches a
+// TaskScheduler.qnt OneRunTickPerService: a restarted scheduler dispatches a
 // second runTick while the detached tick's runTick still runs, so the old
 // tick later runs a repeat task again from its stale snapshot.
 it("a scheduler restart does not dispatch a second runTick to a busy service", async () => {

@@ -5,7 +5,7 @@ import type { Action, HandlerCallback } from "../src/types/components";
 
 const tick = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 
-// ActionSettlement.tla DeliveredInEmissionOrder: a callback emitted after the
+// ActionSettlement.qnt DeliveredInEmissionOrder: a callback emitted after the
 // handler returned must not overtake callbacks still buffered for delivery.
 it("delivers a callback emitted during the buffered drain after the buffered ones", async () => {
 	const { createInitializedRuntime } = await import("./initialized-runtime");

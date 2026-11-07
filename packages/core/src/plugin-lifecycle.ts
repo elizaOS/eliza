@@ -578,7 +578,7 @@ async function stopOwnedServices(
 
 		// Withdraw the classes before the first await, so a concurrent
 		// getServiceLoadPromise() cannot start a fresh instance that nothing
-		// would stop (PluginLifecycle.tla NoOrphanInstance).
+		// would stop (PluginLifecycle.qnt NoOrphanInstance).
 		const ownedClassSet = new Set(ownedClasses);
 		const remainingClasses = currentClasses.filter(
 			(serviceClass) => !ownedClassSet.has(serviceClass),
@@ -593,7 +593,7 @@ async function stopOwnedServices(
 		// A sibling that publishes meanwhile rebuilds runtime.services from
 		// serviceTypes, so a withdrawn instance left in serviceInstancesByClass
 		// would be out of runtime.services, and a runtime stop in that window
-		// would clear it without stopping it (ServiceLifecycle.tla NoOrphan).
+		// would clear it without stopping it (ServiceLifecycle.qnt NoOrphan).
 		// The same instance can be published more than once when two plugins
 		// register the same service class, so every occurrence goes.
 		const ownedInstances = ownedClasses.flatMap((ownedClass) => {
@@ -1290,7 +1290,7 @@ export function installRuntimePluginLifecycle(runtime: IAgentRuntime): void {
 	};
 
 	// A second registration of a name joins the one in flight, so it fails
-	// when that one fails (PluginLifecycle.tla RegisterHonest).
+	// when that one fails (PluginLifecycle.qnt RegisterHonest).
 	const registrations = new Map<string, Promise<void>>();
 	runtimeWithLifecycle.registerPlugin = ((plugin: Plugin) => {
 		const inFlight = registrations.get(plugin.name);
@@ -1307,7 +1307,7 @@ export function installRuntimePluginLifecycle(runtime: IAgentRuntime): void {
 	}) as typeof runtimeWithLifecycle.registerPlugin;
 
 	// A second unload of a plugin joins the teardown in flight
-	// (PluginLifecycle.tla TeardownExclusive).
+	// (PluginLifecycle.qnt TeardownExclusive).
 	const teardowns = new Map<string, Promise<PluginOwnership | null>>();
 	const unloadOnce = (pluginName: string): Promise<PluginOwnership | null> => {
 		const inFlight = teardowns.get(pluginName);
