@@ -165,6 +165,7 @@ export { sharedTurnClientMessageId } from "./shared-turn-client-message-id";
 const SSE_TRANSPORT_READY_COMMENT = ": ready\n\n";
 const BRIDGE_INSUFFICIENT_CREDITS_CODE = -32002;
 const PROVIDER_CANCELLATION_OBSERVE_MS = 5_000;
+const SHARED_ADMISSION_OUTPUT_TOKENS = 500;
 const PERSONAL_SHARED_IMAGE_MODEL_ID = "fal-ai/flux/schnell";
 const linkedCharacterMemoryCache = new InMemoryLRUCache<UserCharacter>(256, 60_000);
 
@@ -1177,7 +1178,7 @@ async function admitTurn(
     admission = await admitOrganizationInference({
       context,
       estimatedInputTokens,
-      estimatedOutputTokens: 500,
+      estimatedOutputTokens: SHARED_ADMISSION_OUTPUT_TOKENS,
       executionCtx,
       admissionSnapshot,
       atomicProviderBoundary: Boolean(executionCtx),
@@ -1265,6 +1266,28 @@ async function settleAmbiguousProviderWork(
     });
   }
 }
+
+/**
+ * Settle a turn whose stream stopped before the provider finished. The
+ * consumer already received `delivered`, so when it is longer than the
+ * admitted output estimate it is billed like a finished reply; otherwise the
+ * admitted estimate stays, as it covers provider work that was not delivered.
+ */
+async function settleInterruptedProviderWork(
+  agent: SharedRuntimeAgent,
+  billing: BillingTurn,
+  delivered: string,
+  prompt: string,
+  reason: string,
+): Promise<void> {
+  if (estimateInputTokens([{ content: delivered }]) > SHARED_ADMISSION_OUTPUT_TOKENS) {
+    await finishBilling(agent, billing, delivered, prompt);
+    return;
+  }
+  await settleAmbiguousProviderWork(agent, billing, reason);
+}
+
+export const __sharedStreamSettlementTestHooks = { settleInterruptedProviderWork } as const;
 
 function settleAmbiguousProviderWorkOffPath(
   agent: SharedRuntimeAgent,
@@ -2052,14 +2075,17 @@ export class SharedRuntimeChatService {
     let terminalSettlementStarted = false;
     let consumerCanceled = false;
     let terminalDoneEmitted = false;
-    const settleInterruptedTurn = async (reason: string): Promise<void> => {
+    const settleInterruptedTurn = async (reason: string, delivered: string): Promise<void> => {
       if (terminalSettlementStarted) return;
       terminalSettlementStarted = true;
       if (isProviderFreeTurn(turn)) {
         await billing?.settle(0);
         return;
       }
-      await settleAmbiguousProviderWorkOffPath(agent, billing, options.executionCtx, reason);
+      if (!billing) return;
+      await settleOffResponsePath(options.executionCtx, () =>
+        settleInterruptedProviderWork(agent, billing, delivered, text, reason),
+      );
     };
     const finalizeMessages = (
       reply: string,
@@ -2301,7 +2327,7 @@ export class SharedRuntimeChatService {
           if (!finished) {
             await withinTerminalDeadline(
               finalizeMessages(streamedReply, true, () =>
-                settleInterruptedTurn("provider stream ended without completion"),
+                settleInterruptedTurn("provider stream ended without completion", streamedReply),
               ),
             );
             if (!consumerCanceled) {
@@ -2433,7 +2459,7 @@ export class SharedRuntimeChatService {
         const finalization = finalizeMessages(
           interruptedReply,
           true,
-          () => settleInterruptedTurn("consumer canceled stream"),
+          () => settleInterruptedTurn("consumer canceled stream", interruptedReply),
           undefined,
           true,
         );
