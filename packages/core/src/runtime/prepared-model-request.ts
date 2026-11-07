@@ -10,9 +10,11 @@ import {
 	getModelAttemptLease,
 	type ModelAttemptLease,
 } from "../streaming-context";
+import { isPlainObject } from "../utils/type-guards.ts";
 import {
 	DEFAULT_CONTEXT_WINDOW_TOKENS,
 	DEFAULT_INPUT_RESERVE_TOKENS,
+	utf8ByteLength,
 } from "./model-input-budget";
 
 export interface PreparedModelRequestBudget {
@@ -69,12 +71,6 @@ export interface CreatePreparedModelRequestGuardArgs {
 	countInputTokensIsExact?: true;
 }
 
-function isPlainRecord(value: unknown): value is Record<string, unknown> {
-	if (value === null || typeof value !== "object") return false;
-	const prototype = Object.getPrototypeOf(value);
-	return prototype === Object.prototype || prototype === null;
-}
-
 function assertFinitePositiveInteger(
 	value: number | undefined,
 	field: string,
@@ -127,7 +123,7 @@ function validatePreparedJsonGraph(value: unknown): void {
 				context: { location },
 			});
 		}
-		if (!Array.isArray(candidate) && !isPlainRecord(candidate)) {
+		if (!Array.isArray(candidate) && !isPlainObject(candidate)) {
 			throw new ElizaError("Prepared model request contains an opaque object", {
 				code: "MODEL_PREPARED_REQUEST_SERIALIZATION_FAILED",
 				context: {
@@ -171,7 +167,7 @@ function freezePreparedJsonGraph(value: unknown): void {
 		) {
 			return;
 		}
-		if (!Array.isArray(candidate) && !isPlainRecord(candidate)) return;
+		if (!Array.isArray(candidate) && !isPlainObject(candidate)) return;
 		visited.add(candidate);
 		for (const nested of Object.values(candidate)) visit(nested);
 		Object.freeze(candidate);
@@ -203,7 +199,7 @@ function countPreparedInputTokens(
 ): { count: number; source: PreparedModelRequestBudget["countSource"] } {
 	if (!counter) {
 		return {
-			count: new TextEncoder().encode(serialized).byteLength,
+			count: utf8ByteLength(serialized),
 			source: "utf8-upper-bound",
 		};
 	}

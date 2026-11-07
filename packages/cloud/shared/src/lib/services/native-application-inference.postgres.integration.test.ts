@@ -25,7 +25,6 @@ process.env.LOCAL_PG_POOL_MAX = "4";
 process.env.NODE_ENV = "test";
 process.env.CACHE_BACKEND = "memory";
 process.env.ELIZA_KMS_BACKEND = "memory";
-process.env.INFERENCE_AUTH_CACHE_ENABLED = "false";
 setDefaultTimeout(120_000);
 let client: {
   exec(statement: string): Promise<unknown>;

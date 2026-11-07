@@ -38,6 +38,19 @@ export function hasActionContext(
  * plus every retained recent message; keyword matching is case-insensitive.
  */
 
+/** The current message plus every retained recent message, joined; null when none has text. */
+function recentMessageText(
+	message: Memory,
+	recentMessages: Memory[],
+): string | null {
+	const texts: string[] = [];
+	if (message.content.text) texts.push(message.content.text);
+	for (const msg of recentMessages) {
+		if (msg.content.text) texts.push(msg.content.text);
+	}
+	return texts.length > 0 ? texts.join("\n") : null;
+}
+
 /**
  * Validates if any of the given keywords are present in the recent message history.
  *
@@ -54,44 +67,18 @@ export function validateActionKeywords(
 	recentMessages: Memory[],
 	keywords: string[],
 ): boolean {
-	if (!keywords || keywords.length === 0) {
-		return false;
-	}
-
 	const normalizedKeywords = keywords
 		.filter((keyword) => keyword.trim().length > 0)
 		.map((keyword) => keyword.toLowerCase());
-	if (normalizedKeywords.length === 0) {
-		return false;
-	}
-
-	const relevantText: string[] = [];
-
-	// 1. Current message content
-	if (message.content.text) {
-		relevantText.push(message.content.text);
-	}
-
-	// 2. Every retained recent message
-	for (const msg of recentMessages || []) {
-		if (msg.content.text) {
-			relevantText.push(msg.content.text);
-		}
-	}
-
-	if (relevantText.length === 0) {
-		return false;
-	}
-
-	const combinedText = relevantText.join("\n").toLowerCase();
-
-	for (const keyword of normalizedKeywords) {
-		if (combinedText.includes(keyword)) {
-			return true;
-		}
-	}
-
-	return false;
+	if (normalizedKeywords.length === 0) return false;
+	const combinedText = recentMessageText(
+		message,
+		recentMessages,
+	)?.toLowerCase();
+	return (
+		combinedText !== undefined &&
+		normalizedKeywords.some((keyword) => combinedText.includes(keyword))
+	);
 }
 
 /**
@@ -110,28 +97,13 @@ export function validateActionRegex(
 	recentMessages: Memory[],
 	regex: RegExp,
 ): boolean {
-	if (!regex) {
-		return false;
-	}
-
-	const relevantText: string[] = [];
-
-	// 1. Current message content
-	if (message.content.text) {
-		relevantText.push(message.content.text);
-	}
-
-	// 2. Every retained recent message
-	for (const msg of recentMessages || []) {
-		if (msg.content.text) {
-			relevantText.push(msg.content.text);
-		}
-	}
-
-	if (relevantText.length === 0) {
-		return false;
-	}
-
-	const combinedText = relevantText.join("\n");
-	return new RegExp(regex.source, regex.flags).test(combinedText);
+	const combinedText = recentMessageText(message, recentMessages);
+	if (combinedText === null) return false;
+	// A global or sticky regex carries `lastIndex`; test a copy so the caller's
+	// regex is never mutated and repeated calls agree.
+	const matcher =
+		regex.global || regex.sticky
+			? new RegExp(regex.source, regex.flags)
+			: regex;
+	return matcher.test(combinedText);
 }

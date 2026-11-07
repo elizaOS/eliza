@@ -21,13 +21,10 @@ import {
   asUUID,
   attestDeliveryAudienceFromCanonicalRoom,
   beginTrustedDeliveryAudienceTurn,
-  ContentType,
-  createFirstSentenceStreamTracker,
   createOutboundEnvelopeStreamLatch,
   ElizaError,
   EventType,
   emitInferenceTiming,
-  extractFirstSentence,
   getInferenceTimer,
   getModelStreamChunkDeliveryDepth,
   getStreamingContext,
@@ -35,7 +32,6 @@ import {
   guardOutboundEnvelopeText,
   InferenceTurnTimer,
   logger,
-  ModelType,
   mergeEffectReceipts,
   modelStreamChunkPipelineHookContext,
   nextInferenceTurnId,
@@ -61,11 +57,7 @@ import {
 } from "./action-identifiers.ts";
 import { resolveStage1SenderRole } from "./addressing.js";
 import type { ResolvedMessageOptions } from "./contracts.js";
-import {
-  buildTextToSpeechParams,
-  deliverFirstSentenceVoice,
-  wrapSingleTurnVisibleCallback,
-} from "./delivery.js";
+import { wrapSingleTurnVisibleCallback } from "./delivery.js";
 import { persistInferenceTimingSummary } from "./inference-timing.js";
 import type { MessageProcessor } from "./processor.js";
 import { normalizeVisibleTextForDuplicateCheck } from "./reply-policy.js";
@@ -403,65 +395,18 @@ export class MessageTurnLifetime {
               ?.get(message.roomId)
               ?.at(-1) === responseId);
 
-        // WHY voice detection wraps onStreamChunk here instead of using a
-        // separate AsyncLocalStorage streaming context:
-        //
-        // Previously handleMessage created a second extractor through
-        // runWithStreamingContext. Both extractors received the same raw LLM
-        // tokens in useModel and emitted independently, causing the
-        // dual-extractor garbling bug; consumers saw overlapping deltas that
-        // produced unintelligible TTS.
-        //
-        // The fix: a single structured field extractor in
-        // dynamicPromptExecFromState) now provides `accumulated` — the full
-        // extracted text — via the third StreamChunkCallback argument. Voice
-        // detection wraps the caller's callback to intercept accumulated text
-        // for first-sentence detection, then forwards to the original. This
-        // keeps voice logic in handleMessage (encapsulation) without adding a
-        // second extraction pipeline.
-        //
-        // The `streamTextFallback` path exists for action handlers or other
-        // call sites that don't provide `accumulated` (raw token streams).
+        // The turn's stream text: a structured extractor's authoritative
+        // `accumulated`, or the concatenation of raw deltas from call sites
+        // that do not provide one (action handlers, raw token streams).
+        // Clients synthesize speech from this text stream themselves.
         let planningAcknowledgmentAttempted = false;
         let finalReplyDelivered = false;
-        let firstSentenceSent = false;
-        let firstSentenceChecked = false;
-        let firstSentenceText = "";
-        const firstSentenceTracker = createFirstSentenceStreamTracker();
         let streamTextFallback = "";
         let runTerminalOwner: RunTerminalOwner | undefined;
-        const acceptFirstSentence = (first: string): void => {
-          firstSentenceChecked = true;
-          if (first.length <= 5) return;
-          firstSentenceSent = true;
-          firstSentenceText = first;
-          // Audio does not stall the text stream, but its model capture
-          // remains owned by the run-terminal barrier.
-          const deliverVoice = () =>
-            deliverFirstSentenceVoice(
-              runtime,
-              first,
-              callback,
-              options?.abortSignal,
-            );
-          if (!runTerminalOwner) {
-            throw new ElizaError(
-              "Voice streaming requires a live run terminal owner",
-              {
-                code: "RUN_TERMINAL_OWNER_REQUIRED",
-                context: {
-                  messageId: message.id,
-                  roomId: message.roomId,
-                },
-              },
-            );
-          }
-          runTerminalOwner.track("first-sentence-voice", deliverVoice);
-        };
         // Envelope-echo latch for this turn's stream: once the accumulated
         // text reads as envelope material, every downstream chunk consumer
-        // (model_stream_chunk hook re-emission, first-sentence TTS, the
-        // host's stream callback) is cut off. Chunks forwarded before the
+        // (model_stream_chunk hook re-emission, the host's stream callback)
+        // is cut off. Chunks forwarded before the
         // needle completed are already delivered — that residue is the
         // documented open edge in security/outbound-envelope-guard.ts.
         const streamCarriesEnvelope = createOutboundEnvelopeStreamLatch(
@@ -479,8 +424,8 @@ export class MessageTurnLifetime {
                   return;
                 }
                 let streamText: string;
-                // If we have accumulated text, also sync streamTextFallback so the
-                // fallback path has accurate state if the stream source later changes.
+                // Keep raw-delta accumulation in step with an authoritative
+                // accumulation in case the stream source later changes.
                 if (accumulated !== undefined) {
                   streamTextFallback = accumulated;
                   streamText = accumulated;
@@ -510,25 +455,6 @@ export class MessageTurnLifetime {
                   );
                 }
 
-                // First-sentence cloud-TTS path (deliverFirstSentenceVoice —
-                // the local-inference voice loop is a separate layer, see its
-                // JSDoc). Only run detection when `accumulated` is present:
-                // raw-token streams (no accumulated) may contain partial
-                // structured output that would garble sentence detection and
-                // TTS.
-                if (
-                  !firstSentenceChecked &&
-                  accumulated !== undefined &&
-                  firstSentenceTracker.push(
-                    chunk,
-                    accumulated,
-                    streamRevision,
-                  ) !== undefined
-                ) {
-                  const { first } = extractFirstSentence(streamText);
-                  acceptFirstSentence(first);
-                }
-
                 await userOnStreamChunk(
                   chunk,
                   messageId,
@@ -552,8 +478,7 @@ export class MessageTurnLifetime {
             ? async (text) => {
                 // The existing model-authored acknowledgement remains turn-owned:
                 // await audience revalidation before any irreversible speech.
-                const isCurrent = () =>
-                  transientEgressIsCurrent() && !firstSentenceSent;
+                const isCurrent = transientEgressIsCurrent;
                 if (
                   planningAcknowledgmentAttempted ||
                   !text.trim() ||
@@ -889,79 +814,6 @@ export class MessageTurnLifetime {
 
           const { terminalStatus, terminalFailure, ...result } =
             await processingPromise;
-          if (
-            !firstSentenceChecked &&
-            firstSentenceTracker.finish() !== undefined &&
-            result.responseContent?.text
-          ) {
-            acceptFirstSentence(
-              extractFirstSentence(result.responseContent.text).first,
-            );
-          }
-
-          // Voice: Handle the rest of the message
-          if (firstSentenceSent && result.responseContent?.text) {
-            const fullText = result.responseContent.text;
-            const rest = fullText.replace(firstSentenceText, "").trim();
-            if (rest.length > 0) {
-              // Synthesis remains detached from visible delivery, but its model
-              // capture belongs to this run and must settle before RUN_ENDED.
-              runTerminalOwner.track("remaining-voice", async () => {
-                try {
-                  let audioBuffer: Buffer | null = null;
-                  const params = buildTextToSpeechParams(
-                    runtime,
-                    rest,
-                    opts.abortSignal,
-                  );
-                  const result = runtime.getModel(ModelType.TEXT_TO_SPEECH)
-                    ? await runtime.useModel(ModelType.TEXT_TO_SPEECH, params)
-                    : undefined;
-                  if (
-                    result instanceof ArrayBuffer ||
-                    Object.prototype.toString.call(result) ===
-                      "[object ArrayBuffer]"
-                  ) {
-                    audioBuffer = Buffer.from(result as ArrayBuffer);
-                  } else if (Buffer.isBuffer(result)) {
-                    audioBuffer = result;
-                  } else if (result instanceof Uint8Array) {
-                    audioBuffer = Buffer.from(result);
-                  }
-
-                  if (audioBuffer && instrumentedCallback) {
-                    const audioBase64 = audioBuffer.toString("base64");
-                    await instrumentedCallback({
-                      text: "",
-                      attachments: [
-                        {
-                          id: v4(),
-                          url: `data:audio/wav;base64,${audioBase64}`,
-                          title: "Voice Response",
-                          source: "voice",
-                          description: "Voice response for remaining text",
-                          text: rest,
-                          contentType: ContentType.AUDIO,
-                        },
-                      ],
-                      source: "voice",
-                    });
-                  }
-                } catch (error) {
-                  // error-policy:J4 The text response is complete even
-                  // when its optional trailing voice attachment fails.
-                  runtime.logger.error(
-                    { error },
-                    "Error generating voice for remaining text",
-                  );
-                  runtime.reportError("MessageService.remainingVoice", error, {
-                    roomId: message.roomId,
-                  });
-                }
-              });
-            }
-          }
-
           const effects = mergeEffectReceipts(
             runTerminalOwner.effects,
             ...(result.actionResults ?? []).map(

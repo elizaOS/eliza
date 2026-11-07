@@ -33,10 +33,19 @@ created before the binding switch run their retirement alarms there and
 settle as before. New sessions are created in this Worker's namespace, which
 the declarative `[exports]` entry creates on the first deploy.
 
-During the switch, a client that holds a pre-switch session or a pre-switch
-consent nonce gets `session_not_found` or `speech_session_unavailable`. It then
-starts a new session, which is the existing client retry path. Settlement for
-those old objects still finishes in the API through their alarms.
+The binding switch does not route pre-switch session tokens to the old
+namespace. A client that connects with an old session or consumes an old
+consent nonce can get `session_not_found` or `speech_session_unavailable`.
+Do not assume that every shipped client retries automatically. Existing
+objects still have their retirement alarms in the API namespace, but that
+does not prove that a new revoke request reaches an old object after cutover.
+
+For the staging cutover, stop the QA voice clients and verify their settlement
+and retirement before changing the API binding. Start new sessions only after
+the binding readback. Test Stop, cancellation, revocation and retirement on
+the new namespace. Production stays unchanged until that lifecycle and the
+latency measurements pass. A live production cutover needs its own reviewed
+plan for sessions that span the binding change.
 
 ## Dependencies (declared here, provisioned by the operator)
 

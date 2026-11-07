@@ -57,6 +57,11 @@ const VALHALLA_TYPES: Record<number, MapsManeuver> = {
 
 /** Decodes an encoded polyline with six decimal places (Valhalla's shape format). */
 export function decodePolyline6(encoded: string): MapsCoordinate[] {
+  return decodePolyline(encoded, 1e6);
+}
+
+/** Decodes an encoded polyline at a precision factor (1e5 for Google, 1e6 for Valhalla). */
+export function decodePolyline(encoded: string, factor: number): MapsCoordinate[] {
   const points: MapsCoordinate[] = [];
   let index = 0;
   let latitude = 0;
@@ -78,7 +83,7 @@ export function decodePolyline6(encoded: string): MapsCoordinate[] {
   while (index < encoded.length) {
     latitude += next();
     longitude += next();
-    const point = { latitude: latitude / 1e6, longitude: longitude / 1e6 };
+    const point = { latitude: latitude / factor, longitude: longitude / factor };
     if (Math.abs(point.latitude) > 90 || Math.abs(point.longitude) > 180) throw invalidResponse();
     points.push(point);
   }

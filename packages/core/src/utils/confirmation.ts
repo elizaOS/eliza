@@ -305,27 +305,6 @@ export async function requireConfirmation(
 	return { status: "pending" };
 }
 
-/**
- * Clear a pending confirmation without resolving it. Useful for callers
- * that want to abandon a prior pending op (e.g. when a different action
- * supersedes the one awaiting confirmation).
- */
-export async function clearPendingConfirmation(args: {
-	runtime: IAgentRuntime;
-	roomId: string;
-	userId: string;
-	actionName: string;
-	pendingKey: string;
-}): Promise<void> {
-	const cacheKey = buildCacheKey(
-		args.roomId,
-		args.userId,
-		args.actionName,
-		args.pendingKey,
-	);
-	await args.runtime.deleteCache(cacheKey);
-}
-
 export type DestructiveConfirmationGateResult =
 	| {
 			readonly status: "confirmed";
@@ -352,9 +331,4 @@ export async function gateDestructiveConfirmation(
 		return { status: "pending" };
 	}
 	return { status: "cancelled", metadata: decision.metadata };
-}
-
-/** LLM `confirmed: true` must not authorize destructive ops (GHSA-rqm7 class). */
-export function llmConfirmedFlagIsAuthoritative(_value: unknown): boolean {
-	return false;
 }

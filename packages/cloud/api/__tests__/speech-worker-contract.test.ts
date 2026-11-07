@@ -185,9 +185,9 @@ describe("staging speech host source contract", () => {
     [
       "an admission variable missing on the host",
       (input) => {
-        delete input.target.vars!.INFERENCE_STRONG_REVOCATION_ENABLED;
+        delete input.target.vars!.INFERENCE_PASSTHROUGH_STREAMING;
       },
-      "Admission variable must also match on the speech host: INFERENCE_STRONG_REVOCATION_ENABLED",
+      "Admission variable must also match on the speech host: INFERENCE_PASSTHROUGH_STREAMING",
     ],
     [
       "alias drift",

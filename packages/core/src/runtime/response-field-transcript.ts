@@ -6,7 +6,7 @@
 
 /**
  * Canonical field names the response-handler emits. Kept in sync with the
- * builtin field evaluators (see./builtin-field-evaluators.ts). Used to anchor
+ * response-handler field evaluators. Used to anchor
  * segmentation: only these names delimit a new field, so a `value:` that
  * happens to appear inside prose (e.g. "the ratio is 3:1") does not split a
  * field.
@@ -28,8 +28,6 @@ export const RESPONSE_HANDLER_FIELD_NAMES = [
 export type ResponseHandlerFieldName =
 	(typeof RESPONSE_HANDLER_FIELD_NAMES)[number];
 
-const FIELD_NAME_SET = new Set<string>(RESPONSE_HANDLER_FIELD_NAMES);
-
 /**
  * Anchored regex that matches a line which STARTS a known field:
  * `^<knownField>:`. Case-sensitive on the field name (the model emits the
@@ -40,6 +38,8 @@ const FIELD_NAME_SET = new Set<string>(RESPONSE_HANDLER_FIELD_NAMES);
 const FIELD_LINE = new RegExp(
 	`^\\s{0,3}(${RESPONSE_HANDLER_FIELD_NAMES.join("|")})\\s*:\\s?(.*)$`,
 );
+
+const LINE_BREAK = /\r?\n/;
 
 /**
  * A fenced-code-block delimiter line (``` or ~~~, optionally indented). Field
@@ -74,7 +74,7 @@ export function looksLikeRawFieldTranscript(text: unknown): boolean {
 	if (typeof text !== "string" || text.length === 0) return false;
 	let inFence = false;
 	let leadsWithFieldLine = false;
-	for (const line of text.replace(/\r\n/g, "\n").split("\n")) {
+	for (const line of text.split(LINE_BREAK)) {
 		if (FENCE_LINE.test(line)) {
 			inFence = !inFence;
 			continue;
@@ -123,8 +123,7 @@ export function parseFieldTranscript(
 	raw: string | null | undefined,
 ): ParsedFieldTranscript | null {
 	if (typeof raw !== "string") return null;
-	const text = raw.replace(/\r\n/g, "\n");
-	const lines = text.split("\n");
+	const lines = raw.split(LINE_BREAK);
 
 	const fields: Partial<Record<ResponseHandlerFieldName, string>> = {};
 	let currentField: ResponseHandlerFieldName | null = null;
@@ -137,10 +136,7 @@ export function parseFieldTranscript(
 			// registry de-dup contract). Trim edge whitespace / blank lines but
 			// keep embedded blanks.
 			if (fields[currentField] === undefined) {
-				fields[currentField] = buffer
-					.join("\n")
-					.replace(/^\n+|\n+$/g, "")
-					.trim();
+				fields[currentField] = buffer.join("\n").trim();
 			}
 		}
 		buffer = [];
@@ -155,13 +151,13 @@ export function parseFieldTranscript(
 			continue;
 		}
 		const match = inFence ? null : FIELD_LINE.exec(line);
-		if (match && FIELD_NAME_SET.has(match[1])) {
+		if (match) {
 			// New field boundary — close the previous field first.
 			flush();
 			currentField = match[1] as ResponseHandlerFieldName;
 			foundAny = true;
 			const inline = match[2];
-			buffer = inline && inline.length > 0 ? [inline] : [];
+			buffer = inline ? [inline] : [];
 			// The value opened a fence on the field line itself, so the next
 			// fence line closes it rather than opening quoted mode.
 			if (INLINE_FENCE_OPEN.test(inline)) inFence = true;
@@ -188,12 +184,8 @@ export function parseFieldTranscript(
 export function extractReplyTextFromTranscript(
 	raw: string | null | undefined,
 ): string | null {
-	const parsed = parseFieldTranscript(raw);
-	if (!parsed) return null;
-	const reply = parsed.fields.replyText;
-	if (typeof reply !== "string") return null;
-	const trimmed = reply.trim();
-	return trimmed.length > 0 ? trimmed : null;
+	// Field values are already edge-trimmed.
+	return parseFieldTranscript(raw)?.fields.replyText || null;
 }
 
 /**

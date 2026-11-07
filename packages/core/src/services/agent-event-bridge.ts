@@ -18,6 +18,7 @@ import type { JsonValue } from "../types/primitives.ts";
 import { ChannelType } from "../types/primitives.ts";
 import type { IAgentRuntime } from "../types/runtime.js";
 import { ServiceType } from "../types/service.ts";
+import { isObjectRecord } from "../utils/type-guards.ts";
 import type { AgentEventService } from "./agent-event.ts";
 
 interface NotificationServiceLike {
@@ -44,10 +45,6 @@ const CONNECTOR_EVENT_SOURCES: Readonly<Record<string, string>> = {
 	TWITCH_MESSAGE_RECEIVED: "twitch",
 	NOSTR_MESSAGE_RECEIVED: "nostr",
 };
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-	return typeof value === "object" && value !== null && !Array.isArray(value);
-}
 
 function reportBridgeFailure(
 	runtime: RuntimeServiceHost,
@@ -83,12 +80,12 @@ function readNumber(value: unknown): number | undefined {
 }
 
 function readRecord(value: unknown): Record<string, unknown> {
-	return isRecord(value) ? value : {};
+	return isObjectRecord(value) ? value : {};
 }
 
 function isRuntimeServiceHost(value: unknown): value is RuntimeServiceHost {
 	return (
-		isRecord(value) &&
+		isObjectRecord(value) &&
 		typeof value.agentId === "string" &&
 		typeof value.getService === "function"
 	);
@@ -212,13 +209,15 @@ function readContentRunId(payload: ActionEventPayload): string | undefined {
 }
 
 function messageMetadata(payload: MessagePayload): Record<string, unknown> {
-	return isRecord(payload.message.metadata) ? payload.message.metadata : {};
+	return isObjectRecord(payload.message.metadata)
+		? payload.message.metadata
+		: {};
 }
 
 function messageMetadataBase(
 	metadata: Record<string, unknown>,
 ): Record<string, unknown> {
-	return isRecord(metadata.base) ? metadata.base : {};
+	return isObjectRecord(metadata.base) ? metadata.base : {};
 }
 
 function resolveMessageSource(payload: MessagePayload): string {
@@ -239,9 +238,9 @@ function resolveMessageChannel(
 	source: string,
 ): string {
 	const metadata = messageMetadata(payload);
-	const origin = isRecord(metadata.origin) ? metadata.origin : {};
-	const session = isRecord(metadata.session) ? metadata.session : {};
-	const delivery = isRecord(metadata.delivery) ? metadata.delivery : {};
+	const origin = isObjectRecord(metadata.origin) ? metadata.origin : {};
+	const session = isObjectRecord(metadata.session) ? metadata.session : {};
+	const delivery = isObjectRecord(metadata.delivery) ? metadata.delivery : {};
 	return (
 		readString(payload.message.content.channelType) ??
 		readString(metadata.chatType) ??
@@ -256,7 +255,7 @@ function resolveMessageChannel(
 
 function resolveMessageSessionKey(payload: MessagePayload): string | undefined {
 	const metadata = messageMetadata(payload);
-	const session = isRecord(metadata.session) ? metadata.session : {};
+	const session = isObjectRecord(metadata.session) ? metadata.session : {};
 	return (
 		readString(payload.message.sessionKey) ??
 		readString(metadata.sessionKey) ??
@@ -266,7 +265,7 @@ function resolveMessageSessionKey(payload: MessagePayload): string | undefined {
 
 function resolveMessageSenderName(payload: MessagePayload): string | undefined {
 	const metadata = messageMetadata(payload);
-	const sender = isRecord(metadata.sender) ? metadata.sender : {};
+	const sender = isObjectRecord(metadata.sender) ? metadata.sender : {};
 	return (
 		readString(sender.name) ??
 		readString(sender.username) ??
@@ -286,8 +285,8 @@ function isBackfillMessage(metadata: Record<string, unknown>): boolean {
 }
 
 function isBotMessage(metadata: Record<string, unknown>): boolean {
-	const discord = isRecord(metadata.discord) ? metadata.discord : {};
-	const discordAuthor = isRecord(discord.discordAuthor)
+	const discord = isObjectRecord(metadata.discord) ? metadata.discord : {};
+	const discordAuthor = isObjectRecord(discord.discordAuthor)
 		? discord.discordAuthor
 		: {};
 	return (
@@ -344,29 +343,35 @@ function hasAttachments(payload: MessagePayload): boolean {
 	return Array.isArray(attachments) && attachments.length > 0;
 }
 
+/**
+ * A message event correlates with a run (an explicit trajectory id or the
+ * runtime's current run) or with a one-shot message or room id that no
+ * RUN_ENDED ever clears.
+ */
+interface MessageRunId {
+	runId: string;
+	oneShot: boolean;
+}
+
 function resolveMessageRunId(
 	payload: MessagePayload,
 	source: string,
-): string | null {
+): MessageRunId | null {
 	const metadata = messageMetadata(payload);
 	const explicitRunId = readString(metadata.trajectoryId);
 	if (explicitRunId) {
-		return resolveRunId(payload.runtime, explicitRunId);
+		return { runId: explicitRunId, oneShot: false };
 	}
-	if (shouldNotifyForInboundMessage(payload, source)) {
-		return (
-			readString(payload.message.id) ??
-			resolveRunId(payload.runtime) ??
-			readString(payload.message.roomId) ??
-			null
-		);
+	const messageId = readString(payload.message.id);
+	if (messageId && shouldNotifyForInboundMessage(payload, source)) {
+		return { runId: messageId, oneShot: true };
 	}
-	return (
-		resolveRunId(payload.runtime) ??
-		readString(payload.message.id) ??
-		readString(payload.message.roomId) ??
-		null
-	);
+	const currentRunId = resolveRunId(payload.runtime);
+	if (currentRunId) {
+		return { runId: currentRunId, oneShot: false };
+	}
+	const fallbackId = messageId ?? readString(payload.message.roomId);
+	return fallbackId ? { runId: fallbackId, oneShot: true } : null;
 }
 
 function notificationData(
@@ -487,10 +492,11 @@ function normalizeRawConnectorMessage(
 		twitchUser.username,
 		root.from,
 	);
+	const accountId = readString(root.accountId);
 	const deliveredAt =
 		readNumber(message.timestamp) ??
 		readNumber(root.createdAt) ??
-		(typeof message.timestamp === "object" && message.timestamp instanceof Date
+		(message.timestamp instanceof Date
 			? message.timestamp.getTime()
 			: undefined);
 
@@ -542,9 +548,7 @@ function normalizeRawConnectorMessage(
 			metadata.isSelf,
 		),
 		...(deliveredAt !== undefined ? { deliveredAt } : {}),
-		...(readString(root.accountId)
-			? { accountId: readString(root.accountId) }
-			: {}),
+		...(accountId ? { accountId } : {}),
 	};
 }
 
@@ -621,6 +625,8 @@ export async function bridgeConnectorMessageReceivedToStreams(
 	if (agentEvents) {
 		try {
 			agentEvents.emitMessage(runId, messageEventData(message), sessionKey);
+			// No run ever ends for a connector message id: drop its sequence entry.
+			agentEvents.clearRunContext(runId);
 		} catch (err) {
 			// error-policy:J7 Stream projection is diagnostic and cannot block ingress.
 			reportBridgeFailure(
@@ -682,11 +688,12 @@ export async function bridgeMessageReceivedToStreams(
 	const source = resolveMessageSource(payload);
 	const channel = resolveMessageChannel(payload, source);
 	const sessionKey = resolveMessageSessionKey(payload);
-	const runId = resolveMessageRunId(payload, source);
+	const messageRunId = resolveMessageRunId(payload, source);
 	const content = readString(payload.message.content.text);
 	const attachments = hasAttachments(payload);
 
-	if (runId) {
+	if (messageRunId) {
+		const { runId, oneShot } = messageRunId;
 		const service = resolveAgentEventService(payload.runtime);
 		if (service) {
 			try {
@@ -702,6 +709,8 @@ export async function bridgeMessageReceivedToStreams(
 					},
 					sessionKey,
 				);
+				// No run ever ends for a one-shot id: drop its sequence entry.
+				if (oneShot) service.clearRunContext(runId);
 			} catch (err) {
 				// error-policy:J7 Stream projection is diagnostic and cannot block ingress.
 				reportBridgeFailure(
@@ -729,7 +738,7 @@ export async function bridgeMessageReceivedToStreams(
 		: `New ${channel} message`;
 	const wasMentioned =
 		readBoolean(messageMetadata(payload).wasMentioned) === true ||
-		(isRecord(payload.message.content.mentionContext) &&
+		(isObjectRecord(payload.message.content.mentionContext) &&
 			readBoolean(payload.message.content.mentionContext.isMention) === true);
 
 	try {
