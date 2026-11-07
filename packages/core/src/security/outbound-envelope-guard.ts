@@ -6,7 +6,8 @@
  * proved insufficient: the tripwire reported the leak after the message
  * shipped. This guard runs at every pre-send seam core owns — the visible
  * callback wrap in `services/message.ts`, the mandatory
- * `outgoing_before_deliver` pipeline phase, and `sendMessageToTarget` — and
+ * `outgoing_before_deliver` pipeline phase, and the connector-registry
+ * `sendMessageToTarget` / `editMessageOnTarget` / `postToThreadOnTarget` — and
  * BLOCKS the send, replacing the text with a short honest notice while
  * `runtime.reportError` carries the clamped original for observability. The
  * MESSAGE_SENT tripwire in basic-capabilities stays as secondary,

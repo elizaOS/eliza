@@ -323,23 +323,31 @@ export class RuntimeConnectorRegistry {
 		// secret-swap reply policy (an in-turn MESSAGE send carries values the
 		// execution boundary restored) apply here — after the voice gate, whose
 		// rephrase is itself model text.
+		return handler(
+			this.runtime,
+			target,
+			this.guardOutboundContent(voicedContent, "sendMessageToTarget"),
+		);
+	}
+
+	/** Edits and thread posts deliver agent text outside the send path (the
+	 * orchestrator reroutes room sends into an active sub-agent thread), so
+	 * they take the same outbound policy as a send. */
+	private guardOutboundContent(content: Content, seam: string): Content {
+		if (typeof content.text !== "string") return content;
 		const secretSession = getTrajectoryContext()?.secretSwapSession;
-		const outboundContent =
-			typeof voicedContent.text === "string"
-				? {
-						...voicedContent,
-						text: guardOutboundEnvelopeText(
-							this.runtime,
-							sanitizeOutboundText(
-								secretSession
-									? secretSession.redactRestoredSecretValues(voicedContent.text)
-									: voicedContent.text,
-							),
-							"sendMessageToTarget",
-						),
-					}
-				: voicedContent;
-		return handler(this.runtime, target, outboundContent);
+		return {
+			...content,
+			text: guardOutboundEnvelopeText(
+				this.runtime,
+				sanitizeOutboundText(
+					secretSession
+						? secretSession.redactRestoredSecretValues(content.text)
+						: content.text,
+				),
+				seam,
+			),
+		};
 	}
 
 	private resolveMessageConnector(target: TargetInfo): {
@@ -390,7 +398,11 @@ export class RuntimeConnectorRegistry {
 		);
 		const handler = connector.editHandler;
 		return (
-			(await handler(this.runtime, { target, messageId, content })) ?? undefined
+			(await handler(this.runtime, {
+				target,
+				messageId,
+				content: this.guardOutboundContent(content, "editMessageOnTarget"),
+			})) ?? undefined
 		);
 	}
 
@@ -439,7 +451,7 @@ export class RuntimeConnectorRegistry {
 		return connector.postToThreadHandler(this.runtime, {
 			target,
 			thread,
-			content,
+			content: this.guardOutboundContent(content, "postToThreadOnTarget"),
 			identity,
 		});
 	}

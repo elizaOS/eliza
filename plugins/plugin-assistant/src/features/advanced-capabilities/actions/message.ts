@@ -35,7 +35,9 @@ import {
   ElizaError,
   getActiveRoutingContextsForTurn,
   getConnectorAccountManager,
+  getTrajectoryContext,
   getVerifiedRelatedEntityIds,
+  guardOutboundEnvelopeText,
   hasActionContext,
   IDENTITY_DELIVERY_CLAIMS_AUTHORITATIVE_SETTING,
   identityDeliveryClaimsAuthoritative,
@@ -51,6 +53,7 @@ import {
   revalidateOwnerExclusiveDisclosure,
   runWithActionRoutingContext,
   ServiceType,
+  sanitizeOutboundText,
   searchCanonicalConversationMemories,
   selectBestRankedRecallItems,
   stringToUuid,
@@ -5497,7 +5500,21 @@ async function handleMessageMutation(
       }
       await reactHandler(runtime, { target, messageId, emoji });
     } else if (op === "edit") {
-      const text = textParam(params.text) ?? textParam(params.message);
+      // An edit reaches the channel like a send, so the replacement text takes
+      // the send path's secret-swap reply policy, machine-syntax sanitizer and
+      // fail-closed envelope guard.
+      const requested =
+        textParam(params.text) ?? textParam(params.message) ?? "";
+      const secretSession = getTrajectoryContext()?.secretSwapSession;
+      const text = textParam(
+        guardOutboundEnvelopeText(
+          runtime,
+          sanitizeOutboundText(
+            secretSession?.redactRestoredSecretValues(requested) ?? requested,
+          ),
+          "MESSAGE.edit",
+        ),
+      );
       if (!text)
         return opFailure(
           "edit",
