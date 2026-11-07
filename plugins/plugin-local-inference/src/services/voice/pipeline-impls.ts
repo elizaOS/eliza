@@ -159,19 +159,24 @@ export class MtpDraftProposer implements DraftProposer {
 			args.prefix.length > 0
 				? args.prefix[args.prefix.length - 1].index + 1
 				: 0;
-		await this.runner.generateWithVerifierEvents({
-			prompt: prefixToPrompt(args.prefix),
-			maxTokens: Math.max(1, Math.floor(args.maxDraft)),
-			temperature: 0,
-			signal: cancelToSignal(args.cancel),
-			onVerifierEvent: (event) => {
-				if (event.kind !== "accept") return;
-				for (const tok of event.tokens) {
-					if (accepted.length >= args.maxDraft) break;
-					accepted.push({ index: nextIndex++, text: tok.text });
-				}
-			},
-		});
+		const cancelSignal = cancelToSignal(args.cancel);
+		try {
+			await this.runner.generateWithVerifierEvents({
+				prompt: prefixToPrompt(args.prefix),
+				maxTokens: Math.max(1, Math.floor(args.maxDraft)),
+				temperature: 0,
+				signal: cancelSignal.signal,
+				onVerifierEvent: (event) => {
+					if (event.kind !== "accept") return;
+					for (const tok of event.tokens) {
+						if (accepted.length >= args.maxDraft) break;
+						accepted.push({ index: nextIndex++, text: tok.text });
+					}
+				},
+			});
+		} finally {
+			cancelSignal.release();
+		}
 		if (args.cancel.cancelled) return [];
 		return accepted.slice(0, Math.max(1, Math.floor(args.maxDraft)));
 	}
@@ -218,23 +223,29 @@ export class MtpTargetVerifier implements TargetVerifier {
 				: 0;
 		const produced: TextToken[] = [];
 		let done = false;
-		const { text } = await this.runner.generateWithVerifierEvents({
-			prompt: prefixToPrompt(args.prefix),
-			maxTokens: stepTokens,
-			temperature: 0,
-			signal: cancelToSignal(args.cancel),
-			onVerifierEvent: (event) => {
-				if (event.kind === "accept") {
-					for (const tok of event.tokens) {
-						produced.push({ index: nextIndex++, text: tok.text });
+		const cancelSignal = cancelToSignal(args.cancel);
+		let text: string;
+		try {
+			({ text } = await this.runner.generateWithVerifierEvents({
+				prompt: prefixToPrompt(args.prefix),
+				maxTokens: stepTokens,
+				temperature: 0,
+				signal: cancelSignal.signal,
+				onVerifierEvent: (event) => {
+					if (event.kind === "accept") {
+						for (const tok of event.tokens) {
+							produced.push({ index: nextIndex++, text: tok.text });
+						}
 					}
-				}
-				// reject events: the server already retracted those positions
-				// from its own stream, so we just don't append them. Nothing else
-				// to do here — the chunker rollback is driven by the pipeline
-				// comparing `accepted` against `draft`.
-			},
-		});
+					// reject events: the server already retracted those positions
+					// from its own stream, so we just don't append them. Nothing else
+					// to do here — the chunker rollback is driven by the pipeline
+					// comparing `accepted` against `draft`.
+				},
+			}));
+		} finally {
+			cancelSignal.release();
+		}
 		if (args.cancel.cancelled) return { accepted: [], done: false };
 		if (produced.length === 0 && text.length > 0) {
 			// Non-streaming server (no per-delta events): fall back to splitting
@@ -262,8 +273,12 @@ export class MtpTargetVerifier implements TargetVerifier {
  * wires the token up); when present, we fire `controller.abort()`
  * synchronously from that hook and skip polling entirely. When the
  * token is the plain `{cancelled: boolean}` POJO with no hook, we fall
- * back to a coarse poll so a barge-in still lands in bounded time —
- * but the hook-driven path is what voice barge-ins use in production.
+ * back to a coarse poll so a barge-in still lands in bounded time.
+ * `VoicePipeline.run` creates such a plain token, so voice turns poll.
+ *
+ * Call `release()` once the generation returns. A token that is never
+ * cancelled (every turn that ends normally) would otherwise keep the poll
+ * or the `onCancel` listener alive for the life of the process.
  */
 export interface CancelTokenWithSignal {
 	cancelled: boolean;
@@ -275,27 +290,34 @@ export interface CancelTokenWithSignal {
 	onCancel?: (listener: () => void) => () => void;
 }
 
-function cancelToSignal(cancel: CancelTokenWithSignal): AbortSignal {
+function cancelToSignal(cancel: CancelTokenWithSignal): {
+	signal: AbortSignal;
+	release: () => void;
+} {
 	const controller = new AbortController();
 	if (cancel.cancelled) {
 		controller.abort();
-		return controller.signal;
+		return { signal: controller.signal, release: () => {} };
 	}
 	if (typeof cancel.onCancel === "function") {
 		// Event-driven path — no polling. The owner fires the listener
 		// synchronously on barge-in; we abort the HTTP request at that
-		// instant. `once`: AbortController.abort() is idempotent but we
-		// still want to drop the listener to free the closure.
+		// instant. The listener is dropped on abort or on release,
+		// whichever comes first.
 		const unsubscribe = cancel.onCancel(() => {
 			controller.abort();
 		});
-		controller.signal.addEventListener("abort", () => unsubscribe(), {
-			once: true,
-		});
-		return controller.signal;
+		let subscribed = true;
+		const release = () => {
+			if (!subscribed) return;
+			subscribed = false;
+			unsubscribe();
+		};
+		controller.signal.addEventListener("abort", release, { once: true });
+		return { signal: controller.signal, release };
 	}
-	// Fallback: polling. Kept for tokens that don't expose the hook (e.g.
-	// tests that pass a plain `{cancelled}` POJO). The interval is short
+	// Fallback: polling, for tokens that don't expose the hook (the plain
+	// `{cancelled}` POJO `VoicePipeline.run` creates). The interval is short
 	// enough that an aborted-but-unhooked token still lands the abort
 	// before a typical kernel tick completes.
 	const timer = setInterval(() => {
@@ -308,8 +330,7 @@ function cancelToSignal(cancel: CancelTokenWithSignal): AbortSignal {
 	if (typeof timer === "object" && timer && "unref" in timer) {
 		(timer as { unref(): void }).unref();
 	}
-	controller.signal.addEventListener("abort", () => clearInterval(timer), {
-		once: true,
-	});
-	return controller.signal;
+	const release = () => clearInterval(timer);
+	controller.signal.addEventListener("abort", release, { once: true });
+	return { signal: controller.signal, release };
 }
