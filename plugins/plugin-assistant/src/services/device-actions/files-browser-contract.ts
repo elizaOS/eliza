@@ -94,7 +94,7 @@ export function validFilesName(value: unknown): string {
 }
 /** A volume-relative path; "" (the volume root) only where a folder is allowed. */
 export function validFilesPath(value: unknown, allowRoot = false): string {
-  if (typeof value !== "string" || value.length > 1024)
+  if (typeof value !== "string" || value.length > 1024 || value.startsWith("/"))
     throw Error("Invalid path");
   const path = value.replace(/^\/+|\/+$/g, "");
   if (!path) {

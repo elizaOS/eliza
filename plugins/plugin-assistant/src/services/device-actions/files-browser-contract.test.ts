@@ -75,7 +75,7 @@ describe("files.browser.v1 operations", () => {
         reviewed: [{ size: 1, modified: 1 }],
       },
     ])
-      expect(() => validateFilesOperation(bad)).toThrow();
+      expect(() => validateFilesOperation(bad), JSON.stringify(bad)).toThrow();
     expect(filesNeedsIdentity({ type: "files_trash", paths: ["a"] })).toBe(
       true,
     );
@@ -98,7 +98,7 @@ describe("files.browser.v1 operations", () => {
       { type: "files_open", path: "a", extra: 1 },
       { type: "files_delete", paths: ["a"] },
     ])
-      expect(() => validateFilesOperation(bad)).toThrow();
+      expect(() => validateFilesOperation(bad), JSON.stringify(bad)).toThrow();
   });
   it("runs only filter and open directly; changes need Files on the unlocked screen", () => {
     expect([...FILES_DIRECT_TYPES]).toEqual(["files_filter", "files_open"]);

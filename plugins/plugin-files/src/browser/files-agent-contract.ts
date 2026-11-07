@@ -51,10 +51,15 @@ export function isFilesOperation(value: unknown): value is FilesAgentOperation {
     FILES_OPERATION_TYPES.includes(String((value as Bag).type))
   );
 }
+function agentPath(value: unknown, allowRoot = false): string {
+  if (typeof value === "string" && value.startsWith("/"))
+    throw Error("Invalid path");
+  return validPath(value, allowRoot);
+}
 function paths(value: unknown): string[] {
   if (!Array.isArray(value) || !value.length || value.length > FILES_PATHS_MAX)
     throw Error("Select 1–50 files");
-  const out = value.map((item) => validPath(item));
+  const out = value.map((item) => agentPath(item));
   if (new Set(out).size !== out.length) throw Error("Duplicate files");
   return out;
 }
@@ -80,11 +85,12 @@ export function validateFilesOperation(value: unknown): FilesAgentOperation {
     case "files_filter": {
       allowed(["type", "text", "kind", "folder", "from", "to"]);
       const { type: _type, ...filter } = op;
+      if (filter.folder !== undefined) agentPath(filter.folder, true);
       return { type: "files_filter", ...validateFilesFilter(filter) };
     }
     case "files_open":
       allowed(["type", "path"]);
-      return { type: "files_open", path: validPath(op.path) };
+      return { type: "files_open", path: agentPath(op.path) };
     case "files_share":
       allowed(["type", "paths"]);
       return { type: "files_share", paths: paths(op.paths) };
@@ -105,7 +111,7 @@ export function validateFilesOperation(value: unknown): FilesAgentOperation {
       return {
         type: "files_move",
         paths: selected,
-        dest: validPath(op.dest, true),
+        dest: agentPath(op.dest, true),
         ...(op.reviewed === undefined
           ? {}
           : { reviewed: reviewedIdentities(op.reviewed, selected.length) }),
@@ -117,7 +123,7 @@ export function validateFilesOperation(value: unknown): FilesAgentOperation {
       if (name.startsWith(".")) throw Error("Invalid name");
       return {
         type: "files_folder_create",
-        parent: validPath(op.parent, true),
+        parent: agentPath(op.parent, true),
         name,
       };
     }
