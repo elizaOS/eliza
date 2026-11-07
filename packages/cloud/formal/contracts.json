@@ -134,6 +134,22 @@
         "No fairness, operating-system process termination or cleanup of remote provider effects is proved."
       ],
       "maxSteps": 25
+    },
+    {
+      "id": "vast-worker-supervision",
+      "file": "vast_worker_supervision.qnt",
+      "sources": [
+        "packages/cloud/services/vast-pyworker/observability.py",
+        "packages/cloud/services/vast-pyworker/onstart-vllm.sh",
+        "packages/training/scripts/inference/heartbeat.py"
+      ],
+      "invariants": ["safety"],
+      "assumptions": [
+        "Two observer attempts, one kernel flock, one heartbeat thread per owner, one persisted history bit.",
+        "All persistent writers run in one process. Graceful shutdown joins the heartbeat before releasing the lock; process death ends every thread before kernel release.",
+        "Scheduling fairness, exact metric bytes, disk failures, GPU readiness and Python refinement are not proved."
+      ],
+      "maxSteps": 30
     }
   ],
   "pendingDomains": [
