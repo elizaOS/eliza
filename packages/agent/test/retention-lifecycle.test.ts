@@ -284,6 +284,47 @@ it("rejects a sub-millisecond interval before scheduling or deleting any data", 
   expect(await h.runtime.getMemoryById(h.older)).not.toBeNull();
 });
 
+it("schedules a decimal minute interval at the whole milliseconds it names", async () => {
+  const h = await fixture();
+  // 4.1 * 60 * 1000 is 245999.99999999997 and 0.03 * 60 * 1000 is
+  // 1799.9999999999998 in binary floating point.
+  h.runtime.setSetting("ELIZA_MEMORY_RETENTION_MAX_ROWS_PER_ROOM", "1");
+  h.runtime.setSetting("ELIZA_MEMORY_RETENTION_INTERVAL_MINUTES", "4.1");
+  h.runtime.setSetting("ELIZA_LOGS_RETENTION_MAX_ROWS_PER_ROOM", "1");
+  h.runtime.setSetting("ELIZA_LOGS_RETENTION_INTERVAL_MINUTES", "0.03");
+  const memory = await MemoryRetentionService.start(h.runtime);
+  cleanups.push(() => memory.stop());
+  const logs = await LogsRetentionService.start(h.runtime);
+  cleanups.push(() => logs.stop());
+  const intervals = new Map(
+    (await h.runtime.getTasks({ tags: ["queue"] })).map((task) => [
+      task.name,
+      task.metadata?.updateInterval,
+    ]),
+  );
+  expect(intervals).toEqual(
+    new Map([
+      ["HOST_MEMORY_RETENTION", 246_000],
+      ["HOST_LOGS_RETENTION", 1_800],
+    ]),
+  );
+  await makeDue(h.runtime);
+  await h.scheduler.runDueTasks();
+  expect(await h.runtime.getMemoryById(h.older)).toBeNull();
+  expect(await h.adapter.getLogs({})).toHaveLength(1);
+});
+
+it("still rejects a decimal minute interval that names a fraction of a millisecond", async () => {
+  const h = await fixture();
+  // 0.00001 minutes is 0.6 ms: rounding it would schedule a 1 ms sweep.
+  h.runtime.setSetting("ELIZA_MEMORY_RETENTION_MAX_ROWS_PER_ROOM", "1");
+  h.runtime.setSetting("ELIZA_MEMORY_RETENTION_INTERVAL_MINUTES", "0.00001");
+  await expect(MemoryRetentionService.start(h.runtime)).rejects.toMatchObject({
+    code: "RETENTION_INTERVAL_INVALID",
+  });
+  expect(await h.runtime.getTasks({ tags: ["queue"] })).toEqual([]);
+});
+
 it("plans retention from the complete inventory beyond the old scan ceiling", async () => {
   const h = await fixture();
   const template = await h.runtime.getMemoryById(h.older);
