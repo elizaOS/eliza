@@ -52,6 +52,7 @@ import {
   MAX_UNTRUSTED_REGEX_PATTERN_LENGTH,
   matchesSafeUntrustedRegexPattern,
 } from "@elizaos/host/protocol";
+import { getBuiltinType } from "./builtins";
 import { formatCalendarDate, parseCalendarDate } from "./calendar-date";
 import { strictEmailValid } from "./email";
 import type { ControlType, FormControl, TypeHandler } from "./types";
@@ -121,6 +122,27 @@ export function getTypeHandler(
   return typeHandlers.get(type) ?? controlType;
 }
 /**
+ * Whether the selected handler's method is the one the built-in type ships.
+ *
+ * WHY identity, not the `builtin` flag: a plugin extends a built-in by
+ * spreading `getBuiltinType(id)` and replacing a method, then registers it
+ * with `allowOverride: true`. The copy keeps `builtin: true` but owns the
+ * method it replaced, so only the shipped method may give way to the
+ * built-in switch.
+ */
+function isShippedBuiltinMethod(
+  handler: TypeHandler | ControlType | undefined,
+  controlType: ControlType | undefined,
+  type: string,
+  method: "validate" | "parse",
+): boolean {
+  return (
+    handler === controlType &&
+    controlType?.builtin === true &&
+    controlType[method] === getBuiltinType(type)?.[method]
+  );
+}
+/**
  * Clear all type handlers.
  *
  * WHY this exists:
@@ -183,7 +205,10 @@ export function validateField(
   // Check custom type handler first
   // WHY: Allows overriding built-in types or adding new ones
   const handler = getTypeHandler(control.type, controlType);
-  if (handler?.validate && !(handler === controlType && controlType.builtin)) {
+  if (
+    handler?.validate &&
+    !isShippedBuiltinMethod(handler, controlType, control.type, "validate")
+  ) {
     const result = handler.validate(value, control);
     if (!result.valid) {
       return result;
@@ -192,14 +217,12 @@ export function validateField(
     // text constraints still apply, but a built-in switch must not override it.
     if (controlType && !controlType.builtin)
       return validateText(value, control);
-    // A legacy handler overriding a built-in name replaces only the value
-    // grammar; the field constraints the control declares still apply.
-    // Invariant: getTypeHandler returns the built-in descriptor itself when no
-    // legacy handler is registered, so handler === controlType holds for every
-    // built-in control without an override and the built-in switch below stays
-    // reachable.
-    if (handler !== controlType)
-      return validateFieldConstraints(value, control, handler);
+    // A legacy handler, or a built-in extended with its own validate, that
+    // overrides a built-in name replaces only the value grammar; the field
+    // constraints the control declares still apply. The built-in switch below
+    // stays reachable for every built-in control whose validate is the
+    // shipped one.
+    return validateFieldConstraints(value, control, handler);
   }
   // Type-specific validation
   // WHY switch: Clear separation of validation logic per type
@@ -697,16 +720,16 @@ export function parseValue(
   control: FormControl,
   controlType?: ControlType,
 ): JsonValue {
-  // Check for custom type handler. The builtin number and boolean parses are
-  // bypassed: both coerce input the shared contract rejects (a partial
-  // number, an unknown or space-wrapped boolean literal) into a fake-valid
-  // value, so the switch below must parse those two types itself.
+  // Check for custom type handler. The shipped builtin number and boolean
+  // parses are bypassed: both coerce input the shared contract rejects (a
+  // partial number, an unknown or space-wrapped boolean literal) into a
+  // fake-valid value, so the switch below must parse those two types itself.
+  // A built-in extended with its own parse keeps that parse.
   const handler = getTypeHandler(control.type, controlType);
   if (
     handler?.parse &&
     !(
-      handler === controlType &&
-      controlType.builtin &&
+      isShippedBuiltinMethod(handler, controlType, control.type, "parse") &&
       (control.type === "number" || control.type === "boolean")
     )
   ) {
