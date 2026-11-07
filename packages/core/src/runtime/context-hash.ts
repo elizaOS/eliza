@@ -72,6 +72,13 @@ function stableStringifyValue(value: unknown, seen: WeakSet<object>): string {
 		return serialized;
 	}
 
+	// A Date has no enumerable own keys, so without this it serializes as
+	// "{}" and distinct dates hash identically. Match JSON.stringify, which
+	// uses Date.prototype.toJSON (the ISO string, or null for an invalid date).
+	if (value instanceof Date) {
+		return JSON.stringify(value);
+	}
+
 	if (type === "object") {
 		if (seen.has(value as object)) {
 			throw new TypeError("Cannot stable stringify circular structures");
