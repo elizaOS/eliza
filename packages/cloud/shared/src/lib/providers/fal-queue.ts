@@ -14,6 +14,8 @@
  *   GET  {response_url}            -> model output payload
  */
 
+import { APICallError } from "ai";
+
 const DEFAULT_QUEUE_BASE_URL = "https://queue.fal.run";
 const DEFAULT_POLL_INTERVAL_MS = 3_000;
 const DEFAULT_TIMEOUT_MS = 10 * 60_000;
@@ -111,9 +113,15 @@ export async function runFalQueueJob(
   if (!submitResponse.ok) {
     const detail =
       stringField(submitPayload, "detail") ?? stringField(submitPayload, "message") ?? "";
-    throw new Error(
-      `fal queue submit failed (${submitResponse.status})${detail ? `: ${detail}` : ""}`,
-    );
+    // fal creates a paid job only inside a 2xx submit body. Keep the status
+    // so billing can tell a rejection (nothing to pay for) from an ambiguous
+    // failure after a job may exist.
+    throw new APICallError({
+      message: `fal queue submit failed (${submitResponse.status})${detail ? `: ${detail}` : ""}`,
+      url: submitUrl.toString(),
+      requestBodyValues: input,
+      statusCode: submitResponse.status,
+    });
   }
 
   const requestId = stringField(submitPayload, "request_id");
