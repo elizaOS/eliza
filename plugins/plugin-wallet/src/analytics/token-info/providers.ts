@@ -450,7 +450,7 @@ async function executeBirdeye(
             chain,
             result: await provider.fetchWalletPortfolio(
               { wallet: address },
-              { headers: { chain } },
+              { headers: { "x-chain": chain } },
             ),
           };
         }),
