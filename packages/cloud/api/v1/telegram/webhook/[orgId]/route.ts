@@ -22,9 +22,14 @@ import { agentGatewayRouterService } from "@elizaos/cloud-shared/lib/services/ag
 import { telegramAutomationService } from "@elizaos/cloud-shared/lib/services/telegram-automation";
 import { telegramAppAutomationService } from "@elizaos/cloud-shared/lib/services/telegram-automation/app-automation";
 import { logger } from "@elizaos/cloud-shared/lib/utils/logger";
-import { isCommand } from "@elizaos/cloud-shared/lib/utils/telegram-helpers";
+import {
+  isCommand,
+  splitMessage,
+  TELEGRAM_RATE_LIMITS,
+} from "@elizaos/cloud-shared/lib/utils/telegram-helpers";
 import type { AppEnv } from "@elizaos/cloud-shared/types/cloud-worker-env";
 import { ElizaError } from "@elizaos/core";
+
 import { Hono } from "hono";
 import { Telegraf } from "telegraf";
 import type { ChatMemberUpdated, Message, Update } from "telegraf/types";
@@ -395,8 +400,35 @@ ${matchingApp.website_url ? `🌐 Website: ${matchingApp.website_url}` : ""}`;
 
       if (routed.handled) {
         const replyText = routed.replyText?.trim();
-        if (replyText) {
-          await ctx.reply(replyText);
+        // A reply over Telegram's message limit is rejected whole, which
+        // fails the update and makes Telegram redeliver it into a new turn.
+        // Send it as ordered parts, at the per-chat rate Telegram allows.
+        const parts = splitMessage(replyText ?? "");
+        for (const [index, part] of parts.entries()) {
+          if (index > 0) {
+            await new Promise((resolve) =>
+              setTimeout(
+                resolve,
+                1000 / TELEGRAM_RATE_LIMITS.MESSAGES_PER_SECOND_SAME_CHAT,
+              ),
+            );
+          }
+          try {
+            await ctx.reply(part);
+          } catch (error) {
+            // The turn already ran (and may have sent mail, booked an event or
+            // taken another action). A redelivery would run it again, so
+            // acknowledge the update and report what was not delivered, even
+            // when no part reached the owner.
+            logger.error("[Telegram Webhook] Reply not fully delivered", {
+              orgId,
+              chatId,
+              deliveredParts: index,
+              totalParts: parts.length,
+              error: error instanceof Error ? error.message : String(error),
+            });
+            break;
+          }
         }
         return;
       }
