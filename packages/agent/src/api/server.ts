@@ -1929,6 +1929,11 @@ async function handleRequestForViewClient(
     }
     try {
       const result = await restoreLocalAgentBackup(state.runtime, fileName);
+      // The restore rewrote the config file on disk. Every settings save
+      // rewrites that file from the live graph, so the live graph must follow
+      // the disk now, or the next save puts the pre-restore config back and
+      // the restart the UI asks for boots from it: the restore is undone.
+      state.reloadConfigFromDisk?.();
       json(res, result);
     } catch (err) {
       // error-policy:J1 decryption, filesystem, and database diagnostics stay
@@ -3858,6 +3863,8 @@ export async function startApiServer(opts?: {
     // consumers apply their existing launcher-authority views at read time.
     replaceConfigInPlace(state.config, loadElizaConfig());
   };
+  if (hostConfig === undefined)
+    state.reloadConfigFromDisk = reloadConfigFromDisk;
   const runtimeOperations: Pick<RuntimeOperationManager, "start" | "get"> = {
     start: async (request) => {
       if (request.intent.kind === "restart" && !onRestart) {

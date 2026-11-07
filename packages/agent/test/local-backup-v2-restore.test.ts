@@ -119,14 +119,14 @@ async function markerLabels(): Promise<string[]> {
   }
 }
 
-function api(route: string, method: "GET" | "POST", body?: object) {
+function api(route: string, method: "GET" | "POST" | "PUT", body?: object) {
   return fetch(`http://127.0.0.1:${server.port}${route}`, {
     method,
     headers: {
       "Content-Type": "application/json",
       Authorization: `Bearer ${token}`,
     },
-    ...(method === "POST" ? { body: JSON.stringify(body ?? {}) } : {}),
+    ...(method === "GET" ? {} : { body: JSON.stringify(body ?? {}) }),
   });
 }
 
@@ -448,3 +448,39 @@ it("rolls a crash mid-swap back and a crash after commit forward at the next sta
     reviewRetiredLocalAgentBackups(fixture.runtime.agentId),
   ).resolves.toMatchObject({ archives: [] });
 }, 900_000);
+
+it("a restored config is what the API serves and what the next save keeps", async () => {
+  // The archive carries the config as it was at capture time.
+  const marked = await api("/api/config", "PUT", {
+    ui: { language: "restored" },
+  });
+  expect(marked.status, await marked.clone().text()).toBe(200);
+  const captured = await api("/api/backups", "POST");
+  expect(captured.status, await captured.clone().text()).toBe(200);
+  const { backup } = (await captured.json()) as {
+    backup: { fileName: string };
+  };
+
+  // The live config moves on; the user then restores the archive.
+  const moved = await api("/api/config", "PUT", { ui: { language: "before" } });
+  expect(moved.status, await moved.clone().text()).toBe(200);
+  const restored = await api("/api/backups/restore", "POST", {
+    fileName: backup.fileName,
+  });
+  expect(restored.status, await restored.clone().text()).toBe(200);
+
+  // The API now serves the restored config, not the pre-restore graph.
+  const served = (await (await api("/api/config", "GET")).json()) as {
+    ui?: { language?: string };
+  };
+  expect(served.ui?.language).toBe("restored");
+
+  // A later save of another section is written on top of the restored
+  // config instead of putting the pre-restore config back on disk.
+  const themed = await api("/api/config", "PUT", { ui: { theme: "dark" } });
+  expect(themed.status, await themed.clone().text()).toBe(200);
+  const onDisk = JSON.parse(
+    await readFile(path.join(directory, "eliza.json"), "utf8"),
+  ) as { ui?: { language?: string; theme?: string } };
+  expect(onDisk.ui).toMatchObject({ language: "restored", theme: "dark" });
+}, 600_000);
