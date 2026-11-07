@@ -6,6 +6,11 @@ import path from 'node:path';
 import test from 'node:test';
 import {fileURLToPath} from 'node:url';
 
+import {
+  verifyVoiceProductBundle,
+  voiceProductInputs,
+} from '../voice-product-inputs.mjs';
+
 const here=path.dirname(fileURLToPath(import.meta.url));
 test('shared voice assets install without loading an inference library',()=>{
  const cache=path.join(os.homedir(),'.gradle/caches/modules-2/files-2.1/org.json/json/20250517');
@@ -29,4 +34,92 @@ test('shared voice assets install without loading an inference library',()=>{
   execFileSync(java('javac'),['--release','17','-cp',jar,'-d',output,...files,path.join(here,'../src/main/java/ai/eliza/voice/VoiceBundleAssets.java'),path.join(here,'assets/VoiceBundleAssetsTest.java')],{timeout:60000,stdio:'pipe'});
   assert.match(execFileSync(java('java'),['-cp',output+path.delimiter+jar,'ai.eliza.voice.VoiceBundleAssetsTest',path.join(output,'data')],{timeout:60000,encoding:'utf8'}),/^PASS shared voice asset installation/);
  }finally{fs.rmSync(output,{recursive:true,force:true});}
+});
+
+test('producer and Gradle contract keep explicit English bundles separate from the pinned bilingual default', () => {
+  const inputs = JSON.parse(fs.readFileSync(path.join(here, '../inputs.json'), 'utf8'));
+  const prefix = 'assets/paradee-voice/v1/';
+  const english = voiceProductInputs(inputs, ['en']);
+  const bilingual = voiceProductInputs(inputs);
+  assert.deepEqual(english.languages, ['en']);
+  assert.deepEqual(bilingual.languages, ['en', 'es']);
+
+  const fixture = (product) => {
+    const files = [inputs.paradee, inputs.lexicon, inputs.asr, inputs.vad]
+      .map(({ path, bytes, sha256 }) => ({ path, bytes, sha256 }));
+    const manifest = {
+      format: 'eliza-paradee-voice-v2', model: inputs.paradee.path,
+      lexicon: inputs.lexicon.path, espeakDir: 'tts/paradee', files,
+    };
+    const record = {
+      productLanguages: product.languages,
+      files: files.map(row => ({ ...row, path: `${prefix}${row.path}` })),
+    };
+    const addAsset = (relative, bytes = 1, sha256 = '0'.repeat(64)) => {
+      files.push({ path: relative, bytes, sha256 });
+      record.files.push({ path: `${prefix}${relative}`, bytes, sha256 });
+    };
+    for (const relative of product.espeakData) addAsset(`tts/paradee/espeak-ng-data/${relative}`);
+    if (product.spanish) {
+      const { path, bytes, sha256, notices } = inputs.spanish;
+      manifest.voices = { es: path };
+      addAsset(path, bytes, sha256);
+      for (const notice of notices) addAsset(`notices/delibes/${notice}`);
+    }
+    return { record, manifest, addAsset };
+  };
+
+  const verify = (product, { record, manifest }, pins = inputs) =>
+    verifyVoiceProductBundle(pins, product, record, manifest);
+  for (const product of [english, bilingual]) assert.deepEqual(verify(product, fixture(product)), product);
+  assert.throws(() => verify(bilingual, fixture(english)), /selection differs/);
+  const legacy = fixture(bilingual);
+  delete legacy.record.productLanguages;
+  assert.throws(() => verify(english, legacy), /selection differs/);
+  verify(bilingual, legacy);
+
+  for (const languages of [[], ['es'], ['en', 'en'], ['en', 'fr']]) {
+    assert.throws(() => voiceProductInputs(inputs, languages));
+  }
+  const disabledInputs = { ...inputs, spanish: { ...inputs.spanish, enabled: false } };
+  assert.throws(() => voiceProductInputs(disabledInputs, ['en', 'es']), /not enabled/);
+  const defaultEnglish = voiceProductInputs(disabledInputs);
+  // Legacy defaults copied Spanish eSpeak files even when the model was disabled.
+  const legacyEnglish = fixture({ ...defaultEnglish, espeakData: inputs.espeak.data });
+  delete legacyEnglish.record.productLanguages;
+  verify(defaultEnglish, legacyEnglish, disabledInputs);
+
+  for (const mutate of [
+    ({ manifest }) => { manifest.voices = { es: inputs.spanish.path }; },
+    ({ record }) => { record.productLanguages = ['en', 'es']; },
+    ({ record }) => { record.files[0].sha256 = '0'.repeat(64); },
+    ({ manifest }) => { manifest.files[0].sha256 = '0'.repeat(64); },
+    ({ manifest }) => { manifest.format = 'eliza-paradee-voice-v3'; },
+    ({ addAsset }) => addAsset(inputs.spanish.path, inputs.spanish.bytes, inputs.spanish.sha256),
+    ({ addAsset }) => addAsset('asr/extra-es.gguf'),
+  ]) {
+    const bundle = fixture(english);
+    mutate(bundle);
+    assert.throws(() => verify(english, bundle));
+  }
+
+  const outsideBundle = fixture(english);
+  outsideBundle.record.files.push({ path: 'assets/extra/unselected.gguf', bytes: 1, sha256: '0'.repeat(64) });
+  assert.throws(() => verify(english, outsideBundle), /outside the voice bundle/);
+
+  for (const dictionary of ['es_dict', 'fr_dict']) {
+    const unselectedLanguage = fixture(english);
+    unselectedLanguage.addAsset(`tts/paradee/espeak-ng-data/${dictionary}`);
+    assert.throws(() => verify(english, unselectedLanguage), /Undeclared eSpeak data/);
+  }
+
+  const badSpanish = fixture(bilingual);
+  badSpanish.record.files.find(row => row.path.endsWith(inputs.spanish.path)).sha256 = '0'.repeat(64);
+  assert.throws(() => verify(bilingual, badSpanish));
+
+  const missingNotice = fixture(bilingual);
+  const notice = 'notices/delibes/LICENSE';
+  missingNotice.manifest.files = missingNotice.manifest.files.filter(row => row.path !== notice);
+  missingNotice.record.files = missingNotice.record.files.filter(row => row.path !== `${prefix}${notice}`);
+  assert.throws(() => verify(bilingual, missingNotice), /Missing Spanish notice/);
 });
