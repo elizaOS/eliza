@@ -16,8 +16,10 @@ import {
 import {
   __resetAccountPoolStatusForTests,
   AccountPool,
+  applyAccountPoolApiCredentials,
   getDefaultAccountPool,
   getPublicAccountPoolStatus,
+  isAccountSelectableNow,
   resetDefaultAccountPoolAfterCredentialReset,
   type Strategy,
 } from "@elizaos/auth/accounts";
@@ -25,7 +27,7 @@ import {
   createRuntimeAccountStoragePolicy,
   saveAccount,
 } from "@elizaos/auth/auth";
-import { afterEach, beforeEach, expect, it } from "vitest";
+import { afterEach, beforeEach, expect, it, vi } from "vitest";
 
 let root: string;
 let previousHome: string | undefined;
@@ -312,4 +314,109 @@ it("rejects metadata deletion when the persistence adapter cannot delete", async
   ).rejects.toMatchObject({
     code: "ACCOUNT_POOL_DELETE_UNSUPPORTED",
   });
+});
+
+it("keeps the exported key when a usage refresh fails without proving the credential bad", async () => {
+  const priorBridge = getAgentHostBridge();
+  const priorKey = process.env.ANTHROPIC_API_KEY;
+  const settings = new Map<string, unknown>();
+  const ctx = (
+    pathname: string,
+  ): Parameters<typeof handleAccountsRoutes>[0] => ({
+    req: {} as never,
+    res: {} as never,
+    method: "POST",
+    pathname,
+    json: () => {},
+    error: (_res: unknown, message: string) => {
+      throw new Error(message);
+    },
+    readJsonBody: async () => null,
+    state: {
+      config: {},
+      runtime: {
+        setSetting: (key: string, value: unknown) => {
+          settings.set(key, value);
+        },
+      },
+    },
+    saveConfig: () => {},
+  });
+  const fetchSpy = vi.spyOn(globalThis, "fetch");
+  try {
+    setAgentHostBridge({
+      ...priorBridge,
+      applyAccountPoolApiCredentials,
+      getDefaultAccountPool,
+    });
+    _resetAccountsRoutesPoolCache();
+    // Stored the way the add-key route stores a direct API key.
+    const policy = createRuntimeAccountStoragePolicy(root);
+    for (const id of ["personal", "work"]) {
+      saveAccount(
+        {
+          id,
+          providerId: "anthropic-api",
+          label: id,
+          source: "api-key",
+          credentials: {
+            access: `synthetic-${id}`,
+            refresh: "",
+            expires: Number.MAX_SAFE_INTEGER,
+          },
+          createdAt: id === "personal" ? 1 : 2,
+          updatedAt: 1,
+        },
+        policy,
+      );
+    }
+    const pool = getDefaultAccountPool();
+    for (const account of pool.list("anthropic-api")) {
+      await pool.upsert({ ...account, health: "ok", healthDetail: undefined });
+    }
+    await applyAccountPoolApiCredentials({});
+    const exported = process.env.ANTHROPIC_API_KEY;
+    expect(exported).toMatch(/^synthetic-/);
+
+    // A provider outage and a network failure say nothing about the key
+    // itself; neither may retract the only working credential.
+    for (const outcome of [
+      () => new Response("unavailable", { status: 503 }),
+      () => {
+        throw new TypeError("fetch failed");
+      },
+    ]) {
+      fetchSpy.mockImplementation(async () => outcome());
+      for (const id of ["personal", "work"]) {
+        await handleAccountsRoutes(
+          ctx(`/api/accounts/anthropic-api/${id}/refresh-usage`),
+        );
+      }
+      expect(process.env.ANTHROPIC_API_KEY).toBe(exported);
+      expect(settings.get("ANTHROPIC_API_KEY")).toBe(exported);
+    }
+    expect(pool.get("personal", "anthropic-api")?.health).toBe("ok");
+
+    // A 429 parks the account with a reset clock, so it is served again once
+    // the cooldown ends instead of never.
+    fetchSpy.mockImplementation(
+      async () => new Response("slow down", { status: 429 }),
+    );
+    await handleAccountsRoutes(
+      ctx("/api/accounts/anthropic-api/personal/refresh-usage"),
+    );
+    const limited = pool.get("personal", "anthropic-api");
+    expect(limited?.health).toBe("rate-limited");
+    const until = limited?.healthDetail?.until;
+    expect(until).toBeGreaterThan(Date.now());
+    expect(limited && isAccountSelectableNow(limited, (until ?? 0) + 1)).toBe(
+      true,
+    );
+  } finally {
+    fetchSpy.mockRestore();
+    setAgentHostBridge(priorBridge);
+    _resetAccountsRoutesPoolCache();
+    if (priorKey === undefined) delete process.env.ANTHROPIC_API_KEY;
+    else process.env.ANTHROPIC_API_KEY = priorKey;
+  }
 });
