@@ -28,6 +28,20 @@ export async function checkDiscordDmAccess(
 	settings: DiscordSettings,
 	user: DiscordDmIdentity,
 ): Promise<DiscordDmAccessResult> {
+	// Ignoring DMs admits only senders on the static or dynamic allowlist and
+	// drops everyone else without a pairing reply.
+	if (
+		settings.shouldIgnoreDirectMessages &&
+		settings.allowFrom?.includes(user.id) !== true &&
+		!(await isInAllowlist(runtime, "discord", user.id))
+	) {
+		runtime.logger.debug(
+			{ src: "plugin:discord", agentId: runtime.agentId, userId: user.id },
+			"DM blocked: direct messages are ignored",
+		);
+		return { allowed: false };
+	}
+
 	// Normalize at the gate: config sources (env var, character settings,
 	// per-account overrides) are all plain strings at runtime, and an
 	// unrecognized value must behave as `pairing`, never fall through to an

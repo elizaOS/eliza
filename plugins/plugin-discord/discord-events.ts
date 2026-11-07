@@ -47,6 +47,7 @@ import {
 	DiscordEventTypes,
 	type DiscordListenChannelPayload,
 	type DiscordNotInChannelsPayload,
+	type DiscordSettings,
 	type DiscordSlashCommand,
 } from "./types";
 
@@ -63,9 +64,9 @@ export interface DiscordServiceInternals {
 	messageManager: DiscordService["messageManager"];
 	voiceManager: DiscordService["voiceManager"];
 	channelDebouncer: ChannelDebouncer | undefined;
-	discordSettings: {
+	/** Settings of this account; `/ask` gates DMs with them. */
+	discordSettings: DiscordSettings & {
 		shouldIgnoreBotMessages: boolean;
-		shouldRespondOnlyToMentions?: boolean;
 	};
 	allowedChannelIds: string[] | undefined;
 	listenChannelIds?: string[];
@@ -929,6 +930,7 @@ export function setupDiscordEventListeners(service: DiscordServiceInternals): {
 					entityId,
 					roomId,
 					accountId,
+					settings: service.discordSettings,
 				});
 			}
 		} catch (error) {
