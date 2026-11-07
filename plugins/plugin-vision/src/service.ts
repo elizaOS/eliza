@@ -1520,8 +1520,8 @@ export class VisionService extends Service {
    * Per-tile incremental scene describe. Re-describes only the tiles whose
    * perceptual hash changed since the previous frame; unchanged tiles reuse
    * their cached description. Returns `null` when the per-tile path is
-   * unavailable or yields no usable text, so the caller falls back to the
-   * full-frame describe.
+   * unavailable, fails, or yields no usable text, so the caller falls back to
+   * the full-frame describe.
    */
   private async describeSceneWithDirtyTiles(
     pngBytes: Buffer,
@@ -1533,12 +1533,22 @@ export class VisionService extends Service {
     const describer = await this.ensureDirtyTileDescriber();
     if (!describer) return null;
     this.dirtyTileDescribeContext = { detectedObjects, recognizedFaces };
-    const out = await describer.describe({
-      displayId: 0,
-      width,
-      height,
-      pngBytes,
-    });
+    let out: Awaited<ReturnType<DirtyTileDescriber["describe"]>>;
+    try {
+      out = await describer.describe({
+        displayId: 0,
+        width,
+        height,
+        pngBytes,
+      });
+    } catch (error) {
+      // error-policy:J4 a failed tile describe degrades to the full-frame describe.
+      logger.warn(
+        { error },
+        "[VisionService] per-tile IMAGE_DESCRIPTION call failed; using full-frame describe",
+      );
+      return null;
+    }
     const stats = describer.getStats();
     logger.debug(
       `[VisionService] dirty-tile describe: ${out.tiles.length} tiles, ${stats.tilesSkipped} reused, ~${stats.approxTokensSaved} tokens saved`,
