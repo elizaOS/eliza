@@ -63,7 +63,7 @@ const LOCAL_PROVIDERS: ReadonlySet<string> = new Set([
 	"eliza-device-bridge",
 ]);
 
-function isLocalProvider(provider: string): boolean {
+export function isLocalProvider(provider: string): boolean {
 	return LOCAL_PROVIDERS.has(provider);
 }
 

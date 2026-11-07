@@ -116,11 +116,13 @@ export class RuntimePipelineHooks {
 			try {
 				await entry.handler(this.runtime, ctx);
 			} catch (error) {
-				// error-policy:J4 Local text admission rejects before dispatch; other
-				// hook failures retain the ordinary isolated diagnostic behavior.
+				// error-policy:J4 Local text admission rejects before dispatch: a
+				// local backend that cannot serve, or a remote provider refused by an
+				// on-device-only policy. Model dispatch then tries the next
+				// registration. Other hook failures retain the ordinary isolated
+				// diagnostic behavior.
 				if (
 					ctx.phase === "pre_model" &&
-					ctx.provider === "eliza-local-inference" &&
 					TEXT_GENERATION_MODEL_KEYS.includes(ctx.resolvedModelKey) &&
 					isUnavailableLocalModel(error)
 				) {
