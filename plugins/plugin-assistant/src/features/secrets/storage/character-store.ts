@@ -2,7 +2,8 @@
  * Character Settings Storage
  *
  * Stores global secrets for the agent: the encrypted record with its config
- * in `character.settings.__secrets_store`, and the live string through
+ * in memory for this runtime (never in `character.settings`, so no character
+ * export, serializer or import carries it), and the live string through
  * `runtime.setSetting(key, value, true)` so `runtime.getSetting` returns it.
  * Keys loaded at boot stay as plain strings in `character.settings.secrets`.
  *
@@ -27,12 +28,14 @@ import { BaseSecretStorage } from "./interface.ts";
 
 const SECRETS_KEY = "secrets";
 /**
- * Encrypted records written by this store. They live beside `secrets`, not in
- * it: the runtime aliases `character.settings.secrets` to `character.secrets`
- * and `getSetting` reads only strings from there, so an encrypted record in
- * `secrets` was unreadable by every plugin and replaced a key loaded at boot.
+ * Encrypted records written by this store, per runtime. They are not in
+ * `settings.secrets`: the runtime aliases it to `character.secrets` and
+ * `getSetting` reads only strings from there, so a record there was unreadable
+ * by every plugin and replaced a key loaded at boot. They are not in any other
+ * `settings` key either: the agent export strips only the declared secret
+ * containers, so a record there would ship in a credential-free bundle.
  */
-const STORE_KEY = "__secrets_store";
+const RECORDS = new WeakMap<IAgentRuntime, Record<string, StoredSecret>>();
 const METADATA_KEY = "__secrets_metadata";
 
 /**
@@ -77,9 +80,6 @@ export class CharacterSettingsStorage extends BaseSecretStorage {
     }
     if (!this.runtime.character.settings[SECRETS_KEY]) {
       this.runtime.character.settings[SECRETS_KEY] = {};
-    }
-    if (!this.runtime.character.settings[STORE_KEY]) {
-      this.runtime.character.settings[STORE_KEY] = {};
     }
   }
 
@@ -272,16 +272,19 @@ export class CharacterSettingsStorage extends BaseSecretStorage {
     return true;
   }
 
-  /** Encrypted records this store wrote (`settings.__secrets_store`). */
+  /** Encrypted records this store wrote for this runtime (in memory only). */
   private getStoreObject(): Record<string, StoredSecret> {
-    this.ensureSettingsStructure();
-    const settings = this.runtime.character.settings as Record<string, unknown>;
-    return settings[STORE_KEY] as Record<string, StoredSecret>;
+    let records = RECORDS.get(this.runtime);
+    if (!records) {
+      records = {};
+      RECORDS.set(this.runtime, records);
+    }
+    return records;
   }
 
   /**
    * Get the secrets object from character settings: keys loaded at boot
-   * (plain strings) and records written before `__secrets_store` existed.
+   * (plain strings) and records written there by earlier versions.
    *
    * Accesses character.settings.secrets directly instead of using getSetting()
    * because getSetting() only returns primitives, not objects.
