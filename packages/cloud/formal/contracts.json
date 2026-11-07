@@ -134,6 +134,50 @@
         "No fairness, operating-system process termination or cleanup of remote provider effects is proved."
       ],
       "maxSteps": 25
+    },
+    {
+      "id": "payment-delivery",
+      "file": "payment_delivery.qnt",
+      "sources": [
+        "packages/cloud/shared/src/lib/services/payment-request-settlement.ts",
+        "packages/cloud/shared/src/db/schemas/payment-requests.ts"
+      ],
+      "invariants": ["safety"],
+      "assumptions": [
+        "One payment, two provider events, two workers, eight clock ticks, bounded attempts.",
+        "The final lease check and transport start form one abstract action; arbitrary process suspension between those operations is excluded.",
+        "Late in-flight and duplicate deliveries are allowed. No receiver-side exactly-once, HMAC, SSRF or database/network atomicity proof is claimed."
+      ],
+      "maxSteps": 40
+    },
+    {
+      "id": "subscription-commands",
+      "file": "subscription_commands.qnt",
+      "sources": [
+        "packages/cloud/shared/src/db/repositories/app-billing-command-runtime.ts",
+        "packages/cloud/shared/src/db/repositories/app-subscription-finalizer.ts",
+        "packages/cloud/shared/src/lib/services/generic-billing-runtime.ts"
+      ],
+      "invariants": ["safety"],
+      "assumptions": [
+        "One immutable command and scope, two workers, three lease generations, nine clock ticks, two subscription revisions.",
+        "Only committed database actions are modeled; interrupted transactions stutter.",
+        "Provider payload validation, decimal arithmetic, external idempotency and special cancellation/import authority are excluded."
+      ],
+      "maxSteps": 40
+    },
+    {
+      "id": "auto-topup-lock-order",
+      "file": "auto_topup_lock_order.qnt",
+      "sources": [
+        "packages/cloud/shared/src/db/repositories/auto-top-up-attempts.ts"
+      ],
+      "invariants": ["safety"],
+      "assumptions": [
+        "Two transactions contend for one organization and one attempt in a consistent row-lock order.",
+        "Models row-lock acquisition and release only; money, provider effects, triggers, fairness and unbounded database executions are excluded."
+      ],
+      "maxSteps": 30
     }
   ],
   "pendingDomains": [
