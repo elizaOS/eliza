@@ -321,17 +321,6 @@ export function failureResponse(c: Context, error: unknown): Response {
       error.status as 400,
     );
   }
-  if (error instanceof Error && error.name === "InferenceCredentialRevocationUnavailableError") {
-    return c.json(
-      {
-        success: false,
-        error: "Authorization service is temporarily unavailable",
-        code: "service_unavailable" as const,
-      },
-      503,
-      { "Retry-After": "1" },
-    );
-  }
   const lifecycleConstraint = findAutoTopUpLifecycleGuardConstraint(error);
   if (lifecycleConstraint === "auto_top_up_cutover_paused") {
     return c.json(

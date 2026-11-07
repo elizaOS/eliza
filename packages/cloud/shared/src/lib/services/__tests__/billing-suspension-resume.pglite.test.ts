@@ -20,7 +20,6 @@ import { getTableConfig } from "drizzle-orm/pg-core";
 import { agentBackupObjects } from "../../../db/schemas/agent-backup-catalog";
 import { agentComputeFunding } from "../../../db/schemas/agent-compute-funding";
 import { agentComputeStopIntents } from "../../../db/schemas/agent-compute-stop-intents";
-import { organizationPolicyAudit } from "../../../db/schemas/organization-policy-audit";
 import { agentNodeIncarnationHistories } from "../../../db/schemas/agent-node-incarnation-histories";
 import {
   agentBackupCatalogAuthorities,
@@ -43,6 +42,7 @@ import { orgRateLimitOverrides } from "../../../db/schemas/org-rate-limit-overri
 import { orgStorageQuota } from "../../../db/schemas/org-storage-quota";
 import { organizationConfig } from "../../../db/schemas/organization-config";
 import { organizationEntitlements } from "../../../db/schemas/organization-entitlements";
+import { organizationPolicyAudit } from "../../../db/schemas/organization-policy-audit";
 import { organizations } from "../../../db/schemas/organizations";
 import { personalDedicatedFallbacks } from "../../../db/schemas/personal-dedicated-fallbacks";
 import { personalDedicatedUpgradeAuthorities } from "../../../db/schemas/personal-dedicated-upgrade-authorities";
@@ -408,7 +408,8 @@ test(
             if (path === "/policy-fence/commit" || path === "/policy-fence/abort") {
               pending.delete(String(body.mutationId));
               if (path === "/policy-fence/commit" && body.policyGeneration)
-                floor = BigInt(body.policyGeneration) > floor ? BigInt(body.policyGeneration) : floor;
+                floor =
+                  BigInt(body.policyGeneration) > floor ? BigInt(body.policyGeneration) : floor;
               return Response.json({ committed: true });
             }
             if (path === "/hydrate") return Response.json({ hydrated: true });
@@ -425,13 +426,15 @@ test(
         };
       },
     };
-    const clawback = await runWithCloudBindingsAsync({ INFERENCE_ADMISSION_GATES: organizationGate }, () =>
-      creditsService.clawbackCredits({
-        organizationId: held.orgId,
-        amount: AGENT_PRICING.MINIMUM_DEPOSIT + 5,
-        description: "refund clawback",
-        stripePaymentIntentId: `stripe:refund:${unique("ch")}:1`,
-      }),
+    const clawback = await runWithCloudBindingsAsync(
+      { INFERENCE_ADMISSION_GATES: organizationGate },
+      () =>
+        creditsService.clawbackCredits({
+          organizationId: held.orgId,
+          amount: AGENT_PRICING.MINIMUM_DEPOSIT + 5,
+          description: "refund clawback",
+          stripePaymentIntentId: `stripe:refund:${unique("ch")}:1`,
+        }),
     );
     expect(clawback.shortfallAmount).toBeCloseTo(5, 6);
     expect(gatePaths.slice(0, 2)).toEqual(["/policy-fence/begin", "/policy-fence/commit"]);
