@@ -23,7 +23,11 @@ import {
   type ReviewedAvailabilityRequest,
   validateReviewedAvailabilityRequest,
 } from "./reviewed-availability.js";
-import { CalendarLocalTimeError, getZonedDateParts } from "./time.js";
+import {
+  addDaysToLocalDate,
+  CalendarLocalTimeError,
+  getZonedDateParts,
+} from "./time.js";
 
 const windowSchema: NonNullable<GenerateTextParams["responseSchema"]> = {
   type: "object",
@@ -199,9 +203,13 @@ export async function originalAvailabilityWindow(args: {
     }
     if (fields.absoluteEnd !== null) end = absolute(fields.absoluteEnd);
     else if (originalDate && clock.kind === "one" && clock.end) {
+      // An end clock before the start clock ("11pm to 1am") is on the next day.
+      const overnight =
+        clock.end.hour * 60 + clock.end.minute <
+        clock.start.hour * 60 + clock.start.minute;
       end = normalizeCalendarDateTimeInTimeZone(
         civil({
-          ...originalDate,
+          ...(overnight ? addDaysToLocalDate(originalDate, 1) : originalDate),
           hour: clock.end.hour,
           minute: clock.end.minute,
         }),
