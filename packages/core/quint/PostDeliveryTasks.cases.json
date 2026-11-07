@@ -55,7 +55,8 @@
 	],
 	"sources": [
 		"packages/core/src/services/post-delivery-task-tracker.ts",
-		"packages/core/src/runtime/room-handler-queue.ts"
+		"packages/core/src/runtime/room-handler-queue.ts",
+		"packages/core/test/post-delivery-task-conformance.test.ts"
 	],
 	"implementationTests": [
 		"packages/core/test/post-delivery-task-conformance.test.ts"
@@ -75,5 +76,6 @@
 		"indexes": "Runtime and room pending sets are stored independently and checked against task phases and room identities. Registration and finally cleanup update them atomically, matching synchronous Set operations.",
 		"terminalCallbacks": "The cooperation selector is forgotten after settlement because no later transition reads it. Failure-ID history is omitted because it belongs to the diagnostic sink and does not control the tracker; real tests assert error reporting.",
 		"progress": "With finite one-start observers, eventual permanent quiescence is equivalent to the explicitly retained per-observer leads-to obligations."
-	}
+	},
+	"conformance": "packages/core/scripts/quint-post-delivery-conformance.mjs"
 }
