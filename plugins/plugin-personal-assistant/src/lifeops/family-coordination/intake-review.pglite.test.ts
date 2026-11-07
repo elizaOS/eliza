@@ -1,13 +1,22 @@
 /**
  * Exercises real PGlite selection deduplication, tenant isolation, owner review,
- * stale-write rejection and withdrawal of selected family correspondence.
+ * stale-write rejection, withdrawal and the workspace deletion fence of selected
+ * family correspondence.
  * The document/model/HTTP consumers are outside this persistence harness.
  */
 import { createHash, randomUUID } from "node:crypto";
 import { PGlite } from "@electric-sql/pglite";
 import type { AccessContext, Memory, UUID } from "@elizaos/core";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import type { LifeOpsDatabaseContext, RawSqlQuery } from "../sql.js";
+import {
+  ensureFamilyWorkspaceOperationStore,
+  fenceFamilyWorkspace,
+} from "../family-workflows/workspace-operation-store.js";
+import {
+  type LifeOpsDatabaseContext,
+  type RawSqlQuery,
+  withTransaction,
+} from "../sql.js";
 import {
   type FamilyIntakeFact,
   FamilyIntakeReviewStore,
@@ -19,6 +28,8 @@ const owner = randomUUID();
 const recipient = randomUUID();
 const digest = (text: string) =>
   createHash("sha256").update(text).digest("hex");
+const sqlText = (query: RawSqlQuery) =>
+  query.queryChunks.map((chunk) => chunk.value ?? "").join("");
 
 describe("Family intake review persistence", () => {
   let db: PGlite;
@@ -34,9 +45,14 @@ describe("Family intake review persistence", () => {
       agentId: randomUUID(),
       adapter: {
         db: {
-          execute: (query: RawSqlQuery) =>
-            db.query(
-              query.queryChunks.map((chunk) => chunk.value ?? "").join(""),
+          execute: (query: RawSqlQuery) => db.query(sqlText(query)),
+          transaction: <T>(
+            fn: (tx: {
+              execute: (query: RawSqlQuery) => Promise<unknown>;
+            }) => Promise<T>,
+          ) =>
+            db.transaction((tx) =>
+              fn({ execute: (query) => tx.query(sqlText(query)) }),
             ),
         },
       },
@@ -403,6 +419,33 @@ describe("Family intake review persistence", () => {
     });
     expect(await store.read(selection.id)).toEqual(first);
     expect(await other.read(selection.id)).toEqual(second);
+  });
+
+  it("refuses new selections and revisions after workspace deletion fences the workspace", async () => {
+    const selected = await store.select(selection);
+    await ensureFamilyWorkspaceOperationStore(context);
+    await withTransaction(context, (tx) =>
+      fenceFamilyWorkspace(tx, context.agentId),
+    );
+    await expect(
+      store.select({
+        ...selection,
+        id: randomUUID(),
+        source: { ...selection.source, documentId: randomUUID() },
+      }),
+    ).rejects.toMatchObject({ code: "FAMILY_WORKSPACE_FENCED" });
+    await expect(
+      store.propose({
+        id: selected.id,
+        expectedRevision: selected.revision,
+        sourceSha256: selection.source.contentSha256,
+        facts: [fact],
+      }),
+    ).rejects.toMatchObject({ code: "FAMILY_WORKSPACE_FENCED" });
+    await expect(
+      store.withdraw(selected.id, selected.revision),
+    ).rejects.toMatchObject({ code: "FAMILY_WORKSPACE_FENCED" });
+    expect(await store.history(selected.id)).toEqual([selected]);
   });
 
   it("rejects uncited proposals and invalidates disclosure after source changes, access loss and withdrawal", async () => {
