@@ -41,11 +41,9 @@ __filename = "\"/worker.js\""
 [observability]
 enabled = true
 
-# A NEW namespace, not a transfer. Sessions are bounded (60 s minted, 305 s
-# prepared) and every session is a fresh object, so nothing durable needs to
-# move: the API keeps exporting its class so already-created objects finish
-# their retirement alarms there. Declarative exports create this namespace on
-# first deploy; never mix them with legacy `[[migrations]]`.
+# Every new session gets its own object in this namespace. The API keeps its
+# existing export so its objects can finish their retirement alarms there.
+# Declarative exports create this namespace on first deploy without a transfer.
 [exports.SpeechRelayCoordinator]
 type = "durable-object"
 storage = "sqlite"

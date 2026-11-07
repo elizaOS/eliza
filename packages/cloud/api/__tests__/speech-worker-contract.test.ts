@@ -61,6 +61,8 @@ describe("staging speech host source contract", () => {
       "VOICE_SPEECH_RELAY_ENABLED",
       "VOICE_SPEECH_END_TIMEOUT_MS",
       "VOICE_REALTIME_CARTESIA_VOICE_ID",
+      "VOICE_REALTIME_ORG_DAILY_MINUTES",
+      "VOICE_REALTIME_USER_DAILY_MINUTES",
       "CLOUD_VOICE_USAGE_BACKEND",
       "KV_REST_API_URL",
     ])
@@ -181,6 +183,21 @@ describe("staging speech host source contract", () => {
         delete input.target.vars!.VOICE_SPEECH_END_TIMEOUT_MS;
       },
       "Coordinator variable must match staging: VOICE_SPEECH_END_TIMEOUT_MS",
+    ],
+    [
+      "an API-only voice usage limit",
+      (input) => {
+        input.source.env!.staging!.vars!.VOICE_REALTIME_USER_DAILY_MINUTES =
+          "1";
+      },
+      "Coordinator variable must match staging: VOICE_REALTIME_USER_DAILY_MINUTES",
+    ],
+    [
+      "the direct Redis backend missing on the host",
+      (input) => {
+        delete input.target.vars!.DIRECT_REDIS_BACKEND;
+      },
+      "Coordinator variable must match staging: DIRECT_REDIS_BACKEND",
     ],
     [
       "an admission variable missing on the host",

@@ -66,7 +66,7 @@ export interface SpeechWorkerContractInput {
   admission: WorkerConfig;
   /** packages/cloud/speech-worker/src/index.ts */
   entry: string;
-  /** Uppercase identifiers read as `env.NAME` on the coordinator path. */
+  /** Uppercase environment bindings read on the coordinator path. */
   coordinatorVariables: Set<string>;
   /** Base URLs used to resolve aliases to absolute files. */
   targetBase: URL;
@@ -292,7 +292,14 @@ export function checkSpeechWorkerContract(
 export async function scanCoordinatorVariables(
   base: URL,
 ): Promise<Set<string>> {
-  const names = new Set<string>();
+  const names = new Set([
+    // The Redis factory reads this selector through an alias for env.
+    "DIRECT_REDIS_BACKEND",
+    // resolveVoiceUsageLimits uses optional chaining. Other optional reads in
+    // the same module belong to API-only voice paths.
+    "VOICE_REALTIME_ORG_DAILY_MINUTES",
+    "VOICE_REALTIME_USER_DAILY_MINUTES",
+  ]);
   for (const file of COORDINATOR_SOURCES) {
     const text = await readFile(new URL(file, base), "utf8");
     for (const match of text.matchAll(/\benv\.([A-Z][A-Z0-9_]*)\b/g))

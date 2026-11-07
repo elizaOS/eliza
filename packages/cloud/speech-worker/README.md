@@ -25,9 +25,9 @@ would make its cold start larger. A separate script keeps both properties.
 
 `InferenceAdmissionGate` was transferred because each of its objects holds
 long-lived quota and balance state for an organization. A speech session object
-is different. It lives for one bounded session: `expiresAt` is at most 60 s
-after it is minted and 305 s after it is prepared. Each session gets a new
-object, and no state is shared across sessions. The staging API therefore keeps
+is different. Each session gets a new object, and no state is shared across
+sessions. Minting can advance the preparation expiry, and older clients can
+request renewable session windows. The staging API therefore keeps
 its `SpeechRelayCoordinator` export, with no transfer and no deletion. Objects
 created before the binding switch run their retirement alarms there and
 settle as before. New sessions are created in this Worker's namespace, which
@@ -88,9 +88,8 @@ The Voice Live E2E staging measurement in the PR checklist covers those.
 
 ## Rollback
 
-Remove `script_name` from the staging API `SPEECH_RELAY_SESSIONS` binding and
-deploy the API. New sessions return to the API namespace, which this change
-never removed. Keep this Worker deployed until its last objects pass
-`expiresAt` and their retirement alarms confirm. That takes 305 s at most
-after the last session is prepared, plus the bounded retirement retries. Do not
-delete its class while any object may still be retiring.
+Revert the speech host change and run the staging release. Removing only
+`script_name` from `SPEECH_RELAY_SESSIONS` fails the source contract and blocks
+the API deploy. After the revert, new sessions return to the retained API
+namespace. Keep the speech Worker, its class, and its secrets until the last
+sessions expire and their settlement and retirement are confirmed.
