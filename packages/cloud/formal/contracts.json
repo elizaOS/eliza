@@ -195,6 +195,24 @@
         "Database CAS is atomic. Provider health truth, physical node replacement outside retained identity, transport reliability, liveness and TypeScript refinement are not proved."
       ],
       "maxSteps": 35
+    },
+    {
+      "id": "app-container-publication",
+      "file": "app_container_publication.qnt",
+      "sources": [
+        "packages/cloud/shared/src/lib/services/app-container-store.ts",
+        "packages/cloud/shared/src/lib/services/app-container-store-queries.ts",
+        "packages/cloud/shared/src/lib/services/container-job-executors.ts",
+        "packages/cloud/shared/src/lib/services/container-retirement.ts"
+      ],
+      "invariants": ["safety"],
+      "assumptions": [
+        "One tenant projection, two app generations/row incarnations, one metadata change and atomic publication CAS.",
+        "Original database timestamp text identifies the row; privileged reuse of both UUID and exact timestamp is excluded. Publication retains original tenant/app generation across provider I/O.",
+        "Retirement and publication serialize at the database write. Stale cleanup can release only the original row/generation slot.",
+        "Provider truth, physical node reincarnation, later ingress publication, unbounded liveness and TypeScript refinement remain unproved."
+      ],
+      "maxSteps": 35
     }
   ],
   "pendingDomains": [
