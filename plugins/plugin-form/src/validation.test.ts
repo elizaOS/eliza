@@ -446,6 +446,68 @@ describe("validateField currency numbers", () => {
 });
 
 /**
+ * The evaluator's extraction schema lets the model answer with any JSON value,
+ * and the processors pass a list or an object on to validation unchanged.
+ */
+describe("validateField single-value built-ins", () => {
+  const country: FormControl = {
+    key: "country",
+    label: "Country",
+    type: "select",
+    required: true,
+    options: [
+      { value: "US", label: "United States" },
+      { value: "CA", label: "Canada" },
+    ],
+  };
+  const quantity: FormControl = {
+    key: "qty",
+    label: "Quantity",
+    type: "number",
+    required: true,
+  };
+  const name: FormControl = {
+    key: "name",
+    label: "Name",
+    type: "text",
+    required: true,
+  };
+  const email: FormControl = { key: "email", label: "Email", type: "email" };
+  const optIn: FormControl = { key: "optIn", label: "Opt in", type: "boolean" };
+
+  it.each([
+    { control: country, value: ["US"] },
+    // String(["1", "234"]) is "1,234", which the number grammar reads as 1234.
+    { control: quantity, value: ["1", "234"] },
+    { control: name, value: [] },
+    { control: name, value: {} },
+    { control: email, value: ["ann@example.com"] },
+    { control: optIn, value: [true] },
+  ])("rejects $value for a $control.type field", ({ control, value }) => {
+    expect(validateField(value, control, getBuiltinType(control.type))).toEqual(
+      {
+        valid: false,
+        error: `${control.label} must be a single value`,
+      },
+    );
+  });
+
+  it("accepts the same answers as one value", () => {
+    for (const [value, control] of [
+      ["US", country],
+      ["1,234", quantity],
+      ["Ann", name],
+      ["ann@example.com", email],
+      [true, optIn],
+    ] as const) {
+      expect(
+        validateField(value, control, getBuiltinType(control.type)),
+      ).toEqual({ valid: true });
+    }
+  });
+});
+
+/**
  * Legacy type-handler override vs the built-in type switch (`validateField`).
  *
  * Pins the two invariants that matter when a legacy `registerTypeHandler`

@@ -134,6 +134,15 @@ export function clearTypeHandlers(): void {
 // ============================================================================
 // FIELD VALIDATION
 // ============================================================================
+/** Built-in types that hold one value unless the control sets `multiple`. */
+const SINGLE_VALUE_TYPES = new Set([
+  "text",
+  "email",
+  "number",
+  "boolean",
+  "date",
+  "select",
+]);
 /**
  * Validate a value against a control's validation rules.
  *
@@ -200,6 +209,19 @@ export function validateField(
     // reachable.
     if (handler !== controlType)
       return validateFieldConstraints(value, control, handler);
+  }
+  // A list or an object is not one answer. The checks below read the value
+  // through String(), so ["US"] would pass as "US", ["1", "234"] as 1234 and
+  // [] as a filled required field, and the list itself would be submitted.
+  if (
+    SINGLE_VALUE_TYPES.has(control.type) &&
+    !control.multiple &&
+    typeof value === "object"
+  ) {
+    return {
+      valid: false,
+      error: `${control.label || control.key} must be a single value`,
+    };
   }
   // Type-specific validation
   // WHY switch: Clear separation of validation logic per type
