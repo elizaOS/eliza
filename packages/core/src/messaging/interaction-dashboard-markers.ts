@@ -124,25 +124,48 @@ function degradeWidgetBlocks(text: string): string {
 	);
 }
 
+/**
+ * Opening and closing lines of a widget block — lockstep with the dashboard's
+ * CHECKLIST_RE / WORKFLOW_RE: spaces/tabs inside the brackets and around the
+ * marker, and CRLF or LF line endings.
+ */
+const DASHBOARD_BLOCK_MARKERS: Record<
+	"CHECKLIST" | "WORKFLOW",
+	{ opening: RegExp; closing: RegExp }
+> = {
+	CHECKLIST: {
+		opening: /\[[ \t]*CHECKLIST[ \t]*\][ \t]*\r?\n/g,
+		closing: /\r?\n\[[ \t]*\/[ \t]*CHECKLIST[ \t]*\]/g,
+	},
+	WORKFLOW: {
+		opening: /\[[ \t]*WORKFLOW[ \t]*\][ \t]*\r?\n/g,
+		closing: /\r?\n\[[ \t]*\/[ \t]*WORKFLOW[ \t]*\]/g,
+	},
+};
+
+/** Quick test for any widget block opening, so plain prose skips the scan. */
+const DASHBOARD_BLOCK_OPENING_RE = /\[[ \t]*(?:CHECKLIST|WORKFLOW)[ \t]*\]/;
+
 function replaceDashboardBlocks(
 	text: string,
 	kind: "CHECKLIST" | "WORKFLOW",
 	render: (body: string) => string,
 ): string {
-	const opening = `[${kind}]\n`;
-	const closing = `\n[/${kind}]`;
+	const { opening, closing } = DASHBOARD_BLOCK_MARKERS[kind];
 	const chunks: string[] = [];
 	let cursor = 0;
 	while (cursor < text.length) {
-		const start = text.indexOf(opening, cursor);
-		if (start < 0) break;
-		const end = text.indexOf(closing, start + opening.length);
-		if (end < 0) break;
+		opening.lastIndex = cursor;
+		const open = opening.exec(text);
+		if (!open) break;
+		closing.lastIndex = opening.lastIndex;
+		const close = closing.exec(text);
+		if (!close) break;
 		chunks.push(
-			text.slice(cursor, start),
-			render(text.slice(start + opening.length, end)),
+			text.slice(cursor, open.index),
+			render(text.slice(opening.lastIndex, close.index)),
 		);
-		cursor = end + closing.length;
+		cursor = closing.lastIndex;
 	}
 	if (chunks.length === 0) return text;
 	chunks.push(text.slice(cursor));
@@ -159,8 +182,7 @@ export function stripDashboardOnlyMarkers(text: string): string {
 		!text.includes("[CONFIG:") &&
 		!text.includes("[CONNECTOR:") &&
 		!text.includes("[BACKGROUND]") &&
-		!text.includes("[CHECKLIST]") &&
-		!text.includes("[WORKFLOW]")
+		!DASHBOARD_BLOCK_OPENING_RE.test(text)
 	) {
 		return text;
 	}
