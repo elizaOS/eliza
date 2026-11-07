@@ -416,13 +416,11 @@ ${matchingApp.website_url ? `🌐 Website: ${matchingApp.website_url}` : ""}`;
           try {
             await ctx.reply(part);
           } catch (error) {
-            // Nothing reached the owner yet: fail the update so Telegram
-            // redelivers it.
-            if (index === 0) throw error;
-            // Earlier parts already reached the owner. A redelivery would run
-            // the turn again and resend them, so acknowledge the update and
-            // report the parts that were not delivered.
-            logger.error("[Telegram Webhook] Reply only partly delivered", {
+            // The turn already ran (and may have sent mail, booked an event or
+            // taken another action). A redelivery would run it again, so
+            // acknowledge the update and report what was not delivered, even
+            // when no part reached the owner.
+            logger.error("[Telegram Webhook] Reply not fully delivered", {
               orgId,
               chatId,
               deliveredParts: index,

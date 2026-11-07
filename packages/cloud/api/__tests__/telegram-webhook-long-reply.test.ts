@@ -1,6 +1,7 @@
 /**
  * An org Telegram bot delivers an agent reply longer than Telegram's 4096
- * character message limit as ordered parts, and acknowledges the update. The
+ * character message limit as ordered parts, and acknowledges the update once
+ * the turn has run, even when a part fails. The
  * real route and Telegraf client run; the Telegram Bot API is a local fake
  * that rejects an over-long message as the real one does, and the agent
  * gateway returns a fixed long reply.
@@ -167,4 +168,21 @@ test("a later part that fails after earlier parts arrived does not re-run the tu
   expect(again.status).toBe(200);
   expect(routed).toBe(1);
   expect(sent).toHaveLength(1);
+});
+
+test("a first part that fails after the turn ran does not re-run the turn", async () => {
+  acceptedBeforeRateLimit = 0;
+  const orgId = randomUUID();
+  const first = await deliverUpdate(orgId);
+  expect(first.status).toBe(200);
+  expect(routed).toBe(1);
+  expect(sent).toHaveLength(0);
+
+  // A redelivery of the same update_id is a duplicate: no second turn and no
+  // part sent twice.
+  acceptedBeforeRateLimit = null;
+  const again = await deliverUpdate(orgId);
+  expect(again.status).toBe(200);
+  expect(routed).toBe(1);
+  expect(sent).toHaveLength(0);
 });
