@@ -14,6 +14,9 @@ export const provider: Provider = {
   dynamic: true,
   contexts: ["connectors", "settings"],
   contextGate: { anyOf: ["connectors", "settings"] },
+  // Server names, tool schemas and resource URIs describe what the owner's
+  // servers can do; only the owner can call them.
+  roleGate: { minRole: "OWNER" },
   cacheStable: false,
   cacheScope: "turn",
   get: async (runtime: IAgentRuntime, _message: Memory, _state: State): Promise<ProviderResult> => {

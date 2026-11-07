@@ -501,7 +501,10 @@ export const mcpAction: Action = {
   contextGate: {
     anyOf: ["general", "automation", "knowledge", "connectors", MCP_ACTION_CONTEXT, "files"],
   },
-  roleGate: { minRole: "USER" },
+  // MCP servers are configured by the owner and run with the owner's
+  // server credentials (stdio tools, HTTP headers and env), so only the owner
+  // may call their tools or read their resources.
+  roleGate: { minRole: "OWNER" },
   similes: [
     "MCP_ACTION",
     "MCP_ROUTER",
