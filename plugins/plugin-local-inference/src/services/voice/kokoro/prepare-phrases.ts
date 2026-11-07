@@ -1,7 +1,9 @@
 /**
- * Preflights complete Kokoro utterances against the native 510-phoneme boundary.
- * Word-boundary splitting preserves the ordered text exactly; an indivisible
- * oversized word fails before any phrase is dispatched to synthesis.
+ * Preflights complete Kokoro utterances against the native 510-symbol
+ * wrapped-input boundary. The two pads (BOS/EOS) count toward the cap, so
+ * an IPA string may hold at most 508 codepoints. Word-boundary splitting
+ * preserves the ordered text exactly; an indivisible oversized word fails
+ * before any phrase is dispatched to synthesis.
  */
 import { ElizaError } from "@elizaos/core";
 import type { KokoroPhonemeSequence, KokoroPhonemizer } from "./types";
@@ -25,7 +27,8 @@ export async function prepareKokoroPhrases(
 	}
 	// Each native IPA codepoint contributes at most one token. Counting every
 	// codepoint is conservative even when the native vocabulary ignores it.
-	if (Array.from(phonemes.phonemes).length <= 510) {
+	// The 510-symbol cap covers the wrapped input (IPA plus two pads).
+	if (Array.from(phonemes.phonemes).length <= 508) {
 		return [{ text, phonemes }];
 	}
 	const words = text.match(/\S+\s*|\s+/gu) ?? [];
@@ -36,7 +39,7 @@ export async function prepareKokoroPhrases(
 				code: "KOKORO_PHRASE_TOO_LARGE",
 				context: {
 					phonemeCount: Array.from(phonemes.phonemes).length,
-					maximum: 510,
+					maximum: 508,
 				},
 			},
 		);

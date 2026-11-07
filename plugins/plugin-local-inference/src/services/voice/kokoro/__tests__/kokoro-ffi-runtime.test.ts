@@ -334,6 +334,27 @@ describe("KokoroFfiRuntime", () => {
 		expect(calls.ipaSynths).toHaveLength(0);
 	});
 
+	it("rejects 509 IPA codepoints: the 510-symbol cap includes two pads", async () => {
+		const rt = new KokoroFfiRuntime({
+			layout: makeLayout(root),
+			ffi: fakeKokoroFfi({ calls }),
+			ctx: 7n as ElizaInferenceContextHandle,
+		});
+		const onChunk = vi.fn();
+		await expect(
+			rt.synthesize(
+				makeInputs(voice("af_same", "af_same.bin"), onChunk, undefined, {
+					ipa: "a".repeat(509),
+				}),
+			),
+		).rejects.toMatchObject({
+			code: "KOKORO_PHRASE_TOO_LARGE",
+			message: expect.stringContaining("1 to 508 IPA codepoints"),
+		});
+		expect(onChunk).not.toHaveBeenCalled();
+		expect(calls.ipaSynths).toHaveLength(0);
+	});
+
 	it("rejects exhausted audio capacity before returning a clipped waveform", async () => {
 		const rt = new KokoroFfiRuntime({
 			layout: makeLayout(root),
