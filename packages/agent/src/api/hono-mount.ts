@@ -243,7 +243,8 @@ export async function tryHandleHonoRuntimeRoute(options: {
       // dispatching to Hono. Remaining bytes are discarded without retention.
       res.statusCode = 413;
       res.setHeader("content-type", "application/json");
-      res.setHeader("connection", "close");
+      // Keep the connection available while readNodeBody drains the upload.
+      // Closing it here can race the peer's writes and hide the 413 behind EPIPE.
       res.end(
         JSON.stringify({
           error: "Request body too large",

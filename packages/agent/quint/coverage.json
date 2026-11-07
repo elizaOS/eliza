@@ -758,5 +758,21 @@
       "Compiler/bundler correctness, platform loaders, artifact hashes and external file mutation are excluded.",
       "Safety projection only. No implementation trace-refinement or unbounded progress proof."
     ]
+  },
+  {
+    "id": "AgentApiHttpBody",
+    "model": "packages/agent/quint/api-http-body.qnt",
+    "sources": [
+      "packages/agent/src/api/hono-mount.ts",
+      "packages/agent/src/api/hono-adapter.ts",
+      "packages/agent/src/api/hono-adapter.test.ts"
+    ],
+    "invariants": ["safety"],
+    "status": "partial",
+    "limitations": [
+      "One bounded request is projected through accumulated byte increments. Arbitrary byte/chunk boundaries, dynamic route caps and multi-request sequencing are outside this instance.",
+      "Normal server close follows request drain and local response flush. HTTP deadlines, handler failures, peer receipt and other transport close policies are excluded.",
+      "The real HTTP test checks oversized chunked rejection followed by a valid keep-alive request. Authentication and route-selection authority remain external guards."
+    ]
   }
 ]
