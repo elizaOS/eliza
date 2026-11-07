@@ -540,9 +540,17 @@ export class AudioFrameConsumer {
 			case "speech-end":
 				this.finalizeTurn(event.timestampMs);
 				break;
-			// speech-active / speech-pause / blip do not alter buffering: PCM
-			// keeps accumulating through pauses (mid-utterance micro-silences are
-			// part of the turn), and a `blip` never opened a turn.
+			case "blip":
+				// The VAD ends a segment shorter than `minSpeechMs` (a cough, a
+				// click) with `blip` instead of `speech-end`, after its
+				// `speech-start` already opened a turn. Drop that turn, or the next
+				// utterance is buffered into it (or a lone blip is held open until
+				// the max-turn cap).
+				this.abandonTurn();
+				break;
+			// speech-active / speech-pause do not alter buffering: PCM keeps
+			// accumulating through pauses (mid-utterance micro-silences are part
+			// of the turn).
 			default:
 				break;
 		}
@@ -572,6 +580,20 @@ export class AudioFrameConsumer {
 						startedAtMs,
 					})
 				: null;
+	}
+
+	/**
+	 * Drop the open turn without attributing it. Cancelling the incremental turn
+	 * settles its speech-start speculative `embed()` (#12896).
+	 */
+	private abandonTurn(): void {
+		if (!this.capturing) return;
+		this.capturing = false;
+		this.incrementalTurn?.cancel();
+		this.incrementalTurn = null;
+		this.turnChunks = [];
+		this.turnSamples = 0;
+		this.diarizedSamples = 0;
 	}
 
 	private finalizeTurn(endedAtMs: number): void {

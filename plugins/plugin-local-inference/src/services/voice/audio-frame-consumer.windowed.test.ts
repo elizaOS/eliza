@@ -7,6 +7,8 @@
  * (fake encoder/diarizer + real profile store) so `close()` and a zero-buffer
  * speech-end exercise the real `IncrementalTurnAttributor.cancel()`, proving a
  * turn abandoned before finalize unwinds its suspended speculative `embed()`.
+ * The blip block drives the REAL `VadDetector` (session config) to prove a
+ * too-short segment closes the turn its `speech-start` opened.
  */
 
 import { mkdtempSync } from "node:fs";
@@ -14,6 +16,7 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import { describe, expect, it } from "vitest";
 import {
+	type AttributedTurn,
 	type AttributionPipelineLike,
 	AudioFrameConsumer,
 	type RuntimeEventSink,
@@ -29,6 +32,7 @@ import type { Diarizer } from "./speaker/diarizer";
 import { PYANNOTE_SEGMENTATION_3_INT8_MODEL_ID } from "./speaker/diarizer";
 import type { SpeakerEncoder } from "./speaker/encoder";
 import type { PcmFrame, VadEvent } from "./types";
+import { rms, VadDetector } from "./vad";
 
 const SR = 16_000;
 const WINDOW_SAMPLES = 5 * SR;
@@ -414,6 +418,122 @@ describe("AudioFrameConsumer speculative-match cancel path (#12896)", () => {
 			expect(attributors).toHaveLength(1);
 			vad.emit({ type: "speech-end", timestampMs: 0, speechDurationMs: 0 });
 			await consumer.flush();
+
+			const result = await withTimeout(
+				attributors[0].speculativeMatch.result,
+				1_000,
+			);
+			expect(result).toBeNull();
+		});
+		expect(captured).toEqual([]);
+	});
+});
+
+// ---- VAD blip (a segment shorter than minSpeechMs) ------------------------
+
+/** Silero stand-in for the real `VadDetector`: loud windows are speech. */
+class EnergySilero {
+	readonly sampleRate = SR;
+	readonly windowSamples = 512;
+	async process(window: Float32Array): Promise<number> {
+		return rms(window) > 0.05 ? 0.95 : 0.02;
+	}
+	reset(): void {}
+}
+
+/** The consumer behind a real `VadDetector` with the `LiveDiarizationSession`
+ *  config (blip below 250 ms, 0.3 s pre-roll, 30 s turn cap). */
+function buildLiveVadConsumer(pipeline: AttributionPipelineLike) {
+	const vad = new VadDetector(new EnergySilero(), {
+		onsetThreshold: 0.5,
+		pauseHangoverMs: 120,
+		endHangoverMs: 500,
+		minSpeechMs: 250,
+	});
+	const vadEvents: string[] = [];
+	vad.onVadEvent((e) => vadEvents.push(e.type));
+	const consumer = new AudioFrameConsumer(
+		{ vad, pipeline, runtime: new FakeRuntime() },
+		{ preRollSeconds: 0.3, maxTurnSeconds: 30 },
+	);
+	const turns: AttributedTurn[] = [];
+	consumer.onTurn((t) => turns.push(t));
+	return { consumer, vadEvents, turns };
+}
+
+/** Push `ms` of 20 ms frames (the Android `audioFrame` size) of a 220 Hz tone
+ *  from `startMs`; amplitude 0 is silence. Returns the end timestamp. */
+async function pushTone(
+	consumer: AudioFrameConsumer,
+	startMs: number,
+	ms: number,
+	amplitude: number,
+): Promise<number> {
+	for (let t = 0; t < ms; t += 20) {
+		const pcm = new Float32Array(0.02 * SR);
+		for (let i = 0; i < pcm.length; i += 1) {
+			pcm[i] = amplitude * Math.sin((2 * Math.PI * 220 * i) / SR);
+		}
+		await consumer.pushDecodedFrame(pcm, startMs + t);
+	}
+	return startMs + ms;
+}
+
+describe("AudioFrameConsumer VAD blip", () => {
+	it("a cough's blip closes its turn, so the next utterance is attributed on its own", async () => {
+		const pipeline = new IncrementalFakePipeline();
+		const { consumer, vadEvents, turns } = buildLiveVadConsumer(pipeline);
+
+		let t = await pushTone(consumer, 1_000, 1_000, 0);
+		t = await pushTone(consumer, t, 100, 0.3); // cough, shorter than minSpeechMs
+		t = await pushTone(consumer, t, 2_000, 0);
+		expect(vadEvents).toEqual(expect.arrayContaining(["speech-start", "blip"]));
+		expect(vadEvents).not.toContain("speech-end");
+		expect(consumer.inTurn).toBe(false);
+
+		const speechAt = t;
+		t = await pushTone(consumer, t, 1_000, 0.3);
+		await pushTone(consumer, t, 1_000, 0);
+		await consumer.flush();
+
+		expect(turns).toHaveLength(1);
+		// Starts at the utterance (within two 32 ms VAD windows), not at the
+		// cough 2 s earlier, and carries no cough + silence.
+		expect(turns[0].startedAtMs).toBeGreaterThanOrEqual(speechAt - 64);
+		expect(turns[0].samples).toBeLessThan(2.2 * SR);
+		expect(pipeline.beginTurnCalls).toBe(2);
+	});
+
+	it("a lone cough does not hold a turn open until the 30 s cap", async () => {
+		const pipeline = new IncrementalFakePipeline();
+		const { consumer, turns } = buildLiveVadConsumer(pipeline);
+
+		let t = await pushTone(consumer, 0, 500, 0);
+		t = await pushTone(consumer, t, 100, 0.3);
+		await pushTone(consumer, t, 31_000, 0);
+		await consumer.flush();
+
+		// Nothing to diarize or attribute: no 30 s turn of silence.
+		expect(pipeline.pushes).toEqual([]);
+		expect(turns).toEqual([]);
+	});
+
+	it("a blip settles the abandoned turn's speculative embed()", async () => {
+		const { pipeline, attributors } = buildRealPipeline(
+			new VoiceAttributionPipeline({
+				encoder: makeEncoder(),
+				diarizer: makeDiarizer(),
+				profileStore: await freshStore(),
+			}),
+		);
+		const { consumer, vadEvents } = buildLiveVadConsumer(pipeline);
+
+		const captured = await withUnhandledRejectionCapture(async () => {
+			let t = await pushTone(consumer, 0, 500, 0);
+			t = await pushTone(consumer, t, 100, 0.3);
+			await pushTone(consumer, t, 1_000, 0);
+			expect(vadEvents).toContain("blip");
+			expect(attributors).toHaveLength(1);
 
 			const result = await withTimeout(
 				attributors[0].speculativeMatch.result,
