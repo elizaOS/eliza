@@ -1,12 +1,21 @@
 package ai.eliza.plugins.filesystem.browser;
 
 import java.io.File;
-import java.io.FileInputStream;
-import java.io.FileOutputStream;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.OutputStream;
+import java.nio.ByteBuffer;
+import java.nio.channels.FileChannel;
 import java.nio.charset.StandardCharsets;
+import java.nio.file.DirectoryStream;
+import java.nio.file.Files;
+import java.nio.file.LinkOption;
+import java.nio.file.NoSuchFileException;
+import java.nio.file.Path;
+import java.nio.file.SecureDirectoryStream;
+import java.nio.file.StandardOpenOption;
+import java.nio.file.attribute.BasicFileAttributeView;
+import java.nio.file.attribute.BasicFileAttributes;
 import java.util.ArrayList;
 import java.util.HashSet;
 import java.util.List;
@@ -38,13 +47,19 @@ public final class StorageBrowser {
   if(relative==null||relative.length()>1024)throw new IllegalArgumentException("Invalid path");
   String path=relative.replaceAll("^/+|/+$","");
   if(path.isEmpty()){if(allowRoot)return root;throw new IllegalArgumentException("Invalid path");}
-  for(String part:path.split("/"))validName(part);
   if(path.equals(trashFolder)||path.startsWith(trashFolder+"/"))throw new IllegalArgumentException("Invalid path");
-  File file=new File(root,path);
+  File file=root;
+  for(String part:path.split("/")){
+   file=new File(file,validName(part));
+   if(isLink(file))throw new IllegalArgumentException("Invalid path");
+  }
   String base=root.getCanonicalPath(),target=file.getCanonicalPath();
   if(!target.equals(base)&&!target.startsWith(base+File.separator))throw new IllegalArgumentException("Invalid path");
   return file;
  }
+ static boolean isLink(File file){return Files.isSymbolicLink(file.toPath());}
+ static boolean exists(File file){return Files.exists(file.toPath(),LinkOption.NOFOLLOW_LINKS);}
+ static boolean isDirectory(File file){return Files.isDirectory(file.toPath(),LinkOption.NOFOLLOW_LINKS);}
  static String validName(String value){
   if(value==null)throw new IllegalArgumentException("Invalid name");String name=value.trim();
   if(name.isEmpty()||!name.equals(value)||name.length()>255||name.equals(".")||name.equals("..")||name.indexOf('/')>=0||name.indexOf('\\')>=0||name.chars().anyMatch(c->c<0x20||c==0x7f))throw new IllegalArgumentException("Invalid name");
@@ -73,7 +88,7 @@ public final class StorageBrowser {
   File[] files=folder.listFiles();if(files==null)throw new SecurityException("Folder unreadable");
   List<Row> out=new ArrayList<>();String parent=relative(folder);
   for(File f:files){
-   String name=f.getName();if(name.startsWith("."))continue;
+   String name=f.getName();if(name.startsWith(".")||isLink(f))continue;
    boolean dir=f.isDirectory();int children=0;
    if(dir){String[] kids=f.list();if(kids!=null)for(String k:kids)if(!k.startsWith("."))children++;}
    out.add(new Row(parent.isEmpty()?name:parent+"/"+name,name,dir,dir?"":mime(name),dir?0:f.length(),f.lastModified(),children));
@@ -97,7 +112,7 @@ public final class StorageBrowser {
   while(!queue.isEmpty()&&visited++<visitMax){
    File[] kids=queue.removeFirst().listFiles();if(kids==null)continue;
    for(File kid:kids){
-    String name=kid.getName();if(name.startsWith(".")||!kid.isDirectory())continue;
+    String name=kid.getName();if(name.startsWith(".")||!isDirectory(kid))continue;
     queue.add(kid);
     long modified=kid.lastModified();String lower=name.toLowerCase(Locale.ROOT);boolean match=(from<=0||modified>=from)&&(to<=0||modified<=to);
     for(String w:words)if(!lower.contains(w)){match=false;break;}
@@ -139,6 +154,7 @@ public final class StorageBrowser {
  public String rename(String path,String name)throws IOException{
   File source=resolve(path,false);validName(name);if(name.startsWith("."))throw new IllegalArgumentException("Invalid name");if(!source.exists())throw new java.io.FileNotFoundException();
   File destination=new File(source.getParentFile(),name);
+  if(isLink(destination))throw new IllegalStateException("exists");
   if(destination.exists()&&!destination.getCanonicalPath().equals(source.getCanonicalPath())&&!name.equalsIgnoreCase(source.getName()))throw new IllegalStateException("exists");
   if(!source.renameTo(destination))throw new IOException("Rename failed");
   return relative(destination);
@@ -150,11 +166,22 @@ public final class StorageBrowser {
  }
 
  /** Reading Trash never creates it; only the first trash does. */
- File existingTrash(){File trash=new File(root,trashFolder);return new File(trash,"info").isDirectory()&&new File(trash,"files").isDirectory()?trash:null;}
+ File checkedTrash()throws IOException{
+  File trash=new File(root,trashFolder);
+  if(isLink(trash)||isLink(new File(trash,"files"))||isLink(new File(trash,"info")))throw new IOException("Trash unavailable");
+  return trash;
+ }
+ File existingTrash()throws IOException{
+  File trash=checkedTrash();
+  return isDirectory(new File(trash,"info"))&&isDirectory(new File(trash,"files"))?trash:null;
+ }
  File trashRoot()throws IOException{
-  File trash=new File(root,trashFolder),files=new File(trash,"files"),info=new File(trash,"info");
-  if(!files.isDirectory()&&!files.mkdirs()||!info.isDirectory()&&!info.mkdirs())throw new IOException("Trash unavailable");
-  File marker=new File(trash,".nomedia");if(!marker.exists())marker.createNewFile();
+  File trash=checkedTrash();
+  File marker=new File(trash,".nomedia");
+  if(isLink(marker))throw new IOException("Trash unavailable");
+  Files.createDirectories(new File(trash,"files").toPath());
+  Files.createDirectories(new File(trash,"info").toPath());
+  if(!exists(marker))marker.createNewFile();
   return trash;
  }
  /** Move to trash with the origin folder recorded first, so a crash never loses the way back. */
@@ -164,13 +191,15 @@ public final class StorageBrowser {
    File source;try{source=resolve(path,false);}catch(IllegalArgumentException e){out.add(new Outcome(path,"invalid",null));continue;}
    if(!source.exists()){out.add(new Outcome(path,"missing",null));continue;}
    String id=UUID.randomUUID().toString();File info=new File(trash,"info/"+id+".json"),target=new File(trash,"files/"+id);
+   boolean recorded=false;
    try{
     JSONObject record=new JSONObject();record.put("name",source.getName());record.put("origin",relative(source.getParentFile()));record.put("deletedAt",now);
     record.put("directory",source.isDirectory());record.put("size",source.isDirectory()?0:source.length());record.put("mime",source.isDirectory()?"":mime(source.getName()));
     write(info,record.toString());
+    recorded=true;
     moveFile(source,target);
     out.add(new Outcome(path,"trashed",id));
-   }catch(Exception e){info.delete();out.add(new Outcome(path,"failed",null));}
+   }catch(Exception e){if(recorded&&!exists(target))deleteRecord(root,info);out.add(new Outcome(path,"failed",null));}
   }
   return out;
  }
@@ -182,9 +211,10 @@ public final class StorageBrowser {
   if(infos!=null)for(File info:infos){
    String id=info.getName().replaceAll("\\.json$","");if(!id.matches("[a-f0-9-]{36}"))continue;
    File data=new File(trash,"files/"+id);
+   if(isLink(info)||isLink(data))continue;
    try{JSONObject r=new JSONObject(read(info));TrashRow row=new TrashRow(id,r);
-    if(!data.exists()){info.delete();continue;}
-    if(now>=row.deletedAt+RETENTION_MS){deleteRecursive(data);info.delete();continue;}
+    if(!exists(data)){deleteRecord(root,info);continue;}
+    if(now>=row.deletedAt+RETENTION_MS&&deleteInside(root,data)){if(deleteRecord(root,info))continue;}
     out.add(row);
    }catch(Exception e){/* An unreadable record is left alone; its data stays recoverable by hand. */}
   }
@@ -197,13 +227,14 @@ public final class StorageBrowser {
    if(trash==null){out.add(new Outcome(id,"missing",null));continue;}
    if(id==null||!id.matches("[a-f0-9-]{36}")){out.add(new Outcome(id,"invalid",null));continue;}
    File info=new File(trash,"info/"+id+".json"),data=new File(trash,"files/"+id);
-   if(!info.isFile()||!data.exists()){out.add(new Outcome(id,"missing",null));continue;}
+   if(isLink(info)||isLink(data)){out.add(new Outcome(id,"failed",null));continue;}
+   if(!info.isFile()||!exists(data)){out.add(new Outcome(id,"missing",null));continue;}
    try{
     TrashRow row=new TrashRow(id,new JSONObject(read(info)));File origin;
     try{origin=resolve(row.origin,true);}catch(IllegalArgumentException e){origin=root;}
     if(!origin.isDirectory()&&!origin.mkdirs())throw new IOException();
     File destination=freeTarget(origin,validName(row.name),row.directory);
-    moveFile(data,destination);info.delete();out.add(new Outcome(id,"restored",relative(destination)));
+    moveFile(data,destination);deleteRecord(root,info);out.add(new Outcome(id,"restored",relative(destination)));
    }catch(Exception e){out.add(new Outcome(id,"failed",null));}
   }
   return out;
@@ -212,37 +243,124 @@ public final class StorageBrowser {
  public int emptyTrash(List<String> ids)throws IOException{
   if(ids==null)throw new IllegalArgumentException("Name the confirmed items");
   File trash=existingTrash();int count=0;if(trash==null)return 0;
-  for(String id:ids){if(id==null||!id.matches("[a-f0-9-]{36}"))continue;File data=new File(trash,"files/"+id);if(data.exists()&&!deleteRecursive(data))continue;new File(trash,"info/"+id+".json").delete();count++;}
+  for(String id:ids){
+   if(id==null||!id.matches("[a-f0-9-]{36}"))continue;
+   File info=new File(trash,"info/"+id+".json"),data=new File(trash,"files/"+id);
+   if(isLink(info)||isLink(data)||!deleteInside(root,data))continue;
+   if(deleteRecord(root,info))count++;
+  }
   return count;
  }
 
- static void moveFile(File source,File destination)throws IOException{
-  if(destination.exists())throw new IOException("Destination exists");
+ void moveFile(File source,File destination)throws IOException{
+  if(isLink(source)||exists(destination))throw new IOException("Unsafe move path");
   if(source.renameTo(destination))return;
   // Another volume or mount: copy, check, then remove the source. A failed copy leaves nothing
   // behind; once the copy is complete it is kept, since removing the source may have begun.
   copyFresh(source,destination);
-  if(!deleteRecursive(source))throw new IOException("Source not removed");
+  if(!deleteInside(root,source))throw new IOException("Source not removed");
  }
  /** A copy into a new destination that is removed again if the copy fails part way. */
- static void copyFresh(File source,File destination)throws IOException{
-  if(destination.exists())throw new IOException("Destination exists");
-  try{copyRecursive(source,destination);}catch(IOException e){deleteRecursive(destination);throw e;}
- }
- static void copyRecursive(File source,File destination)throws IOException{
-  if(destination.exists())throw new IOException("Destination exists");
-  if(source.isDirectory()){
-   if(!destination.mkdir())throw new IOException("Folder not created");
-   File[] kids=source.listFiles();if(kids==null)throw new IOException("Folder unreadable");
-   for(File kid:kids)copyRecursive(kid,new File(destination,kid.getName()));
+ void copyFresh(File source,File destination)throws IOException{
+  if(isDirectory(source)){
+   Files.createDirectory(destination.toPath());
+   try{
+    File[] kids=source.listFiles();
+    if(kids==null||!isDirectory(source))throw new IOException("Folder unreadable");
+    for(File kid:kids)copyFresh(kid,new File(destination,kid.getName()));
+   }catch(IOException e){
+    deleteInside(root,destination);
+    throw e;
+   }
    return;
   }
-  try(InputStream in=new FileInputStream(source);OutputStream out=new FileOutputStream(destination)){byte[] buffer=new byte[1<<16];int n;while((n=in.read(buffer))>0)out.write(buffer,0,n);}
-  catch(IOException e){destination.delete();throw e;}
+  if(!Files.isRegularFile(source.toPath(),LinkOption.NOFOLLOW_LINKS))throw new IOException("Unsafe copy source");
+  try(InputStream in=Files.newInputStream(source.toPath(),LinkOption.NOFOLLOW_LINKS)){
+   OutputStream out=Files.newOutputStream(destination.toPath(),StandardOpenOption.CREATE_NEW);
+   try(out){
+    byte[] buffer=new byte[1<<16];
+    int n;
+    while((n=in.read(buffer))>0)out.write(buffer,0,n);
+   }catch(IOException e){
+    destination.delete();
+    throw e;
+   }
+  }
   if(destination.length()!=source.length()){destination.delete();throw new IOException("Copy incomplete");}
   destination.setLastModified(source.lastModified());
  }
- static boolean deleteRecursive(File file){File[] kids=file.isDirectory()?file.listFiles():null;if(kids!=null)for(File kid:kids)if(!deleteRecursive(kid))return false;return file.delete()||!file.exists();}
- static void write(File file,String text)throws IOException{try(OutputStream out=new FileOutputStream(file)){out.write(text.getBytes(StandardCharsets.UTF_8));out.flush();((FileOutputStream)out).getFD().sync();}}
- static String read(File file)throws IOException{if(file.length()>65536)throw new IOException("Record too large");try(InputStream in=new FileInputStream(file)){java.io.ByteArrayOutputStream out=new java.io.ByteArrayOutputStream();byte[] buffer=new byte[4096];int n;while((n=in.read(buffer))>0)out.write(buffer,0,n);return new String(out.toByteArray(),StandardCharsets.UTF_8);}}
+ private static boolean deleteRecord(File volume,File file){return deleteInside(volume,file,false);}
+ static boolean deleteInside(File volume,File file){return deleteInside(volume,file,true);}
+ private static boolean deleteInside(File volume,File file,boolean recursive){
+  Path base=volume.toPath().toAbsolutePath().normalize();
+  Path target=file.toPath().toAbsolutePath().normalize();
+  if(target.equals(base)||!target.startsWith(base))return false;
+  try(DirectoryStream<Path> stream=Files.newDirectoryStream(base)){
+   if(stream instanceof SecureDirectoryStream<?>)
+    return deleteAt((SecureDirectoryStream<Path>)stream,base.relativize(target),recursive);
+   // Some host JVMs do not implement secure streams. Check every parent again
+   // before traversing or deleting an entry on those providers.
+   return deleteChecked(base,target,recursive);
+  }catch(IOException e){return false;}
+ }
+ static boolean deleteRecursive(File file){return deleteInside(file.getAbsoluteFile().getParentFile(),file);}
+ private static boolean deleteChecked(Path base,Path target,boolean recursive)throws IOException{
+  for(Path parent=target.getParent();!parent.equals(base);parent=parent.getParent())
+   if(Files.isSymbolicLink(parent))return false;
+  if(Files.isDirectory(target,LinkOption.NOFOLLOW_LINKS)){
+   if(!recursive)return false;
+   try(DirectoryStream<Path> entries=Files.newDirectoryStream(target)){
+    for(Path entry:entries)if(!deleteChecked(base,entry,true))return false;
+   }
+  }
+  Files.deleteIfExists(target);
+  return true;
+ }
+ private static boolean deleteAt(SecureDirectoryStream<Path> parent,Path target,boolean recursive)throws IOException{
+  Path name=target.getName(0);
+  if(target.getNameCount()>1){
+   try(SecureDirectoryStream<Path> child=parent.newDirectoryStream(name,LinkOption.NOFOLLOW_LINKS)){
+    return deleteAt(child,target.subpath(1,target.getNameCount()),recursive);
+   }
+  }
+  BasicFileAttributes attributes;
+  try{
+   attributes=parent.getFileAttributeView(name,BasicFileAttributeView.class,LinkOption.NOFOLLOW_LINKS).readAttributes();
+  }catch(NoSuchFileException missing){return true;}
+  if(attributes.isDirectory()){
+   if(!recursive)return false;
+   try(SecureDirectoryStream<Path> child=parent.newDirectoryStream(name,LinkOption.NOFOLLOW_LINKS)){
+    for(Path entry:child)if(!deleteAt(child,entry.getFileName(),true))return false;
+   }
+   parent.deleteDirectory(name);
+  }else{
+   // Unlink a nested link as an entry of the selected tree. Its target is never opened.
+   parent.deleteFile(name);
+  }
+  return true;
+ }
+ static void write(File file,String text)throws IOException{
+  ByteBuffer bytes=ByteBuffer.wrap(text.getBytes(StandardCharsets.UTF_8));
+  try(FileChannel channel=FileChannel.open(file.toPath(),StandardOpenOption.WRITE,StandardOpenOption.CREATE_NEW)){
+   try{
+    while(bytes.hasRemaining())channel.write(bytes);
+    channel.force(true);
+   }catch(IOException e){
+    file.delete();
+    throw e;
+   }
+  }
+ }
+ static String read(File file)throws IOException{
+  try(InputStream in=Files.newInputStream(file.toPath(),LinkOption.NOFOLLOW_LINKS)){
+   java.io.ByteArrayOutputStream out=new java.io.ByteArrayOutputStream();
+   byte[] buffer=new byte[4096];
+   int n;
+   while((n=in.read(buffer))>0){
+    if(out.size()+n>65536)throw new IOException("Record too large");
+    out.write(buffer,0,n);
+   }
+   return new String(out.toByteArray(),StandardCharsets.UTF_8);
+  }
+ }
 }
