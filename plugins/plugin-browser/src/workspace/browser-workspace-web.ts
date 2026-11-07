@@ -39,6 +39,7 @@ import {
   createBrowserWorkspaceNotFoundError,
   DEFAULT_TIMEOUT_MS,
   DEFAULT_WAIT_INTERVAL_MS,
+  isBrowserWorkspacePrivateControl,
   normalizeBrowserWorkspaceText,
   readBrowserWorkspaceElementText,
   resolveBrowserWorkspaceCommandElementRefs,
@@ -1044,7 +1045,11 @@ export async function executeWebBrowserWorkspaceDomCommand(
                 "Eliza browser workspace attr lookups require attribute.",
               );
             }
-            value = element.getAttribute(command.attribute);
+            value =
+              isBrowserWorkspacePrivateControl(element) &&
+              command.attribute.trim().toLowerCase() === "value"
+                ? null
+                : element.getAttribute(command.attribute);
             break;
           case "box":
             value = getBrowserWorkspaceElementBox(element);

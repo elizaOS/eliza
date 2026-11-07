@@ -234,11 +234,17 @@ export function createDesktopBrowserWorkspaceCommandScript(
     }
     return \`\${element.tagName.toLowerCase()}:nth-of-type(\${index})\`;
   };
+  // Same rule as isBrowserWorkspacePrivateControl on the web backend: page
+  // output may describe password and hidden inputs but never copy their values.
+  const isPrivateControl = (element) =>
+    element.tagName === "INPUT" &&
+    ["password", "hidden"].includes(String(element.type || "").toLowerCase());
   const serialize = (element) => {
     const value =
-      element instanceof HTMLInputElement ||
-      element instanceof HTMLTextAreaElement ||
-      element instanceof HTMLSelectElement
+      !isPrivateControl(element) &&
+      (element instanceof HTMLInputElement ||
+        element instanceof HTMLTextAreaElement ||
+        element instanceof HTMLSelectElement)
         ? element.value
         : null;
     return {
@@ -266,7 +272,7 @@ export function createDesktopBrowserWorkspaceCommandScript(
       element.getAttribute?.("alt"),
       element.getAttribute?.("data-testid"),
       labelText,
-      element.value,
+      isPrivateControl(element) ? "" : element.value,
     ]
       .map((value) => normalize(value))
       .filter(Boolean);
@@ -938,6 +944,7 @@ export function createDesktopBrowserWorkspaceCommandScript(
     switch (command.getMode) {
       case "attr":
         if (!command.attribute) throw new Error("attr lookups require attribute");
+        if (isPrivateControl(element) && command.attribute.toLowerCase() === "value") return null;
         return element.getAttribute(command.attribute);
       case "box":
         return element.getBoundingClientRect();
@@ -962,6 +969,7 @@ export function createDesktopBrowserWorkspaceCommandScript(
       case "text":
         return normalize(element.textContent);
       case "value":
+        if (isPrivateControl(element)) return null;
         return element.value ?? element.getAttribute?.("value");
       case "visible":
         return isVisible(element);
@@ -1685,6 +1693,13 @@ export async function getDesktopBrowserWorkspaceSnapshotRecord(
   })();
   const normalize = (value) => String(value ?? "").replace(/\\s+/g, " ").trim();
   const controlText = Array.from(activeDocument.querySelectorAll("input, textarea, select, option:checked"))
+    .filter(
+      (element) =>
+        !(
+          element.tagName === "INPUT" &&
+          ["password", "hidden"].includes(String(element.type || "").toLowerCase())
+        ),
+    )
     .map((element) => {
       const name = element.getAttribute("name") || element.getAttribute("id") || element.tagName.toLowerCase();
       const value =

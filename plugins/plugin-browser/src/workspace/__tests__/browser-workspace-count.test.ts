@@ -108,3 +108,90 @@ it("targets the link inside a matching wrapper in both backends", async () => {
   );
   expect(clicked.tab?.url).toBe("https://example.test/details");
 });
+
+const login = `<form>
+<input id="user" name="user" value="octocat" />
+<input id="pw" name="password" type="password" value="vault-secret-pw" />
+<input id="csrf" name="csrf" type="hidden" value="csrf-token-123" />
+</form>`;
+
+it("never copies password or hidden input values out of the page in either backend", async () => {
+  const dom = new JSDOM(login, { runScripts: "outside-only" });
+  try {
+    const snapshot = dom.window.eval(
+      createDesktopBrowserWorkspaceCommandScript({ subaction: "snapshot" }),
+    );
+    const serialized = JSON.stringify(snapshot);
+    expect(serialized).toContain("octocat");
+    expect(serialized).not.toContain("vault-secret-pw");
+    expect(serialized).not.toContain("csrf-token-123");
+    expect(
+      dom.window.eval(
+        createDesktopBrowserWorkspaceCommandScript({
+          subaction: "get",
+          getMode: "value",
+          selector: "#pw",
+        }),
+      ),
+    ).toEqual({ value: null });
+    for (const selector of ["#pw", "#csrf"]) {
+      expect(
+        dom.window.eval(
+          createDesktopBrowserWorkspaceCommandScript({
+            subaction: "get",
+            getMode: "attr",
+            attribute: "value",
+            selector,
+          }),
+        ),
+      ).toEqual({ value: null });
+    }
+  } finally {
+    dom.window.close();
+  }
+  const env = {};
+  const tab = await openBrowserWorkspaceTab({ url: "about:blank" }, env);
+  const url = "https://example.test/login";
+  await executeBrowserWorkspaceCommand(
+    {
+      id: tab.id,
+      subaction: "network",
+      networkAction: "route",
+      url,
+      responseBody: login,
+    },
+    env,
+  );
+  await executeBrowserWorkspaceCommand(
+    { id: tab.id, subaction: "navigate", url },
+    env,
+  );
+  for (const [selector, value] of [
+    ["#user", "octocat"],
+    ["#pw", null],
+    ["#csrf", null],
+  ] as const) {
+    expect(
+      (
+        await executeBrowserWorkspaceCommand(
+          { id: tab.id, subaction: "get", getMode: "value", selector },
+          env,
+        )
+      ).value,
+    ).toBe(value);
+    expect(
+      (
+        await executeBrowserWorkspaceCommand(
+          {
+            id: tab.id,
+            subaction: "get",
+            getMode: "attr",
+            attribute: "value",
+            selector,
+          },
+          env,
+        )
+      ).value,
+    ).toBe(value);
+  }
+});

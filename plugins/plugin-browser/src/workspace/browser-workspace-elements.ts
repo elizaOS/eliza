@@ -856,6 +856,7 @@ export function getBrowserWorkspaceElementBox(element: Element): {
 export function getBrowserWorkspaceElementValue(
   element: Element,
 ): string | boolean | null {
+  if (isBrowserWorkspacePrivateControl(element)) return null;
   if (
     element.tagName === "INPUT" ||
     element.tagName === "TEXTAREA" ||
