@@ -244,7 +244,7 @@ export function isLocalRemoteHost(hostname: string): boolean {
   if (host === "localhost" || host.endsWith(".localhost")) return true;
   if (host.endsWith(".local")) return true;
   if (host === "::1") return true;
-  if (host.startsWith("fe80:")) return true;
+  if (/^fe[89ab][0-9a-f]:/.test(host)) return true;
 
   const parts = host.split(".");
   if (parts.length !== 4) return false;

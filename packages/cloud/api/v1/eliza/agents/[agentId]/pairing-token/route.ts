@@ -145,7 +145,7 @@ function isBrowserUnreachableHost(hostname: string): boolean {
     if (a === 169 && b === 254) return true;
     return false;
   }
-  return /^f[cd]/.test(h) || h.startsWith("fe80");
+  return /^f[cd][0-9a-f]{2}:/.test(h) || /^fe[89ab][0-9a-f]:/.test(h);
 }
 
 function isLoopbackHost(hostname: string): boolean {

@@ -170,9 +170,7 @@ export function isTrustedRestoreApiBaseUrl(
   // IPv6 ULA (fc00::/7) / link-local (fe80::/10).
   if (
     host.includes(":") &&
-    (host.startsWith("fc") ||
-      host.startsWith("fd") ||
-      /^fe[89ab][0-9a-f]:/.test(host))
+    (/^f[cd][0-9a-f]{2}:/.test(host) || /^fe[89ab][0-9a-f]:/.test(host))
   ) {
     return true;
   }

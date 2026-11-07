@@ -67,9 +67,8 @@ function isPrivateOrLoopbackHost(host: string): boolean {
     /^100\.(6[4-9]|[7-9]\d|1[01]\d|12[0-7])\./.test(normalized) ||
     normalized.startsWith("169.254.") ||
     (normalized.includes(":") &&
-      (normalized.startsWith("fe80:") ||
-        normalized.startsWith("fc") ||
-        normalized.startsWith("fd"))) ||
+      (/^fe[89ab][0-9a-f]:/.test(normalized) ||
+        /^f[cd][0-9a-f]{2}:/.test(normalized))) ||
     normalized === "local" ||
     normalized === "internal" ||
     normalized === "lan" ||

@@ -50,7 +50,10 @@ function isInternalBrowserHost(hostname: string): boolean {
       (a === 169 && b === 254)
     );
   }
-  return /^f[cd]/.test(normalized) || normalized.startsWith("fe80");
+  return (
+    /^f[cd][0-9a-f]{2}:/.test(normalized) ||
+    /^fe[89ab][0-9a-f]:/.test(normalized)
+  );
 }
 
 function isSafePairingRedirectUrl(url: unknown): url is string {

@@ -64,8 +64,7 @@ export function isPrivateOrLoopbackApiHost(host: string): boolean {
   return (
     isLoopbackApiHost(normalized) ||
     (normalized.includes(":") &&
-      (normalized.startsWith("fc") ||
-        normalized.startsWith("fd") ||
+      (/^f[cd][0-9a-f]{2}:/.test(normalized) ||
         // IPv6 link-local is fe80::/10, not just fe80::: the first
         // segment runs fe80-febf. The repo's other host classifiers
         // (core SSRF guard, agent database API, orchestrator SSRF
