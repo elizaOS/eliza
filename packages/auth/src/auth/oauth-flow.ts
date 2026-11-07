@@ -201,16 +201,27 @@ function buildAccountRecord(args: {
   const deduplicated = replacement
     ? null
     : listAccounts(args.providerId, args.storagePolicy).find((account) => {
-        if (
-          args.organizationId &&
-          account.organizationId === args.organizationId
-        ) {
-          return true;
-        }
-        return Boolean(
+        // Seats of one Team org / ChatGPT workspace share the organization
+        // id, and one email can hold seats in several workspaces. Only the
+        // same provider user may reuse (and overwrite) a stored account.
+        const sameEmail = Boolean(
           normalizedEmail &&
             normalizeIdentity(account.email) === normalizedEmail,
         );
+        if (args.providerAccountId) {
+          if (account.userId) return account.userId === args.providerAccountId;
+          // A record stored before user ids were kept: the same email in the
+          // same organization, or a personal account with no organization on
+          // either side, is upgraded in place instead of duplicated.
+          return sameEmail && account.organizationId === args.organizationId;
+        }
+        if (account.organizationId !== args.organizationId) return false;
+        // Without an email on either side there is no seat identity to
+        // compare (Codex carries no per-user id), so the workspace is the
+        // only anchor: a re-auth of that workspace updates its record
+        // instead of adding a second one with the stale token kept.
+        if (!normalizedEmail || !normalizeIdentity(account.email)) return true;
+        return sameEmail;
       });
   const existing = replacement ?? deduplicated;
   const record: AccountCredentialRecord = {
