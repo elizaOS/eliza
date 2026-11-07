@@ -4,7 +4,15 @@ import { defineConfig } from "vitest/config";
 export default defineConfig({
   test: {
     include: ["src/**/*.test.ts", "__tests__/**/*.test.ts"],
-    exclude: ["dist/**", "**/node_modules/**", "**/*.live.test.ts", "**/*.e2e.test.ts"],
+    // `*.real.test.ts` boot a real PGLite runtime and run under
+    // vitest.real-runtime.config.ts (`test:real-runtime`).
+    exclude: [
+      "dist/**",
+      "**/node_modules/**",
+      "**/*.live.test.ts",
+      "**/*.e2e.test.ts",
+      "**/*.real.test.ts",
+    ],
     setupFiles: ["./__tests__/core-test-mock.ts"],
     // Real SQLite fixture setup can exceed Vitest's 5s default while the
     // repository plugin shards contend for CPU and disk on shared CI runners.

@@ -43,6 +43,7 @@ import {
   truncateWellFormed,
   trustedLocalMediaUrl,
   type UUID,
+  validateUuid,
 } from "@elizaos/core";
 import { lifeOpsPassiveConnectorsEnabled } from "@elizaos/host/protocol";
 import {
@@ -1951,6 +1952,65 @@ export class IMessageService extends Service implements IIMessageService {
     }
   }
 
+  /**
+   * Port of plugin-discord's reply merge: the message service and this
+   * delivery write the same reply id concurrently and SQL keeps the first
+   * insert, so read the stored winner and add the delivery facts to it.
+   */
+  private async mergeIntoCanonicalReply(
+    memory: Memory,
+    { attachmentsRefused }: { attachmentsRefused: boolean }
+  ): Promise<Memory> {
+    const id = memory.id as UUID;
+    let existing = await this.runtime.getMemoryById(id);
+    if (!existing) {
+      await this.runtime.createMemory(memory, "messages");
+      existing = await this.runtime.getMemoryById(id);
+    }
+    if (
+      !existing ||
+      existing.agentId !== this.runtime.agentId ||
+      existing.entityId !== this.runtime.agentId ||
+      existing.roomId !== memory.roomId
+    ) {
+      throw new ElizaError("iMessage reply memory does not match delivery", {
+        code: "IMESSAGE_REPLY_MEMORY_MISMATCH",
+        context: { memoryId: id, found: Boolean(existing) },
+      });
+    }
+    const merged: Memory = {
+      ...existing,
+      content: {
+        ...existing.content,
+        // The delivered wire text: interaction link-outs are rendered into it,
+        // so later turns see what the owner received.
+        text: memory.content.text,
+        source: memory.content.source,
+        inReplyTo: memory.content.inReplyTo,
+        channelType: memory.content.channelType,
+        // The processor stored the generated attachments; record that the
+        // transport refused them, so the row keeps only what was delivered.
+        ...(attachmentsRefused ? { attachments: [] } : {}),
+      },
+      metadata: {
+        ...(existing.metadata ?? {}),
+        ...(memory.metadata ?? {}),
+      } as Memory["metadata"],
+    };
+    const updated = await this.runtime.updateMemory({
+      id,
+      content: merged.content,
+      metadata: merged.metadata,
+    });
+    if (!updated) {
+      throw new ElizaError("iMessage reply delivery metadata was not persisted", {
+        code: "IMESSAGE_REPLY_METADATA_NOT_PERSISTED",
+        context: { memoryId: id },
+      });
+    }
+    return merged;
+  }
+
   private recordContactsPermissionBlock(action: string): void {
     if (getLastContactsFailure() !== "permission") return;
     const registry = this.runtime.getService("eliza_permissions_registry") as
@@ -2826,6 +2886,10 @@ export class IMessageService extends Service implements IIMessageService {
     // key is derived from the inbound message so a reply that Blooio already
     // accepted is not sent again when the turn is repeated.
     let replyCount = 0;
+    // A turn can call back more than once with the same responseId. Only the
+    // first delivery merges into the processor's row; a later one is another
+    // delivered message and keeps its own row.
+    const mergedReplyIds = new Set<string>();
 
     const callback: HandlerCallback = async (content) => {
       if (!this.runtime) {
@@ -2879,8 +2943,17 @@ export class IMessageService extends Service implements IIMessageService {
         throw error;
       }
 
+      // One dialogue row per reply, as in plugin-discord: the message service
+      // stores the reply under content.responseId, so the delivery merges into
+      // that row instead of adding a second one that renders the reply twice
+      // in every later prompt.
+      const responseId = validateUuid(content.responseId) ?? undefined;
+      const canonicalReplyId =
+        responseId && !mergedReplyIds.has(responseId) ? responseId : undefined;
       const responseMemory: Memory = {
-        id: createUniqueUuid(this.runtime, `imessage-reply-${row.rowId}-${Date.now()}`),
+        id:
+          canonicalReplyId ??
+          createUniqueUuid(this.runtime, `imessage-reply-${row.rowId}-${Date.now()}`),
         entityId: this.runtime.agentId,
         agentId: this.runtime.agentId,
         roomId,
@@ -2906,6 +2979,12 @@ export class IMessageService extends Service implements IIMessageService {
         createdAt: Date.now(),
       };
 
+      if (canonicalReplyId) {
+        mergedReplyIds.add(canonicalReplyId);
+        return [
+          await this.mergeIntoCanonicalReply(responseMemory, { attachmentsRefused: mediaRefused }),
+        ];
+      }
       await this.runtime.createMemory(responseMemory, "messages");
       return [responseMemory];
     };
