@@ -276,6 +276,65 @@ describe("AgentRuntime.getSetting", () => {
 		}
 	});
 
+	// initialize() shares one object between character.secrets and
+	// character.settings.secrets only when secrets exist at boot. These writers
+	// leave the two maps distinct; redaction must still mask the live secrets.
+	it.each([
+		{
+			name: "a secret bridged into an agent that booted without secrets",
+			bootSecrets: undefined,
+			diverge: (runtime: AgentRuntime) => {
+				runtime.setSetting("LATER_SERVICE_TOKEN", "Zq7Lm2Vx9Rt4Kp8Wn3Hs", true);
+			},
+		},
+		{
+			// POST /api/config/reload assigns the rebuilt settings object.
+			name: "a boot secret after the settings object is replaced",
+			bootSecrets: { BOOT_SERVICE_TOKEN: "Zq7Lm2Vx9Rt4Kp8Wn3Hs" },
+			diverge: (runtime: AgentRuntime) => {
+				runtime.character.settings = { identityName: "reloaded" };
+			},
+		},
+		{
+			// Cloud login assigns a new secrets object, then calls setSetting.
+			name: "a secret written after the secrets object is replaced",
+			bootSecrets: { BOOT_SERVICE_TOKEN: "boot-service-token-value" },
+			diverge: (runtime: AgentRuntime) => {
+				runtime.character.secrets = {
+					...runtime.character.secrets,
+					CLOUD_SERVICE_KEY: "Zq7Lm2Vx9Rt4Kp8Wn3Hs",
+				};
+				runtime.setSetting("CLOUD_SERVICE_KEY", "Zq7Lm2Vx9Rt4Kp8Wn3Hs");
+			},
+		},
+	])("redacts $name", async ({ bootSecrets, diverge }) => {
+		const adapter = SQLiteDatabaseAdapter.create(
+			":memory:",
+			sqliteTestAgentId("runtime-secret-redaction-drift-test"),
+		);
+		const runtime = new AgentRuntime({
+			character: {
+				name: "runtime-secret-redaction-drift-test",
+				bio: ["test"],
+				settings: {},
+				...(bootSecrets ? { secrets: bootSecrets } : {}),
+			} as Character,
+			adapter,
+			logLevel: "fatal",
+		});
+
+		try {
+			await runtime.initialize({ skipMigrations: true });
+			diverge(runtime);
+
+			expect(
+				runtime.redactSecrets("reply Zq7Lm2Vx9Rt4Kp8Wn3Hs end"),
+			).not.toContain("Zq7Lm2Vx9Rt4Kp8Wn3Hs");
+		} finally {
+			await runtime.stop({ fast: true });
+		}
+	});
+
 	it("uses fresh constructor settings over DB-persisted agent settings on restart", async () => {
 		const adapter = SQLiteDatabaseAdapter.create(
 			":memory:",

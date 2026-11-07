@@ -228,8 +228,8 @@ export function buildCharacterFromConfig(config: ElizaConfig): Character {
 
   // Public connector identifiers + behaviour flags: bridged as plain settings so
   // getSetting() still resolves them (settings is checked before env in
-  // getSetting), but the secrets-redaction layer — which only scans
-  // character.settings.secrets — leaves them intact. These are not credentials
+  // getSetting), but the secrets-redaction layer — which only scans the
+  // character secret maps — leaves them intact. These are not credentials
   // (homeserver URL, user/room/device IDs, the verify allow-list, on/off flags),
   // so redacting them only corrupted output (room names, the agent's own id).
   const publicConnectorConfigKeys = [
