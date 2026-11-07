@@ -6,7 +6,7 @@ import { type IAgentRuntime } from "@elizaos/core";
 import { type ModelTypeName } from "@elizaos/core";
 import { type ProcessEnvLike } from "@elizaos/core";
 import { type TokenizeTextParams } from "@elizaos/core";
-import { type TiktokenBPE,type TiktokenEncoding, type TiktokenModel } from "js-tiktoken/lite";
+import { type TiktokenBPE, type TiktokenEncoding, type TiktokenModel } from "js-tiktoken/lite";
 function getProcessEnv(): ProcessEnvLike {
     if (typeof process === "undefined") {
         return {};
@@ -46,22 +46,46 @@ const rankLoaders: Record<TiktokenEncoding, () => Promise<{ default: TiktokenBPE
     p50k_base: () => import("js-tiktoken/ranks/p50k_base"),
     p50k_edit: () => import("js-tiktoken/ranks/p50k_edit"),
 };
-// One encoder per encoding, built once: constructing a Tiktoken parses its
-// whole rank table, which the handlers used to repeat on every call.
-const encoders = new Map<TiktokenEncoding, Promise<Tiktoken>>();
-export function loadTokenizerEncoding(encoding: TiktokenEncoding): Promise<Tiktoken> {
-    let pending = encoders.get(encoding);
-    if (!pending) {
-        pending = rankLoaders[encoding]().then((ranks) => new Tiktoken(ranks.default));
-        // A failed load is not cached, so the next call can try again.
-        pending.catch(() => encoders.delete(encoding));
-        encoders.set(encoding, pending);
+// A built Tiktoken holds about 69 MB of heap for o200k_base (measured under
+// Node; the rank module itself is 2.4 MB and stays in the module cache).
+// Keep at most one encoder, and only while calls keep coming: it is dropped
+// after ENCODER_IDLE_MS without a call, so one tokenizer request does not pin
+// the parsed table for the life of the process.
+export const ENCODER_IDLE_MS = 30_000;
+let cached: { encoding: TiktokenEncoding; encoder: Promise<Tiktoken> } | null = null;
+let idleTimer: ReturnType<typeof setTimeout> | null = null;
+function releaseEncoder(): void {
+    if (idleTimer) {
+        clearTimeout(idleTimer);
+        idleTimer = null;
     }
-    return pending;
+    cached = null;
 }
-/** The encodings loaded (or loading) so far, for tests and diagnostics. */
+function scheduleRelease(): void {
+    if (idleTimer) {
+        clearTimeout(idleTimer);
+    }
+    idleTimer = setTimeout(releaseEncoder, ENCODER_IDLE_MS);
+    (idleTimer as { unref?: () => void }).unref?.();
+}
+export function loadTokenizerEncoding(encoding: TiktokenEncoding): Promise<Tiktoken> {
+    if (cached?.encoding !== encoding) {
+        const encoder = rankLoaders[encoding]().then((ranks) => new Tiktoken(ranks.default));
+        const entry = { encoding, encoder };
+        // A failed load is not cached, so the next call can try again.
+        encoder.catch(() => {
+            if (cached === entry) {
+                releaseEncoder();
+            }
+        });
+        cached = entry;
+    }
+    scheduleRelease();
+    return cached.encoder;
+}
+/** The encoding whose encoder is held right now, if any, for tests and diagnostics. */
 export function loadedTokenizerEncodings(): TiktokenEncoding[] {
-    return [...encoders.keys()];
+    return cached ? [cached.encoding] : [];
 }
 function encoderFor(model: ModelTypeName): Promise<Tiktoken> {
     return loadTokenizerEncoding(resolveTokenizerEncodingName(getConfiguredTokenizerModel(model)));
