@@ -684,6 +684,80 @@ test("a message's inference check and owner share one account check", async () =
   }
 });
 
+test("a reset during the inference check drops the account check it shared", async () => {
+  let owner = "first",
+    holdNext = false;
+  const owners = [];
+  let messageRequests = 0;
+  const entered = Promise.withResolvers();
+  const release = Promise.withResolvers();
+  const upstream = http.createServer((req, res) => {
+    if (req.url.endsWith("/messages")) messageRequests++;
+    res.setHeader("Content-Type", "application/json");
+    res.end(
+      JSON.stringify({ conversation: { id, roomId: id }, text: "reply" }),
+    );
+  });
+  const target = await listen(upstream);
+  const gateway = createLocalAgentGateway({
+    upstream: target,
+    token: "upstream-authority",
+    inboundToken: "host-authority",
+    credentialGate: async () => {
+      owners.push(owner);
+      return owner;
+    },
+    hostPolicy: policy,
+    taskGateway: { revoke: async () => {} },
+    cloudHandler: async (req, res, url, { json }) => {
+      if (url.pathname !== "/identity/logout") return false;
+      json(res, 200, { disconnected: true });
+      return true;
+    },
+    inferenceConfigured: async ({ credentialGate } = {}) => {
+      if (!holdNext) return true;
+      holdNext = false;
+      // The shared check reads the account before the reset.
+      assert.equal(await credentialGate(), "first");
+      entered.resolve();
+      await release.promise;
+      return true;
+    },
+  });
+  const base = await listen(gateway);
+  const post = (path, body = {}) =>
+    fetch(base + path, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: "Bearer host-authority",
+      },
+      body: JSON.stringify(body),
+    });
+  try {
+    assert.equal((await post("/conversations")).status, 200);
+    holdNext = true;
+    const pending = post(`/conversations/${id}/messages`, { text: "hello" });
+    await entered.promise;
+    // Sign-out, then the next account opens the conversation as its own.
+    assert.equal((await post("/identity/logout")).status, 200);
+    owner = "second";
+    assert.equal((await post("/conversations")).status, 200);
+    owners.length = 0;
+    release.resolve();
+    // The owner is read again after the reset, so the message is admitted for
+    // the account that now holds the conversation, never for the old one.
+    assert.equal((await pending).status, 200);
+    assert.ok(owners.length >= 1);
+    assert.ok(owners.every((value) => value === "second"));
+    assert.equal(messageRequests, 1);
+  } finally {
+    release.resolve();
+    await close(gateway);
+    await close(upstream);
+  }
+});
+
 const predicatePolicy = {
   ...policy,
   origins: undefined,

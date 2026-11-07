@@ -888,6 +888,10 @@ export function createCloudRoutes({
   // Concurrent account reads (the access route and each paid action) share
   // one Cloud round trip. A caller joins only a read of the same account
   // session that started after the latest credential or account change.
+  // A caller that joins gets the answer of a read already in flight when it
+  // called, so a change made on Cloud's side alone (a webhook payment, an
+  // operator revoking a grant, an expiry) can be up to one round trip old.
+  // Nothing is kept once the read settles: the next caller reads afresh.
   let sharedAccess = null;
   function accountAccess() {
     const shared = sharedAccess;
