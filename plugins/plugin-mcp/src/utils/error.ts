@@ -93,6 +93,17 @@ export class McpError extends Error {
   static validationError(details: string): McpError {
     return new McpError(`Validation error: ${details}`, "VALIDATION_ERROR");
   }
+  /** The request reached the server, so whether the tool ran is not known. */
+  static toolOutcomeUnknown(serverName: string, toolName: string, cause: unknown): McpError {
+    const error = new McpError(
+      `MCP tool '${serverName}/${toolName}' may have run: ${
+        cause instanceof Error ? cause.message : String(cause)
+      }`,
+      "TOOL_OUTCOME_UNKNOWN"
+    );
+    error.cause = cause;
+    return error;
+  }
   static serverError(serverName: string, details?: string): McpError {
     return new McpError(
       `Server error from '${serverName}'${details ? `: ${details}` : ""}`,

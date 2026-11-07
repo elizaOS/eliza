@@ -521,3 +521,141 @@ describe("MCP argument retry recovery", () => {
     }
   });
 });
+
+describe("MCP write that already reached the server", () => {
+  const slowWrite = fileURLToPath(new URL("../fixtures/slow-write-server.mjs", import.meta.url));
+
+  async function runCreateIssue(options: {
+    delayMs: number;
+    timeoutInMillis?: number;
+    summaryFails: boolean;
+  }) {
+    const model = createPerfectResultPlugin({
+      fixtures: [
+        {
+          name: "argument-selection",
+          match: { modelType: ModelType.TEXT_LARGE },
+          times: { min: 0, max: 3 },
+          response: () => JSON.stringify({ toolArguments: { title: "Fix login" } }),
+        },
+        {
+          name: "tool-response",
+          match: { modelType: ModelType.TEXT_SMALL },
+          times: { min: 0, max: 3 },
+          response: () => {
+            if (options.summaryFails) throw new Error("model provider returned 503");
+            return "The issue was created.";
+          },
+        },
+      ],
+    });
+    const runtime = createSQLiteTestRuntime({
+      character: {
+        name: "mcp-write-outcome",
+        bio: "Create issues through an MCP server",
+        settings: {
+          mcp: {
+            servers: {
+              tracker: {
+                type: "stdio",
+                command: "node",
+                args: [slowWrite, String(options.delayMs)],
+                ...(options.timeoutInMillis ? { timeoutInMillis: options.timeoutInMillis } : {}),
+              },
+            },
+          },
+        },
+      },
+      plugins: [mcpPlugin, model],
+      logLevel: "fatal",
+    });
+    await runtime.initialize();
+    runtime.registerProvider(recentMessagesProvider);
+    const service = (await runtime.getServiceLoadPromise("mcp")) as McpService;
+    const roomId = randomUUID(),
+      entityId = randomUUID(),
+      worldId = randomUUID();
+    await runtime.ensureConnection({
+      roomId,
+      entityId,
+      worldId,
+      source: "mcp-integration",
+      type: ChannelType.DM,
+    });
+    const message: Memory = {
+      id: randomUUID(),
+      roomId,
+      entityId,
+      worldId,
+      agentId: runtime.agentId,
+      content: { text: "Create an issue titled Fix login.", source: "mcp-integration" },
+    };
+    await runtime.createMemory(message, "messages");
+    const action = runtime.actions.find((entry) => entry.name === "MCP");
+    if (!action?.handler) throw new Error("Registered MCP action is missing");
+    const replies: Content[] = [];
+    const result = await action.handler(
+      runtime,
+      message,
+      undefined,
+      {
+        parameters: {
+          op: "call_tool",
+          serverName: "tracker",
+          toolName: "create_issue",
+          arguments: { title: "Fix login" },
+        },
+      },
+      async (content) => {
+        replies.push(content);
+        return [];
+      }
+    );
+    const readInvocations = async () => {
+      const readback = (await service.readResource("tracker", "fixture:///calls")).contents[0];
+      if (typeof readback.text !== "string") throw new Error("Expected invocation receipt");
+      return JSON.parse(readback.text) as unknown[];
+    };
+    return { runtime, result, readInvocations, replies };
+  }
+
+  it("reports a completed write as done when the follow-up summary fails", async () => {
+    const { runtime, result, readInvocations, replies } = await runCreateIssue({
+      delayMs: 0,
+      summaryFails: true,
+    });
+    try {
+      if (!result || typeof result !== "object") throw new Error("Expected action result");
+      expect(await readInvocations()).toHaveLength(1);
+      // The write happened: a failure here would let the planner run it again.
+      expect(result.success).toBe(true);
+      expect(result.values?.toolExecuted).toBe(true);
+      expect(result.data?.output).toContain("Created issue 1");
+      // The user is told the result.
+      expect(replies).toHaveLength(1);
+    } finally {
+      await runtime.stop();
+    }
+  });
+
+  it("marks a write that timed out after reaching the server as not retryable", async () => {
+    const { runtime, result, readInvocations, replies } = await runCreateIssue({
+      delayMs: 1_500,
+      timeoutInMillis: 300,
+      summaryFails: false,
+    });
+    try {
+      if (!result || typeof result !== "object") throw new Error("Expected action result");
+      expect(result.success).toBe(false);
+      expect(result.data?.outcomeUnknown).toBe(true);
+      expect(result.data?.retryable).toBe(false);
+      // The server recorded the write although the client gave up waiting.
+      expect(await readInvocations()).toHaveLength(1);
+      // The user is told that the outcome is unknown and that it is not repeated.
+      expect(replies).toHaveLength(1);
+      expect(replies[0]?.text).toContain("don't know whether it completed");
+    } finally {
+      await runtime.stop();
+    }
+  }, 30_000);
+});
