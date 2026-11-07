@@ -311,8 +311,11 @@ the new APK path, since the package manager has checked the APK's signature. The
 agent's ASR check (`asr-provenance.ts`) reads the GGUF header through a region
 file too. The installer still copies compressed or unaligned entries, the VAD
 model and the eSpeak NG data. A host that reads a model itself, for example to
-warm the page cache, calls `VoiceBundleAssets.modelRegion(path)` for the file
-and span to read. A region bundle needs a libelizainference built from a fork
+warm the page cache, calls `VoiceBundleAssets.modelRegion(File)` for the file
+and span to read: it returns a `Region` (`file`, `offset`, `length`), where
+`file` is the APK for an in-place model and the model file itself for a copied
+one. A missing model throws `FileNotFoundException`; an invalid region file, or
+one whose containing file is missing or too short, throws `IOException`. A region bundle needs a libelizainference built from a fork
 commit with region-file support.
 
 ## Licenses
