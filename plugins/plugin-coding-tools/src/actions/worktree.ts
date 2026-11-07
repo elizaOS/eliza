@@ -96,7 +96,8 @@ export const worktreeAction: Action = {
     },
     {
       name: "cleanup",
-      description: "For action=exit: remove popped worktree dir.",
+      description:
+        "For action=exit: remove the popped worktree dir. Refused while it has modified or untracked files; commit or discard them first, or exit without cleanup.",
       required: false,
       schema: { type: "boolean" },
     },

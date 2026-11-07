@@ -242,6 +242,36 @@ describe("EXIT_WORKTREE", () => {
     expect(list).not.toContain(worktreePath);
   });
 
+  it("with cleanup=true keeps a worktree that has uncommitted work and stays in it", async () => {
+    const worktreePath = await enter(env);
+    const wip = path.join(worktreePath, "wip.txt");
+    await fs.writeFile(wip, "not committed yet", "utf8");
+
+    const result = await exitWorktreeHandler(
+      env.runtime,
+      makeMessage(env.conversationId),
+      state,
+      { parameters: { cleanup: true } },
+    );
+
+    // git refuses the removal; nothing is deleted and the session is still
+    // inside the worktree, so the model can commit, discard or exit plainly.
+    expect(result.success).toBe(false);
+    expect(result.text).toMatch(/modified or untracked/);
+    expect(result.text).toContain(`Still in ${worktreePath}`);
+    expect(await fs.readFile(wip, "utf8")).toBe("not committed yet");
+    expect(env.session.getCwd(env.conversationId)).toBe(worktreePath);
+
+    const plain = await exitWorktreeHandler(
+      env.runtime,
+      makeMessage(env.conversationId),
+      state,
+      { parameters: {} },
+    );
+    expect(plain.success).toBe(true);
+    expect(await fs.readFile(wip, "utf8")).toBe("not committed yet");
+  });
+
   it("routes git worktree remove through the capability router when available", async () => {
     const calls: GitCommandRunParams[] = [];
     setCapabilityRouter(
@@ -266,7 +296,7 @@ describe("EXIT_WORKTREE", () => {
     expect(calls).toEqual([
       {
         root: env.repoDir,
-        args: ["worktree", "remove", "--force", worktreePath],
+        args: ["worktree", "remove", worktreePath],
       },
     ]);
     const data = result.data as Record<string, unknown> | undefined;

@@ -72,15 +72,21 @@ export async function exitWorktreeHandler(
   if (cleanup) {
     try {
       const timeoutMs = 30_000;
+      // No --force: git refuses to remove a worktree with modified or
+      // untracked files, which is the only thing standing between cleanup=true
+      // and the loss of every uncommitted edit made in the worktree.
       await runGitCommand(runtime, {
         cwd: popped.previousCwd,
-        args: ["worktree", "remove", "--force", popped.entered],
+        args: ["worktree", "remove", popped.entered],
         timeoutMs,
       });
       cleaned = true;
     } catch (err) {
       // error-policy:J1 action boundary; a failed `git worktree remove` becomes
       // a success:false ActionResult carrying the stderr/message for the model.
+      // The worktree still exists, so the session stays inside it.
+      session.pushWorktree(conversationId, popped.entered);
+      sandbox.addRoot(conversationId, popped.entered);
       const stderr =
         err && typeof err === "object" && "stderr" in err
           ? String((err as { stderr: unknown }).stderr ?? "")
@@ -89,13 +95,14 @@ export async function exitWorktreeHandler(
       return failureToActionResult(
         {
           reason: "io_error",
-          message: stderr
-            ? `git worktree remove failed: ${stderr.trim()}`
-            : `git worktree remove failed: ${msg}`,
+          message: `${
+            stderr
+              ? `git worktree remove failed: ${stderr.trim()}`
+              : `git worktree remove failed: ${msg}`
+          }. Still in ${popped.entered}: commit or discard its changes, or exit without cleanup.`,
         },
         {
-          exited: popped.entered,
-          restoredTo: popped.previousCwd,
+          stayedIn: popped.entered,
           cleaned: false,
         },
       );
