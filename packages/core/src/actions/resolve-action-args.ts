@@ -397,14 +397,11 @@ export async function resolveActionArgs<
 		...allowedPlanner,
 	};
 
-	const missing = missingRequiredKeys(chosen, subactions, mergedParams);
-	const finalMissing =
-		missing.length > 0
-			? missing
-			: parsed.missing.filter((key) => {
-					const required = subactions[chosen as TSubaction]?.required ?? [];
-					return (required as readonly string[]).includes(key);
-				});
+	// The extractor never sees planner-supplied params, so its `missing` list
+	// is stale for keys the planner already supplied. The merged params are
+	// the authoritative answer to what is still missing; a stale model list
+	// must not resurrect a field that is already present.
+	const finalMissing = missingRequiredKeys(chosen, subactions, mergedParams);
 
 	if (parsed.confidence < MIN_CONFIDENCE || finalMissing.length > 0) {
 		return {
