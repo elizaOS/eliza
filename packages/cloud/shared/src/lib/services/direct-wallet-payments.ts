@@ -1180,7 +1180,8 @@ async function prepareEvmSweep(params: {
 async function submitPreparedEvmSweep(
   cfg: DirectWalletNetworkConfig,
   prepared: PreparedSweep,
-): Promise<void> {
+  readOnly = false,
+) {
   if (prepared.metadata.network === "solana") throw new Error("Expected EVM sweep metadata");
   const identity = await signedEvmSweepIdentity({ ...prepared, metadata: prepared.metadata });
   if (
@@ -1203,8 +1204,25 @@ async function submitPreparedEvmSweep(
     if (receipt.transactionHash.toLowerCase() !== prepared.transactionHash.toLowerCase())
       throw new Error("EVM provider returned a different sweep receipt");
     if (receipt.status !== "success") throw new Error("EVM sweep transaction failed on chain");
-    return;
+    if (
+      typeof receipt.blockHash !== "string" ||
+      !/^0x[0-9a-fA-F]{64}$/.test(receipt.blockHash) ||
+      typeof receipt.blockNumber !== "bigint" ||
+      receipt.blockNumber < 0n
+    )
+      throw new Error("EVM provider returned an invalid sweep block receipt");
+    return {
+      identity,
+      receipt: {
+        transactionHash: receipt.transactionHash,
+        blockHash: receipt.blockHash,
+        blockNumber: String(receipt.blockNumber),
+        status: "success" as const,
+      },
+    };
   }
+  if (readOnly)
+    throw new EvmSweepDeferredError("Legacy EVM sweep requires read-only receipt reconciliation");
   let known = false;
   try {
     const existing = await client.getTransaction({ hash: prepared.transactionHash as Hex });
@@ -2214,6 +2232,12 @@ export class DirectWalletPaymentsService {
             or(
               eq(cryptoSweepOutbox.state, "pending"),
               and(
+                eq(cryptoSweepOutbox.state, "delivered"),
+                isNull(cryptoSweepOutbox.evm_confirmed_at),
+                sql`${cryptoSweepOutbox.prepared_metadata}->>'network' IN ('base','bsc')`,
+                sql`${cryptoSweepOutbox.delivered_at} IS NOT NULL`,
+              ),
+              and(
                 eq(cryptoSweepOutbox.state, "processing"),
                 or(
                   isNull(cryptoSweepOutbox.lease_expires_at),
@@ -2334,6 +2358,7 @@ export class DirectWalletPaymentsService {
         prepared = await prepare();
         if (prepared?.metadata.network === "solana") await persistPrepared(prepared, null);
       }
+      let evmConfirmation: Awaited<ReturnType<typeof submitPreparedEvmSweep>> | null = null;
       if (prepared) {
         if (payload.network === "solana") {
           const outcome = await submitPreparedSolanaSweep(cfg, prepared);
@@ -2348,7 +2373,11 @@ export class DirectWalletPaymentsService {
             }
           }
         } else {
-          await submitPreparedEvmSweep(cfg, prepared);
+          evmConfirmation = await submitPreparedEvmSweep(
+            cfg,
+            prepared,
+            claimed.delivered_at !== null && claimed.evm_confirmed_at === null,
+          );
         }
       }
       externalSweepReturned = true;
@@ -2372,6 +2401,15 @@ export class DirectWalletPaymentsService {
           .set({
             state: "delivered",
             delivered_at: completedAt,
+            ...(evmConfirmation
+              ? {
+                  evm_sender: evmConfirmation.identity.sender,
+                  evm_chain_id: evmConfirmation.identity.chainId,
+                  evm_nonce: evmConfirmation.identity.nonce,
+                  evm_confirmed_at: sql`clock_timestamp()`,
+                  evm_confirmed_receipt: evmConfirmation.receipt,
+                }
+              : {}),
             sweep_transaction_hash: prepared?.transactionHash ?? null,
             claim_token: null,
             lease_expires_at: null,
@@ -2408,7 +2446,11 @@ export class DirectWalletPaymentsService {
       await dbWrite
         .update(cryptoSweepOutbox)
         .set({
-          state: terminal ? "terminal" : "pending",
+          state: terminal
+            ? "terminal"
+            : replayableEvm && claimed.delivered_at !== null && claimed.evm_confirmed_at === null
+              ? "delivered"
+              : "pending",
           ...(deferred ? { attempts: Math.max(0, claimed.attempts - 1) } : {}),
           terminal_at: terminal ? sql`clock_timestamp()` : null,
           next_attempt_at: sql`clock_timestamp()+(${deferred ? 30_000 : Math.min(3_600_000, 2 ** claimed.attempts * 1_000)} * interval '1 millisecond')`,
@@ -2437,6 +2479,24 @@ export class DirectWalletPaymentsService {
           lte(cryptoSweepOutbox.next_attempt_at, sql`clock_timestamp()`),
           or(
             eq(cryptoSweepOutbox.state, "pending"),
+            and(
+              eq(cryptoSweepOutbox.state, "delivered"),
+              isNull(cryptoSweepOutbox.evm_confirmed_at),
+              sql`${cryptoSweepOutbox.prepared_metadata}->>'network' IN ('base','bsc')`,
+              sql`${cryptoSweepOutbox.delivered_at} IS NOT NULL`,
+            ),
+            and(
+              eq(cryptoSweepOutbox.state, "delivered"),
+              isNull(cryptoSweepOutbox.evm_confirmed_at),
+              sql`${cryptoSweepOutbox.prepared_metadata}->>'network' IN ('base','bsc')`,
+              sql`${cryptoSweepOutbox.delivered_at} IS NOT NULL`,
+            ),
+            and(
+              eq(cryptoSweepOutbox.state, "delivered"),
+              isNull(cryptoSweepOutbox.evm_confirmed_at),
+              sql`${cryptoSweepOutbox.prepared_metadata}->>'network' IN ('base','bsc')`,
+              sql`${cryptoSweepOutbox.delivered_at} IS NOT NULL`,
+            ),
             and(
               eq(cryptoSweepOutbox.state, "processing"),
               lte(cryptoSweepOutbox.lease_expires_at, sql`clock_timestamp()`),

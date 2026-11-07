@@ -186,7 +186,7 @@ export async function prepareAndPersistEvmSweep(params: {
           ne(cryptoSweepOutbox.id, params.outboxId),
           eq(cryptoSweepOutbox.evm_sender, sender),
           eq(cryptoSweepOutbox.evm_chain_id, BigInt(params.chainId)),
-          sql`(${cryptoSweepOutbox.state}<>'delivered' OR ${cryptoSweepOutbox.evm_nonce}>=${BigInt(confirmed)})`,
+          sql`(${cryptoSweepOutbox.evm_confirmed_at} IS NULL OR ${cryptoSweepOutbox.evm_nonce}>=${BigInt(confirmed)})`,
         ),
       )
       .limit(1);
