@@ -7,6 +7,7 @@
 
 import type { ConversationMessage } from "../api/client-types-chat";
 import { shellLocalStorage } from "../surface-realm-channel";
+import { countSentUserTurns } from "./chat-send-failures";
 
 const PENDING_CHAT_TURN_PREFIX = "eliza:chat:pending-turn:";
 export const PENDING_CHAT_TURN_SETTLE_TIMEOUT_MS = 30_000;
@@ -20,6 +21,8 @@ export interface PendingChatTurnReceipt {
   sentAt: number;
   restoreAt: number;
   restoredToDraft?: boolean;
+  /** Identical user rows already in the thread when the turn was sent. */
+  priorMatches?: number;
 }
 
 function keyFor(conversationId: string, clientMessageId: string): string {
@@ -34,6 +37,8 @@ function isReceipt(value: unknown): value is PendingChatTurnReceipt {
     typeof record.text === "string" &&
     (record.restoredToDraft === undefined ||
       typeof record.restoredToDraft === "boolean") &&
+    (record.priorMatches === undefined ||
+      Number.isInteger(record.priorMatches)) &&
     // Number.isFinite, not typeof: these come back from localStorage, which is
     // untrusted persisted input, and `typeof NaN === "number"` while JSON's
     // `1e999` parses to Infinity. A non-finite stamp survives to break the
@@ -164,13 +169,9 @@ export function clearSettledPendingChatTurns(
   messages: readonly ConversationMessage[],
 ): void {
   for (const receipt of listPendingChatTurns(conversationId)) {
-    const text = receipt.text.trim();
-    const settled = messages.some(
-      (message) =>
-        message.role === "user" &&
-        message.timestamp >= receipt.sentAt - 60_000 &&
-        message.text.trim() === text,
-    );
+    const settled =
+      countSentUserTurns(messages, receipt.text, receipt.sentAt) >
+      (receipt.priorMatches ?? 0);
     if (settled) {
       clearPendingChatTurn(conversationId, receipt.clientMessageId);
       if (receipt.restoredToDraft === true && typeof window !== "undefined") {
