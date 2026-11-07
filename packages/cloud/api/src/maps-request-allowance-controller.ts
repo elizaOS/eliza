@@ -143,14 +143,8 @@ export class MapsRequestAllowanceController {
     let limits;
     try {
       allowance = mapsRequestAllowance(this.env, request.policy.planKey);
-      const mapsLimits = this.env.ELIZA_CLOUD_MAPS_PLAN_RATE_LIMITS;
       const config = readPlanRequestLimitConfig(
-        mapsLimits === undefined
-          ? (this.env as Record<string, string | undefined>)
-          : {
-              ELIZA_CLOUD_PLAN_RATE_LIMITS:
-                typeof mapsLimits === "string" ? mapsLimits : "",
-            },
+        this.env as Record<string, string | undefined>,
       );
       if (!config?.selected) return fail("maps_allowance_unconfigured", 503);
       const plan = config

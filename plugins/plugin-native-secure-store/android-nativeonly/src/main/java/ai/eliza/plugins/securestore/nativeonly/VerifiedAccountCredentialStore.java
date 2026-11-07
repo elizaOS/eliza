@@ -47,6 +47,19 @@ public final class VerifiedAccountCredentialStore {
     }
   }
 
+  /**
+   * The record owner's stable identity, the same bytes as the gateway's {@code verifiedOwnerIdentity}:
+   * {@code cloud-owner-v1:} and 64 hex characters. It is the same for every credential Cloud issues
+   * that owner. Null for a null snapshot; an invalid record throws.
+   */
+  public static String ownerIdentity(String snapshot) throws Exception {
+    validate(snapshot);
+    if (snapshot == null) return null;
+    JSONObject owner = new JSONObject(snapshot).getJSONObject("owner");
+    return VerifiedOwnerIdentity.of(owner.getString("authority"), owner.getString("userId"),
+        owner.getString("organizationId"));
+  }
+
   /** Input must come from authenticated host verification, not a renderer or decoded JWT claims. */
   public static void validate(String value) throws Exception {
     if (value == null) return;

@@ -47,6 +47,23 @@ const pages = {
   "/later": `<button id="go" type="button" onclick="setTimeout(()=>fetch('/api/pay',{method:'POST'}),300)">Show details</button>`,
   // No money at all.
   "/plain": `<html lang="not a tag!"><p>Horario de atención</p>${controls}${script}</html>`,
+  // A page that reads and replaces the page command's state on window: each
+  // snapshot element it hands back is its own Pay button.
+  "/hostile": `${press("show", "Show details")}${press("pay", "Pay")}${script}<script>
+    let real;
+    window.readState = () => real !== undefined;
+    Object.defineProperty(window, "__elizaBrowserControlV1", {
+      configurable: true,
+      set(value) { real = value; },
+      get() {
+        if (!real) return real;
+        const pay = document.getElementById("pay");
+        const { x, y, width, height } = pay.getBoundingClientRect();
+        return { ...real, nodes: new Map([...real.nodes].map(([id, entry]) =>
+          [id, { ...entry, node: pay, bounds: { x, y, width, height } }])) };
+      },
+    });
+  </script>`,
 };
 const browser = await chromium.launch({
   headless: true,
@@ -185,6 +202,65 @@ try {
   assert.equal((await click("#go", month)).allowed, true);
   await page.waitForTimeout(1500);
   assert.equal((await snapshot("#go", month)).state.effectViolation, "request");
+  // A host with no isolated world runs the command in the page's own world.
+  // Without a scope the page replaces the state and its Pay button is pressed.
+  // With a scope that the host keeps, the page never sees the state, and the
+  // observed control is pressed.
+  const mainWorld = async (scoped) => {
+    await open("/hostile");
+    const host = await page.evaluateHandle(
+      `(() => { const run = ${pageCommand.toString()}; const host = { scope: {}, ownedHosts: new WeakSet() }; return (command, id) => ${scoped} ? run(command, id, false, host) : run(command, id); })()`,
+    );
+    const state = await host.evaluate((run) =>
+      run({ subaction: "snapshot" }, "main-world"),
+    );
+    const show = state.elements.find(
+      (element) => element.label === "Show details",
+    );
+    const result = await host.evaluate(
+      (run, nodeId) =>
+        run({ subaction: "click", snapshotId: "main-world", nodeId }),
+      show.id,
+    );
+    assert.equal(result.dispatched, true);
+    return page.evaluate(() => ({
+      pressed: window.pressed,
+      read: window.readState(),
+    }));
+  };
+  assert.deepEqual(await mainWorld(false), { pressed: ["pay"], read: true });
+  assert.deepEqual(await mainWorld(true), { pressed: ["show"], read: false });
+  // The host's own panel on the page is not a blocker over the page.
+  await open("/plain");
+  const panel = await page.evaluateHandle(() => {
+    const element = document.createElement("div");
+    element.setAttribute("role", "dialog");
+    element.style.cssText = "position:fixed;inset:0;background:#fff";
+    element.textContent = "Host guidance";
+    document.documentElement.append(element);
+    return element;
+  });
+  const inPage = await page.evaluateHandle(`(${pageCommand.toString()})`);
+  const blockersWith = (owned) =>
+    panel.evaluate(
+      (element, [command, owned]) =>
+        command({ subaction: "snapshot" }, "panel", false, {
+          scope: {},
+          ...(owned ? { ownedHosts: new WeakSet([element]) } : {}),
+        }).blockers.map((blocker) => blocker.kind),
+      [inPage, owned],
+    );
+  assert.deepEqual(await blockersWith(false), ["modal"]);
+  assert.deepEqual(await blockersWith(true), []);
+  // A scope must be an object.
+  assert.equal(
+    (
+      await inPage.evaluate((command) =>
+        command({ subaction: "snapshot" }, "bad", false, { scope: null }),
+      )
+    ).error?.kind,
+    "INVALID_REQUEST",
+  );
   console.log("page guard: ok");
 } catch (error) {
   failed = true;

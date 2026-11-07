@@ -1566,22 +1566,15 @@ test("complete STT drain charges exact PCM once and zero for the unused renewed 
 
 test("a consent warm instantiates the session object without a ledger, and one mint owns it", async () => {
   const session = "44444444-4444-8444-8444-444444444444";
-  const at = async (path: string, body?: unknown) => {
-    const result = await worker.dispatchFetch(
-      `https://speech-relay.internal${path}`,
-      {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          "x-test-session": session,
-        },
-        ...(body === undefined ? {} : { body: JSON.stringify(body) }),
+  const at = (path: string, body?: unknown) =>
+    worker.dispatchFetch(`https://speech-relay.internal${path}`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "x-test-session": session,
       },
-    );
-    // Consume each response before Bun/Miniflare reuses its loopback connection.
-    await result.arrayBuffer();
-    return result;
-  };
+      ...(body === undefined ? {} : { body: JSON.stringify(body) }),
+    });
   const warmed = await at("/warm");
   expect(warmed.status).toBe(200);
   // The warm stored nothing: the object still has no session to revoke.
