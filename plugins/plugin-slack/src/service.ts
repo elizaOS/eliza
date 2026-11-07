@@ -3271,6 +3271,7 @@ export class SlackService extends Service implements ISlackService {
     const normalizedQuery = normalizeSlackConnectorQuery(query);
     const targets: MessageConnectorTarget[] = [];
     const accountIds = this.getCandidateAccountIds(context, context.target);
+    let lastError: unknown;
 
     for (const accountId of accountIds) {
       const client = this.getClientForAccount(accountId);
@@ -3304,6 +3305,7 @@ export class SlackService extends Service implements ISlackService {
           }
         }
       } catch (error) {
+        lastError = error;
         this.runtime.logger.debug(
           {
             src: "plugin:slack",
@@ -3375,6 +3377,7 @@ export class SlackService extends Service implements ISlackService {
           }
         }
       } catch (error) {
+        lastError = error;
         this.runtime.logger.debug(
           {
             src: "plugin:slack",
@@ -3402,6 +3405,10 @@ export class SlackService extends Service implements ISlackService {
           }
         }
       }
+    }
+
+    if (targets.length === 0 && lastError) {
+      throw lastError;
     }
 
     return this.dedupeConnectorTargets(targets);
