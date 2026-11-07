@@ -186,7 +186,9 @@ export class VoiceScheduler {
 	 * hard-stop (barge-in), `rollbackAt(divergencePoint)` partitions the
 	 * queue: chunks at or before the divergence point are replayed into the
 	 * sink; chunks after are dropped. This lets audio that was already
-	 * correct play through without re-synthesizing.
+	 * correct play through without re-synthesizing. A chunk leaves the queue
+	 * once the ring buffer hands it to the sink (`flushRingBufferToSink`), so
+	 * the queue only holds audio the sink has not received yet.
 	 */
 	readonly prefixQueue = new PrefixPreservingQueue();
 	private readonly backend: TtsBackend;
@@ -809,7 +811,7 @@ export class VoiceScheduler {
 		// flushes it; `hard-stop` drains it.
 		let flushedSamples = 0;
 		if (!this.paused) {
-			flushedSamples = this.ringBuffer.flushToSink();
+			flushedSamples = this.flushRingBufferToSink();
 			this.markAgentSpeakingForAudio(flushedSamples, chunk.sampleRate);
 		}
 		if (opts.markPlayed !== false) {
@@ -844,7 +846,7 @@ export class VoiceScheduler {
 					this.paused = false;
 					// Hand whatever was buffered during the pause to the sink now.
 					if (this.ringBuffer.size() > 0) {
-						const flushed = this.ringBuffer.flushToSink();
+						const flushed = this.flushRingBufferToSink();
 						this.markAgentSpeakingForAudio(flushed, this.sampleRate);
 					}
 					this.events.onTtsResume?.();
@@ -860,6 +862,19 @@ export class VoiceScheduler {
 				// thread `signal.token.signal` into `dispatcher.generate`.
 				break;
 		}
+	}
+
+	/**
+	 * Hand the ring buffer to the sink. Every queued chunk is now in the sink
+	 * (played or playing), so it leaves the prefix queue: a barge-in rollback
+	 * must not write it to the sink a second time. Callers outside the
+	 * scheduler (the first-audio filler) flush through here too, because the
+	 * ring buffer can hold queued reply audio held back by a pause.
+	 */
+	flushRingBufferToSink(): number {
+		const flushed = this.ringBuffer.flushToSink();
+		this.prefixQueue.clear();
+		return flushed;
 	}
 
 	private handleBargeIn(): void {
