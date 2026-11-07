@@ -55,6 +55,8 @@ interface DurableResult {
   vaultRef?: string | null;
   refs?: Array<{ credentialType: string; vaultRef: string }> | null;
   value?: string;
+  telegramVaultRef?: string;
+  telegramSetting?: string | null;
   driverError?: string;
   driverErrorCode?: string | null;
 }
@@ -255,6 +257,38 @@ describe("connector credential durability across a real standalone restart (#180
     };
     const wrote = await expectWrite(env);
     await expectRead(env, wrote);
+  });
+
+  it("hostless standalone boot: a connector token saved as a vault ref resolves after restart", {
+    timeout: 600_000,
+  }, async () => {
+    const stateDir = newStateDir("eliza-connector-ref-durable-");
+    const env = {
+      ELIZA_STATE_DIR: stateDir,
+      ELIZA_VAULT_PASSPHRASE: "durable-e2e-passphrase",
+    };
+    const wrote = await runChild({
+      ...env,
+      DURABLE_MODE: "write",
+      DURABLE_TELEGRAM_TOKEN: "123456:durable-telegram-token",
+    });
+    expect(wrote.driverError, wrote.driverError).toBeUndefined();
+    expect(wrote.telegramVaultRef).toBeTruthy();
+    // Keep only the ref in config, as the Telegram setup route does.
+    const configPath = path.join(stateDir, "eliza.json");
+    const config = JSON.parse(fs.readFileSync(configPath, "utf8"));
+    config.connectors = {
+      telegram: { botToken: `vault://${wrote.telegramVaultRef}` },
+    };
+    fs.writeFileSync(configPath, JSON.stringify(config));
+    const read = await runChild({
+      ...env,
+      DURABLE_MODE: "read",
+      DURABLE_ACCOUNT_ID: wrote.accountId as string,
+      DURABLE_VAULT_REF: wrote.vaultRef as string,
+    });
+    expect(read.driverError, read.driverError).toBeUndefined();
+    expect(read.telegramSetting).toBe("123456:durable-telegram-token");
   });
 });
 

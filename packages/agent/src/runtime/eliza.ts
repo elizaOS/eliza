@@ -125,6 +125,7 @@ import {
   protectedTeeEnvironment,
 } from "../security/protected-profile.ts";
 import type { AgentBackupRestoreV3RuntimeGeneration } from "../services/agent-backup-restore-v3-runtime-generation";
+import { connectorCredentialVault } from "../services/connector-credential-store.ts";
 import { EscalationService } from "../services/escalation.ts";
 import { bootstrapRemoteCapabilityPlugins } from "../services/remote-plugin-adapter.ts";
 import {
@@ -2092,10 +2093,9 @@ export async function resolveConnectorSecretsOverlayForBoot(
     );
     return {};
   }
-  const { sharedVault } = getAgentHostBridge();
   const { resolved, failures } = await resolveConnectorSecretSettings(
     connectorEnvVars,
-    sharedVault(),
+    connectorCredentialVault(),
   );
   if (failures.length > 0) {
     // Key names only — never values, never the underlying vault error.

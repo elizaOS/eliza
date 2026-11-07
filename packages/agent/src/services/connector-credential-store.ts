@@ -54,7 +54,11 @@ export interface ConnectorCredentialPutSecretParams {
 // boots construct one service instance per runtime over the same data dir.
 let stateDirVault: Vault | null = null;
 
-function durableVault(): Vault {
+/**
+ * The vault connector credentials are written to. Boot must read refs from
+ * the same vault, or a credential saved on a hostless boot never resolves.
+ */
+export function connectorCredentialVault(): Vault {
   if (hasDurableHostVault()) return getAgentHostBridge().sharedVault();
   stateDirVault ??= createVault();
   return stateDirVault;
@@ -69,7 +73,7 @@ export class ConnectorCredentialStoreService extends Service {
 
   constructor(runtime?: IAgentRuntime, vault?: Vault) {
     super(runtime);
-    this.vault = vault ?? durableVault();
+    this.vault = vault ?? connectorCredentialVault();
   }
 
   static async start(runtime: IAgentRuntime): Promise<Service> {

@@ -92,7 +92,25 @@ try {
     });
     result.accountId = account.id;
     result.vaultRef = persisted.refs[0]?.vaultRef ?? null;
+    // The Telegram setup route stores its bot token through the same store
+    // and keeps only the ref in config (connectors.telegram.botToken).
+    if (process.env.DURABLE_TELEGRAM_TOKEN) {
+      result.telegramVaultRef = await (
+        store as unknown as {
+          putSecret: (params: Record<string, string>) => Promise<string>;
+        }
+      ).putSecret({
+        agentId: runtime.agentId,
+        provider: "telegram",
+        accountId: "durable-bot",
+        credentialType: "bot-token",
+        value: process.env.DURABLE_TELEGRAM_TOKEN,
+        caller: "durable-e2e",
+      });
+    }
   } else {
+    // A connector ref in config must resolve into runtime settings at boot.
+    result.telegramSetting = runtime.getSetting("TELEGRAM_BOT_TOKEN") ?? null;
     const accountId = process.env.DURABLE_ACCOUNT_ID ?? "";
     const vaultRef = process.env.DURABLE_VAULT_REF ?? "";
     // persistConnectorCredentialRefs records the ref through the first
