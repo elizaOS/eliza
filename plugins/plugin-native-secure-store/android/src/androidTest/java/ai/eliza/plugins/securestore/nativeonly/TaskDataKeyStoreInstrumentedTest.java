@@ -174,6 +174,38 @@ public final class TaskDataKeyStoreInstrumentedTest {
     }
   }
 
+  @Test public void perSlotAccessorsNameTheWrappingKeyAndWrappedFile() throws Exception {
+    try (Fixture f = new Fixture()) {
+      TaskDataKeyStore store = f.perSlot();
+      String alias = store.wrappingKeyAlias("owner", "tasks");
+      File wrapped = store.wrappedFile("owner", "tasks");
+      assertNull(store.keyProtection("owner", "tasks"));
+      assertFalse(wrapped.exists());
+      assertTrue(f.slotAliases().isEmpty());
+      try (TaskDataKeyStore.Key key = store.createIfAbsent("owner", "tasks")) {
+        assertEquals(Collections.singletonList(alias), f.slotAliases());
+        assertTrue(wrapped.isFile());
+        assertFalse(new String(Files.readAllBytes(wrapped.toPath()), StandardCharsets.ISO_8859_1)
+            .contains(Base64.getEncoder().encodeToString(key.copyBytes())));
+        android.security.keystore.KeyInfo protection = store.keyProtection("owner", "tasks");
+        assertNotNull(protection);
+        assertEquals(256, protection.getKeySize());
+      }
+      assertNotEquals(alias, store.wrappingKeyAlias("other-owner", "tasks"));
+      assertNotEquals(wrapped, store.wrappedFile("other-owner", "tasks"));
+      // A host simulates a lost Keystore key with the alias alone.
+      f.keys.deleteEntry(alias);
+      assertNull(store.keyProtection("owner", "tasks"));
+      try { store.read("owner", "tasks"); fail("Lost wrapping key read"); }
+      catch (TaskDataKeyStore.WrappingKeyMissingException expected) {}
+      assertTrue(store.destroy("owner", "tasks"));
+      assertFalse(wrapped.exists());
+      try { f.store().wrappingKeyAlias("owner", "tasks"); fail("Shared alias named as a slot key"); }
+      catch (IllegalStateException expected) {}
+      assertEquals(f.file("owner", "tasks"), f.store().wrappedFile("owner", "tasks"));
+    }
+  }
+
   @Test public void adoptionMovesOneGenerationAndResumesAfterAStop() throws Exception {
     try (Fixture f = new Fixture()) {
       assertFalse(f.perSlot().adopt("pending", "owner", "tasks", null));

@@ -24,11 +24,14 @@ public class PasswordFillActivity extends Activity {
   private String requestToken;
   private long ticket;
   private boolean prompting, finished;
+  private PasswordSurfaces.Hold surface;
 
   @Override protected void onCreate(Bundle state) {
     super.onCreate(state);
+    surface = PasswordSurfaces.open();
     setResult(RESULT_CANCELED);
     sheet = new PasswordSheet(this);
+    if (!PasswordVaultAccess.admitted(this)) { cancel(); return; }
     try { access = PasswordVaultAccess.get(this); } catch (Exception unavailable) { cancel(); return; }
     Uri data = getIntent() == null ? null : getIntent().getData();
     // Saved state never restores a capability: recreated Activities start over.
@@ -134,6 +137,7 @@ public class PasswordFillActivity extends Activity {
     cancel();
     if (access != null) { access.requests.cancelFill(requestToken); access.lock(ticket); }
     target = null;
+    surface.close();
     super.onDestroy();
   }
 }

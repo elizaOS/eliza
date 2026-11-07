@@ -6,14 +6,9 @@
 import type { ContextEvent } from "../runtime/context-object.ts";
 import type { TrajectoryProviderAttribution } from "../runtime/trajectory-provider-attribution.ts";
 import type { TrajectorySemanticStageRecord } from "../services/trajectory-semantic-stage.ts";
-import type {
-	JsonObject,
-	JsonPrimitive,
-	JsonValue,
-	UUID,
-} from "./primitives.js";
+import type { JsonObject, JsonValue, UUID } from "./primitives.js";
 
-export type { JsonObject, JsonPrimitive, JsonValue };
+export type { JsonValue };
 
 export const CONTEXT_OBJECT_TRAJECTORY_VERSION = 5 as const;
 export type ContextObjectTrajectoryVersion =

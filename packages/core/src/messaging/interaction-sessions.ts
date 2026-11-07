@@ -5,10 +5,6 @@
  */
 
 import { createHash } from "node:crypto";
-
-const sha256 = (input: Uint8Array): Uint8Array =>
-	createHash("sha256").update(input).digest();
-
 import { ElizaError } from "../errors";
 import type {
 	InteractionBlock,
@@ -16,6 +12,7 @@ import type {
 	InteractionKind,
 } from "../types/interactions";
 import { stableStringify } from "../utils/deterministic.js";
+import { utf8ByteLength } from "../utils/unicode";
 import type {
 	ConnectorInteractionCapabilityProfile,
 	InteractionNegotiationContext,
@@ -247,6 +244,14 @@ export interface MessageInteractionEffectExecutor {
 	}): Promise<MessageInteractionReceipt>;
 }
 
+interface MessageInteractionConsumeArgs {
+	callbackData: string;
+	bindings: MessageInteractionBindings;
+	replayKey: string;
+	response?: MessageInteractionResponse;
+	executor: MessageInteractionEffectExecutor;
+}
+
 export type MessageInteractionAuthorityConsumeOutcome =
 	| { status: "completed" | "replay"; receipt: MessageInteractionReceipt }
 	| { status: "in_progress" };
@@ -261,7 +266,7 @@ function fail(
 
 function requiredText(value: string, path: string): string {
 	const normalized = value.trim();
-	if (!normalized || new TextEncoder().encode(normalized).length > 512) {
+	if (!normalized || utf8ByteLength(normalized) > 512) {
 		return fail("INVALID_MESSAGE_INTERACTION_SESSION", `${path} is invalid.`, {
 			path,
 		});
@@ -298,13 +303,11 @@ function hex(bytes: Uint8Array): string {
 }
 
 function responseDigest(response: MessageInteractionResponse): string {
-	return hex(
-		sha256(
-			new TextEncoder().encode(
-				`elizaos:message-interaction-response:v1\n${stableStringify(response)}`,
-			),
-		),
-	);
+	return createHash("sha256")
+		.update(
+			`elizaos:message-interaction-response:v1\n${stableStringify(response)}`,
+		)
+		.digest("hex");
 }
 
 function sameBindings(
@@ -534,7 +537,7 @@ export function validateMessageInteractionResponse(
 		if (
 			typeof responseValue === "string" &&
 			field.maxBytes !== undefined &&
-			new TextEncoder().encode(responseValue).length > field.maxBytes
+			utf8ByteLength(responseValue) > field.maxBytes
 		) {
 			return fail(
 				"INVALID_MESSAGE_INTERACTION_RESPONSE",
@@ -809,6 +812,17 @@ export function applyMessageInteractionCommit(
 			"Interaction authorization was revoked before effect commitment.",
 		);
 	}
+	// A commit crosses the side-effect boundary, so it needs a live lease and a
+	// live session: a stalled client must not execute after either expired.
+	if (
+		Date.parse(session.consume.claimExpiresAt) <= context.now ||
+		Date.parse(session.expiresAt) <= context.now
+	) {
+		return fail(
+			"MESSAGE_INTERACTION_EXPIRED",
+			"Interaction claim or session expired before effect commitment.",
+		);
+	}
 	session.consume = {
 		state: "committed",
 		claimId: session.consume.claimId,
@@ -890,36 +904,43 @@ export class InMemoryMessageInteractionSessionStore
 		});
 	}
 
-	async claimIfCurrent(
-		context: MessageInteractionClaimContext,
-	): Promise<MessageInteractionClaimResult> {
+	/** Apply one pure transition to the stored session and retain its result. */
+	private update<T>(
+		reference: string,
+		apply: (current: MessageInteractionSession) => T,
+		next: (result: T) => MessageInteractionSession,
+	): Promise<T> {
 		return this.atomic(() => {
-			const current = this.sessions.get(context.reference);
+			const current = this.sessions.get(reference);
 			if (!current)
 				return fail(
 					"MESSAGE_INTERACTION_NOT_FOUND",
 					"Interaction session was not found.",
 				);
-			const result = applyMessageInteractionClaim(current, context);
-			this.sessions.set(context.reference, cloneSession(result.session));
+			const result = apply(current);
+			this.sessions.set(reference, cloneSession(next(result)));
 			return result;
 		});
+	}
+
+	async claimIfCurrent(
+		context: MessageInteractionClaimContext,
+	): Promise<MessageInteractionClaimResult> {
+		return this.update(
+			context.reference,
+			(current) => applyMessageInteractionClaim(current, context),
+			(result) => result.session,
+		);
 	}
 
 	async completeIfClaimed(
 		context: MessageInteractionCompleteContext,
 	): Promise<MessageInteractionSession> {
-		return this.atomic(() => {
-			const current = this.sessions.get(context.reference);
-			if (!current)
-				return fail(
-					"MESSAGE_INTERACTION_NOT_FOUND",
-					"Interaction session was not found.",
-				);
-			const completed = applyMessageInteractionCompletion(current, context);
-			this.sessions.set(context.reference, cloneSession(completed));
-			return completed;
-		});
+		return this.update(
+			context.reference,
+			(current) => applyMessageInteractionCompletion(current, context),
+			(session) => session,
+		);
 	}
 
 	async listCommitted(args: {
@@ -949,33 +970,21 @@ export class InMemoryMessageInteractionSessionStore
 	async reconcileCommitted(
 		context: MessageInteractionReconcileContext,
 	): Promise<MessageInteractionSession> {
-		return this.atomic(() => {
-			const current = this.sessions.get(context.reference);
-			if (!current)
-				return fail(
-					"MESSAGE_INTERACTION_NOT_FOUND",
-					"Interaction session was not found.",
-				);
-			const completed = applyMessageInteractionReconciliation(current, context);
-			this.sessions.set(context.reference, cloneSession(completed));
-			return completed;
-		});
+		return this.update(
+			context.reference,
+			(current) => applyMessageInteractionReconciliation(current, context),
+			(session) => session,
+		);
 	}
 
 	async commitIfClaimed(
 		context: MessageInteractionCommitContext,
 	): Promise<MessageInteractionSession> {
-		return this.atomic(() => {
-			const current = this.sessions.get(context.reference);
-			if (!current)
-				return fail(
-					"MESSAGE_INTERACTION_NOT_FOUND",
-					"Interaction session was not found.",
-				);
-			const committed = applyMessageInteractionCommit(current, context);
-			this.sessions.set(context.reference, cloneSession(committed));
-			return committed;
-		});
+		return this.update(
+			context.reference,
+			(current) => applyMessageInteractionCommit(current, context),
+			(session) => session,
+		);
 	}
 
 	async revokeAuthorization(args: {
@@ -983,21 +992,12 @@ export class InMemoryMessageInteractionSessionStore
 		decisionId: string;
 		now: number;
 	}): Promise<MessageInteractionSession> {
-		return this.atomic(() => {
-			const current = this.sessions.get(args.reference);
-			if (!current)
-				return fail(
-					"MESSAGE_INTERACTION_NOT_FOUND",
-					"Interaction session was not found.",
-				);
-			const revoked = applyMessageInteractionRevocation(
-				current,
-				args.decisionId,
-				args.now,
-			);
-			this.sessions.set(args.reference, cloneSession(revoked));
-			return revoked;
-		});
+		return this.update(
+			args.reference,
+			(current) =>
+				applyMessageInteractionRevocation(current, args.decisionId, args.now),
+			(session) => session,
+		);
 	}
 
 	async deleteExpired(before: number): Promise<number> {
@@ -1005,12 +1005,13 @@ export class InMemoryMessageInteractionSessionStore
 		return this.atomic(() => {
 			let deleted = 0;
 			for (const [reference, session] of this.sessions) {
+				// A committed outcome is ambiguous until reconciled; keep it so
+				// listCommitted finds it and a retry sees in_progress.
+				if (session.consume.state === "committed") continue;
 				const terminalAt =
 					session.consume.state === "completed"
 						? Date.parse(session.consume.completedAt)
-						: session.consume.state === "committed"
-							? Date.parse(session.consume.committedAt)
-							: Date.parse(session.expiresAt);
+						: Date.parse(session.expiresAt);
 				if (terminalAt <= before) {
 					this.sessions.delete(reference);
 					deleted += 1;
@@ -1176,13 +1177,10 @@ export class MessageInteractionSessionAuthority {
 		};
 	}
 
-	private async consumeOutcome(args: {
-		callbackData: string;
-		bindings: MessageInteractionBindings;
-		replayKey: string;
-		response?: MessageInteractionResponse;
-		executor: MessageInteractionEffectExecutor;
-	}): Promise<MessageInteractionAuthorityConsumeOutcome> {
+	/** Return the atomic claim disposition together with any retained receipt. */
+	async consumeWithOutcome(
+		args: MessageInteractionConsumeArgs,
+	): Promise<MessageInteractionAuthorityConsumeOutcome> {
 		const reference = decodeMessageInteractionCallback(args.callbackData);
 		if (!reference)
 			return fail(
@@ -1242,26 +1240,11 @@ export class MessageInteractionSessionAuthority {
 		return { status: "completed", receipt: completed.consume.receipt };
 	}
 
-	/** Return the atomic claim disposition together with any retained receipt. */
-	async consumeWithOutcome(args: {
-		callbackData: string;
-		bindings: MessageInteractionBindings;
-		replayKey: string;
-		response?: MessageInteractionResponse;
-		executor: MessageInteractionEffectExecutor;
-	}): Promise<MessageInteractionAuthorityConsumeOutcome> {
-		return this.consumeOutcome(args);
-	}
-
 	/** Records a receipt without classifying replay. */
-	async consume(args: {
-		callbackData: string;
-		bindings: MessageInteractionBindings;
-		replayKey: string;
-		response?: MessageInteractionResponse;
-		executor: MessageInteractionEffectExecutor;
-	}): Promise<MessageInteractionReceipt | { status: "in_progress" }> {
-		const outcome = await this.consumeOutcome(args);
+	async consume(
+		args: MessageInteractionConsumeArgs,
+	): Promise<MessageInteractionReceipt | { status: "in_progress" }> {
+		const outcome = await this.consumeWithOutcome(args);
 		return outcome.status === "in_progress" ? outcome : outcome.receipt;
 	}
 }

@@ -127,70 +127,102 @@ describe("Android push bridge startup", () => {
 });
 
 describe("Android cloud WebView visibility", () => {
-  it("hides the page while the activity is stopped in both variants", () => {
+  // The generated activity inherits the shared WebView lifecycle from the
+  // browser-surface library, which every Cloud variant keeps.
+  const bridgeActivity = fs.readFileSync(
+    path.resolve(
+      scriptsDir,
+      "../../../plugins/plugin-native-browser-surface/android/src/main/java/ai/eliza/plugins/browsersurface/ElizaBridgeActivity.java",
+    ),
+    "utf8",
+  );
+  // Each marker must be present before its position is compared: a missing
+  // marker's indexOf is -1, which would pass any toBeLessThan.
+  const ordered = (block: string, ...markers: string[]) => {
+    const positions = markers.map((marker) => block.indexOf(marker));
+    for (const [i, position] of positions.entries()) {
+      expect(position, markers[i]).toBeGreaterThan(-1);
+      if (i > 0) expect(positions[i - 1], markers[i]).toBeLessThan(position);
+    }
+  };
+  const method = (source: string, signature: string) => {
+    const start = source.indexOf(signature);
+    expect(start, signature).toBeGreaterThan(-1);
+    return source.slice(start, source.indexOf("\n    }\n", start));
+  };
+
+  it("extends the shared bridge activity in both variants", () => {
     for (const launcherKiosk of [false, true]) {
       const source = cloudSafeMainActivityJava("ai.elizaos.app", {
         launcherKiosk,
       });
-      const onStop = source.slice(source.indexOf("public void onStop()"));
-      expect(onStop.indexOf("getWebView().onPause()")).toBeGreaterThan(-1);
-      expect(onStop.indexOf("getWebView().onPause()")).toBeLessThan(
-        onStop.indexOf("super.onStop()"),
+      expect(source).toContain(
+        "import ai.eliza.plugins.browsersurface.ElizaBridgeActivity;",
       );
-      const onStart = source.slice(source.indexOf("public void onStart()"));
-      expect(onStart.indexOf("getWebView().onResume()")).toBeGreaterThan(
-        onStart.indexOf("super.onStart()"),
+      expect(source).toContain(
+        "public class MainActivity extends ElizaBridgeActivity {",
       );
+      // The lifecycle is inherited, never copied into the generated source.
       expect(source).not.toMatch(
-        /void onPause\(\)[^}]*getWebView\(\)\.onPause/,
+        /onRenderProcessGone|rendererGone|void onStart\(|void onStop\(|setMixedContentMode/,
       );
     }
+    expect(bridgeActivity).toContain(
+      "public class ElizaBridgeActivity extends BridgeActivity {",
+    );
+    expect(bridgeActivity).toContain(
+      "setMixedContentMode(WebSettings.MIXED_CONTENT_NEVER_ALLOW)",
+    );
   });
 
-  it("survives renderer death and recreates on the next start in both variants", () => {
-    // Each marker must be present before its position is compared: a missing
-    // marker's indexOf is -1, which would pass any toBeLessThan.
-    const ordered = (block: string, ...markers: string[]) => {
-      const positions = markers.map((marker) => block.indexOf(marker));
-      for (const [i, position] of positions.entries()) {
-        expect(position, markers[i]).toBeGreaterThan(-1);
-        if (i > 0) expect(positions[i - 1], markers[i]).toBeLessThan(position);
-      }
-    };
-    const method = (source: string, signature: string) => {
-      const start = source.indexOf(signature);
-      expect(start, signature).toBeGreaterThan(-1);
-      return source.slice(start, source.indexOf("\n    }\n", start));
-    };
-    for (const launcherKiosk of [false, true]) {
-      const source = cloudSafeMainActivityJava("ai.elizaos.app", {
-        launcherKiosk,
-      });
-      ordered(
-        method(source, "public boolean onRenderProcessGone("),
-        "rendererGone = true;",
-        "removeView(view)",
-        "view.destroy()",
-        "if (started) recreate();",
-        "return true;",
-      );
-      ordered(
-        method(source, "public void onStart()"),
-        "super.onStart()",
-        "started = true;",
-        "if (rendererGone) {",
-        "recreate();",
-        "return;",
-        "getWebView().onResume()",
-      );
-      ordered(
-        method(source, "public void onStop()"),
-        "started = false;",
-        "!rendererGone",
-        "getWebView().onPause()",
-        "super.onStop()",
-      );
-    }
+  it("hides the page while the activity is stopped", () => {
+    ordered(
+      method(bridgeActivity, "public void onStop()"),
+      "getWebView().onPause()",
+      "super.onStop()",
+    );
+    ordered(
+      method(bridgeActivity, "public void onStart()"),
+      "super.onStart()",
+      "getWebView().onResume()",
+    );
+    expect(bridgeActivity).not.toMatch(
+      /void onPause\(\)[^}]*getWebView\(\)\.onPause/,
+    );
+  });
+
+  it("survives renderer death and recreates on the next start", () => {
+    ordered(
+      method(bridgeActivity, "protected void onCreate("),
+      "super.onCreate(savedInstanceState)",
+      "MIXED_CONTENT_NEVER_ALLOW",
+      "addWebViewListener",
+    );
+    ordered(
+      method(bridgeActivity, "public boolean onRenderProcessGone("),
+      "rendererGone = true;",
+      "onRendererGone();",
+      "removeView(view)",
+      "view.destroy()",
+      "if (started) recreate();",
+      "return true;",
+    );
+    ordered(
+      method(bridgeActivity, "public void onStart()"),
+      "super.onStart()",
+      "started = true;",
+      "if (rendererGone) {",
+      "recreate();",
+      "return;",
+      "getWebView().onResume()",
+    );
+    ordered(
+      method(bridgeActivity, "public void onStop()"),
+      "started = false;",
+      "!rendererGone",
+      "getWebView().onPause()",
+      "super.onStop()",
+    );
   });
 
   it("registers the native Cloud sign-in host and never reloads the WebView on an auth callback", () => {

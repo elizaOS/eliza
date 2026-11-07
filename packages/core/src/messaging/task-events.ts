@@ -7,53 +7,87 @@ import { ElizaError } from "../errors.ts";
  * holds the same rule for staged hosts that cannot import this package.
  */
 export const TASK_ID_PATTERN = /^[A-Za-z0-9][A-Za-z0-9_.:@-]{0,255}$/;
+/** An opaque journal reference: the task id rule, also admitting `/`. */
+const OPAQUE_REF_PATTERN = /^[A-Za-z0-9][A-Za-z0-9_.:@/-]{0,255}$/;
 
-export type TaskStatus =
-	| "active"
-	| "paused"
-	| "blocked"
-	| "waiting"
-	| "completed"
-	| "cancelled";
-export type TaskOperationStatus =
-	| "prepared"
-	| "dispatched"
-	| "succeeded"
-	| "failed"
-	| "cancelled"
-	| "unknown";
-export interface TaskEvent {
+const TASK_STATUSES = [
+	"active",
+	"paused",
+	"blocked",
+	"waiting",
+	"completed",
+	"cancelled",
+] as const;
+export type TaskStatus = (typeof TASK_STATUSES)[number];
+const TASK_OPERATION_STATUSES = [
+	"prepared",
+	"dispatched",
+	"succeeded",
+	"failed",
+	"cancelled",
+	"unknown",
+] as const;
+export type TaskOperationStatus = (typeof TASK_OPERATION_STATUSES)[number];
+
+interface TaskEventShape {
+	/** The operation statuses this kind records, or null when it names no operation. */
+	operation: readonly TaskOperationStatus[] | null;
+	origin: "none" | "optional" | "required";
+}
+/**
+ * Every event kind and the fields it carries: the one list the type and the
+ * validator read. Operation kinds always name their operation and the status
+ * the reducer left it in.
+ */
+export const TASK_EVENT_KINDS = {
+	create: { operation: null, origin: "none" },
+	checkpoint: { operation: null, origin: "none" },
+	observe: { operation: null, origin: "optional" },
+	resume: { operation: null, origin: "optional" },
+	rebind: { operation: null, origin: "none" },
+	pause: { operation: null, origin: "none" },
+	cancel: { operation: null, origin: "none" },
+	recover: { operation: null, origin: "none" },
+	revoke: { operation: null, origin: "none" },
+	complete: { operation: null, origin: "none" },
+	prepare: { operation: ["prepared"], origin: "none" },
+	dispatch: { operation: ["dispatched"], origin: "none" },
+	result: { operation: ["succeeded", "failed", "unknown"], origin: "none" },
+	reconcile: { operation: ["succeeded", "failed", "unknown"], origin: "none" },
+	"extend-origin": { operation: null, origin: "required" },
+	"retract-origin": { operation: null, origin: "required" },
+} as const satisfies Record<string, TaskEventShape>;
+export type TaskEventKind = keyof typeof TASK_EVENT_KINDS;
+
+interface TaskEventBase {
 	schemaVersion: 1;
 	eventId: string;
 	taskId: string;
 	sequence: number;
 	epoch: number;
-	kind:
-		| "create"
-		| "checkpoint"
-		| "observe"
-		| "resume"
-		| "pause"
-		| "cancel"
-		| "recover"
-		| "revoke"
-		| "complete"
-		| "prepare"
-		| "dispatch"
-		| "result"
-		| "reconcile"
-		| "extend-origin"
-		| "retract-origin";
 	at: number;
 	status: TaskStatus;
-	operationId?: string;
-	operationStatus?: TaskOperationStatus;
-	/**
-	 * Extended tasks: the origin granted or retracted, or the observed page's
-	 * origin. Never a path or query.
-	 */
-	origin?: string;
 }
+type OperationFields<S extends TaskEventShape> =
+	S["operation"] extends readonly TaskOperationStatus[]
+		? { operationId: string; operationStatus: S["operation"][number] }
+		: { operationId?: never; operationStatus?: never };
+/**
+ * Extended tasks: the origin granted or retracted, or the observed page's
+ * origin. Never a path or query.
+ */
+type OriginFields<S extends TaskEventShape> = S["origin"] extends "required"
+	? { origin: string }
+	: S["origin"] extends "optional"
+		? { origin?: string }
+		: { origin?: never };
+export type TaskEvent = {
+	[K in TaskEventKind]: TaskEventBase & { kind: K } & OperationFields<
+			(typeof TASK_EVENT_KINDS)[K]
+		> &
+		OriginFields<(typeof TASK_EVENT_KINDS)[K]>;
+}[TaskEventKind];
+
 function reject(message: string): never {
 	throw new ElizaError(message, { code: "TASK_EVENT_INVALID" });
 }
@@ -68,10 +102,17 @@ const fields = [
 	"status",
 ];
 const optional = ["operationId", "operationStatus", "origin"];
+const eventKeys = [...fields, ...optional] as (keyof TaskEvent)[];
+function includes<T extends string>(
+	list: readonly T[],
+	value: unknown,
+): value is T {
+	return (list as readonly unknown[]).includes(value);
+}
 export function validateTaskEvent(value: unknown): asserts value is TaskEvent {
 	if (!value || typeof value !== "object" || Array.isArray(value))
 		reject("Expected a task event");
-	const event = value as TaskEvent;
+	const event = value as Record<string, unknown>;
 	if (
 		fields.some((key) => !(key in value)) ||
 		Object.keys(value).some(
@@ -82,76 +123,46 @@ export function validateTaskEvent(value: unknown): asserts value is TaskEvent {
 	if (
 		event.schemaVersion !== 1 ||
 		typeof event.taskId !== "string" ||
-		!/^[A-Za-z0-9][A-Za-z0-9_.:@/-]{0,255}$/.test(event.taskId) ||
+		!OPAQUE_REF_PATTERN.test(event.taskId) ||
 		[event.sequence, event.epoch, event.at].some(
-			(n) => !Number.isSafeInteger(n) || n < 0,
+			(n) => !Number.isSafeInteger(n) || Number(n) < 0,
 		) ||
 		event.eventId !== `${event.taskId}#${event.sequence}`
 	)
 		reject("Invalid task event identity");
 	if (
-		![
-			"create",
-			"checkpoint",
-			"observe",
-			"resume",
-			"pause",
-			"cancel",
-			"recover",
-			"revoke",
-			"complete",
-			"prepare",
-			"dispatch",
-			"result",
-			"reconcile",
-			"extend-origin",
-			"retract-origin",
-		].includes(event.kind) ||
-		![
-			"active",
-			"paused",
-			"blocked",
-			"waiting",
-			"completed",
-			"cancelled",
-		].includes(event.status)
+		typeof event.kind !== "string" ||
+		!Object.hasOwn(TASK_EVENT_KINDS, event.kind) ||
+		!includes(TASK_STATUSES, event.status)
 	)
 		reject("Invalid task event state");
-	if (
-		event.operationId !== undefined &&
-		(typeof event.operationId !== "string" ||
-			!/^[A-Za-z0-9][A-Za-z0-9_.:@/-]{0,255}$/.test(event.operationId))
-	)
-		reject("Invalid event operation");
-	if (
-		event.operationStatus !== undefined &&
-		(!event.operationId ||
-			![
-				"prepared",
-				"dispatched",
-				"succeeded",
-				"failed",
-				"cancelled",
-				"unknown",
-			].includes(event.operationStatus))
-	)
-		reject("Invalid event operation status");
+	const shape: TaskEventShape = TASK_EVENT_KINDS[event.kind as TaskEventKind];
+	if (shape.operation === null) {
+		if (event.operationId !== undefined || event.operationStatus !== undefined)
+			reject("Task event names an operation its kind does not have");
+	} else {
+		if (
+			typeof event.operationId !== "string" ||
+			!OPAQUE_REF_PATTERN.test(event.operationId)
+		)
+			reject("Invalid event operation");
+		if (!includes(shape.operation, event.operationStatus))
+			reject("Invalid event operation status");
+	}
 	if (event.origin !== undefined) {
 		let parsed: URL | undefined;
 		try {
-			parsed = new URL(event.origin);
+			parsed = new URL(String(event.origin));
 		} catch {
 			parsed = undefined;
 		}
 		if (
-			!["observe", "resume", "extend-origin", "retract-origin"].includes(
-				event.kind,
-			) ||
+			shape.origin === "none" ||
 			parsed?.protocol !== "https:" ||
 			parsed.origin !== event.origin
 		)
 			reject("Invalid event origin");
-	} else if (["extend-origin", "retract-origin"].includes(event.kind))
+	} else if (shape.origin === "required")
 		reject("Origin scope event is missing its origin");
 	if (
 		event.kind === "create" &&
@@ -168,33 +179,30 @@ export function mergeTaskEvents(
 ): TaskEvent[] {
 	const merged: TaskEvent[] = [];
 	const known = new Map<number, TaskEvent>();
-	for (const value of [...previous, ...incoming]) {
-		validateTaskEvent(value);
-		if (value.taskId !== taskId)
-			reject("Task event belongs to a different task");
-		const duplicate = known.get(value.sequence);
-		if (duplicate) {
+	for (const values of [previous, incoming]) {
+		for (const value of values) {
+			validateTaskEvent(value);
+			if (value.taskId !== taskId)
+				reject("Task event belongs to a different task");
+			const duplicate = known.get(value.sequence);
+			if (duplicate) {
+				if (eventKeys.some((key) => duplicate[key] !== value[key]))
+					reject("Conflicting task event replay");
+				continue;
+			}
+			const last = merged.at(-1);
 			if (
-				[...fields, ...optional].some(
-					(key) =>
-						duplicate[key as keyof TaskEvent] !== value[key as keyof TaskEvent],
-				)
+				(!last &&
+					value.kind !== "checkpoint" &&
+					(value.kind !== "create" || value.sequence !== 0)) ||
+				(last &&
+					(value.sequence !== last.sequence + 1 || value.epoch < last.epoch))
 			)
-				reject("Conflicting task event replay");
-			continue;
+				reject("Task event history has a gap or moved backwards");
+			const event = structuredClone(value);
+			known.set(event.sequence, event);
+			merged.push(event);
 		}
-		const last = merged.at(-1);
-		if (
-			(!last &&
-				value.kind !== "checkpoint" &&
-				(value.kind !== "create" || value.sequence !== 0)) ||
-			(last &&
-				(value.sequence !== last.sequence + 1 || value.epoch < last.epoch))
-		)
-			reject("Task event history has a gap or moved backwards");
-		const event = structuredClone(value);
-		known.set(event.sequence, event);
-		merged.push(event);
 	}
 	return merged;
 }
@@ -231,14 +239,7 @@ export function mergeTaskEventPage(
 		page.task.revision < 0 ||
 		!Number.isSafeInteger(page.task.epoch) ||
 		page.task.epoch < 0 ||
-		![
-			"active",
-			"paused",
-			"waiting",
-			"blocked",
-			"completed",
-			"cancelled",
-		].includes(page.task.status) ||
+		!includes(TASK_STATUSES, page.task.status) ||
 		typeof page.task.hasUnknownOutcome !== "boolean"
 	)
 		reject("Invalid task event page");
@@ -311,8 +312,7 @@ export class TaskEventReader {
 		this.options.changed(structuredClone(this.state));
 	}
 	start(taskId: string): Promise<void> {
-		if (!/^[A-Za-z0-9][A-Za-z0-9_.:@/-]{0,255}$/.test(taskId))
-			throw new Error("Invalid task ID");
+		if (!OPAQUE_REF_PATTERN.test(taskId)) throw new Error("Invalid task ID");
 		this.stop();
 		this.taskId = taskId;
 		this.state = { page: null, pending: false, failed: false };

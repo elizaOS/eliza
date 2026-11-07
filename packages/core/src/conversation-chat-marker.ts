@@ -20,7 +20,7 @@ export function conversationClientUserMemoryId(
 	scope: string,
 	clientMessageId: string,
 ): UUID {
-	return stringToUuid(`conversation-user:${scope}:${clientMessageId}`) as UUID;
+	return stringToUuid(`conversation-user:${scope}:${clientMessageId}`);
 }
 
 export interface DurableConversationChatMarker {

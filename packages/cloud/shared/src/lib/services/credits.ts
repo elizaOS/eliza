@@ -233,6 +233,15 @@ export interface CreditReservation {
 }
 
 export interface CreditReconciliationResult {
+  /** Produced only after the canonical admission's backing and gate effects complete. */
+  terminalReceipt?: Readonly<{
+    version: 1;
+    organizationId: string;
+    requestId: string;
+    amountUsd: string;
+    mode: string;
+    status: "canonical_completed" | "funded_persisted";
+  }>;
   reservedAmount: number;
   actualCost: number;
   /**
@@ -1147,11 +1156,9 @@ export class CreditsService {
    * observed aggregate with request-scoped `waitUntil`; non-Worker callers
    * await the same aggregate. The periodic durable sweep remains the auto-top-up
    * recovery backstop if a Worker reaches its post-response time limit. Exposed
-   * (not inlined) so EVERY debit path stays at parity: the synchronous reserve
-   * calls it here, and the optimistic inference ledger
-   * (`inference-billing-ledger.ts`), which mutates the balance with its own
-   * transactional SQL rather than through `deductCredits`, calls it after a
-   * successful debit so its orgs still get low-balance warnings.
+   * (not inlined) so every debit path, including ones that mutate the balance
+   * with their own transactional SQL rather than through `deductCredits`, can
+   * raise the same low-balance warnings.
    */
   async notifyBalanceDecrease(
     organizationId: string,

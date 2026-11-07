@@ -39,8 +39,10 @@ dependencies {
     // ActivityResult for the system "Save this network?" dialog callback.
     implementation "androidx.activity:activity:$androidxActivityVersion"
 
-    // JVM unit tests for the pure approved-join decision.
+    // JVM unit tests for the pure approved-join decision and the host gate.
     testImplementation "junit:junit:$junitVersion"
+    // Real org.json for JSObject in JVM tests; android.jar ships only stubs.
+    testImplementation "org.json:json:20250517"
 
     // Instrumented test deps (issue #9967 — on-device Wi-Fi state read).
     androidTestImplementation "androidx.test:core:1.5.0"

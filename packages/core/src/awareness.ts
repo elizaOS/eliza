@@ -1,9 +1,6 @@
+/** Shared awareness contributor and invalidation contracts. */
 import type { IAgentRuntime } from "./types/runtime.js";
 import { toWellFormedUnicode } from "./utils/unicode.js";
-
-/**
- * Shared awareness contributor and invalidation contracts.
- */
 
 export const SELF_STATUS_SCHEMA_VERSION = 1;
 
@@ -48,17 +45,6 @@ export interface AwarenessContributor {
 	trusted?: boolean;
 }
 
-/**
- * AwarenessRegistry — core orchestration layer for the Self-Awareness System.
- *
- * Manages contributor registration, summary composition (Layer 1),
- * detail retrieval (Layer 2), caching, sanitization, and invalidation.
- *
- * @architecture All public methods are fault-tolerant: individual contributor
- * errors are captured and surfaced as `[{id}: unavailable]` markers — the
- * registry itself NEVER throws from composeSummary / getDetail.
- */
-
 const SANITIZE_PATTERNS: RegExp[] = [
 	/sk-ant-\S+/gi,
 	/sk-\S{20,}/gi,
@@ -83,10 +69,16 @@ interface CacheEntry {
 	expiresAt: number;
 }
 
-export function normalizeSummaryLine(line: string): string {
-	return toWellFormedUnicode(line);
-}
-
+/**
+ * AwarenessRegistry — core orchestration layer for the Self-Awareness System.
+ *
+ * Manages contributor registration, summary composition (Layer 1),
+ * detail retrieval (Layer 2), caching, sanitization, and invalidation.
+ *
+ * @architecture All public methods are fault-tolerant: individual contributor
+ * errors are captured and surfaced as `[{id}: unavailable]` markers — the
+ * registry itself NEVER throws from composeSummary / getDetail.
+ */
 export class AwarenessRegistry {
 	private readonly contributors: AwarenessContributor[] = [];
 	private readonly contributorIds = new Set<string>();
@@ -127,12 +119,9 @@ export class AwarenessRegistry {
 			}
 
 			if (line === "") continue;
-			if (contributor.trusted !== true) {
-				line = sanitize(line);
-			}
-			line = normalizeSummaryLine(line);
-
-			lines.push(line);
+			lines.push(
+				toWellFormedUnicode(contributor.trusted ? line : sanitize(line)),
+			);
 		}
 
 		const header = `[Self Status v${SELF_STATUS_SCHEMA_VERSION}]`;
@@ -153,20 +142,7 @@ export class AwarenessRegistry {
 			const available = this.contributors.map((c) => c.id).join(", ");
 			return `[Error: unknown module "${module}". Available: ${available}]`;
 		}
-
-		if (!contributor.detail) {
-			return `[${contributor.id}: no detail available]`;
-		}
-
-		try {
-			const detail = await contributor.detail(runtime, level);
-			return contributor.trusted !== true ? sanitize(detail) : detail;
-		} catch (error) {
-			runtime.reportError("AwarenessRegistry.detail", error, {
-				contributorId: contributor.id,
-			});
-			return `[${contributor.id}: unavailable]`;
-		}
+		return this.readDetail(contributor, runtime, level);
 	}
 
 	invalidate(event: AwarenessInvalidationEvent): void {
@@ -202,30 +178,33 @@ export class AwarenessRegistry {
 		return value;
 	}
 
+	private async readDetail(
+		contributor: AwarenessContributor,
+		runtime: IAgentRuntime,
+		level: "brief" | "full",
+	): Promise<string> {
+		if (!contributor.detail) {
+			return `[${contributor.id}: no detail available]`;
+		}
+		try {
+			const detail = await contributor.detail(runtime, level);
+			return contributor.trusted ? detail : sanitize(detail);
+		} catch (error) {
+			runtime.reportError("AwarenessRegistry.detail", error, {
+				contributorId: contributor.id,
+			});
+			return `[${contributor.id}: unavailable]`;
+		}
+	}
+
 	private async composeAllDetails(
 		runtime: IAgentRuntime,
 		level: "brief" | "full",
 	): Promise<string> {
 		const parts: string[] = [];
 		for (const contributor of this.contributors) {
-			if (!contributor.detail) {
-				parts.push(`[${contributor.id}: no detail available]`);
-				continue;
-			}
-			try {
-				let detail = await contributor.detail(runtime, level);
-				if (contributor.trusted !== true) {
-					detail = sanitize(detail);
-				}
-				parts.push(detail);
-			} catch (error) {
-				runtime.reportError("AwarenessRegistry.detail", error, {
-					contributorId: contributor.id,
-				});
-				parts.push(`[${contributor.id}: unavailable]`);
-			}
+			parts.push(await this.readDetail(contributor, runtime, level));
 		}
-
 		return parts.join("\n");
 	}
 }

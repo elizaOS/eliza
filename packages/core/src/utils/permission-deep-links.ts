@@ -61,15 +61,9 @@ export function getMacPermissionDeepLink(id: PermissionId): string {
 type Platform = "darwin" | "win32" | "linux" | "unknown";
 
 function detectPlatform(): Platform {
-	if (
-		typeof globalThis !== "undefined" &&
-		typeof (globalThis as { process?: { platform?: string } }).process
-			?.platform === "string"
-	) {
-		const p = (globalThis as { process: { platform: string } }).process
-			.platform;
-		if (p === "darwin" || p === "win32" || p === "linux") return p;
-	}
+	const p = (globalThis as { process?: { platform?: unknown } }).process
+		?.platform;
+	if (p === "darwin" || p === "win32" || p === "linux") return p;
 	if (
 		typeof navigator !== "undefined" &&
 		typeof navigator.userAgent === "string"
