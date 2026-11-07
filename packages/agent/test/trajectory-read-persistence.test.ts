@@ -666,6 +666,59 @@ it("persists and reads complete planner stages with the canonical native proposa
   expect(JSON.stringify(read)).toContain(JSON.stringify(schema));
 });
 
+it("redacts every copy of a semantic stage before the bridge stores it", async () => {
+  const trajectoryId = await direct.startTrajectory(fixture.runtime.agentId, {
+    source: "semantic-stage-redaction",
+    roomId: randomUUID(),
+  });
+  const stepId = direct.startStep(trajectoryId, { kind: "llm" });
+  await direct.flushWriteQueue(trajectoryId);
+  const credential = "sk-fixture-semantic-stage-credential";
+  const text = `Use ${credential} for the lookup.`;
+  bridge.logSemanticStage({
+    stepId,
+    stage: {
+      stageId: "redacted-planner",
+      kind: "planner",
+      startedAt: 1,
+      endedAt: 2,
+      latencyMs: 1,
+      model: {
+        modelType: "TEXT_LARGE",
+        messages: [{ role: "user", content: text }],
+        providerOptions: {
+          eliza: {
+            prefixHash: "fixture-prefix-hash",
+            promptSegments: [{ content: text, stable: false }],
+          },
+        },
+        response: text,
+        responseContent: [
+          { type: "reasoning", text },
+          { type: "text", text },
+        ],
+        toolCalls: [{ id: "call-1", name: "LOOKUP", args: { query: text } }],
+      },
+      tool: {
+        name: "LOOKUP",
+        args: { query: text },
+        result: { echo: text },
+        success: true,
+        durationMs: 1,
+      },
+    },
+  });
+  await bridge.flushWriteQueue(trajectoryId);
+  const detail = await bridge.getTrajectoryDetail(trajectoryId);
+  const semantic = detail?.steps?.flatMap((step) => step.semanticStages ?? []);
+  expect(semantic).toHaveLength(1);
+  expect(semantic?.[0].payload.model).toMatchObject({
+    providerOptions: { eliza: { prefixHash: "fixture-prefix-hash" } },
+  });
+  expect(JSON.stringify(semantic)).not.toContain(credential);
+  await direct.endTrajectory(trajectoryId, "completed");
+});
+
 it("validates deep semantic JSON without stack limits while retaining type, prototype and cycle guards", () => {
   const envelope = (model: unknown) => ({
     schemaVersion: 1,
