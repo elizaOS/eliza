@@ -7,6 +7,7 @@
 import { fileURLToPath } from "node:url";
 import type { IAgentRuntime } from "@elizaos/core";
 import { resetDevCloudEnvAuthorityForTests } from "@elizaos/plugin-elizacloud/cloud-config/dev-cloud-env-authority";
+import { createTestRuntime } from "@elizaos/testing/runtime";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { ptyRoutes } from "../index";
 import {
@@ -859,4 +860,89 @@ describe("PTY interactive gate + model fallbacks (regression edges)", () => {
     expect(env?.OPENAI_MEDIUM_MODEL).toBe(ELIZA_CLOUD_FAST_MODEL);
     expect(env?.OPENAI_LARGE_MODEL).toBe("smart-only");
   });
+});
+
+// The harness above hands back raw strings, but core `runtime.getSetting`
+// returns a stored "true"/"false" as a boolean. That is what the Plugins
+// settings save leaves behind (plugin-management-routes.ts `setSetting`), so the
+// gates are checked here against a real runtime holding the saved value.
+describe("POST /api/pty/sessions — gate values saved on a real runtime", () => {
+  const gateEnvKeys = [
+    "PTY_INTERACTIVE_ENABLED",
+    "PTY_VENDOR_CLI_ENABLED",
+    "PTY_CLAUDE_BIN",
+  ] as const;
+  const savedGateEnv = new Map<string, string | undefined>();
+  beforeEach(() => {
+    for (const key of gateEnvKeys) {
+      savedGateEnv.set(key, process.env[key]);
+      delete process.env[key];
+    }
+    process.env.PTY_CLAUDE_BIN = EXISTING_FILE;
+  });
+  afterEach(() => {
+    for (const [key, value] of savedGateEnv) {
+      if (value === undefined) delete process.env[key];
+      else process.env[key] = value;
+    }
+    savedGateEnv.clear();
+  });
+
+  async function withSavedSettings(
+    settings: Record<string, string>,
+    run: (runtime: IAgentRuntime, calls: SpawnCall[]) => Promise<void>,
+  ) {
+    const fake = makeFakeSpawn();
+    class FakeSpawnPtyService extends PtyService {
+      static override serviceType = "PTY_SERVICE";
+      static override async start(runtime: IAgentRuntime): Promise<PtyService> {
+        return new FakeSpawnPtyService(runtime, fake.resolver, {
+          allowedRoot: process.cwd(),
+        });
+      }
+    }
+    const fixture = await createTestRuntime({ characterName: "PtyGates" });
+    try {
+      const { runtime } = fixture;
+      await runtime.registerService(FakeSpawnPtyService);
+      await runtime.getServiceLoadPromise("PTY_SERVICE");
+      for (const [key, value] of Object.entries(settings))
+        runtime.setSetting(key, value, false);
+      await run(runtime, fake.calls);
+    } finally {
+      await fixture.cleanup();
+    }
+  }
+
+  it("403s when PTY_INTERACTIVE_ENABLED=false was saved", async () => {
+    await withSavedSettings(
+      { PTY_ELIZA_CLOUD_API_KEY: "sk", PTY_INTERACTIVE_ENABLED: "false" },
+      async (runtime, calls) => {
+        expect(runtime.getSetting("PTY_INTERACTIVE_ENABLED")).toBe(false);
+        const res = await routeByName("pty-spawn-session")(
+          ctx(runtime, { cwd: process.cwd() }),
+        );
+        expect(res.status).toBe(403);
+        expect((res.body as { error: string }).error).toMatch(
+          /PTY_INTERACTIVE_ENABLED=false/,
+        );
+        expect(calls).toHaveLength(0);
+      },
+    );
+  }, 120_000);
+
+  it("spawns a claude session when PTY_VENDOR_CLI_ENABLED=true was saved", async () => {
+    await withSavedSettings(
+      { PTY_VENDOR_CLI_ENABLED: "true" },
+      async (runtime, calls) => {
+        expect(runtime.getSetting("PTY_VENDOR_CLI_ENABLED")).toBe(true);
+        const res = await routeByName("pty-spawn-session")(
+          ctx(runtime, { kind: "claude", cwd: process.cwd() }),
+        );
+        expect(res.status).toBe(200);
+        expect(calls).toHaveLength(1);
+        expect(calls[0].file).toBe(EXISTING_FILE);
+      },
+    );
+  }, 120_000);
 });
