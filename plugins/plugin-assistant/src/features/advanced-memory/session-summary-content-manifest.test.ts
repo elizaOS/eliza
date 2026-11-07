@@ -5,6 +5,7 @@ import type {
 } from "@elizaos/core";
 import { createHash, stringToUuid } from "@elizaos/core";
 import { SQLiteDatabaseAdapter } from "@elizaos/plugin-sqlite";
+import { createSQLiteTestRuntime } from "@elizaos/testing/runtime";
 /** Exercises immutable session-summary rollover, CAS, and fail-closed traversal. */
 import { describe, expect, it } from "vitest";
 import {
@@ -189,6 +190,36 @@ describe("session-summary immutable content ledger", () => {
         record.kind === "content-reference" ? record.value.rangesUsed : [],
       ),
     ).toHaveLength(192);
+  });
+
+  it("keeps a linked shard that fills to the byte ceiling loadable", async () => {
+    const runtime = createSQLiteTestRuntime({
+      character: { name: "Continuity", bio: [] },
+      logLevel: "fatal",
+    });
+    await publish(runtime, manifest(0, 1));
+    // Paged reads of 16 documents: 64 byte ranges each, 52 on the last. As one
+    // shard without chain pointers this is 24 bytes under the 48 KiB ceiling;
+    // linked to the room's first shard it carries a successor id and digest.
+    const paged = manifest(1, 16);
+    for (const [index, entry] of paged.contentRefs.entries()) {
+      entry.rangesUsed = Array.from(
+        { length: index === 15 ? 52 : 64 },
+        (_, page) => ({
+          unit: "byte",
+          start: page * 16_384,
+          end: page * 16_384 + 16_383,
+        }),
+      );
+    }
+    const envelope = await publish(runtime, paged);
+    const ledger = await loadSessionSummaryContentLedger(
+      runtime,
+      envelope,
+      roomId,
+    );
+    expect(ledger.records).toHaveLength(17);
+    expect((await publish(runtime, manifest(17, 1))).recordCount).toBe(18);
   });
 
   it.each([
