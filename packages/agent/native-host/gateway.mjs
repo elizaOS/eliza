@@ -193,9 +193,16 @@ export function createLocalAgentGateway({
   };
   const pending = new Set();
   const rooms = new Map();
-  // Rooms sent a message since the last sign-out: only these can have a turn
-  // that this gateway started still running upstream.
-  const turnRooms = new Set();
+  // Turns this gateway started since the last sign-out, by room, until the
+  // agent answered them. A turn keeps running upstream after its request
+  // closed, so only a reply ends it here; a sign-out stops the rest.
+  const turnRooms = new Map();
+  const turnEnded = (admission) => {
+    if (admission.requestEpoch !== epoch) return;
+    const open = turnRooms.get(admission.roomId) - 1;
+    if (open > 0) turnRooms.set(admission.roomId, open);
+    else turnRooms.delete(admission.roomId);
+  };
   let epoch = 0,
     writeQueue = Promise.resolve();
   const ready = (async () => {
@@ -303,8 +310,7 @@ export function createLocalAgentGateway({
   };
   const sendMessage = async (admission, route, signal) => {
     await ensureCurrent(admission, signal);
-    // A turn can run on upstream after its request closed; a sign-out stops it.
-    turnRooms.add(admission.roomId);
+    turnRooms.set(admission.roomId, (turnRooms.get(admission.roomId) ?? 0) + 1);
     return fetchImpl(new URL(route, target), {
       method: "POST",
       headers: {
@@ -426,6 +432,7 @@ export function createLocalAgentGateway({
               ...provisional,
             });
         } else if (frame?.type === "error") {
+          turnEnded(stream.admission);
           throw refusal(502, {
             error:
               typeof frame.message === "string"
@@ -434,6 +441,7 @@ export function createLocalAgentGateway({
             ...(typeof frame.code === "string" ? { code: frame.code } : {}),
           });
         } else if (frame?.type === "done") {
+          turnEnded(stream.admission);
           done = frame;
           break;
         }
@@ -499,6 +507,7 @@ export function createLocalAgentGateway({
       );
       if (!response.ok) {
         const data = await response.json();
+        turnEnded(admission);
         await ensureCurrent(admission);
         return { status: response.status, body: data };
       }
@@ -702,7 +711,7 @@ export function createLocalAgentGateway({
         // Stop the turn of every room sent a message, not only the rooms
         // with an open request: a turn keeps running upstream after its
         // renderer request closed, and must not survive the sign-out.
-        const roomIds = new Set(turnRooms);
+        const roomIds = new Set(turnRooms.keys());
         turnRooms.clear();
         rooms.clear();
         for (const request of pending) {
@@ -798,6 +807,7 @@ export function createLocalAgentGateway({
             controller.signal,
           );
           data = await response.json();
+          turnEnded(admission);
           await ensureCurrent(admission);
         } finally {
           pending.delete(active);

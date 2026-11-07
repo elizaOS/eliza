@@ -1629,3 +1629,54 @@ test("agent failures after the stream opens become 502, unlike the buffered stat
     await harness.close();
   }
 });
+
+test("sign-out stops a streamed turn like a buffered one, and never an answered turn", async () => {
+  const harness = await streamHarness();
+  const { state, start, pull, cancel } = harness;
+  const never = Promise.withResolvers();
+  const aborts = () =>
+    state.requests.filter((request) => request.url.startsWith("/api/turns/"));
+  const until = async (check) => {
+    for (let i = 0; i < 200 && !check(); i++)
+      await new Promise((resolve) => setTimeout(resolve, 10));
+    assert.ok(check());
+  };
+  const signOut = async () => {
+    assert.equal((await harness.post("/identity/logout")).status, 200);
+    assert.equal((await harness.post("/conversations")).status, 200);
+  };
+  try {
+    assert.equal((await harness.post("/conversations")).status, 200);
+    // An answered turn, buffered or streamed to its end, has nothing to stop.
+    assert.equal((await harness.buffered()).status, 200);
+    await signOut();
+    assert.equal((await harness.streamed()).status, 200);
+    await signOut();
+    // A sign-out during a streamed reply aborts it here and stops its turn.
+    state.beforeFrame = (index) => (index === 1 ? never.promise : undefined);
+    const { streamId } = (await start()).body;
+    assert.equal((await pull(streamId, 0)).body.cursor, 1);
+    await signOut();
+    await state.closed.at(-1);
+    await until(() => aborts().length === 1);
+    // Its text never reaches the next account.
+    assert.equal((await pull(streamId, 1)).body.code, "CONVERSATION_NOT_OWNED");
+    assert.equal((await pull(streamId, 1)).status, 404);
+    // A cancelled stream may still run upstream, like a closed buffered
+    // request, so the next sign-out still stops its turn.
+    const cancelled = (await start()).body.streamId;
+    assert.equal((await pull(cancelled, 0)).body.cursor, 1);
+    assert.equal((await cancel(cancelled)).status, 200);
+    await state.closed.at(-1);
+    await signOut();
+    await until(() => aborts().length === 2);
+    await new Promise((resolve) => setTimeout(resolve, 50));
+    assert.deepEqual(aborts(), [
+      { url: `/api/turns/${id}/abort`, body: { reason: "cloud-logout" } },
+      { url: `/api/turns/${id}/abort`, body: { reason: "cloud-logout" } },
+    ]);
+  } finally {
+    never.resolve();
+    await harness.close();
+  }
+});
