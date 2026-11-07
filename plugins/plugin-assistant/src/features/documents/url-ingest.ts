@@ -27,6 +27,7 @@ import {
 } from "@elizaos/core";
 import { decodeBasicHtmlEntities } from "../../utils/html-entities.ts";
 import { decodeHttpText } from "../../utils/http-text.ts";
+import { hasTextDocumentExtension } from "./utils.ts";
 
 const MAX_URL_IMPORT_BYTES = 10 * 1024 * 1024; // 10 MB
 const MAX_YOUTUBE_WATCH_PAGE_BYTES = 2 * 1024 * 1024; // 2 MB
@@ -510,10 +511,20 @@ export interface FetchDocumentFromUrlOptions {
   includeImageDescriptions?: boolean;
 }
 
-function classifyMimeType(mimeType: string): FetchedDocumentUrlKind {
+function classifyMimeType(
+  mimeType: string,
+  filename: string,
+): FetchedDocumentUrlKind {
   const normalized = mimeType.toLowerCase();
+  if (normalized.startsWith("application/octet-stream")) {
+    // application/octet-stream means "unknown bytes", not "binary file":
+    // hosts that do not set a content type serve plain text files this way.
+    // The URL path is the only text signal, the same rule the upload route
+    // applies to filenames, so a .txt/.md/.csv keeps its text instead of
+    // being stored as base64. Anything else stays binary.
+    return hasTextDocumentExtension(filename) ? "text" : "binary";
+  }
   if (
-    normalized.startsWith("application/octet-stream") ||
     normalized.startsWith("application/pdf") ||
     normalized.startsWith("application/msword") ||
     normalized.startsWith("application/vnd.openxmlformats-officedocument") ||
@@ -606,7 +617,7 @@ export async function fetchDocumentFromUrl(
     MAX_URL_IMPORT_BYTES,
   );
 
-  const kind = classifyMimeType(mimeType);
+  const kind = classifyMimeType(mimeType, filename);
 
   if (kind === "binary") {
     const base64 = Buffer.from(buffer).toString("base64");

@@ -30,6 +30,7 @@ import {
   documentMediaFormat,
   documentTags,
   fetchDocumentFromUrl,
+  isBinaryContentType,
   isYouTubeUrl,
   matchesDocumentFilter as matchesSharedDocumentFilter,
   normalizeDocumentContentType,
@@ -1761,6 +1762,16 @@ export async function handleDocumentsRoutes(
     }
     const { content, mimeType, filename } = fetchedContent;
     const contentType = mimeType;
+    // The fetch layer classifies by filename when the server MIME is
+    // application/octet-stream, but the service classifies by MIME alone:
+    // handing it the raw MIME would make it base64-decode literal text.
+    // Give text payloads a text MIME so the service stores the text itself.
+    // fileType below still records the MIME the server claimed.
+    const serviceContentType =
+      fetchedContent.contentType !== "binary" &&
+      isBinaryContentType(mimeType, filename)
+        ? "text/plain"
+        : mimeType;
     const uploadFilters = filtersFromUploadBody(body, routeActor);
     if (uploadFilters.error) {
       error(res, uploadFilters.error, 403);
@@ -1781,7 +1792,7 @@ export async function handleDocumentsRoutes(
         roomId,
         entityId,
         clientDocumentId: "" as UUID,
-        contentType,
+        contentType: serviceContentType,
         originalFilename: filename,
         content,
         scope: uploadFilters.scope,
@@ -1796,7 +1807,7 @@ export async function handleDocumentsRoutes(
           filename,
           originalFilename: filename,
           fileType: contentType,
-          contentType,
+          contentType: serviceContentType,
           textBacked: fetchedContent.contentType !== "binary",
           scope: uploadFilters.scope,
           ...(scopedToEntityId ? { scopedToEntityId } : {}),

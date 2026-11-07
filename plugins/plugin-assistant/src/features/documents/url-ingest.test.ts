@@ -48,6 +48,37 @@ describe("url-ingest numeric HTML entities", () => {
   });
 });
 
+describe("url-ingest octet-stream classification", () => {
+  it("reads a text file served as application/octet-stream as text", async () => {
+    const text = "Meet the vendor on Tuesday.";
+    __setDocumentUrlFetchImplForTests(
+      async () =>
+        new Response(text, {
+          status: 200,
+          headers: { "content-type": "application/octet-stream" },
+        }),
+    );
+    const doc = await fetchDocumentFromUrl("https://example.com/notes.txt");
+    expect(doc.contentType).toBe("text");
+    expect(doc.content).toBe(text);
+    expect(doc.mimeType).toBe("application/octet-stream");
+  });
+
+  it("keeps a binary file served as application/octet-stream as binary", async () => {
+    const bytes = new Uint8Array([0x50, 0x4b, 0x03, 0x04, 0x00]);
+    __setDocumentUrlFetchImplForTests(
+      async () =>
+        new Response(bytes, {
+          status: 200,
+          headers: { "content-type": "application/octet-stream" },
+        }),
+    );
+    const doc = await fetchDocumentFromUrl("https://example.com/archive.zip");
+    expect(doc.contentType).toBe("binary");
+    expect(doc.content).toBe(Buffer.from(bytes).toString("base64"));
+  });
+});
+
 describe("url-ingest response charset", () => {
   it("decodes the body with the Content-Type charset", async () => {
     const pages: Array<[string, number[], string]> = [

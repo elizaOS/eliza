@@ -84,4 +84,4 @@ export {
   fetchDocumentFromUrl,
   isYouTubeUrl,
 } from "./url-ingest.ts";
-export { normalizeDocumentContentType } from "./utils.ts";
+export { isBinaryContentType, normalizeDocumentContentType } from "./utils.ts";

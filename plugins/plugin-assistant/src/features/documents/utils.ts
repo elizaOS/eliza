@@ -19,6 +19,83 @@ export function normalizeDocumentContentType(contentType: string): string {
   return contentType.split(";", 1)[0]?.trim().toLowerCase() ?? "";
 }
 
+/**
+ * Filename extensions the documents store already reads as UTF-8 text.
+ * Shared by the binary/text classifier below and by URL import, where
+ * `application/octet-stream` means "unknown bytes" and the URL path is the
+ * only text signal.
+ */
+const TEXT_DOCUMENT_EXTENSIONS = [
+  "txt",
+  "md",
+  "markdown",
+  "json",
+  "xml",
+  "html",
+  "htm",
+  "css",
+  "js",
+  "ts",
+  "jsx",
+  "tsx",
+  "yaml",
+  "yml",
+  "toml",
+  "ini",
+  "cfg",
+  "conf",
+  "sh",
+  "bash",
+  "zsh",
+  "fish",
+  "py",
+  "rb",
+  "go",
+  "rs",
+  "java",
+  "c",
+  "cpp",
+  "h",
+  "hpp",
+  "cs",
+  "php",
+  "sql",
+  "r",
+  "swift",
+  "kt",
+  "scala",
+  "clj",
+  "ex",
+  "exs",
+  "vim",
+  "env",
+  "gitignore",
+  "dockerignore",
+  "editorconfig",
+  "log",
+  "csv",
+  "tsv",
+  "properties",
+  "gradle",
+  "sbt",
+  "makefile",
+  "dockerfile",
+  "vagrantfile",
+  "gemfile",
+  "rakefile",
+  "podfile",
+  "csproj",
+  "vbproj",
+  "fsproj",
+  "sln",
+  "pom",
+];
+
+export function hasTextDocumentExtension(filename: string): boolean {
+  const fileExt = filename.split(".").pop()?.toLowerCase() || "";
+  return TEXT_DOCUMENT_EXTENSIONS.includes(fileExt);
+}
+
 export function isBinaryContentType(
   contentType: string,
   filename: string,
@@ -63,77 +140,11 @@ export function isBinaryContentType(
     return true;
   }
 
-  const fileExt = filename.split(".").pop()?.toLowerCase() || "";
-
-  const textExtensions = [
-    "txt",
-    "md",
-    "markdown",
-    "json",
-    "xml",
-    "html",
-    "htm",
-    "css",
-    "js",
-    "ts",
-    "jsx",
-    "tsx",
-    "yaml",
-    "yml",
-    "toml",
-    "ini",
-    "cfg",
-    "conf",
-    "sh",
-    "bash",
-    "zsh",
-    "fish",
-    "py",
-    "rb",
-    "go",
-    "rs",
-    "java",
-    "c",
-    "cpp",
-    "h",
-    "hpp",
-    "cs",
-    "php",
-    "sql",
-    "r",
-    "swift",
-    "kt",
-    "scala",
-    "clj",
-    "ex",
-    "exs",
-    "vim",
-    "env",
-    "gitignore",
-    "dockerignore",
-    "editorconfig",
-    "log",
-    "csv",
-    "tsv",
-    "properties",
-    "gradle",
-    "sbt",
-    "makefile",
-    "dockerfile",
-    "vagrantfile",
-    "gemfile",
-    "rakefile",
-    "podfile",
-    "csproj",
-    "vbproj",
-    "fsproj",
-    "sln",
-    "pom",
-  ];
-
-  if (textExtensions.includes(fileExt)) {
+  if (hasTextDocumentExtension(filename)) {
     return false;
   }
+
+  const fileExt = filename.split(".").pop()?.toLowerCase() || "";
 
   const binaryExtensions = [
     "pdf",
