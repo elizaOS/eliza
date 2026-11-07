@@ -266,11 +266,12 @@ export function selectMediaToEvict(
   cap: number,
   sweep: MediaGcSweep | null,
 ): string[] {
-  // Private files have explicit owner/revocation lifecycles and cannot be
-  // reconstructed from public attachment references after blind eviction.
-  const evictable = files.filter(
-    (file) => !PRIVATE_MEDIA_FILE_NAME.test(file.name),
-  );
+  // Only public content-addressed media is a candidate. Private files have
+  // explicit owner/revocation lifecycles and cannot be reconstructed from
+  // public attachment references after blind eviction. The GC sweep never
+  // sees other names (the background-pins.json and audio-redactions.json
+  // ledgers, in-flight `.pending-*` writes), so it cannot mark them kept.
+  const evictable = files.filter((file) => MEDIA_FILE_NAME.test(file.name));
   let total = evictable.reduce((sum, file) => sum + file.size, 0);
   if (total <= cap || !sweep) return [];
   const target = Math.floor(cap * 0.9);
@@ -760,13 +761,22 @@ export function pinBackgroundMedia(url: string): void {
 // Orphan GC grace: never delete files younger than this, so media that was just
 // persisted but not yet referenced by a saved message (or just served) survives.
 const GC_MIN_AGE_MS = 60 * 60 * 1000;
+// Temp file of a media write (`writeMediaFileAtomic`, `persistMediaStream`).
+// A process stopped mid-write never reaches the writer's cleanup, and the size
+// cap only counts content-addressed names, so only the GC can remove it.
+const PENDING_MEDIA_FILE_NAME =
+  /^\.pending-[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
+// A live write keeps its pending file's mtime current; one untouched this long
+// has no writer left.
+const PENDING_MEDIA_MAX_AGE_MS = 24 * 60 * 60 * 1000;
 /**
  * Delete stored media files not referenced by any live attachment. `referenced`
  * is the set of `<sha256>.<ext>` filenames still in use (built from message
  * attachment URLs via {@link mediaFileNameFromUrl}); pinned wallpapers (see
  * {@link pinBackgroundMedia} — client-side-only referents) are unioned in
  * here so every GC caller is safe by construction. Files younger than the
- * grace window are kept. Best-effort; returns counts.
+ * grace window are kept. A pending write untouched for a day is removed too.
+ * Best-effort; returns counts.
  */
 export function gcUnreferencedMedia(referenced: Set<string>): {
   removed: number;
@@ -774,12 +784,26 @@ export function gcUnreferencedMedia(referenced: Set<string>): {
 } {
   let removed = 0;
   let scanned = 0;
+  let abandoned = 0;
   try {
     const dir = mediaDir();
     const now = Date.now();
     const pinned = new Set(readBackgroundPins());
     lastGcSweep = { at: now, kept: new Set([...referenced, ...pinned]) };
     for (const name of fs.readdirSync(dir)) {
+      if (PENDING_MEDIA_FILE_NAME.test(name)) {
+        try {
+          const stat = fs.lstatSync(path.join(dir, name));
+          if (!stat.isFile()) continue;
+          if (now - stat.mtimeMs < PENDING_MEDIA_MAX_AGE_MS) continue;
+          fs.unlinkSync(path.join(dir, name));
+          abandoned += 1;
+        } catch {
+          // error-policy:J6 best-effort — a pending file its writer just renamed
+          // or removed is already gone; skip it and keep scanning.
+        }
+        continue;
+      }
       if (!MEDIA_FILE_NAME.test(name)) continue;
       scanned += 1;
       if (referenced.has(name) || pinned.has(name)) continue;
@@ -803,6 +827,11 @@ export function gcUnreferencedMedia(referenced: Set<string>): {
   if (removed > 0) {
     logger.info(
       `[media-store] GC removed ${removed} unreferenced file(s) of ${scanned}`,
+    );
+  }
+  if (abandoned > 0) {
+    logger.info(
+      `[media-store] GC removed ${abandoned} abandoned pending write(s)`,
     );
   }
   return { removed, scanned };
