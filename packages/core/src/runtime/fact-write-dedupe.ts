@@ -107,22 +107,39 @@ export function mergeStrongerFactMetadata(
 		];
 		if (evidenceIds.length !== keptEvidence.length)
 			upgrades.extractionEvidenceIds = evidenceIds;
-		const incomingRevisions = (incoming.metadata as CustomMetadata)
-			.extractionSourceRevisions;
-		const keptRevisions = keptMetadata?.extractionSourceRevisions;
-		if (
-			incomingRevisions &&
-			typeof incomingRevisions === "object" &&
-			!Array.isArray(incomingRevisions)
-		) {
-			upgrades.extractionSourceRevisions = {
-				...(keptRevisions &&
-				typeof keptRevisions === "object" &&
-				!Array.isArray(keptRevisions)
-					? keptRevisions
-					: {}),
-				...incomingRevisions,
-			};
+	}
+
+	// Source revisions merge independently of evidence ids: an occurrence
+	// that carries a new revision but no new evidence ids (e.g. a re-read of
+	// a source already cited) must still fold its revision into the kept row.
+	// Previously this merge lived inside the evidence-ids gate above, so such
+	// revisions were silently dropped and the dedupe hit returned null.
+	const incomingRevisions = (incoming.metadata as CustomMetadata | undefined)
+		?.extractionSourceRevisions;
+	const keptRevisions = (existing.metadata as CustomMetadata | undefined)
+		?.extractionSourceRevisions;
+	if (
+		incomingRevisions &&
+		typeof incomingRevisions === "object" &&
+		!Array.isArray(incomingRevisions)
+	) {
+		const baseRevisions: Record<string, unknown> =
+			keptRevisions &&
+			typeof keptRevisions === "object" &&
+			!Array.isArray(keptRevisions)
+				? (keptRevisions as Record<string, unknown>)
+				: {};
+		const mergedRevisions: Record<string, unknown> = {
+			...baseRevisions,
+			...(incomingRevisions as Record<string, unknown>),
+		};
+		const addsRevision = Object.keys(mergedRevisions).some(
+			(key) =>
+				!(key in baseRevisions) ||
+				mergedRevisions[key] !== baseRevisions[key],
+		);
+		if (addsRevision) {
+			upgrades.extractionSourceRevisions = mergedRevisions as unknown as CustomMetadata["extractionSourceRevisions"];
 		}
 	}
 
