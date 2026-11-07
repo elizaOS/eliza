@@ -726,8 +726,12 @@ export async function updateLifeOpsOwnerProfile(
     isRecord(task?.metadata) && task.id === taskId
       ? task.metadata
       : buildFallbackSchedulerMetadata(runtime.agentId);
-  const nextProfile: LifeOpsOwnerProfile = {
-    ...resolveLifeOpsOwnerProfile(metadata, configuredName),
+  // Store only fields the owner set. The defaults and the configured name are
+  // resolved on read; a stored copy would shadow a later Settings rename.
+  const storedProfile = {
+    ...normalizeLifeOpsOwnerProfilePatch(
+      isRecord(metadata.ownerProfile) ? metadata.ownerProfile : null,
+    ),
     ...normalizedPatch,
     updatedAt: new Date().toISOString(),
   };
@@ -735,9 +739,12 @@ export async function updateLifeOpsOwnerProfile(
   await runtime.updateTask(taskId, {
     metadata: {
       ...metadata,
-      ownerProfile: nextProfile,
+      ownerProfile: storedProfile,
     },
   });
 
-  return nextProfile;
+  return resolveLifeOpsOwnerProfile(
+    { ownerProfile: storedProfile },
+    configuredName,
+  );
 }
