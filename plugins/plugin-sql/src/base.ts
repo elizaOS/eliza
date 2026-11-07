@@ -7606,7 +7606,7 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<DrizzleDatabase
           agentId: entry.agentId,
         })
         .onConflictDoNothing()
-        .returning({ id: pairingAllowlistTable.id });
+        .returning();
       if (inserted) return inserted.id as UUID;
 
       const [existing] = await this.db
