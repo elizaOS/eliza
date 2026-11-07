@@ -32,7 +32,9 @@ import {
 import { createLifeOpsTestRuntime } from "../../test/helpers/runtime.js";
 import { LifeOpsService } from "../lifeops/service.js";
 import {
+  clearRecentLifeEditCache,
   clearRecentLifeSaveCache,
+  readRecentLifeSaveCache,
   writeRecentLifeSaveCache,
 } from "./lib/lifeops-deferred-draft.js";
 import { ownerRemindersAction } from "./owner-surfaces.js";
@@ -365,6 +367,187 @@ it.each([
   },
 );
 
+// Two "Call mom" one-offs in Los Angeles: the older at 4 PM and the one this
+// conversation saved at 9 PM. The owner then edits the older copy by its
+// clock and follows up with only a new time of "that".
+const CALL_MOM_4PM = "2026-10-30T23:00:00.000Z";
+const CALL_MOM_5PM = "2026-10-31T00:00:00.000Z";
+const CALL_MOM_530PM = "2026-10-31T00:30:00.000Z";
+const CALL_MOM_9PM = "2026-10-31T04:00:00.000Z";
+
+it("follows 'make that' to the namesake just edited, not the one saved earlier", async () => {
+  const older = await seed("Call mom", {
+    ...STRETCH_CADENCE,
+    dueAt: CALL_MOM_4PM,
+  });
+  const saved = await seed("Call mom", {
+    ...STRETCH_CADENCE,
+    dueAt: CALL_MOM_9PM,
+  });
+  const conversation = {
+    roomId,
+    entityId: service.ownerEntityId() as UUID,
+  } as Memory;
+  try {
+    await writeRecentLifeSaveCache(fixture.runtime, conversation, {
+      definitionId: saved.definition.id,
+      title: saved.definition.title,
+      createdAt: Date.now(),
+    });
+    const moved = await updateReminder(
+      {
+        title: "Call mom",
+        target: "Call mom",
+        details: { cadence: { kind: "once", dueAt: CALL_MOM_5PM } },
+      },
+      "move the 4pm call mom reminder to 5pm",
+    );
+    expect(moved.success, JSON.stringify(moved)).toBe(true);
+    expect(
+      (await service.getDefinition(older.definition.id)).definition.cadence,
+    ).toMatchObject({ kind: "once", dueAt: CALL_MOM_5PM });
+    const followed = await updateReminder(
+      {
+        title: "Call mom",
+        target: "Call mom",
+        details: { cadence: { kind: "once", dueAt: CALL_MOM_530PM } },
+      },
+      "actually make that 5:30pm",
+    );
+    expect(followed.success, JSON.stringify(followed)).toBe(true);
+    expect(
+      (await service.getDefinition(older.definition.id)).definition.cadence,
+    ).toMatchObject({ kind: "once", dueAt: CALL_MOM_530PM });
+    expect(
+      (await service.getDefinition(saved.definition.id)).definition,
+    ).toEqual(saved.definition);
+    // The edit did not move the retraction handle off the un-previewed save.
+    expect(
+      (await readRecentLifeSaveCache(fixture.runtime, conversation))
+        ?.definitionId,
+    ).toBe(saved.definition.id);
+  } finally {
+    await clearRecentLifeSaveCache(fixture.runtime, conversation);
+    await clearRecentLifeEditCache(fixture.runtime, conversation);
+    for (const entry of [older, saved])
+      await service.deleteDefinition(entry.definition.id);
+  }
+});
+
+it("follows 'make that' to the namesake just edited when nothing was saved this conversation", async () => {
+  const older = await seed("Call mom", {
+    ...STRETCH_CADENCE,
+    dueAt: CALL_MOM_4PM,
+  });
+  const other = await seed("Call mom", {
+    ...STRETCH_CADENCE,
+    dueAt: CALL_MOM_9PM,
+  });
+  const conversation = {
+    roomId,
+    entityId: service.ownerEntityId() as UUID,
+  } as Memory;
+  try {
+    const moved = await updateReminder(
+      {
+        title: "Call mom",
+        target: "Call mom",
+        details: { cadence: { kind: "once", dueAt: CALL_MOM_5PM } },
+      },
+      "move the 4pm call mom reminder to 5pm",
+    );
+    expect(moved.success, JSON.stringify(moved)).toBe(true);
+    const followed = await updateReminder(
+      {
+        title: "Call mom",
+        target: "Call mom",
+        details: { cadence: { kind: "once", dueAt: CALL_MOM_530PM } },
+      },
+      "actually make that 5:30pm",
+    );
+    expect(followed.success, JSON.stringify(followed)).toBe(true);
+    expect(
+      (await service.getDefinition(older.definition.id)).definition.cadence,
+    ).toMatchObject({ kind: "once", dueAt: CALL_MOM_530PM });
+    expect(
+      (await service.getDefinition(other.definition.id)).definition,
+    ).toEqual(other.definition);
+  } finally {
+    await clearRecentLifeEditCache(fixture.runtime, conversation);
+    for (const entry of [older, other])
+      await service.deleteDefinition(entry.definition.id);
+  }
+});
+
+it("follows 'make that' to the saved namesake once the one just edited is cancelled", async () => {
+  const older = await seed("Call mom", {
+    ...STRETCH_CADENCE,
+    dueAt: CALL_MOM_4PM,
+  });
+  const saved = await seed("Call mom", {
+    ...STRETCH_CADENCE,
+    dueAt: CALL_MOM_9PM,
+  });
+  const conversation = {
+    roomId,
+    entityId: service.ownerEntityId() as UUID,
+  } as Memory;
+  try {
+    await writeRecentLifeSaveCache(fixture.runtime, conversation, {
+      definitionId: saved.definition.id,
+      title: saved.definition.title,
+      createdAt: Date.now(),
+    });
+    const moved = await updateReminder(
+      {
+        title: "Call mom",
+        target: "Call mom",
+        details: { cadence: { kind: "once", dueAt: CALL_MOM_5PM } },
+      },
+      "move the 4pm call mom reminder to 5pm",
+    );
+    expect(moved.success, JSON.stringify(moved)).toBe(true);
+    const cancelled = await updateReminder(
+      {
+        action: "cancel",
+        title: "Call mom",
+        kind: "definition",
+        intent: "cancel that one",
+        target: older.definition.id,
+      },
+      "cancel that one",
+      "OWNER_REMINDERS",
+    );
+    expect(cancelled.success, JSON.stringify(cancelled)).toBe(true);
+    expect(
+      (await service.getDefinition(older.definition.id)).definition.status,
+    ).toBe("archived");
+    const followed = await updateReminder(
+      {
+        title: "Call mom",
+        target: "Call mom",
+        details: { cadence: { kind: "once", dueAt: CALL_MOM_530PM } },
+      },
+      "actually make that 5:30pm",
+    );
+    expect(followed.success, JSON.stringify(followed)).toBe(true);
+    expect(
+      (await service.getDefinition(saved.definition.id)).definition.cadence,
+    ).toMatchObject({ kind: "once", dueAt: CALL_MOM_530PM });
+    expect(
+      (await service.getDefinition(older.definition.id)).definition,
+    ).toMatchObject({
+      status: "archived",
+      cadence: { kind: "once", dueAt: CALL_MOM_5PM },
+    });
+  } finally {
+    await clearRecentLifeSaveCache(fixture.runtime, conversation);
+    await clearRecentLifeEditCache(fixture.runtime, conversation);
+    for (const entry of [older, saved])
+      await service.deleteDefinition(entry.definition.id);
+  }
+});
+
 it("keeps an existing id ahead of a title that names another reminder", async () => {
   const stretch = await seed("Stretch", STRETCH_CADENCE);
   const oven = await seed("Oven check", STRETCH_CADENCE);
@@ -473,11 +656,124 @@ it.each([
       ).toEqual(other.definition);
     } finally {
       await clearRecentLifeSaveCache(fixture.runtime, conversation);
+      await clearRecentLifeEditCache(fixture.runtime, conversation);
       for (const entry of [earlier, recent])
         await service.deleteDefinition(entry.definition.id);
     }
   },
 );
+
+// chusmias258-dev on #38583: after the save, the owner edits a different live
+// reminder. "That" is now that reminder, so a planner title of "Call mom" must
+// not fall back to the saved copy; the namesakes stay whole and it asks.
+it("asks instead of moving the saved namesake when a different reminder was edited since", async () => {
+  const older = await seed("Call mom", {
+    ...STRETCH_CADENCE,
+    dueAt: CALL_MOM_4PM,
+  });
+  const saved = await seed("Call mom", {
+    ...STRETCH_CADENCE,
+    dueAt: CALL_MOM_9PM,
+  });
+  const milk = await seed("Buy milk", {
+    ...STRETCH_CADENCE,
+    dueAt: CALL_MOM_4PM,
+  });
+  const conversation = {
+    roomId,
+    entityId: service.ownerEntityId() as UUID,
+  } as Memory;
+  try {
+    await writeRecentLifeSaveCache(fixture.runtime, conversation, {
+      definitionId: saved.definition.id,
+      title: saved.definition.title,
+      createdAt: Date.now(),
+    });
+    const moved = await updateReminder(
+      {
+        title: "Buy milk",
+        target: "Buy milk",
+        details: { cadence: { kind: "once", dueAt: CALL_MOM_5PM } },
+      },
+      "move buy milk to 5pm",
+    );
+    expect(moved.success, JSON.stringify(moved)).toBe(true);
+    const followed = await updateReminder(
+      {
+        title: "Call mom",
+        target: "Call mom",
+        details: { cadence: { kind: "once", dueAt: CALL_MOM_530PM } },
+      },
+      "actually make that 5:30pm",
+    );
+    expect(followed.success, JSON.stringify(followed)).toBe(false);
+    expect(followed.text).toContain("Multiple items match");
+    for (const entry of [older, saved])
+      expect(
+        (await service.getDefinition(entry.definition.id)).definition,
+      ).toEqual(entry.definition);
+  } finally {
+    await clearRecentLifeSaveCache(fixture.runtime, conversation);
+    await clearRecentLifeEditCache(fixture.runtime, conversation);
+    for (const entry of [older, saved, milk])
+      await service.deleteDefinition(entry.definition.id);
+  }
+});
+
+it("asks instead of moving the only namesake when a reminder of another title was edited since", async () => {
+  const saved = await seed("Call mom", {
+    ...STRETCH_CADENCE,
+    dueAt: CALL_MOM_9PM,
+  });
+  const milk = await seed("Buy milk", {
+    ...STRETCH_CADENCE,
+    dueAt: CALL_MOM_4PM,
+  });
+  const conversation = {
+    roomId,
+    entityId: service.ownerEntityId() as UUID,
+  } as Memory;
+  try {
+    await writeRecentLifeSaveCache(fixture.runtime, conversation, {
+      definitionId: saved.definition.id,
+      title: saved.definition.title,
+      createdAt: Date.now(),
+    });
+    const moved = await updateReminder(
+      {
+        title: "Buy milk",
+        target: "Buy milk",
+        details: { cadence: { kind: "once", dueAt: CALL_MOM_5PM } },
+      },
+      "move buy milk to 5pm",
+    );
+    expect(moved.success, JSON.stringify(moved)).toBe(true);
+    const movedMilk = (await service.getDefinition(milk.definition.id))
+      .definition;
+    // The planner repeats the saved title; "that" is the edited Buy milk.
+    const followed = await updateReminder(
+      {
+        title: "Call mom",
+        target: "Call mom",
+        details: { cadence: { kind: "once", dueAt: CALL_MOM_530PM } },
+      },
+      "actually make that 5:30pm",
+    );
+    expect(followed.success, JSON.stringify(followed)).toBe(false);
+    expect(followed.text).toContain("Multiple items match");
+    expect(
+      (await service.getDefinition(saved.definition.id)).definition,
+    ).toEqual(saved.definition);
+    expect(
+      (await service.getDefinition(milk.definition.id)).definition,
+    ).toEqual(movedMilk);
+  } finally {
+    await clearRecentLifeSaveCache(fixture.runtime, conversation);
+    await clearRecentLifeEditCache(fixture.runtime, conversation);
+    for (const entry of [saved, milk])
+      await service.deleteDefinition(entry.definition.id);
+  }
+});
 
 // Each namesake case the reviews probed, at the trajectory's 5:01 AM PDT clock.
 // A row names the one definition that may change. A row without one (except
@@ -1555,6 +1851,7 @@ it.each<{
       ).toEqual([]);
     } finally {
       await clearRecentLifeSaveCache(fixture.runtime, conversation);
+      await clearRecentLifeEditCache(fixture.runtime, conversation);
       for (const entry of seeded.values())
         await service.deleteDefinition(entry.definition.id);
     }

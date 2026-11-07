@@ -152,8 +152,10 @@ import {
   latestDeferredLifeDraft,
   latestDeferredLifeDraftIsInvalidated,
   readDeferredLifeDraftCacheState,
+  readRecentLifeEditCache,
   readRecentLifeSaveCache,
   writeDeferredLifeDraftCache,
+  writeRecentLifeEditCache,
   writeRecentLifeSaveCache,
 } from "./lib/lifeops-deferred-draft.js";
 import {
@@ -1189,11 +1191,13 @@ async function resolveEnumeratedDeleteTargets(
 type RequestedValue = { dueAt: string } | { delayMs: number } | null;
 
 /** How update_definition names one definition: a cancel, or an edit that may
- * follow the item this conversation just saved. `requested` is undefined when
- * the edit's params carry no new value. */
+ * follow the item this conversation last saved or edited. `requested` is
+ * undefined when the edit's params carry no new value. */
 type NamesakeOp = {
   cancel: boolean;
-  recentSaveId?: string;
+  /** Reminders this conversation touched, most recent first: the one it
+   * edited since its last save, then the one it saved. */
+  recentTouchIds?: string[];
   requested?: RequestedValue;
 };
 
@@ -1336,8 +1340,9 @@ function withoutRequestedClock(
  * or completed reminder is no candidate for an edit or cancel that names the
  * title or says "that" or "it", so when one live reminder is left it is the
  * target. An edit, never a cancel, that says only its new time of "that" or
- * "it" targets the reminder this conversation just saved. An edit's clock or
- * number must equal the new value its params carry, or it may pick a copy.
+ * "it" targets the reminder this conversation last saved or edited. An edit's
+ * clock or number must equal the new value its params carry, or it may pick a
+ * copy.
  * Live tj-82a28eec7f2481: "actually make that 10 minutes" asked which "Grab
  * the deck" because a rehearsal copy had fired 25 minutes earlier. */
 function supersedingNamesake(
@@ -1355,9 +1360,15 @@ function supersedingNamesake(
       (entry.definition.status !== "archived" &&
         entry.definition.status !== "completed"),
   );
-  const saved = op.cancel
-    ? undefined
-    : namesakes.find((entry) => entry.definition.id === op.recentSaveId);
+  // "That" is the touched copy the caller chose (the live edited reminder,
+  // else the saved one); a copy no longer live is no candidate below.
+  const touched = op.cancel
+    ? []
+    : (op.recentTouchIds ?? []).flatMap((id) =>
+        namesakes.filter((entry) => entry.definition.id === id),
+      );
+  const saved =
+    touched.find((entry) => candidates.includes(entry)) ?? touched[0];
   if (saved && FOLLOW_UP_RETIME_RE.test(text))
     // "That" is the saved reminder, so when it is no candidate, or the value
     // may pick another copy, the group stays whole and asks.
@@ -1510,7 +1521,33 @@ async function resolveDefinitionForMutation(
   // target "stretch-20min-2026-10-30T13-01z", title "Stretch"). When the
   // target names nothing, the title may resolve the one item it matches;
   // ambiguity asks and zero matches refuse.
-  const resolveTarget = (handle: string): DefinitionResult => {
+  // "That" names the live reminder this conversation touched last. When the
+  // planner's target or title names a different one, the name cannot settle
+  // which: ask between the two instead of moving the named one.
+  const touchedLast =
+    namesakeOp && !namesakeOp.cancel
+      ? defs.find(
+          (entry) =>
+            entry.definition.id === namesakeOp.recentTouchIds?.[0] &&
+            entry.definition.status !== "archived" &&
+            entry.definition.status !== "completed",
+        )
+      : undefined;
+  const followsThat =
+    touchedLast !== undefined &&
+    FOLLOW_UP_RETIME_RE.test(normalizeTitle(ownerText).replace(/[.!?]+$/, ""));
+  const unlessThatIsAnother = (result: DefinitionResult): DefinitionResult =>
+    followsThat && touchedLast && result.match && result.match !== touchedLast
+      ? {
+          match: null,
+          ambiguousCandidates: [result.match, touchedLast].map(
+            definitionDisambiguationLabel,
+          ),
+        }
+      : result;
+  const resolveTarget = (handle: string): DefinitionResult =>
+    unlessThatIsAnother(resolveNamedTarget(handle));
+  const resolveNamedTarget = (handle: string): DefinitionResult => {
     const byTarget = resolveDefinitionInRecords(defs, handle, destructive);
     // A handle that asks among the named group alone takes the chosen copy:
     // with the group's other copies set aside, the same match finds only it.
@@ -1542,6 +1579,7 @@ async function resolveDefinitionForMutation(
       !explicitlyNamed.includes(byTitle[0])
     )
       return { match: null, ambiguousCandidates: [] };
+
     return byTitle.length === 1
       ? { match: byTitle.at(0) ?? null, ambiguousCandidates: [] }
       : {
@@ -6592,6 +6630,33 @@ async function runLifeOperationHandlerInner(
       else if (relativeDelay)
         requested =
           relativeDelay.ms === null ? null : { delayMs: relativeDelay.ms };
+      // "That" is the reminder this conversation touched last: the one it
+      // edited since its last save, else the one it saved. The save record
+      // also backs a retraction, so an edit records its own pointer instead
+      // of moving it, and a later save clears that pointer. While the edited
+      // reminder is live it alone is "that", whatever its title, so an edit
+      // of another title never falls back to the saved copy. Once it is
+      // cancelled, completed or deleted, "that" is the saved one again.
+      const editedId = archiveOnlyReminder
+        ? undefined
+        : (await readRecentLifeEditCache(runtime, message))?.definitionId;
+      const editedIsLive =
+        editedId !== undefined &&
+        (await service
+          .getDefinition(editedId)
+          .then(
+            ({ definition }) =>
+              definition.status !== "archived" &&
+              definition.status !== "completed",
+          )
+          .catch(() => false));
+      const recentTouchIds = archiveOnlyReminder
+        ? []
+        : editedIsLive
+          ? [editedId]
+          : [
+              (await readRecentLifeSaveCache(runtime, message))?.definitionId,
+            ].filter((id): id is string => typeof id === "string");
       const { match: target, ambiguousCandidates } =
         await resolveDefinitionForMutation(
           service,
@@ -6600,14 +6665,13 @@ async function runLifeOperationHandlerInner(
           domain,
           false,
           targetTitle,
-          // Only an edit follows the item just saved: a cancel by name still
+          // Only an edit follows the item last touched: a cancel by name still
           // asks between live namesakes.
           archiveOnlyReminder
             ? { cancel: true }
             : {
                 cancel: false,
-                recentSaveId: (await readRecentLifeSaveCache(runtime, message))
-                  ?.definitionId,
+                recentTouchIds,
                 requested,
               },
         );
@@ -6816,6 +6880,14 @@ async function runLifeOperationHandlerInner(
         target.definition.id,
         request,
       );
+      if (
+        resolveOwnerDefinitionSurface(updated.definition) === "OWNER_REMINDERS"
+      )
+        await writeRecentLifeEditCache(runtime, message, {
+          definitionId: updated.definition.id,
+          title: updated.definition.title,
+          createdAt: Date.now(),
+        });
       // A moved one-off is confirmed by its new clock time in the owner's zone.
       const firesAtLocal =
         request.cadence?.kind === "once" &&
