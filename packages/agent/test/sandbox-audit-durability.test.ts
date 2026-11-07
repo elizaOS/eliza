@@ -5,6 +5,7 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import { AgentRuntime, type UUID } from "@elizaos/core";
 import { SQLiteDatabaseAdapter } from "@elizaos/testing/runtime";
+import { Transaction, Wallet } from "ethers";
 import { afterEach, expect, it } from "vitest";
 import {
   createRuntimeLogAuditSink,
@@ -12,6 +13,11 @@ import {
   SANDBOX_AUDIT_LOG_TYPE,
   SandboxAuditLog,
 } from "../src/security/audit-log.ts";
+import {
+  RemoteSigningService,
+  type UnsignedTransaction,
+} from "../src/services/remote-signing-service.ts";
+import { createDefaultPolicy } from "../src/services/signing-policy.ts";
 
 const cleanups: Array<() => Promise<void>> = [];
 afterEach(async () => {
@@ -211,4 +217,144 @@ it("accepts a durable fallback after an optional storage sink fails", async () =
   ).toMatchObject([
     { body: { metadata: { summary: "committed by fallback" } } },
   ]);
+});
+
+it("keeps a pending signature bound to its admitted transaction despite caller or listing mutation", async () => {
+  const { file, agentId } = await storage();
+  const runtime = await openRuntime(file, agentId);
+  cleanups.push(() => runtime.close());
+  const audit = new SandboxAuditLog({
+    console: false,
+    requireDurableSink: true,
+  });
+  await audit.addSink(await createRuntimeLogAuditSink(runtime));
+  const wallet = Wallet.createRandom();
+  const allowed = Wallet.createRandom().address;
+  const other = Wallet.createRandom().address;
+  const signer = {
+    getAddress: async () => wallet.address,
+    signMessage: async (message: string) => wallet.signMessage(message),
+    signTransaction: async (tx: UnsignedTransaction) =>
+      wallet.signTransaction(tx),
+  };
+  const service = new RemoteSigningService({
+    signer,
+    auditLog: audit,
+    policy: {
+      ...createDefaultPolicy(),
+      allowedContracts: [allowed],
+      requireHumanConfirmation: true,
+    },
+  });
+  const request = {
+    requestId: randomUUID(),
+    chainId: 1,
+    to: allowed,
+    value: "0",
+    data: "0x",
+    nonce: 0,
+    gasLimit: "21000",
+    createdAt: Date.now(),
+  };
+  expect((await service.submitSigningRequest(request)).success).toBe(false);
+  request.to = other;
+  service.getPendingApprovals()[0].request.to = other;
+  const result = await service.approveRequest(request.requestId);
+  expect(result.success).toBe(true);
+  expect(Transaction.from(result.signature).to).toBe(allowed);
+  expect((await service.approveRequest(request.requestId)).success).toBe(false);
+  const events = await runtime.getLogs({ type: SANDBOX_AUDIT_LOG_TYPE });
+  expect(events.map((row) => row.body.metadata)).toContainEqual(
+    expect.objectContaining({
+      type: "signing_request_approved",
+      fields: expect.objectContaining({ to: allowed }),
+    }),
+  );
+});
+
+it("revokes pending approvals when a signing policy changes", async () => {
+  const { file, agentId } = await storage();
+  const runtime = await openRuntime(file, agentId);
+  cleanups.push(() => runtime.close());
+  const audit = new SandboxAuditLog({
+    console: false,
+    requireDurableSink: true,
+  });
+  await audit.addSink(await createRuntimeLogAuditSink(runtime));
+  const wallet = Wallet.createRandom();
+  const to = Wallet.createRandom().address;
+  let signatures = 0;
+  const signer = {
+    getAddress: async () => wallet.address,
+    signMessage: async (message: string) => wallet.signMessage(message),
+    signTransaction: async (tx: UnsignedTransaction) => {
+      signatures += 1;
+      return wallet.signTransaction(tx);
+    },
+  };
+  const policy = { ...createDefaultPolicy(), requireHumanConfirmation: true };
+  const service = new RemoteSigningService({ signer, auditLog: audit, policy });
+  const request = {
+    requestId: randomUUID(),
+    chainId: 1,
+    to,
+    value: "0",
+    data: "0x",
+    nonce: 0,
+    gasLimit: "21000",
+    createdAt: Date.now(),
+  };
+  await service.submitSigningRequest(request);
+  expect(service.getPendingApprovals()).toHaveLength(1);
+  service.updatePolicy({ ...policy, deniedContracts: [to] });
+  expect(service.getPendingApprovals()).toHaveLength(0);
+  expect((await service.approveRequest(request.requestId)).success).toBe(false);
+  expect(
+    (await service.submitSigningRequest(request)).policyDecision.matchedRule,
+  ).toBe("contract_denylist");
+  expect(signatures).toBe(0);
+});
+
+it("rejects admission overtaken by a policy change while its durable audit is waiting", async () => {
+  const { file, agentId } = await storage();
+  const runtime = await openRuntime(file, agentId);
+  cleanups.push(() => runtime.close());
+  const audit = new SandboxAuditLog({
+    console: false,
+    requireDurableSink: true,
+  });
+  const wallet = Wallet.createRandom();
+  const to = Wallet.createRandom().address;
+  let signatures = 0;
+  const signer = {
+    getAddress: async () => wallet.address,
+    signMessage: async (message: string) => wallet.signMessage(message),
+    signTransaction: async (tx: UnsignedTransaction) => {
+      signatures += 1;
+      return wallet.signTransaction(tx);
+    },
+  };
+  const policy = { ...createDefaultPolicy(), requireHumanConfirmation: true };
+  const service = new RemoteSigningService({ signer, auditLog: audit, policy });
+  const request = {
+    requestId: randomUUID(),
+    chainId: 1,
+    to,
+    value: "0",
+    data: "0x",
+    nonce: 0,
+    gasLimit: "21000",
+    createdAt: Date.now(),
+  };
+  const submitted = service.submitSigningRequest(request);
+  expect(audit.pendingCount).toBe(1);
+  service.updatePolicy({ ...policy, deniedContracts: [to] });
+  await audit.addSink(await createRuntimeLogAuditSink(runtime));
+  expect((await submitted).policyDecision.matchedRule).toBe("policy_changed");
+  expect(service.getPendingApprovals()).toHaveLength(0);
+  expect(signatures).toBe(0);
+  // The superseded reservation was released, so a resubmission sees current policy.
+  expect(
+    (await service.submitSigningRequest(request)).policyDecision.matchedRule,
+  ).toBe("contract_denylist");
 });
