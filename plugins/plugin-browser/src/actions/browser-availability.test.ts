@@ -56,3 +56,37 @@ it("never claims a native client opened a site it did not confirm", async () => 
   });
   expect(result).not.toHaveProperty("modelReplyRequired");
 });
+
+it("keeps a native show navigation on the sent-only claim", async () => {
+  const service = new BrowserService();
+  const sent: Array<string | undefined> = [];
+  service.setNativeClientTransport({
+    readPage: async () => ({}),
+    navigate: async (_clientId, url) => {
+      sent.push(url);
+    },
+  });
+  const runtime = { getService: () => service } as unknown as IAgentRuntime;
+  const message = {
+    content: {
+      text: "show me youtube.com",
+      channelType: "VOICE_DM",
+      metadata: { uiBrowserSurface: "native", viewClientId: "phone-1" },
+    },
+  };
+  const result = await browserAction.handler(
+    runtime,
+    message as Memory,
+    undefined,
+    { parameters: { action: "show", url: "https://youtube.com" } },
+  );
+  expect(sent).toEqual(["https://youtube.com/"]);
+  expect(result).toMatchObject({
+    success: true,
+    userFacingText:
+      "I sent youtube.com to your browser, but it hasn't confirmed that it opened.",
+    verifiedUserFacing: true,
+    turnComplete: true,
+  });
+  expect(result).not.toHaveProperty("modelReplyRequired");
+});
