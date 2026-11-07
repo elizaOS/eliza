@@ -17,7 +17,9 @@ import {
   SpatialVStack as VStack,
 } from "@elizaos/ui";
 
-const SENT_SMS_TYPE = 2;
+// Telephony.Sms.MESSAGE_TYPE_INBOX. Every other box (sent, draft, outbox,
+// failed, queued) holds the owner's own text.
+const INBOX_SMS_TYPE = 1;
 
 /** A grouped SMS conversation, sorted with its newest message last. */
 export interface MessagesThreadSummary {
@@ -44,7 +46,7 @@ export interface MessagesSnapshot {
 
 /** in/out marker for a single message, by Android SMS type discriminant. */
 function messageDirection(type: number): "in" | "out" {
-  return type === SENT_SMS_TYPE ? "out" : "in";
+  return type === INBOX_SMS_TYPE ? "in" : "out";
 }
 
 function directionMark(type: number): string {
