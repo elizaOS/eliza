@@ -11,7 +11,9 @@ import {
   MEETING_TRANSCRIPT_FINALIZED_EVENT,
 } from "@elizaos/core/protocol";
 import { buildMeetingArtifactFixtures } from "@elizaos/testing/fixtures";
+import type { Page } from "playwright-core";
 import { describe, expect, it, vi } from "vitest";
+import { GoogleSpeakerIdentity } from "./platforms/googlemeet/speaker-identity.js";
 import { MeetingJoinError, MeetingService } from "./service.js";
 import {
   FakeMeetingBillingSession,
@@ -728,6 +730,49 @@ describe("MeetingService — roster, transcripts, listing", () => {
     // Roster observations still reach the pipeline.
     expect(pipelines[0].joined).toHaveLength(1);
     expect(pipelines[0].left).toEqual([{ participantId: "p1", atMs: 45_000 }]);
+  });
+
+  it("marks a Google Meet participant present again after they rejoin", async () => {
+    vi.useFakeTimers({ toFake: ["setInterval", "clearInterval"] });
+    try {
+      const adapter = new ScriptedAdapter("google_meet");
+      const { fake, service, pipelines } = makeService([adapter]);
+      const dto = await service.requestJoin({
+        platform: "google_meet",
+        meetingUrl: MEET_URL,
+      });
+      const botSession = await adapter.started;
+      // The Meet roster poll reads the participant names from the call page.
+      let names = ["Jill"];
+      const page = {
+        evaluate: async () => ({ names, speaking: [] }),
+      } as unknown as Page;
+      const identity = new GoogleSpeakerIdentity(
+        page,
+        botSession.sink,
+        "Eliza",
+      );
+      identity.start();
+      await vi.advanceTimersByTimeAsync(3_000); // Jill is in the call
+      names = [];
+      await vi.advanceTimersByTimeAsync(3_000); // Jill drops out
+      names = ["Jill"];
+      await vi.advanceTimersByTimeAsync(3_000); // Jill joins again
+      identity.stop();
+      await new Promise((r) => setTimeout(r, 5));
+
+      const session = service.getSession(dto.id as never);
+      expect(session?.participants).toHaveLength(1);
+      expect(session?.participants[0].leftAtMs).toBeUndefined();
+      expect(fake.entities).toHaveLength(1);
+      expect(pipelines[0].joined.map((p) => p.displayName)).toEqual([
+        "Jill",
+        "Jill",
+      ]);
+      expect(pipelines[0].left.map((l) => l.participantId)).toEqual(["Jill"]);
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it("persists pipeline updates + finalizes a ready transcript with metadata", async () => {

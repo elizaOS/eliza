@@ -195,7 +195,6 @@ export class GoogleSpeakerIdentity {
   private readonly table = new VoteLockTable();
   private readonly lastAudioMs = new Map<number, number>();
   private readonly lastAttributionMs = new Map<number, number>();
-  private readonly announced = new Set<string>();
   private roster = new Map<string, RosterEntry>();
   private rosterTimer: ReturnType<typeof setInterval> | null = null;
   private readonly startedAt = Date.now();
@@ -277,9 +276,10 @@ export class GoogleSpeakerIdentity {
       next.set(id, { id, displayName });
     }
 
+    // A name missing from the last poll is a join, also when the participant
+    // left earlier: the sink clears their departure on a rejoin.
     for (const [id, entry] of next) {
-      if (!this.roster.has(id) && !this.announced.has(id)) {
-        this.announced.add(id);
+      if (!this.roster.has(id)) {
         this.sink.participantJoined({ id, displayName: entry.displayName });
       }
     }
