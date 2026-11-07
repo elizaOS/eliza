@@ -3651,7 +3651,10 @@ export abstract class SQLiteRecordAdapter extends DatabaseAdapter<IStorage> {
   async updateAgents(
     updates: Array<{ agentId: UUID; agent: Partial<Agent> }>,
   ): Promise<boolean> {
-    let updated = false;
+    // Storage failures throw, so reaching the end means every update
+    // succeeded — including no-ops that matched no rows. Report success to
+    // match the pg adapter, whose updateAgent returns true on any successful
+    // UPDATE regardless of row count.
     for (const { agentId, agent } of updates) {
       const existing = await this.storage.get<Agent>(
         COLLECTIONS.AGENTS,
@@ -3662,9 +3665,8 @@ export abstract class SQLiteRecordAdapter extends DatabaseAdapter<IStorage> {
         ...existing,
         ...agent,
       });
-      updated = true;
     }
-    return updated;
+    return true;
   }
 
   async upsertAgents(agents: Partial<Agent>[]): Promise<void> {
