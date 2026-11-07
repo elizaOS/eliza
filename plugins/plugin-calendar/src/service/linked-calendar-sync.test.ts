@@ -1315,6 +1315,20 @@ function managedFixture() {
         remote = null;
         return envelope({ deleted: true });
       }
+      // Cloud sync-v1 accepts all-day bounds only as whole dates with no
+      // timezone, and Google answers with the same whole dates.
+      if (
+        command.event.isAllDay &&
+        (!/^\d{4}-\d{2}-\d{2}$/.test(command.event.startAt) ||
+          !/^\d{4}-\d{2}-\d{2}$/.test(command.event.endAt) ||
+          command.event.timeZone !== null)
+      )
+        throw Object.assign(new Error("All-day events need whole dates."), {
+          name: "CloudProtocolError",
+          code: "http",
+          status: 400,
+          data: { code: "CALENDAR_SYNC_INVALID", outcome: "not_accepted" },
+        });
       remote = Object.assign(
         {
           eventId: "managed-event",
@@ -1545,6 +1559,155 @@ describe("managed owner linked Calendar provider", () => {
     expect(
       f.commands.filter((command) => command.kind === "create"),
     ).toHaveLength(1);
+  });
+
+  it("sends an all-day event as whole dates and reads them back as the same event", async () => {
+    const f = managedFixture();
+    let localEvent: LinkedCalendarSemanticEvent = {
+      ...baseEvent,
+      startAt: "2026-11-01T00:00:00.000Z",
+      endAt: "2026-11-03T00:00:00.000Z",
+      isAllDay: true,
+    };
+    let current = {
+      ...record(),
+      connectorAccountId: f.grantId,
+      providerEventId: null,
+      providerEtag: null,
+      state: "dirty" as const,
+      pendingOperation: "create" as const,
+      lastCommonSemanticHash: null,
+    } as LinkedCalendarEventRecord;
+    const store: LinkedCalendarCheckpointStore = {
+      async save(_expected, patch) {
+        current = { ...current, ...patch };
+        return current;
+      },
+    };
+    const local: LinkedCalendarLocalPort = {
+      async get() {
+        return {
+          eventId: current.localEventId,
+          revision: current.localRevision,
+          event: localEvent,
+        };
+      },
+      async applyProviderEvent() {
+        throw Error("Unexpected local replacement");
+      },
+      async delete() {
+        throw Error("Unexpected local deletion");
+      },
+    };
+    const engine = new LinkedCalendarReconciler(store, local, f.provider);
+    expect(await engine.reconcile(current)).toBe("pushed");
+    expect(current).toMatchObject({
+      state: "clean",
+      providerEventId: "managed-event",
+      lastErrorCode: null,
+    });
+    expect(await engine.reconcile(current)).toBe("clean");
+
+    localEvent = { ...localEvent, endAt: "2026-11-04T00:00:00.000Z" };
+    current = {
+      ...current,
+      localRevision: current.localRevision + 1,
+      state: "dirty",
+      pendingOperation: "update",
+    };
+    expect(await engine.reconcile(current)).toBe("pushed");
+    expect(await engine.reconcile(current)).toBe("clean");
+    expect(
+      f.commands.flatMap((command) =>
+        command.kind === "create" || command.kind === "update"
+          ? [command.event]
+          : [],
+      ),
+    ).toEqual([
+      expect.objectContaining({
+        startAt: "2026-11-01",
+        endAt: "2026-11-03",
+        timeZone: null,
+        isAllDay: true,
+      }),
+      expect.objectContaining({
+        startAt: "2026-11-01",
+        endAt: "2026-11-04",
+        timeZone: null,
+        isAllDay: true,
+      }),
+    ]);
+  });
+
+  it("writes an all-day event stored as whole dates once and then pulls the instants", async () => {
+    const f = managedFixture();
+    // The local row was pulled through this port while it read Cloud's whole
+    // dates back verbatim.
+    let localEvent: LinkedCalendarSemanticEvent = {
+      ...baseEvent,
+      startAt: "2026-11-01",
+      endAt: "2026-11-03",
+      timeZone: null,
+      isAllDay: true,
+    };
+    let localRevision = 1;
+    let current = {
+      ...record(),
+      connectorAccountId: f.grantId,
+      providerEventId: null,
+      providerEtag: null,
+      state: "dirty" as const,
+      pendingOperation: "create" as const,
+      lastCommonSemanticHash: null,
+    } as LinkedCalendarEventRecord;
+    const store: LinkedCalendarCheckpointStore = {
+      async save(_expected, patch) {
+        current = { ...current, ...patch };
+        return current;
+      },
+    };
+    const local: LinkedCalendarLocalPort = {
+      async get() {
+        return {
+          eventId: current.localEventId,
+          revision: localRevision,
+          event: localEvent,
+        };
+      },
+      async applyProviderEvent(eventId, event) {
+        localEvent = event;
+        localRevision += 1;
+        return { eventId, revision: localRevision, event };
+      },
+      async delete() {
+        throw Error("Unexpected local deletion");
+      },
+    };
+    const engine = new LinkedCalendarReconciler(store, local, f.provider);
+    expect(await engine.reconcile(current)).toBe("pushed");
+    expect(current).toMatchObject({ state: "clean", lastErrorCode: null });
+    expect(await engine.reconcile(current)).toBe("pulled");
+    expect(localEvent).toMatchObject({
+      startAt: "2026-11-01T00:00:00.000Z",
+      endAt: "2026-11-03T00:00:00.000Z",
+    });
+    expect(await engine.reconcile(current)).toBe("clean");
+
+    localEvent = { ...localEvent, startAt: "2026-11-01", endAt: "2026-11-04" };
+    localRevision += 1;
+    expect(await engine.reconcile(current)).toBe("pushed");
+    expect(await engine.reconcile(current)).toBe("pulled");
+    expect(await engine.reconcile(current)).toBe("clean");
+    expect(
+      f.commands.flatMap((command) =>
+        command.kind === "create" || command.kind === "update"
+          ? [[command.kind, command.event.startAt, command.event.endAt]]
+          : [],
+      ),
+    ).toEqual([
+      ["create", "2026-11-01", "2026-11-03"],
+      ["update", "2026-11-01", "2026-11-04"],
+    ]);
   });
 
   it("quarantines a lost acknowledgement without repeating the provider create", async () => {

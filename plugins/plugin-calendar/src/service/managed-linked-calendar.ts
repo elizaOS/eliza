@@ -13,6 +13,34 @@ import type { createManagedCalendarRead } from "./managed-calendar-read.js";
 type Transport = NonNullable<ReturnType<typeof createManagedCalendarRead>>;
 const object = (value: unknown): value is Record<string, unknown> =>
   value !== null && typeof value === "object" && !Array.isArray(value);
+const WHOLE_DATE = /^\d{4}-\d{2}-\d{2}$/;
+
+// Cloud sync-v1 carries all-day bounds as whole dates with no timezone; the
+// reconciler and the built-in calendar carry them as UTC-midnight instants.
+// The date is sent as written, as googleEventInput does.
+const providerEvent = (
+  event: LinkedCalendarSemanticEvent,
+): LinkedCalendarSemanticEvent =>
+  event.isAllDay
+    ? {
+        ...event,
+        startAt: event.startAt.split("T")[0],
+        endAt: event.endAt.split("T")[0],
+        timeZone: null,
+      }
+    : event;
+const localEvent = (
+  event: LinkedCalendarSemanticEvent,
+): LinkedCalendarSemanticEvent =>
+  event.isAllDay &&
+  WHOLE_DATE.test(event.startAt) &&
+  WHOLE_DATE.test(event.endAt)
+    ? {
+        ...event,
+        startAt: `${event.startAt}T00:00:00.000Z`,
+        endAt: `${event.endAt}T00:00:00.000Z`,
+      }
+    : event;
 
 export class ManagedLinkedCalendarProviderPort
   implements LinkedCalendarProviderPort
@@ -97,7 +125,26 @@ export class ManagedLinkedCalendarProviderPort
     const event = value.event;
     if (!isLinkedCalendarSemanticEvent(event))
       throw Error("Invalid linked Calendar semantic snapshot");
-    return { eventId: value.eventId, etag: value.etag, event };
+    return {
+      eventId: value.eventId,
+      etag: value.etag,
+      event: localEvent(event),
+    };
+  }
+
+  // A local all-day row can still hold whole dates. Compare in the instant
+  // form, but checkpoint the requested form so the next pass pulls the
+  // instants instead of writing the event again.
+  private written(
+    written: LinkedCalendarProviderSnapshot,
+    event: LinkedCalendarSemanticEvent,
+  ): LinkedCalendarProviderSnapshot {
+    if (
+      linkedCalendarSemanticText(written.event) !==
+      linkedCalendarSemanticText(localEvent(event))
+    )
+      throw Error("Linked Calendar result does not match the requested event");
+    return { ...written, event };
   }
 
   async get(record: LinkedCalendarEventRecord) {
@@ -119,7 +166,7 @@ export class ManagedLinkedCalendarProviderPort
     const result = await this.call(record, {
       kind: "create",
       idempotencyKey: record.idempotencyKey,
-      event,
+      event: providerEvent(event),
     });
     if (
       !object(result.event) ||
@@ -127,13 +174,7 @@ export class ManagedLinkedCalendarProviderPort
       result.event.remindersDisabled !== true
     )
       throw Error("Linked Calendar create privacy could not be confirmed");
-    const written = this.snapshot(result.event);
-    if (
-      linkedCalendarSemanticText(written.event) !==
-      linkedCalendarSemanticText(event)
-    )
-      throw Error("Linked Calendar result does not match the requested event");
-    return written;
+    return this.written(this.snapshot(result.event), event);
   }
 
   async update(
@@ -146,15 +187,12 @@ export class ManagedLinkedCalendarProviderPort
       kind: "update",
       eventId: record.providerEventId,
       expectedEtag: record.providerEtag,
-      event,
+      event: providerEvent(event),
     });
-    const written = this.snapshot(result.event, record.providerEventId);
-    if (
-      linkedCalendarSemanticText(written.event) !==
-      linkedCalendarSemanticText(event)
-    )
-      throw Error("Linked Calendar result does not match the requested event");
-    return written;
+    return this.written(
+      this.snapshot(result.event, record.providerEventId),
+      event,
+    );
   }
 
   async delete(record: LinkedCalendarEventRecord) {
