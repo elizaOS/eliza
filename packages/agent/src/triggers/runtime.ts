@@ -370,8 +370,13 @@ function resolveDispatchIdempotencyKey(
   }
   // The stored key belongs to the next scheduled fire. A manual run is its
   // own run: reusing that key would make the dispatcher drop the scheduled
-  // fire (and any later manual run) as a duplicate.
-  return source === "manual" ? undefined : readTaskIdempotencyKey(task);
+  // fire (and any later manual run) as a duplicate. An event without a native
+  // run-event id is its own run too: an event trigger's stored key only moves
+  // when a run finishes in a later minute, so reusing it dropped every event
+  // after two runs finished in the same minute.
+  return source === "manual" || source === "event"
+    ? undefined
+    : readTaskIdempotencyKey(task);
 }
 
 /**
