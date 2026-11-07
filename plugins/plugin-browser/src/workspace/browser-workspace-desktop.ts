@@ -253,7 +253,7 @@ export function createDesktopBrowserWorkspaceCommandScript(
   };
   const searchTexts = (element) => {
     const labelText = element.id
-      ? Array.from(document.querySelectorAll('label[for="' + element.id + '"]'))
+      ? Array.from(document.querySelectorAll("label[for=" + JSON.stringify(element.id) + "]"))
           .map((label) => label.textContent)
           .join(" ")
       : "";
@@ -533,7 +533,7 @@ export function createDesktopBrowserWorkspaceCommandScript(
           : null;
       case "testid":
         return targetCommand.text
-          ? document.querySelector('[data-testid="' + targetCommand.text + '"]')
+          ? document.querySelector("[data-testid=" + JSON.stringify(targetCommand.text) + "]")
           : null;
       case "text":
         return targetCommand.text ? findByText(targetCommand.text) : null;
