@@ -10,6 +10,7 @@ import { createHash } from "node:crypto";
 import { SELF_ENTITY_ID } from "@elizaos/contracts";
 import { ElizaError, type IAgentRuntime } from "@elizaos/core";
 import { z } from "zod";
+import { ensureFamilyIntakeReviewStore } from "../family-coordination/intake-review.js";
 import {
   executeRawSqlTx,
   sqlQuote,
@@ -39,7 +40,9 @@ const taskTable = "app_scheduling.life_scheduled_tasks";
 const packetApprovalTable = "app_lifeops.life_family_packet_approvals";
 const householdApprovalTable = "app_lifeops.life_household_proposal_approvals";
 const familyTask = familyScheduledTaskPredicate("$AGENT");
-const familyDocument = `(metadata->>'source' = 'lifeops.parenting-agreement' OR id::text IN
+// Intake import is the only writer of selected-correspondence documents; a
+// library document the owner merely selected stays outside the workspace.
+const familyDocument = `(metadata->>'source' IN ('lifeops.parenting-agreement', 'selected-correspondence') OR id::text IN
   (SELECT document_id FROM ${agreementTable} WHERE agent_id = $AGENT))`;
 
 const sources: readonly DependencySource[] = [
@@ -154,6 +157,11 @@ const sources: readonly DependencySource[] = [
     kind: "packetApprovals",
     table: packetApprovalTable,
     fields: ["packet_id", "draft_version", "approval_id"],
+  },
+  {
+    kind: "intakeReviews",
+    table: "app_lifeops.life_family_intake_reviews",
+    fields: ["id", "period_key", "document_id", "revision"],
   },
   {
     kind: "workflowRuns",
@@ -399,6 +407,7 @@ export async function previewFamilyDeletionDatabase(
   requireOwner(ownerEntityId);
   // An agent that has never run its monthly task still has a deletable workspace.
   await ensureFamilyWorkflowRunStore(runtime);
+  await ensureFamilyIntakeReviewStore(runtime);
   await ensureFamilyWorkspaceOperationStore(runtime);
   return withTransaction(runtime, async (tx) =>
     capture(tx, runtime.agentId, await availability(tx)),
