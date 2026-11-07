@@ -16,7 +16,10 @@ import java.nio.file.SecureDirectoryStream;
 import java.nio.file.StandardOpenOption;
 import java.nio.file.attribute.BasicFileAttributeView;
 import java.nio.file.attribute.BasicFileAttributes;
+import java.security.MessageDigest;
+import java.security.NoSuchAlgorithmException;
 import java.util.ArrayList;
+import java.util.Base64;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Locale;
@@ -130,12 +133,44 @@ public final class StorageBrowser {
   return type==null?"application/octet-stream":type;
  }
 
+ /** Opaque token for the actual object read at review time, without exporting its filesystem key. */
+ private static String reviewedIdentity(File file)throws IOException{
+  BasicFileAttributes attributes;
+  try{
+   attributes=Files.readAttributes(file.toPath(),BasicFileAttributes.class,LinkOption.NOFOLLOW_LINKS);
+  }catch(NoSuchFileException missing){return null;}
+  Object key=attributes.fileKey();
+  if(key==null||!(attributes.isRegularFile()||attributes.isDirectory()))return null;
+  String identity=key+"\n"+attributes.creationTime()+"\n"+attributes.lastModifiedTime()+"\n"
+   +attributes.size()+"\n"+attributes.isDirectory();
+  try{
+   byte[] digest=MessageDigest.getInstance("SHA-256").digest(identity.getBytes(StandardCharsets.UTF_8));
+   return Base64.getUrlEncoder().withoutPadding().encodeToString(digest);
+  }catch(NoSuchAlgorithmException unavailable){throw new IOException("File identity unavailable",unavailable);}
+ }
+ public List<String> reviewedIdentities(List<String> paths)throws IOException{
+  if(paths.isEmpty()||paths.size()>BATCH_MAX)throw new IllegalArgumentException("Invalid selection");
+  List<String> identities=new ArrayList<>(paths.size());
+  for(String path:paths)identities.add(reviewedIdentity(resolve(path,false)));
+  return identities;
+ }
+ private static void checkReviewed(List<String> paths,List<String> reviewed){
+  if(reviewed!=null&&(paths.isEmpty()||paths.size()>BATCH_MAX||reviewed.size()!=paths.size()
+     ||reviewed.stream().anyMatch(token->token==null||!token.matches("[A-Za-z0-9_-]{43}"))))
+   throw new IllegalArgumentException("Invalid reviewed file identities");
+ }
+
  public static final class Outcome{public final String path,status,to;Outcome(String path,String status,String to){this.path=path;this.status=status;this.to=to;}}
  /** Move or copy each path into dest. A clash keeps both (spec MoveOne with FixConflict). */
  public List<Outcome> transfer(List<String> paths,String dest,boolean copy)throws IOException{
+  return transfer(paths,dest,copy,null);
+ }
+ public List<Outcome> transfer(List<String> paths,String dest,boolean copy,List<String> reviewed)throws IOException{
+  checkReviewed(paths,reviewed);
   File target=resolve(dest,true);if(!target.isDirectory())throw new java.io.FileNotFoundException("Destination missing");
   List<Outcome> out=new ArrayList<>();
-  for(String path:paths){
+  for(int i=0;i<paths.size();i++){
+   String path=paths.get(i);
    File source;try{source=resolve(path,false);}catch(IllegalArgumentException e){out.add(new Outcome(path,"invalid",null));continue;}
    if(!source.exists()){out.add(new Outcome(path,"missing",null));continue;}
    if(!copy&&source.getParentFile()!=null&&source.getParentFile().getCanonicalPath().equals(target.getCanonicalPath())){out.add(new Outcome(path,"unchanged",path));continue;}
@@ -143,6 +178,9 @@ public final class StorageBrowser {
    if(source.isDirectory()&&(targetPath.equals(sourcePath)||targetPath.startsWith(sourcePath+File.separator))){out.add(new Outcome(path,"invalid",null));continue;}
    File destination=freeTarget(target,source.getName(),source.isDirectory());
    try{
+    if(reviewed!=null&&!reviewed.get(i).equals(reviewedIdentity(source))){
+     out.add(new Outcome(path,"changed",null));continue;
+    }
     if(copy)copyFresh(source,destination);else moveFile(source,destination);
     out.add(new Outcome(path,copy?"copied":"moved",relative(destination)));
    }catch(IOException e){out.add(new Outcome(path,"failed",null));}
@@ -186,10 +224,20 @@ public final class StorageBrowser {
  }
  /** Move to trash with the origin folder recorded first, so a crash never loses the way back. */
  public List<Outcome> trash(List<String> paths,long now)throws IOException{
-  File trash=trashRoot();List<Outcome> out=new ArrayList<>();
-  for(String path:paths){
+  return trash(paths,now,null);
+ }
+ public List<Outcome> trash(List<String> paths,long now,List<String> reviewed)throws IOException{
+  checkReviewed(paths,reviewed);
+  File trash=reviewed==null?trashRoot():null;
+  List<Outcome> out=new ArrayList<>();
+  for(int i=0;i<paths.size();i++){
+   String path=paths.get(i);
    File source;try{source=resolve(path,false);}catch(IllegalArgumentException e){out.add(new Outcome(path,"invalid",null));continue;}
    if(!source.exists()){out.add(new Outcome(path,"missing",null));continue;}
+   if(reviewed!=null&&!reviewed.get(i).equals(reviewedIdentity(source))){
+    out.add(new Outcome(path,"changed",null));continue;
+   }
+   if(trash==null)trash=trashRoot();
    String id=UUID.randomUUID().toString();File info=new File(trash,"info/"+id+".json"),target=new File(trash,"files/"+id);
    boolean recorded=false;
    try{
