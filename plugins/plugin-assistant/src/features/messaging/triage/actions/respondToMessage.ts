@@ -205,7 +205,14 @@ export const respondToMessageAction: Action = {
         body: record.body,
         worldId: record.worldId,
         channelId: record.channelId,
-        metadata: record.metadata,
+        // The approval task is created in this room, for this requester;
+        // without it the policy parks the hold in the agent's own room,
+        // where no confirmation can reach it.
+        metadata: {
+          ...record.metadata,
+          roomId: _message.roomId,
+          entityId: _message.entityId,
+        },
       };
       // A generated acknowledgment was never seen by the owner: always hold it.
       const required =
