@@ -815,7 +815,11 @@ async function evaluateSpendingLimit(
       };
     }
     const chainId = ctx.request.chainId;
-    const txUsd = await ctx.priceOracle.weiToUsd(ctx.request.value, chainId);
+    const txUsd = await ctx.priceOracle.weiToUsd(
+      ctx.request.value,
+      chainId,
+      ctx.request.tokenAddress,
+    );
 
     if (txUsd === null || !Number.isFinite(txUsd) || txUsd < 0) {
       return {
@@ -1070,9 +1074,13 @@ async function evaluateAutoApprove(
       };
     }
     const chainId = ctx.request.chainId;
-    const txUsd = await ctx.priceOracle.weiToUsd(ctx.request.value, chainId);
+    const txUsd = await ctx.priceOracle.weiToUsd(
+      ctx.request.value,
+      chainId,
+      ctx.request.tokenAddress,
+    );
 
-    if (txUsd === null) {
+    if (txUsd === null || !Number.isFinite(txUsd) || txUsd < 0) {
       return {
         ...base,
         passed: false,

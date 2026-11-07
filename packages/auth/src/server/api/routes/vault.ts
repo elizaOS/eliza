@@ -3419,6 +3419,7 @@ vaultRoutes.post("/:agentId/actions/transfer", async (c) => {
         : encodeErc20TransferCalldata(transfer.to, transfer.value)
       : undefined,
     chainId: transfer.chainId,
+    tokenAddress: isSolanaTokenTransfer ? transfer.token : undefined,
     gasLimit: isTokenTransfer && !isSolanaTokenTransfer ? "65000" : undefined,
     broadcast: transfer.broadcast,
   };
@@ -4168,6 +4169,10 @@ vaultRoutes.post("/:agentId/approve/:txId", async (c) => {
       const approvalSignRequest: SignRequest = {
         ...toSignRequest(transactionRow),
         tenantId,
+        tokenAddress:
+          isSolana && transferPayload && transferPayload.token !== "native"
+            ? transferPayload.token
+            : undefined,
         nonce: transactionPayload?.nonce,
         gasLimit:
           transferPayload &&
