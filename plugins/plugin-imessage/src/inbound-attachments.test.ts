@@ -199,7 +199,7 @@ describe("native Messages inbound attachments", () => {
       allowFrom: [],
       enabled: true,
     };
-    return { internal, fetchNewMessages, emitted, reportError };
+    return { internal, fetchNewMessages, emitted, reportError, runtime };
   }
 
   function reportedCodes(reportError: ReturnType<typeof vi.fn>): string[] {
@@ -286,6 +286,77 @@ describe("native Messages inbound attachments", () => {
       IMESSAGE_INBOUND_PERSIST_MAX_ATTEMPTS
     );
   });
+  it("retries the batch from the row whose pairing check threw instead of dropping it", async () => {
+    const first = textRow(70, "first unpaired message");
+    const second = textRow(71, "second unpaired message");
+    const createMemory = vi.fn(async () => {});
+    const { internal, emitted, reportError, runtime } = pollHarness([first, second], createMemory);
+    internal.settings = { ...internal.settings, dmPolicy: "pairing" };
+    const isAllowed = vi
+      .fn()
+      .mockRejectedValueOnce(new Error("pairing store unavailable"))
+      .mockResolvedValue(true);
+    vi.mocked(runtime.getService).mockImplementation(((type: string) =>
+      type === "pairing" ? { isAllowed } : null) as typeof runtime.getService);
+
+    await internal.pollForNewMessagesInner();
+
+    // The cursor stays before the row that failed; neither row is lost.
+    expect(internal.lastRowId).toBe(0);
+    expect(createMemory).not.toHaveBeenCalled();
+    expect(emitted).not.toContain("MESSAGE_RECEIVED");
+    expect(reportedCodes(reportError)).toEqual(["IMESSAGE_INBOUND_PERSIST_FAILED"]);
+
+    await internal.pollForNewMessagesInner();
+
+    expect(internal.lastRowId).toBe(71);
+    expect(createMemory.mock.calls.map((call) => (call[0] as Memory).content.text)).toEqual([
+      first.text,
+      second.text,
+    ]);
+    expect(emitted.filter((type) => type === "MESSAGE_RECEIVED")).toHaveLength(2);
+  });
+
+  it("retries an auto-reply row whose room sync threw before anything was delivered", async () => {
+    const row = textRow(80, "reply to this");
+    const createMemory = vi.fn(async () => {});
+    const { internal, emitted, reportError, runtime } = pollHarness([row], createMemory);
+    vi.mocked(runtime.getSetting).mockImplementation(((key: string) =>
+      key === "IMESSAGE_AUTO_REPLY" ? "true" : undefined) as typeof runtime.getSetting);
+    vi.mocked(runtime.ensureConnection)
+      .mockRejectedValueOnce(new Error("room sync failed"))
+      .mockResolvedValue(undefined);
+
+    await internal.pollForNewMessagesInner();
+
+    expect(internal.lastRowId).toBe(0);
+    expect(emitted).not.toContain("MESSAGE_RECEIVED");
+    expect(reportedCodes(reportError)).toEqual(["IMESSAGE_INBOUND_PERSIST_FAILED"]);
+
+    await internal.pollForNewMessagesInner();
+
+    expect(internal.lastRowId).toBe(80);
+    expect(emitted.filter((type) => type === "MESSAGE_RECEIVED")).toHaveLength(1);
+  });
+
+  it("does not replay a row whose turn failed after its received events were emitted", async () => {
+    const row = textRow(90, "turn fails");
+    const createMemory = vi.fn(async () => {});
+    const { internal, emitted, reportError, runtime } = pollHarness([row], createMemory);
+    vi.mocked(runtime.getSetting).mockImplementation(((key: string) =>
+      key === "IMESSAGE_AUTO_REPLY" ? "true" : undefined) as typeof runtime.getSetting);
+    const handleMessage = vi.fn().mockRejectedValue(new Error("turn failed"));
+    (runtime as { messageService?: unknown }).messageService = { handleMessage };
+
+    await internal.pollForNewMessagesInner();
+    await internal.pollForNewMessagesInner();
+
+    expect(internal.lastRowId).toBe(90);
+    expect(handleMessage).toHaveBeenCalledTimes(1);
+    expect(emitted.filter((type) => type === "MESSAGE_RECEIVED")).toHaveLength(1);
+    expect(reportedCodes(reportError)).toEqual([]);
+  });
+
   function attachmentReadFailure(rowId: number): ElizaError {
     return new ElizaError("iMessage attachment metadata could not be read", {
       code: "IMESSAGE_ATTACHMENT_READ_FAILED",

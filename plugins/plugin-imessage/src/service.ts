@@ -128,7 +128,7 @@ function attachmentReadFailureRowId(error: unknown): number | null {
 
 class IMessageInboundPersistenceRetryError extends ElizaError {
   constructor(rowId: number, cause: unknown) {
-    super("Inbound iMessage could not be persisted; retry the chat database row", {
+    super("Inbound iMessage could not be ingested; retry the chat database row", {
       code: "IMESSAGE_INBOUND_PERSIST_FAILED",
       cause,
       context: { rowId },
@@ -760,6 +760,8 @@ export class IMessageService extends Service implements IIMessageService {
   private lastRowId: number = 0;
   /** Retryable persistence attempts for the chat.db row currently blocking the cursor. */
   private inboundPersistRetry: { rowId: number; attempts: number } | null = null;
+  /** chat.db row whose received events this service emitted; a failure after that is never retried. */
+  private inboundEmittedRowId: number | null = null;
   /** Attachment metadata read attempts for the chat.db row currently blocking the poll. */
   private attachmentReadRetry: { rowId: number; attempts: number } | null = null;
   /**
@@ -2437,50 +2439,56 @@ export class IMessageService extends Service implements IIMessageService {
       // silently ignored groupPolicy: with the default dmPolicy=pairing every
       // group message was held, and with dmPolicy=open every group message
       // leaked through regardless of groupPolicy=disabled/allowlist (#22283).
-      const access: { allowed: boolean; pairingReplyMessage?: string } =
-        row.chatType === "group"
-          ? this.checkGroupAccess(row.handle)
-          : await this.checkDmAccess(row.handle);
-      if (!access.allowed) {
-        // A fresh pairing request carries a code for the owner-approval
-        // handshake. Delivering it is an autonomous outbound text, so it
-        // follows the same IMESSAGE_AUTO_REPLY consent gate as agent replies.
-        // Only the DM pairing path produces one; group denials never do.
-        if (access.pairingReplyMessage && this.isAutoReplyEnabled()) {
-          const sendResult = await this.sendSingleMessage(row.handle, access.pairingReplyMessage);
-          if (!sendResult.success) {
-            logger.warn(
-              `[imessage] Pairing reply send failed for handle=${row.handle}: ${sendResult.error}`
-            );
-          }
-        }
-        continue;
-      }
-
-      // Skip non-text rows for the main dispatch path. Reactions and
-      // system events still emit their own plugin-namespaced events
-      // below so downstream listeners can react to them, but they
-      // don't flow through messageService.handleMessage (which is
-      // for conversational turns only).
-      if (row.kind !== "text") {
-        this.emitAuxiliaryEvent(row);
-        continue;
-      }
-
-      // Undecodable text with no attachment would produce an empty turn the
-      // agent has nothing to do with. Attachment-only messages are real user
-      // input and must continue into the media rehosting + dispatch path.
-      if (row.text.trim().length === 0 && row.attachments.length === 0) {
-        logger.debug(
-          `[imessage] skipping ROWID=${row.rowId} — text and attachments are both empty after decode`
-        );
-        continue;
-      }
-
-      logger.debug(
-        `[imessage][dispatch] ROWID=${row.rowId} handle=${row.handle} text="${truncateWellFormed(row.text, 40)}"`
-      );
+      // The access check, the auxiliary emit and every dispatch stage before
+      // the row's received events run inside the same boundary: a throw there
+      // (pairing store outage, room sync failure) used to escape the loop with
+      // the cursor already advanced, dropping this row and every later row of
+      // the batch with no retry. Those stages have no outbound effect yet, so
+      // the row is retried like a failed durable write.
       try {
+        const access: { allowed: boolean; pairingReplyMessage?: string } =
+          row.chatType === "group"
+            ? this.checkGroupAccess(row.handle)
+            : await this.checkDmAccess(row.handle);
+        if (!access.allowed) {
+          // A fresh pairing request carries a code for the owner-approval
+          // handshake. Delivering it is an autonomous outbound text, so it
+          // follows the same IMESSAGE_AUTO_REPLY consent gate as agent replies.
+          // Only the DM pairing path produces one; group denials never do.
+          if (access.pairingReplyMessage && this.isAutoReplyEnabled()) {
+            const sendResult = await this.sendSingleMessage(row.handle, access.pairingReplyMessage);
+            if (!sendResult.success) {
+              logger.warn(
+                `[imessage] Pairing reply send failed for handle=${row.handle}: ${sendResult.error}`
+              );
+            }
+          }
+          continue;
+        }
+
+        // Skip non-text rows for the main dispatch path. Reactions and
+        // system events still emit their own plugin-namespaced events
+        // below so downstream listeners can react to them, but they
+        // don't flow through messageService.handleMessage (which is
+        // for conversational turns only).
+        if (row.kind !== "text") {
+          this.emitAuxiliaryEvent(row);
+          continue;
+        }
+
+        // Undecodable text with no attachment would produce an empty turn the
+        // agent has nothing to do with. Attachment-only messages are real user
+        // input and must continue into the media rehosting + dispatch path.
+        if (row.text.trim().length === 0 && row.attachments.length === 0) {
+          logger.debug(
+            `[imessage] skipping ROWID=${row.rowId} — text and attachments are both empty after decode`
+          );
+          continue;
+        }
+
+        logger.debug(
+          `[imessage][dispatch] ROWID=${row.rowId} handle=${row.handle} text="${truncateWellFormed(row.text, 40)}"`
+        );
         await this.dispatchInboundMessage(row);
         if (this.inboundPersistRetry?.rowId === row.rowId) {
           this.inboundPersistRetry = null;
@@ -2491,7 +2499,7 @@ export class IMessageService extends Service implements IIMessageService {
             error instanceof Error ? error.message : String(error)
           }`
         );
-        if (error instanceof IMessageInboundPersistenceRetryError) {
+        if (this.retryableInboundFailure(row, error)) {
           const attempts =
             this.inboundPersistRetry?.rowId === row.rowId
               ? this.inboundPersistRetry.attempts + 1
@@ -2518,6 +2526,38 @@ export class IMessageService extends Service implements IIMessageService {
       }
     }
     logger.debug(`[imessage][poll-end] done. lastRowId=${this.lastRowId}`);
+  }
+
+  /**
+   * Whether a failure while ingesting `row` leaves it safe to retry from the
+   * chat.db cursor. A durable-write failure already carries that verdict. Any
+   * other error thrown before the row's received events were emitted had no
+   * outbound effect, so it is reported and retried the same way, unless the
+   * store marked it fatal. A failure after emission is never replayed.
+   */
+  private retryableInboundFailure(row: ChatDbMessage, error: unknown): boolean {
+    if (error instanceof IMessageInboundPersistenceRetryError) return true;
+    if (
+      error instanceof IMessageInboundPersistenceRejectedError ||
+      this.inboundEmittedRowId === row.rowId ||
+      !this.runtime
+    ) {
+      return false;
+    }
+    if (isFatalPersistenceRejection(error)) {
+      this.runtime.reportError(
+        "IMessageService.inboundPersistence",
+        new IMessageInboundPersistenceRejectedError(row.rowId, error, "fatal-rejection"),
+        { rowId: row.rowId }
+      );
+      return false;
+    }
+    this.runtime.reportError(
+      "IMessageService.inboundPersistence",
+      new IMessageInboundPersistenceRetryError(row.rowId, error),
+      { rowId: row.rowId }
+    );
+    return true;
   }
 
   /**
@@ -2911,6 +2951,7 @@ export class IMessageService extends Service implements IIMessageService {
     };
 
     const emitReceivedEvents = (): void => {
+      this.inboundEmittedRowId = row.rowId;
       // Keep the plugin event for pre-fix listeners and the generic core event
       // for every runtime listener. Default-off ingestion calls this only after
       // its durable write succeeds, so a retry cannot duplicate these events.
