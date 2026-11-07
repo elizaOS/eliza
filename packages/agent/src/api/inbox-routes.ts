@@ -1241,6 +1241,17 @@ function getDiscordClient(runtime: AgentRuntime): DiscordClientLike | null {
     | undefined;
   return service?.client ?? null;
 }
+/**
+ * True when Discord answered "there is no such user/message" (404, Unknown
+ * User 10013, Unknown Message 10008). Only that answer means an absence is a
+ * fact worth memoizing; a 429, a 5xx, or an expired token says nothing about
+ * the sender and must not be remembered as "no profile".
+ */
+function isDiscordLookupAbsent(error: unknown): boolean {
+  if (!error || typeof error !== "object") return false;
+  const { status, code } = error as { status?: unknown; code?: unknown };
+  return status === 404 || code === 10013 || code === 10008;
+}
 function firstCollectionValue(collection: unknown): unknown {
   if (!collection || typeof collection !== "object") {
     return null;
@@ -1406,7 +1417,14 @@ async function resolveDiscordMessageAuthorProfile(
         ).messages.fetch
       : null;
   if (!fetchMessage) {
-    writeCachedValue(discordMessageAuthorProfileCache, cacheKey, null);
+    // A null `channel` means the channel lookup itself did not succeed (a 429,
+    // a 5xx, a network error, or no Discord client). That says nothing about
+    // this author, and memoizing it hid the sender for the whole TTL after one
+    // transient failure. Only a real channel object that has no message
+    // history is durable evidence worth remembering.
+    if (channel) {
+      writeCachedValue(discordMessageAuthorProfileCache, cacheKey, null);
+    }
     return null;
   }
   try {
@@ -1462,8 +1480,14 @@ async function resolveDiscordMessageAuthorProfile(
     };
     writeCachedValue(discordMessageAuthorProfileCache, cacheKey, profile);
     return profile;
-  } catch {
-    writeCachedValue(discordMessageAuthorProfileCache, cacheKey, null);
+  } catch (error) {
+    // A failed fetch of this message is not "this author has no profile".
+    // Memoizing the failure made one 429/5xx hide the author for the whole
+    // cache TTL, so only Discord's "unknown message" answer is recorded here
+    // and anything else leaves the key unset for the next read to retry.
+    if (isDiscordLookupAbsent(error)) {
+      writeCachedValue(discordMessageAuthorProfileCache, cacheKey, null);
+    }
     return null;
   }
 }
@@ -1498,8 +1522,15 @@ async function resolveDiscordUserProfile(
     };
     writeCachedValue(discordUserProfileCache, userId, profile);
     return profile;
-  } catch {
-    writeCachedValue(discordUserProfileCache, userId, null);
+  } catch (error) {
+    // Discord refusing/failing the lookup (429, 5xx, revoked token, network)
+    // is not evidence that this user has no profile. Caching `null` here made
+    // the inbox render every later message from the sender nameless until the
+    // TTL expired; leaving the key unset lets the next read retry while an
+    // "unknown user" answer is still memoized as a real absence.
+    if (isDiscordLookupAbsent(error)) {
+      writeCachedValue(discordUserProfileCache, userId, null);
+    }
     return null;
   }
 }
@@ -1559,7 +1590,14 @@ async function resolveDiscordRoomProfile(
       : {}),
     ...(parentChannelId ? { parentChannelId } : {}),
   };
-  writeCachedValue(discordRoomProfileCache, channelId, profile);
+  // A null `channel` means the lookup itself did not succeed (a 429, a 5xx, a
+  // network error, or no Discord client). That says nothing about this room:
+  // memoizing it hid the channel name — and a thread's parent, which carries
+  // its mute scope — for the whole TTL after one transient failure. Only a
+  // real channel object is durable evidence worth remembering.
+  if (channel) {
+    writeCachedValue(discordRoomProfileCache, channelId, profile);
+  }
   return profile;
 }
 /**
