@@ -243,6 +243,19 @@ export function evaluateBrowserDomainPolicies(
   };
 }
 
+/**
+ * `tab` with tabAction "new" and `window` load their `url` in a fresh tab, so
+ * a non-blank one navigates like `open`. Other tab actions only carry a URL
+ * the BROWSER action copied from the message.
+ */
+function opensTabAtUrl(command: BrowserWorkspaceCommand): boolean {
+  if (!command.url?.trim()) return false;
+  return (
+    command.subaction === "window" ||
+    (command.subaction === "tab" && command.tabAction === "new")
+  );
+}
+
 /** Builds the policy request for one (possibly nested) command. */
 export function browserDomainPolicyRequestForCommand(
   command: BrowserWorkspaceCommand,
@@ -251,7 +264,9 @@ export function browserDomainPolicyRequestForCommand(
   const url = typeof command.url === "string" ? command.url : null;
   return {
     subaction: command.subaction,
-    effect: classifyBrowserCommandEffect(command.subaction),
+    effect: opensTabAtUrl(command)
+      ? "navigate"
+      : classifyBrowserCommandEffect(command.subaction),
     domain: url ? browserBridgeDomainFromUrl(url) : null,
     url,
     targetId,
