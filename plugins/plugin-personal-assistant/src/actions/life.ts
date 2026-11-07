@@ -1145,41 +1145,81 @@ function resolveDuplicateByTimeHint(
 /** Records whose DISTINCT titles the owner named verbatim in one enumerated
  * delete ask ("delete these todos: A, B and C. keep D."). Destructive, so
  * every guard fails toward the single-target clarify path: at least two
- * DISTINCT titles must be verbatim-contained in the owner's own words; a
- * contained title matching more than one stored record aborts entirely
- * (duplicate titles keep the disambiguation ask); and a title preceded by a
- * keep-style cue ("keep X", "except X", "leave X", "but not X", "don't
- * delete X") is excluded from deletion rather than deleted by containment. */
+ * DISTINCT titles must be named in the list that follows the delete verb; a
+ * named title matching more than one stored record aborts entirely
+ * (duplicate titles keep the disambiguation ask); and the list ends at the
+ * first word that does not begin a stored title, so "keep X", "but not X" or
+ * a later step ("remind me to pay X") never names a record to delete. */
 const ENUMERATED_DELETE_KEEP_CUE_RE =
   /(?:\bkeep|\bexcept(?:\s+for)?|\bleave|\bbut\s+not|\bdon'?t\s+(?:delete|remove)|\bnot|\bspare)\s*(?:the\s+)?$/i;
+
+/** The verb that opens the enumerated list ("delete A, B and C"). */
+const ENUMERATED_DELETE_VERB_RE =
+  /\b(?:delete|remove|cancel|clear|erase|trash|drop|get rid of)\b/;
+
+/** Where the sentence stops naming deletions ("..., then remind me to pay rent"). */
+const ENUMERATED_DELETE_CLAUSE_END_RE = /[.;!?]|\bthen\b|\bafter that\b/;
+
+/** One word or separator that may open the list or sit between named titles
+ * in it ("delete all of the following todos: A, B and C"). A stored title is
+ * always tried first, so a title that starts with one of these words ("All
+ * hands", "The weekly sync") is still read as a title. */
+const ENUMERATED_DELETE_LIST_GLUE_RE =
+  /^(?:\s+|[,:&]|(?:and|the|my|these|those|both|all|of|following|named|called|listed|(?:todo|task|reminder|item|habit|routine|one)s?)(?![\p{L}\p{N}]))/u;
+
+/** True when `key` starts at `index` of `text` and ends on a word boundary. */
+function phraseAt(text: string, key: string, index: number): boolean {
+  return (
+    text.startsWith(key, index) &&
+    !/[\p{L}\p{N}]/u.test(text[index + key.length] ?? "")
+  );
+}
 
 async function resolveEnumeratedDeleteTargets(
   service: LifeOpsService,
   ownerText: string,
   domain?: LifeOpsDomain,
 ): Promise<LifeOpsDefinitionRecord[]> {
-  const normalizedOwner = normalizeTitle(ownerText);
-  if (!normalizedOwner) return [];
+  // Only the list that follows the delete verb nominates records, read title
+  // by title: the list ends at the first word that does not begin a stored
+  // title, so a later step joined by a comma or "and" ("..., remind me to pay
+  // rent") or an earlier one ("remind me to pay rent, then delete ...") never
+  // names a record to delete.
+  const normalized = normalizeTitle(ownerText);
+  const verb = ENUMERATED_DELETE_VERB_RE.exec(normalized);
+  if (!verb) return [];
+  const list = normalized
+    .slice(verb.index + verb[0].length)
+    .split(ENUMERATED_DELETE_CLAUSE_END_RE)[0];
   const defs = (await service.listDefinitions()).filter((entry) =>
     domain ? entry.definition.domain === domain : true,
   );
   const byTitle = new Map<string, LifeOpsDefinitionRecord[]>();
   for (const entry of defs) {
     const key = normalizeTitle(entry.definition.title);
-    if (!key) continue;
-    byTitle.set(key, [...(byTitle.get(key) ?? []), entry]);
-  }
-  const targets: LifeOpsDefinitionRecord[] = [];
-  for (const [key, records] of byTitle) {
     // A very short title ("go", "gym") is contained in too much ordinary
     // prose to serve as a deletion warrant on its own.
     if (key.length < 4) continue;
-    const index = normalizedOwner.indexOf(key);
-    if (index < 0) continue;
+    byTitle.set(key, [...(byTitle.get(key) ?? []), entry]);
+  }
+  // Longest first, so "call mom about dinner" is read as one title, not as
+  // "call mom" followed by prose.
+  const keys = [...byTitle.keys()].sort((a, b) => b.length - a.length);
+  const targets: LifeOpsDefinitionRecord[] = [];
+  let index = 0;
+  while (index < list.length) {
+    const key = keys.find((candidate) => phraseAt(list, candidate, index));
+    if (!key) {
+      const glue = ENUMERATED_DELETE_LIST_GLUE_RE.exec(list.slice(index));
+      if (!glue) break;
+      index += glue[0].length;
+      continue;
+    }
+    const records = byTitle.get(key) ?? [];
+    // A named title matching more than one record keeps the disambiguation ask.
     if (records.length !== 1) return [];
-    const prefix = normalizedOwner.slice(Math.max(0, index - 32), index);
-    if (ENUMERATED_DELETE_KEEP_CUE_RE.test(prefix)) continue;
-    targets.push(records[0]);
+    if (!targets.includes(records[0])) targets.push(records[0]);
+    index += key.length;
   }
   return targets.length > 1 ? targets : [];
 }

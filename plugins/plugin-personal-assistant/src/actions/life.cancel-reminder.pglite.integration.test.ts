@@ -193,6 +193,90 @@ it("archives the selected reminder and preserves its plan, occurrence history, a
   ]);
 });
 
+it.each<{
+  text: string;
+  deleted: number;
+  remaining: string[];
+  extra?: string[];
+}>([
+  {
+    // "rent" is a substring of "parent" and "call mom" a phrase of the longer
+    // title; neither was named. The later clause names nothing to delete.
+    text: "delete dentist and parent teacher meeting and call mom about dinner, then remind me to pay rent on Friday",
+    deleted: 3,
+    remaining: ["Call mom", "Rent"],
+  },
+  {
+    text: "delete dentist and parent teacher meeting and call mom about dinner, remind me to pay rent on Friday",
+    deleted: 3,
+    remaining: ["Call mom", "Rent"],
+  },
+  {
+    text: "delete dentist and parent teacher meeting and remind me to pay rent on Friday",
+    deleted: 2,
+    remaining: ["Call mom", "Call mom about dinner", "Rent"],
+  },
+  {
+    text: "delete all todos: dentist and parent teacher meeting",
+    deleted: 2,
+    remaining: ["Call mom", "Call mom about dinner", "Rent"],
+  },
+  {
+    text: "delete the following: dentist and parent teacher meeting",
+    deleted: 2,
+    remaining: ["Call mom", "Call mom about dinner", "Rent"],
+  },
+  {
+    // Titles that start with a list word are still read as titles.
+    text: "delete all hands and dentist and the weekly sync and my taxes",
+    extra: ["All hands", "The weekly sync", "My taxes"],
+    deleted: 4,
+    remaining: [
+      "Call mom",
+      "Call mom about dinner",
+      "Parent teacher meeting",
+      "Rent",
+    ],
+  },
+  {
+    text: "remind me to pay rent, then delete dentist and parent teacher meeting",
+    deleted: 2,
+    remaining: ["Call mom", "Call mom about dinner", "Rent"],
+  },
+])(
+  "an enumerated delete removes only the listed titles: $text",
+  async ({ text, deleted, remaining, extra = [] }) => {
+    const seeded = (
+      await Promise.all(
+        [
+          "Rent",
+          "Dentist",
+          "Parent teacher meeting",
+          "Call mom",
+          "Call mom about dinner",
+          ...extra,
+        ].map((title) => seed(title)),
+      )
+    ).map((entry) => entry.definition.id);
+    try {
+      const result = await invoke({ action: "delete" }, text);
+      expect(result.success).toBe(true);
+      expect(result.text).toContain(`Deleted ${deleted} items`);
+
+      const left = (await service.listDefinitions())
+        .filter((entry) => seeded.includes(entry.definition.id))
+        .map((entry) => entry.definition.title)
+        .sort();
+      expect(left).toEqual(remaining);
+    } finally {
+      for (const entry of await service.listDefinitions()) {
+        if (seeded.includes(entry.definition.id))
+          await service.deleteDefinition(entry.definition.id);
+      }
+    }
+  },
+);
+
 it("keeps canonical cancel separate from the recent-save delete/undo path", async () => {
   const selected = await seed("Selected cancellation reminder");
   const recent = await seed("Unrelated recent save");
