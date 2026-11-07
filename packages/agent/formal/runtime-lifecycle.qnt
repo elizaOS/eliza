@@ -20,4 +20,3 @@ module runtime_lifecycle {
   action legacyStep = any { legacyBeginDispose, idle }
   run reentrantDisposeWitnessTest = init.then(legacyBeginDispose).then(legacyBeginDispose).expect(not(safety))
 }
-

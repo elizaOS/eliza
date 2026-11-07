@@ -22,4 +22,3 @@ module runtime_registry {
   action legacyStep = any { step, legacyDelete(0), legacyDelete(1) }
   run staleDeletionWitnessTest = init.then(register(0)).then(register(1)).then(legacyDelete(0)).expect(not(safety))
 }
-
