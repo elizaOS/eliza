@@ -116,15 +116,18 @@ const server = http.createServer(async (request, response) => {
         return;
       }
       if (harness.fault === "ack-before") {
+        meaningful.add("resume/ack-before");
         reply(503, { error: "unavailable" });
         return;
       }
       harness.remote = "acknowledged";
       await harness.pause("ack");
       if (harness.fault === "ack-after") {
+        meaningful.add("resume/ack-after");
         response.destroy();
         return;
       }
+      if (harness.fault === "ack-invalid") meaningful.add("resume/ack-invalid");
       reply(200, {
         status: "acknowledged",
         credentialId:
@@ -138,11 +141,13 @@ const server = http.createServer(async (request, response) => {
     assert.equal(request.headers.authorization, `Bearer ${secret}`);
     harness.requests.revoke++;
     if (harness.fault === "revoke-before") {
+      meaningful.add(`${harness.operation}/revoke-before`);
       reply(503, { error: "unavailable" });
       return;
     }
     harness.remote = "revoked";
     if (harness.fault === "revoke-after") {
+      meaningful.add(`${harness.operation}/revoke-after`);
       response.destroy();
       return;
     }
@@ -191,6 +196,7 @@ async function createHarness(initial, index) {
     remote: initial.durable.remote,
     now: initial.now,
     fault: "none",
+    operation: "init",
     gate: null,
     requests: { ack: 0, revoke: 0 },
     activations: 0,
@@ -200,11 +206,15 @@ async function createHarness(initial, index) {
       await this.gate.release.promise;
     },
     async mutate(name, effect) {
-      if (this.fault === `${name}-before`)
+      if (this.fault === `${name}-before`) {
+        meaningful.add(`${this.operation}/${this.fault}`);
         throw new Error(`injected ${name} before commit`);
+      }
       await effect();
-      if (this.fault === `${name}-after`)
+      if (this.fault === `${name}-after`) {
+        meaningful.add(`${this.operation}/${this.fault}`);
         throw new Error(`injected ${name} after commit`);
+      }
     },
     makeAuth() {
       return createNativeCloudAuth({
@@ -268,7 +278,8 @@ async function createHarness(initial, index) {
 async function outcome(operation) {
   try {
     return (await operation()).status;
-  } catch {
+  } catch (error) {
+    if (error instanceof assert.AssertionError) throw error;
     return "error";
   }
 }
@@ -333,13 +344,11 @@ try {
       const priorRequests = { ...harness.requests };
       const priorActivations = harness.activations;
       harness.fault = state.fault;
+      harness.operation = state.operation;
       let result;
       switch (state.operation) {
         case "resume":
           result = await outcome(() => harness.auth.handle("resume"));
-          if (before.pending === "activation" && state.bindingMatches) {
-            meaningful.add(`resume/${state.fault}`);
-          }
           if (before.pending !== "activation" || !state.bindingMatches) {
             assert.deepEqual(harness.requests, priorRequests);
             assert.equal(harness.activations, priorActivations);
@@ -352,8 +361,6 @@ try {
               disconnect: state.operation === "disconnect",
             }),
           );
-          if (before.pending === "activation")
-            meaningful.add(`${state.operation}/${state.fault}`);
           break;
         case "race":
           result = await race(harness, state.fault);
@@ -371,6 +378,13 @@ try {
           assert.fail(`unknown operation ${state.operation}`);
       }
       if (serverFailure) throw serverFailure;
+      if (
+        state.fault === "none" &&
+        (result === "authenticated" ||
+          (state.targeted && result === "cancelled"))
+      ) {
+        meaningful.add(`${state.operation}/none`);
+      }
       assert.equal(
         result,
         state.result,
