@@ -60,6 +60,28 @@ function normalizedMimeType(contentType: string | null | undefined): string {
 	return (contentType ?? "").split(";")[0]?.trim().toLowerCase() ?? "";
 }
 
+/**
+ * Container extension for a non-MP4 video attachment, so ffmpeg writes the
+ * bytes in a file it can probe. Falls back to the uploaded filename, then to
+ * no extension (ffmpeg still probes by content).
+ */
+const VIDEO_CONTAINER_EXTENSIONS: Record<string, string> = {
+	"video/3gpp": ".3gp",
+	"video/mp4": ".mp4",
+	"video/ogg": ".ogv",
+	"video/quicktime": ".mov",
+	"video/webm": ".webm",
+	"video/x-matroska": ".mkv",
+	"video/x-msvideo": ".avi",
+};
+
+function videoContainerExtension(attachment: Attachment): string {
+	const mimeType = normalizedMimeType(attachment.contentType);
+	return (
+		VIDEO_CONTAINER_EXTENSIONS[mimeType] ?? attachmentExtension(attachment)
+	);
+}
+
 function attachmentExtension(attachment: Attachment): string {
 	return path.extname(attachment.name ?? "").toLowerCase();
 }
@@ -276,6 +298,18 @@ export class AttachmentManager {
 				audioMimeType = attachment.contentType;
 			} else if (attachment.contentType?.startsWith("video/mp4")) {
 				audioBuffer = await this.extractAudioFromMP4(audioVideoBuffer);
+				audioFileName = "extracted_audio.mp3";
+				audioMimeType = "audio/mpeg";
+			} else if (
+				normalizedMimeType(attachment.contentType).startsWith("video/")
+			) {
+				// Any other uploaded video container (.mov, .webm, ...) gets
+				// the same audio-extraction treatment as MP4, through its own
+				// extractor below so the MP4 path stays untouched.
+				audioBuffer = await this.extractAudioFromVideoData(
+					audioVideoBuffer,
+					videoContainerExtension(attachment),
+				);
 				audioFileName = "extracted_audio.mp3";
 				audioMimeType = "audio/mpeg";
 			} else {
@@ -509,6 +543,111 @@ export class AttachmentManager {
 	}
 
 	/**
+	 * Extracts the audio stream from a non-MP4 video attachment (for example
+	 * .mov or .webm) and converts it to MP3 format. This mirrors the MP4
+	 * extractor's ffprobe/transcode steps, but runs in its own mkdtemp
+	 * working directory so concurrent extractions never share temp files and
+	 * the MP4 path (including its temp handling) is left untouched.
+	 *
+	 * @param videoData - The video bytes to extract audio from
+	 * @param extension - The container extension (for example ".mov")
+	 * @returns {Promise<Buffer>} - A Promise that resolves with the converted audio data as a Buffer
+	 */
+	private async extractAudioFromVideoData(
+		videoData: Uint8Array,
+		extension: string,
+	): Promise<Buffer> {
+		const workDir = fs.mkdtempSync(path.join(os.tmpdir(), "discord_video_"));
+		const tempVideoFile = path.join(workDir, `input${extension}`);
+		const tempAudioFile = path.join(workDir, "extracted_audio.mp3");
+
+		try {
+			fs.writeFileSync(tempVideoFile, videoData);
+
+			await new Promise<void>((resolve, reject) => {
+				ffmpeg.ffprobe(tempVideoFile, (err, metadata) => {
+					if (err) {
+						reject(err);
+						return;
+					}
+
+					if (!metadata.streams || !Array.isArray(metadata.streams)) {
+						reject(
+							new Error(
+								"File metadata does not contain valid streams information",
+							),
+						);
+						return;
+					}
+
+					const hasAudio = metadata.streams.some(
+						(stream) => stream.codec_type === "audio",
+					);
+					if (!hasAudio) {
+						reject(new Error("File does not contain any audio streams"));
+						return;
+					}
+					resolve();
+				});
+			});
+
+			this.runtime.logger.debug(
+				{
+					src: "plugin:discord",
+					agentId: this.runtime.agentId,
+					tempVideoFile,
+					tempAudioFile,
+				},
+				"Extracting audio from video attachment",
+			);
+
+			await new Promise<void>((resolve, reject) => {
+				ffmpeg(tempVideoFile)
+					.noVideo()
+					.audioCodec("libmp3lame")
+					.toFormat("mp3")
+					.on("end", () => {
+						resolve();
+					})
+					.on("error", (err) => {
+						reject(err);
+					})
+					.output(tempAudioFile)
+					.run();
+			});
+
+			const audioData = fs.readFileSync(tempAudioFile);
+
+			this.runtime.logger.debug(
+				{
+					src: "plugin:discord",
+					agentId: this.runtime.agentId,
+					audioDataSize: audioData.length,
+				},
+				"Successfully extracted audio from video attachment",
+			);
+
+			return audioData;
+		} finally {
+			try {
+				fs.rmSync(workDir, { recursive: true, force: true });
+			} catch (cleanupError) {
+				this.runtime.logger.warn(
+					{
+						src: "plugin:discord",
+						agentId: this.runtime.agentId,
+						error:
+							cleanupError instanceof Error
+								? cleanupError.message
+								: String(cleanupError),
+					},
+					"Failed to cleanup temp files",
+				);
+			}
+		}
+	}
+
+	/**
 	 * Processes a PDF attachment by fetching the PDF file from the specified URL,
 	 * converting it to text, generating a summary, and returning a Media object
 	 * with the extracted information.
@@ -704,10 +843,11 @@ export class AttachmentManager {
 	}
 
 	/**
-	 * Process a video attachment to extract video information.
+	 * Process a video attachment to extract video information. A linked
+	 * video goes through the video service; an uploaded video file the
+	 * service cannot handle is transcribed locally instead.
 	 * @param {Attachment} attachment - The attachment object containing video information.
 	 * @returns {Promise<Media>} A promise that resolves to a Media object with video details.
-	 * @throws {Error} If video service is not available.
 	 */
 	private async processVideoAttachment(attachment: Attachment): Promise<Media> {
 		const videoService = this.runtime.getService(ServiceType.VIDEO) as
@@ -725,6 +865,12 @@ export class AttachmentManager {
 			| null;
 
 		if (!videoService) {
+			// An uploaded video file does not need the video service: its
+			// audio can be extracted and transcribed locally, as MP4 already
+			// is. Only a linked video still needs the service.
+			if (normalizedMimeType(attachment.contentType).startsWith("video/")) {
+				return this.processAudioVideoAttachment(attachment);
+			}
 			return {
 				id: attachment.id,
 				url: attachment.url,
@@ -755,6 +901,13 @@ export class AttachmentManager {
 				description: videoInfo.description,
 				text: videoInfo.text,
 			};
+		}
+		// The video service only claims linked videos (for example YouTube);
+		// a file uploaded to Discord reaches this point when the service
+		// cannot handle it. Transcribe it locally instead of dropping its
+		// content behind a generic placeholder.
+		if (normalizedMimeType(attachment.contentType).startsWith("video/")) {
+			return this.processAudioVideoAttachment(attachment);
 		}
 		return {
 			id: attachment.id,
