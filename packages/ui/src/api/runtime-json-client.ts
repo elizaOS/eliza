@@ -1,7 +1,8 @@
 /** JSON-only product runtime client. Hosts choose bridges, URLs, budgets and copy.
  * An available native runtime owns the request: its failures never select HTTP.
- * No credentials, retries or request replay are introduced here; only a request the
- * bridge reports as undispatched (RUNTIME_NOT_READY) is sent after startup.
+ * No credentials, retries or request replay are introduced here. Only with
+ * reuseRunningStatus is a request the bridge reports as undispatched
+ * (RUNTIME_NOT_READY) sent after startup, and only to an available runtime.
  */
 import {
   type AgentRequestTransport,
@@ -77,6 +78,9 @@ export function createRuntimeJsonClient(options: {
    * Skip the per-request status probe while this account generation's runtime
    * was last seen running. Set it only for a bridge that rejects undispatched
    * requests with RUNTIME_NOT_READY; any other rejection or a 503 probes again.
+   * Without that mapping, the first request after a runtime stop the client did
+   * not see (a service kill or restart) fails instead of starting the runtime.
+   * Off, the client probes before every request and resends nothing.
    */
   reuseRunningStatus?: boolean;
   messages: {
@@ -264,10 +268,19 @@ export function createRuntimeJsonClient(options: {
               });
             } catch (error) {
               forget(epoch);
-              // Undispatched: wait for the runtime once, then send it for the first time.
-              if (afterNotReady || !notReady(error)) throw error;
+              // Undispatched (reuse only): wait for the runtime once, then send it
+              // for the first time. An unavailable runtime is not started.
+              if (
+                !options.reuseRunningStatus ||
+                afterNotReady ||
+                !notReady(error)
+              )
+                throw error;
               current(epoch);
-              await ready(await bridge.status());
+              const status = await bridge.status();
+              current(epoch);
+              if (!status.available) throw error;
+              await ready(status);
               return send(true);
             }
             if (response.status === 503) forget(epoch);

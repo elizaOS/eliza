@@ -46,8 +46,11 @@ const notReady = () =>
     code: RUNTIME_NOT_READY,
   });
 
-function client(bridge: RuntimeJsonBridge, reuseRunningStatus?: boolean) {
-  return createRuntimeJsonClient({
+function options(
+  bridge: RuntimeJsonBridge,
+  reuseRunningStatus?: boolean,
+): Parameters<typeof createRuntimeJsonClient>[0] {
+  return {
     nativePlatform: () => true,
     nativeBridge: () => bridge,
     nativeFallback: () => Promise.reject(new Error("no fallback")),
@@ -64,7 +67,11 @@ function client(bridge: RuntimeJsonBridge, reuseRunningStatus?: boolean) {
       fallback: "unreachable",
       invalidJson: "invalid json",
     },
-  });
+  };
+}
+
+function client(bridge: RuntimeJsonBridge, reuseRunningStatus?: boolean) {
+  return createRuntimeJsonClient(options(bridge, reuseRunningStatus));
 }
 
 describe("runtime JSON client native status reuse", () => {
@@ -119,6 +126,41 @@ describe("runtime JSON client native status reuse", () => {
     expect(calls.status).toBe(1);
     await api.request("/c");
     expect(calls.status).toBe(2);
+  });
+
+  it("never resends a not-ready rejection by default", async () => {
+    const { bridge, calls } = runtime([notReady()]);
+    const api = client(bridge);
+    await expect(api.request("/a", { text: "hi" })).rejects.toMatchObject({
+      code: RUNTIME_NOT_READY,
+    });
+    expect(calls.sent).toHaveLength(1);
+    expect(calls.status).toBe(1);
+    expect(calls.start).toBe(0);
+  });
+
+  it("does not start an unavailable runtime after a not-ready rejection", async () => {
+    const { bridge, calls } = runtime([{ status: 200, data: {} }, notReady()]);
+    let fallback = 0;
+    const api = createRuntimeJsonClient({
+      ...options(bridge, true),
+      nativeFallback: async () => {
+        fallback++;
+        return { status: 200, data: {} };
+      },
+    });
+    await api.request("/a");
+    const probe = bridge.status;
+    bridge.status = async () => {
+      await probe();
+      return { available: false, state: "stopped" };
+    };
+    await expect(api.request("/b", { text: "hi" })).rejects.toMatchObject({
+      code: RUNTIME_NOT_READY,
+    });
+    expect(calls.start).toBe(0);
+    expect(fallback).toBe(0);
+    expect(calls.sent).toHaveLength(2);
   });
 
   it("does not resend when not-ready repeats after startup", async () => {

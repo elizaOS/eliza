@@ -182,7 +182,11 @@ until the host explicitly retries refresh; late status replies cannot restart po
 With `reuseRunningStatus`, the native status probe runs once per account generation while
 the runtime stays running; any bridge rejection or 503 makes the next request probe again.
 A bridge rejection with code `RUNTIME_NOT_READY` means the request was not dispatched, so
-the client waits for startup and sends it once.
+the client waits for startup and sends it once, unless the re-probe reports the runtime
+unavailable (then the rejection stands and nothing is started). Enable the option only when
+the host bridge maps `NativeRuntimeSession.NotReadyException` to that code: without the
+mapping, the first request after a runtime stop the client did not see (a service kill or
+restart) fails instead of starting the runtime. Without the option nothing is resent.
 
 `formatMinorCurrency` formats safe integer minor units through an exact decimal
 string, checking the selected currency exponent. `isIsoCalendarDate` and
