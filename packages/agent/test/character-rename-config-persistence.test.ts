@@ -137,6 +137,92 @@ it("keeps a character-editor rename and username after the config is rebuilt on 
   }
 });
 
+it("writes a new name with $$, $& or $' into the message examples as typed", async () => {
+  const dir = await mkdtemp(path.join(tmpdir(), "character-rename-dollar-"));
+  const configPath = path.join(dir, "eliza.json");
+  vi.stubEnv("ELIZA_STATE_DIR", dir);
+  vi.stubEnv("ELIZA_CONFIG_PATH", configPath);
+  vi.stubEnv("ELIZA_PERSIST_CONFIG_PATH", configPath);
+  saveElizaConfig({
+    ui: { assistant: { name: "Eliza" } },
+    agents: { list: [{ id: "main", default: true, name: "Eliza" }] },
+  });
+  const runtime = new AgentRuntime({
+    character: buildCharacterFromConfig(loadElizaConfig()),
+    logLevel: "fatal",
+  });
+  const adapter = SQLiteDatabaseAdapter.create(
+    path.join(dir, "state.sqlite"),
+    runtime.agentId,
+  );
+  runtime.registerDatabaseAdapter(adapter);
+  try {
+    await runtime.init();
+    await runtime.createAgent({ ...runtime.character, id: runtime.agentId });
+    // The bundled preset answers "Who are you?" with "I'm {{agentName}}.".
+    const introduction = (
+      character: Pick<typeof runtime.character, "messageExamples">,
+    ) =>
+      character.messageExamples
+        ?.flatMap((group) => group.examples)
+        .find((example) => /^I'm\b/.test(example.content.text ?? ""));
+    expect(introduction(runtime.character)?.content.text).toBe(
+      "I'm {{agentName}}.",
+    );
+    const state = {
+      runtime,
+      agentName: "Eliza",
+      config: loadElizaConfig(),
+    };
+
+    // The character editor saves each name occurrence as "{{name}}"
+    // (prepareDraftForSave), and the route writes the name back in.
+    for (const name of ["Ca$$h", "Ca$&h", "Ca$'h"]) {
+      let status = 0;
+      await handleCharacterRoutes({
+        req: {} as http.IncomingMessage,
+        res: {} as http.ServerResponse,
+        method: "PUT",
+        pathname: "/api/character",
+        state,
+        readJsonBody: async <T extends object>() =>
+          ({
+            name,
+            messageExamples: [
+              {
+                examples: [
+                  { name: "{{user1}}", content: { text: "Who are you?" } },
+                  { name, content: { text: "I'm {{name}}." } },
+                ],
+              },
+            ],
+          }) as unknown as T,
+        json: (_res, _data, code = 200) => {
+          status = code;
+        },
+        error: (_res, message) => {
+          throw new Error(message);
+        },
+        pickRandomNames: () => [],
+        saveConfig: saveElizaConfig,
+        validateCharacter: (body) => CharacterSchema.safeParse(body),
+      });
+      expect(status).toBe(200);
+      expect(introduction(runtime.character)).toMatchObject({
+        name,
+        content: { text: `I'm ${name}.` },
+      });
+      expect(
+        introduction(buildCharacterFromConfig(loadElizaConfig()))?.content.text,
+      ).toBe(`I'm ${name}.`);
+    }
+  } finally {
+    await runtime.close();
+    vi.unstubAllEnvs();
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
 it("trims a stored identity name, in settings and in settings.extra", () => {
   expect(
     agentIdentityName({ name: "Nova", settings: { identityName: " Eliza " } }),

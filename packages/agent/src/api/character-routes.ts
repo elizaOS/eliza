@@ -13,6 +13,7 @@ import { PostCharacterGenerateRequestSchema } from "@elizaos/contracts";
 import {
   type AgentRuntime,
   ModelType,
+  replaceNameTokens,
   type UUID,
   validateUuid,
 } from "@elizaos/core";
@@ -231,12 +232,6 @@ type CharacterMessageExampleGroup = {
   examples: CharacterMessageExample[];
 };
 
-function replaceCharacterNameTokens(value: string, nextName: string): string {
-  return value
-    .replaceAll("{{agentName}}", nextName)
-    .replaceAll("{{name}}", nextName);
-}
-
 function shouldRewriteExampleSpeakerName(
   speakerName: string,
   previousName?: string,
@@ -285,10 +280,10 @@ function rewriteSnapshotExample(
     ...base,
     name: shouldRewriteExampleSpeakerName(speakerName, previousName)
       ? nextName
-      : replaceCharacterNameTokens(speakerName, nextName),
+      : replaceNameTokens(speakerName, nextName),
     content: {
       ...content,
-      text: replaceCharacterNameTokens(text, nextName),
+      text: replaceNameTokens(text, nextName),
     },
   } as CharacterMessageExample;
 }
