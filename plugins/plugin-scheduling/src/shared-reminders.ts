@@ -1891,21 +1891,43 @@ export function createSharedRemindersEdgeAction(
               ? { ...target.task.trigger, tz: timezone }
               : target.task.trigger;
           // The replacement is a new task with no fire history. An unchanged
-          // interval starts from the original's next fire time, so a text or
-          // timezone edit does not fire at once or move the schedule.
-          const originalNextFireAt =
-            !hasSchedulePatch && patchedTrigger?.kind === "interval"
-              ? await computeNextFireAt(target.task, {
-                  now: now(),
-                  ownerFacts: {},
-                })
-              : null;
+          // interval starts from the original's next fire time, and an
+          // unchanged one-off fires at the original's next fire time (its
+          // snoozed time, when snoozed), so a text or timezone edit does not
+          // fire at once or move the schedule.
+          const keepsOriginalSchedule =
+            !hasSchedulePatch &&
+            (patchedTrigger?.kind === "interval" ||
+              patchedTrigger?.kind === "once");
+          const originalNextFireAt = keepsOriginalSchedule
+            ? await computeNextFireAt(target.task, {
+                now: now(),
+                ownerFacts: {},
+              })
+            : null;
+          // A one-off with no next fire time already went off. Its replacement
+          // would be due at once and send the reminder again.
+          if (
+            keepsOriginalSchedule &&
+            patchedTrigger?.kind === "once" &&
+            !originalNextFireAt
+          ) {
+            return await actionFailure(
+              "That reminder already went off. Give a new time to set it again. Nothing was changed.",
+              callback,
+              { operation },
+            );
+          }
           const trigger =
-            patchedTrigger?.kind === "interval" &&
-            originalNextFireAt &&
-            Date.parse(originalNextFireAt) > now().getTime()
-              ? { ...patchedTrigger, from: originalNextFireAt }
-              : patchedTrigger;
+            keepsOriginalSchedule &&
+            patchedTrigger?.kind === "once" &&
+            originalNextFireAt
+              ? { ...patchedTrigger, atIso: originalNextFireAt }
+              : patchedTrigger?.kind === "interval" &&
+                  originalNextFireAt &&
+                  Date.parse(originalNextFireAt) > now().getTime()
+                ? { ...patchedTrigger, from: originalNextFireAt }
+                : patchedTrigger;
           if (!trigger) {
             return await actionFailure(
               textParameter(input, "cronExpression", "cron") && !timezone

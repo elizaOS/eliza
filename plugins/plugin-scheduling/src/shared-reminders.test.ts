@@ -195,3 +195,141 @@ it("keeps an interval reminder's next time when only its text changes", async ()
     occurrenceAtIso: "2026-10-11T12:00:00.000Z",
   });
 });
+
+function createOneOffReminderHarness() {
+  const agentId = "33333333-3333-4333-8333-333333333333";
+  const runtime = {
+    agentId,
+    getService: () => null,
+    reportError: () => undefined,
+  } as unknown as IAgentRuntime;
+  const clock = { now: new Date("2026-10-11T10:00:00Z") };
+  const now = () => clock.now;
+  const gates = createTaskGateRegistry();
+  registerBuiltInGates(gates);
+  const completionChecks = createCompletionCheckRegistry();
+  registerBuiltInCompletionChecks(completionChecks);
+  const ladders = createEscalationLadderRegistry();
+  registerDefaultEscalationLadders(ladders);
+  const runner = createScheduledTaskRunner({
+    agentId,
+    store: createInMemoryScheduledTaskStore(),
+    logStore: createInMemoryScheduledTaskLogStore(),
+    gates,
+    completionChecks,
+    ladders,
+    anchors: createAnchorRegistry(),
+    consolidation: createConsolidationRegistry(),
+    ownerFacts: () => ({}),
+    globalPause: {
+      current: async () => ({ active: false }),
+    } as GlobalPauseView,
+    activity: { hasSignalSince: () => false },
+    subjectStore: { wasUpdatedSince: () => false },
+    dispatcher: TestNoopScheduledTaskDispatcher,
+    now,
+  });
+  const action = createSharedRemindersEdgeAction({
+    runner,
+    agentId,
+    now,
+    delivery: {
+      platform: "telegram",
+      project: "test",
+      connectorAccountId: "owner",
+      chatId: "123456",
+    },
+  });
+  const run = (parameters: HandlerOptions["parameters"]) =>
+    action.handler(
+      runtime,
+      {
+        id: crypto.randomUUID(),
+        entityId: agentId,
+        agentId,
+        roomId: agentId,
+        content: {
+          text: "Change my call mom reminder to say call dad",
+          source: "test",
+        },
+      } as Memory,
+      undefined,
+      { parameters },
+    );
+  const createAt3pm = async () => {
+    const created = await run({
+      operation: "create",
+      reminderText: "Call mom",
+      atIso: "2026-10-11T15:00:00Z",
+    });
+    expect(created?.success, JSON.stringify(created)).toBe(true);
+    return created?.data?.task as ScheduledTask;
+  };
+  const editText = (taskId: string) =>
+    run({ operation: "update", taskId, newReminderText: "Call dad" });
+  const dueTasksAt = async (iso: string) => {
+    const due: ScheduledTask[] = [];
+    for (const entry of await runner.list()) {
+      if ((await isScheduledTaskDue(entry, { now: new Date(iso) })).due) {
+        due.push(entry);
+      }
+    }
+    return due;
+  };
+  return { clock, runner, createAt3pm, editText, dueTasksAt };
+}
+
+it("does not send a one-off reminder again when only its text changes after it went off", async () => {
+  const h = createOneOffReminderHarness();
+  const task = await h.createAt3pm();
+  h.clock.now = new Date("2026-10-11T15:00:30Z");
+  expect((await h.runner.fire(task.taskId)).state.status).toBe("fired");
+
+  h.clock.now = new Date("2026-10-11T15:10:00Z");
+  const updated = await h.editText(task.taskId);
+  expect(updated?.success, JSON.stringify(updated)).toBe(false);
+  expect(updated?.text).toContain("already went off");
+
+  const tasks = await h.runner.list();
+  expect(tasks.map((entry) => entry.taskId)).toEqual([task.taskId]);
+  expect(tasks[0]?.state.status).toBe("fired");
+  expect(await h.dueTasksAt("2026-10-11T15:10:00Z")).toEqual([]);
+});
+
+it("keeps a snoozed one-off reminder's snoozed time when only its text changes", async () => {
+  const h = createOneOffReminderHarness();
+  const task = await h.createAt3pm();
+  h.clock.now = new Date("2026-10-11T10:05:00Z");
+  await h.runner.apply(task.taskId, "snooze", {
+    untilIso: "2026-10-11T15:30:00Z",
+  });
+
+  h.clock.now = new Date("2026-10-11T10:10:00Z");
+  const updated = await h.editText(task.taskId);
+  expect(updated?.success, JSON.stringify(updated)).toBe(true);
+  const replacement = updated?.data?.task as ScheduledTask;
+  expect(replacement.promptInstructions).toBe("Call dad");
+
+  expect(await h.dueTasksAt("2026-10-11T15:00:00Z")).toEqual([]);
+  expect(
+    (await h.dueTasksAt("2026-10-11T15:30:00Z")).map((entry) => entry.taskId),
+  ).toEqual([replacement.taskId]);
+});
+
+it("sends a snoozed one-off reminder at its snoozed time, not at once, when only its text changes", async () => {
+  const h = createOneOffReminderHarness();
+  const task = await h.createAt3pm();
+  h.clock.now = new Date("2026-10-11T15:00:30Z");
+  await h.runner.fire(task.taskId);
+  await h.runner.apply(task.taskId, "snooze", { minutes: 30 });
+
+  h.clock.now = new Date("2026-10-11T15:10:00Z");
+  const updated = await h.editText(task.taskId);
+  expect(updated?.success, JSON.stringify(updated)).toBe(true);
+  const replacement = updated?.data?.task as ScheduledTask;
+
+  expect(await h.dueTasksAt("2026-10-11T15:10:00Z")).toEqual([]);
+  expect(
+    (await h.dueTasksAt("2026-10-11T15:31:00Z")).map((entry) => entry.taskId),
+  ).toEqual([replacement.taskId]);
+});
