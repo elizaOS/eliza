@@ -46,6 +46,13 @@ export const appChargeCallbackOutbox = pgTable(
   }),
 );
 
+export interface EvmSweepReceipt {
+  transactionHash: string;
+  blockHash: string;
+  blockNumber: string;
+  status: "success";
+}
+
 export const cryptoSweepOutbox = pgTable(
   "crypto_sweep_outbox",
   {
@@ -65,6 +72,8 @@ export const cryptoSweepOutbox = pgTable(
     evm_sender: text("evm_sender"),
     evm_chain_id: bigint("evm_chain_id", { mode: "bigint" }),
     evm_nonce: bigint("evm_nonce", { mode: "bigint" }),
+    evm_confirmed_at: timestamp("evm_confirmed_at", { withTimezone: true }),
+    evm_confirmed_receipt: jsonb("evm_confirmed_receipt").$type<EvmSweepReceipt>(),
     sweep_transaction_hash: text("sweep_transaction_hash"),
     prepared_metadata: jsonb("prepared_metadata").$type<Record<string, unknown>>(),
     delivered_at: timestamp("delivered_at", { withTimezone: true }),
@@ -77,6 +86,12 @@ export const cryptoSweepOutbox = pgTable(
     due_idx: index("crypto_sweep_outbox_due_idx")
       .on(table.next_attempt_at, table.created_at)
       .where(sql`${table.state} IN ('pending', 'processing')`),
+    evm_confirmation_check: check(
+      "crypto_sweep_outbox_evm_confirmation_check",
+      sql`
+      (${table.evm_confirmed_at} IS NULL) = (${table.evm_confirmed_receipt} IS NULL)
+      AND (${table.evm_confirmed_at} IS NULL OR (${table.state}='delivered' AND ${table.evm_sender} IS NOT NULL))`,
+    ),
     evm_legacy_idx: index("crypto_sweep_outbox_evm_legacy_idx")
       .on(sql`(${table.prepared_metadata}->>'network')`, table.id)
       .where(sql`${table.evm_sender} IS NULL AND ${table.prepared_transaction} IS NOT NULL`),

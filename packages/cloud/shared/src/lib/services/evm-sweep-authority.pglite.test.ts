@@ -58,7 +58,13 @@ mock.module("viem", () => ({
       blockTag: "latest" | "pending";
     }) => state(address)[blockTag],
     getTransactionReceipt: async ({ hash }: { hash: string }) => {
-      if (receipts.has(hash)) return { transactionHash: hash, status: "success" };
+      if (receipts.has(hash))
+        return {
+          transactionHash: hash,
+          status: "success",
+          blockHash: `0x${"ab".repeat(32)}`,
+          blockNumber: 100n,
+        };
       throw new Error("receipt not found");
     },
     getTransaction: async ({ hash }: { hash: string }) => {
@@ -193,6 +199,19 @@ test("one wallet serializes two outboxes through confirmed receipts without reus
   advance();
   expect(await service.processSweepForPayment(environment(), last.payment_id)).toBe(true);
   expect((await rows()).map((row) => row.state)).toEqual(["delivered", "delivered"]);
+  const confirmations = (
+    await dbWrite.execute(
+      sql`SELECT evm_confirmed_at,evm_confirmed_receipt,sweep_transaction_hash FROM crypto_sweep_outbox`,
+    )
+  ).rows;
+  for (const confirmation of confirmations) {
+    expect(confirmation.evm_confirmed_at).not.toBeNull();
+    expect(confirmation.evm_confirmed_receipt).toMatchObject({
+      status: "success",
+      transactionHash: confirmation.sweep_transaction_hash,
+      blockNumber: "100",
+    });
+  }
 });
 test("pending visibility does not release the wallet or exhaust its failure budget", async () => {
   await expect(service.processSweepForPayment(environment(), ids[0])).rejects.toThrow("awaiting");
@@ -304,15 +323,18 @@ test("legacy signed bytes recover their actual sender and keep an unconfirmed no
   }>;
   const { sender: _sender, ...legacyMetadata } = prepared_metadata;
   await dbWrite.execute(sql`DELETE FROM crypto_sweep_outbox WHERE id=${first.id}`);
-  await dbWrite.execute(sql`INSERT INTO crypto_sweep_outbox(payment_id,payload,payload_digest,state,prepared_transaction,sweep_transaction_hash,prepared_metadata)
-    VALUES (${first.payment_id},${JSON.stringify(payload)}::jsonb,${payload_digest},'delivered',${first.prepared_transaction},${first.sweep_transaction_hash},${JSON.stringify(legacyMetadata)}::jsonb)`);
+  await dbWrite.execute(sql`INSERT INTO crypto_sweep_outbox(payment_id,payload,payload_digest,state,delivered_at,prepared_transaction,sweep_transaction_hash,prepared_metadata)
+    VALUES (${first.payment_id},${JSON.stringify(payload)}::jsonb,${payload_digest},'delivered',now(),${first.prepared_transaction},${first.sweep_transaction_hash},${JSON.stringify(legacyMetadata)}::jsonb)`);
   await expect(service.processSweepForPayment(environment(), ids[1])).rejects.toThrow("nonce");
   const legacy = (await rows()).find((row) => row.payment_id === ids[0])!;
   expect(legacy.evm_sender).toBe(environment().CRYPTO_DIRECT_BASE_RECEIVE_ADDRESS.toLowerCase());
   expect(legacy.prepared_transaction).toBe(first.prepared_transaction);
   expect(prepared).toHaveLength(1);
+  await expect(service.processSweepForPayment(environment(), ids[0])).rejects.toThrow("read-only");
+  expect(submissions).toHaveLength(1);
   mine(first.sweep_transaction_hash!);
   advance();
+  expect(await service.processSweepForPayment(environment(), ids[0])).toBe(true);
   await expect(service.processSweepForPayment(environment(), ids[1])).rejects.toThrow("awaiting");
   expect(prepared.map((row) => row.nonce)).toEqual([7, 8]);
 });

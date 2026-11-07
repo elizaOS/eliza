@@ -391,3 +391,5 @@ Direct EVM sweeps retain one signed transaction per chain and sender until its
 successful receipt is observed. Other sweeps from that wallet wait; pending nonce
 ambiguity or legacy identity conflicts require reconciliation without replacing
 signed bytes. Different senders proceed independently.
+Legacy EVM delivery rows require a matching receipt before releasing their nonce;
+recovery of those rows performs provider reads without issuing another transfer.
