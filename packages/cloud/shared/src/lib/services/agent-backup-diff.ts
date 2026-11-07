@@ -336,7 +336,9 @@ export function selectPrunableBackupIds(nodes: BackupChainNode[], keep: number):
     const aTime = Number.isFinite(a.createdAtMs) ? a.createdAtMs : 0;
     const bTime = Number.isFinite(b.createdAtMs) ? b.createdAtMs : 0;
     if (bTime !== aTime) return bTime - aTime;
-    return a.id.localeCompare(b.id);
+    // Code-unit order, not localeCompare: ICU collation is locale-dependent, so
+    // which tied backup survives the keep cap must not vary with the host locale.
+    return a.id < b.id ? -1 : a.id > b.id ? 1 : 0;
   });
 
   const keepSet = new Set<string>();
