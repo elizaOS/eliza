@@ -316,8 +316,13 @@ export function isValidAnyAddress(value: unknown): boolean {
 export async function safeJsonParse<T>(c: Context): Promise<T | null> {
   try {
     return await c.req.json<T>();
-  } catch {
-    return null;
+  } catch (error) {
+    // error-policy:J1 a body that is absent or not JSON is client input, so
+    // callers keep answering 400 with their own message. A body that could not
+    // be read at all (aborted upload, already consumed stream, decompression
+    // failure) is a transport fault and must reach the error boundary.
+    if (error instanceof SyntaxError) return null;
+    throw error;
   }
 }
 

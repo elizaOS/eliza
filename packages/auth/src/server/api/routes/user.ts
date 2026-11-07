@@ -150,6 +150,7 @@ import {
 import {
   continueWithTenantDatabase,
   priceOracle,
+  safeJsonParse,
   sanitizeErrorMessage,
   setNoStoreHeaders,
   verifySessionToken,
@@ -351,14 +352,6 @@ type UserWalletEncryptedImportSession = {
 };
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
-
-async function safeJsonParse<T>(c: Context): Promise<T | null> {
-  try {
-    return await c.req.json<T>();
-  } catch {
-    return null;
-  }
-}
 
 function userWalletAgentId(userId: string, walletIndex = 0): string {
   return walletIndex === 0
