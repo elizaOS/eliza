@@ -2173,6 +2173,16 @@ async function handleRequestForViewClient(
   }
   if (
     await handleHealthRoutes({
+      ownerDiagnostics:
+        method === "GET" &&
+        pathname === "/api/status" &&
+        isTrajectoryOwnerRequest(
+          req,
+          method,
+          pathname,
+          hostSessionAuthorization,
+          false,
+        ),
       composeStatus: ctx?.composeStatus,
       req,
       res,

@@ -141,6 +141,7 @@ import {
   type LocalInferenceRouteApi,
   loadLocalInferenceRouteApi,
 } from "./local-inference-server-api.ts";
+import { captureNativeInferenceTiming } from "./native-inference-timing.ts";
 import {
   decodePathComponent,
   getErrorMessage,
@@ -3636,6 +3637,10 @@ async function generateOwnedChatResponse(
       label: "chat-request",
       roomId: message.roomId,
     });
+  const recordNativeTiming = captureNativeInferenceTiming(
+    runtime,
+    message.entityId,
+  );
   return runWithInferenceTiming(timer, async () => {
     try {
       const result = await runWithGenerationTimeout(
@@ -3655,6 +3660,7 @@ async function generateOwnedChatResponse(
     } finally {
       const summary = emitInferenceTiming(timer);
       if (summary) {
+        recordNativeTiming?.(summary);
         void persistInferenceTimingSummary(runtime, message, summary).catch(
           (error) => {
             // error-policy:J7 latency persistence must not turn a completed
