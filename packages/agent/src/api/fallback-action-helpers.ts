@@ -26,47 +26,57 @@ export type FallbackParsedAction = {
 
 type RuntimeActionLike = Action;
 
-/** The body of the first fenced block, or null when the reply has none. */
-function extractFencedBody(value: string): string | null {
-  const opener = value.indexOf("```");
-  if (opener < 0) return null;
-  let bodyStart = opener + 3;
-  if (value.slice(bodyStart, bodyStart + 4).toLowerCase() === "json") {
-    bodyStart += 4;
+/** The bodies of every fenced block, in document order, or [] when none. */
+function extractFencedBodies(value: string): string[] {
+  const bodies: string[] = [];
+  let searchFrom = 0;
+  while (true) {
+    const opener = value.indexOf("```", searchFrom);
+    if (opener < 0) break;
+    let bodyStart = opener + 3;
+    if (value.slice(bodyStart, bodyStart + 4).toLowerCase() === "json") {
+      bodyStart += 4;
+    }
+    while (bodyStart < value.length && value[bodyStart]?.trim() === "") {
+      bodyStart += 1;
+    }
+    const closer = value.indexOf("```", bodyStart);
+    if (closer < 0) break;
+    let bodyEnd = closer;
+    while (bodyEnd > bodyStart && value[bodyEnd - 1]?.trim() === "") {
+      bodyEnd -= 1;
+    }
+    bodies.push(value.slice(bodyStart, bodyEnd));
+    searchFrom = closer + 3;
   }
-  while (bodyStart < value.length && value[bodyStart]?.trim() === "") {
-    bodyStart += 1;
-  }
-  const closer = value.indexOf("```", bodyStart);
-  if (closer < 0) return null;
-  let bodyEnd = closer;
-  while (bodyEnd > bodyStart && value[bodyEnd - 1]?.trim() === "") {
-    bodyEnd -= 1;
-  }
-  return value.slice(bodyStart, bodyEnd);
+  return bodies;
 }
 
 /**
  * First object carrying a non-empty `response` string, or null when none
  * does. A fenced block still wins over the first span: when the prose
  * before the fence quotes a JSON snippet, the first span is the snippet,
- * not the answer, so reading it first regressed fenced replies. Only
- * when the fenced body itself carries no `response` string do we fall
- * back to scanning every span, each read through the tolerant object
- * reader so string-escape repairs still apply inside a span.
+ * not the answer, so reading it first regressed fenced replies. Among
+ * fenced blocks the LAST one carrying a `response` wins: the model may
+ * restate a draft in an earlier fence and give the final answer in a
+ * later one, and the earlier fence must not suppress it. Only when no
+ * fenced block carries a `response` string do we fall back to scanning
+ * every span, each read through the tolerant object reader so
+ * string-escape repairs still apply inside a span.
  */
 function firstResponseObject(raw: string): { response?: unknown } | null {
-  const fencedBody = extractFencedBody(raw);
-  if (fencedBody !== null) {
+  let lastFenced: { response?: unknown } | null = null;
+  for (const fencedBody of extractFencedBodies(raw)) {
     const fenced = parseJsonObject<{ response?: unknown }>(fencedBody);
     if (
       fenced &&
       typeof fenced.response === "string" &&
       fenced.response.trim()
     ) {
-      return fenced;
+      lastFenced = fenced;
     }
   }
+  if (lastFenced !== null) return lastFenced;
   for (const { start, end } of extractJsonObjectSpans(raw)) {
     const candidate = parseJsonObject<{ response?: unknown }>(
       raw.slice(start, end),

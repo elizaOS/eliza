@@ -87,6 +87,29 @@ describe("rewriteFallbackActionText reply reading", () => {
     ).resolves.toBe(VOICED);
   });
 
+  it("uses the final fenced response when an earlier fence holds a draft", async () => {
+    await expect(
+      rewrite(
+        [
+          "Here is a draft " +
+            JSON.stringify({
+              response: "I'll ping you sometime (id DRAFT).",
+            }) +
+            " — rewritten:",
+          "```json",
+          JSON.stringify({
+            response: "I'll ping you sometime (id DRAFT).",
+          }),
+          "```",
+          "Final answer:",
+          "```json",
+          JSON.stringify({ response: VOICED }),
+          "```",
+        ].join("\n"),
+      ),
+    ).resolves.toBe(VOICED);
+  });
+
   it("falls back when the reply holds no JSON object", async () => {
     await expect(rewrite("no json at all")).resolves.toBe(GENERIC);
   });
