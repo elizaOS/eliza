@@ -291,11 +291,13 @@ export const BUILTIN_RESPONSE_HANDLER_EVALUATORS: readonly ResponseHandlerEvalua
       // Runs AFTER the suppress/confirm signal gates: an explicit address to
       // ANOTHER participant is the final word — it overrides even a generic
       // agentShouldSpeak confirm, so a misfiring signal can't make an
-      // un-addressed agent talk over the addressed one.
+      // un-addressed agent talk over the addressed one. Priority 1 keeps it
+      // after them: equal priorities run in name order, which would put it
+      // before core.voice_turn_signal_confirm.
       name: "core.voice_group_address",
       description:
         "Multi-agent/multi-speaker voice-room turn-taking: an agent defers (IGNORE) when a VOICE_GROUP turn is explicitly addressed to another named participant and not to this agent, so only the addressed agent replies. Undirected turns are left to normal shouldRespond.",
-      priority: 0,
+      priority: 1,
       shouldRun: ({ message, runtime, messageHandler }) =>
         isVoiceGroupChannelMessage(message) &&
         voiceGroupAddressSuppressesAgent(
