@@ -5374,10 +5374,41 @@ async function dispatchPlannerModelCall(params: {
     // `providerOptions.eliza.plannerActionSchemas`; `tools` carries the
     // equivalent portable contract for them.
     const exposedTools = collectExposedTools(params.context);
+    // withTurnScopeToolArg made the reserved scope argument required on the
+    // sent tools. The grammar needs it too, or the local engine can never
+    // declare turn scope (#17034); parsePlannerOutput strips it again.
+    const scopeRequiredTools = new Set(
+      (modelParams.tools ?? [])
+        .filter(
+          (tool) =>
+            Array.isArray(tool.parameters?.required) &&
+            tool.parameters.required.includes(TURN_SCOPE_ARG),
+        )
+        .map((tool) => tool.name),
+    );
+    const turnScopeParameter = (
+      name: string,
+      declared: readonly { name: string }[] = [],
+    ) =>
+      scopeRequiredTools.has(name) &&
+      !declared.some((parameter) => parameter.name === TURN_SCOPE_ARG)
+        ? [
+            {
+              name: TURN_SCOPE_ARG,
+              description: plannerBatchScopeDescription,
+              required: true,
+              schema: {
+                type: "string" as const,
+                enum: [TURN_SCOPE_FINAL, TURN_SCOPE_MORE_WORK_PENDING],
+              },
+            },
+          ]
+        : [];
     const plannerActions = exposedTools.map((tool) => ({
       name: tool.name,
       parameters: [
         ...(tool.action?.parameters ?? []),
+        ...turnScopeParameter(tool.name, tool.action?.parameters),
         ...(renderedInput.actionSourceSelectionSchema &&
         !isTerminalToolCall({ name: tool.name }) &&
         !isDiscoveryActionName(tool.name) &&
@@ -5404,6 +5435,12 @@ async function dispatchPlannerModelCall(params: {
     // is skipped when the model lands inside the strict grammar.
     // Cloud adapters can use `tools` carrying the same schemas if they do not
     // honor local skeleton/grammar hints.
+    // RESTORE_CONTEXT offers only the scopes this turn can restore.
+    const restoreScope =
+      renderedInput.restoreContextTool?.parameters?.properties?.scope;
+    const restoreScopes = Array.isArray(restoreScope?.enum)
+      ? restoreScope.enum.filter((scope) => typeof scope === "string")
+      : [];
     if (renderedInput.sourceSelectionApplied)
       plannerActions.push({
         name: RESTORE_CONTEXT_TOOL.name,
@@ -5415,6 +5452,17 @@ async function dispatchPlannerModelCall(params: {
             required: true,
             schema: { type: "string" },
           },
+          ...(restoreScopes.length > 0
+            ? [
+                {
+                  name: "scope",
+                  description:
+                    "Deferred context to restore; omitted restores all of it",
+                  schema: { type: "string" as const, enum: restoreScopes },
+                },
+              ]
+            : []),
+          ...turnScopeParameter(RESTORE_CONTEXT_TOOL.name),
         ],
         allowAdditionalParameters: false,
       });
