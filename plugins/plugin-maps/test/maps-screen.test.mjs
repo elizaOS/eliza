@@ -6,6 +6,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import { BackgroundNavigation } from "../src/client/background-navigation.ts";
 import { MapsFailure } from "../src/client/contracts.ts";
+import { createCloudMaps } from "../src/client/cloud-provider.ts";
 import { MapsScreenController } from "../src/client/maps-screen.ts";
 import { SavedPlaces } from "../src/client/saved-places.ts";
 import { MapsController } from "../src/client/state.ts";
@@ -834,4 +835,38 @@ test("coverage notices keep the coordinates of a place outside the region", asyn
   assert.match(view.status.text, /outside Monaco map coverage/);
   assert.equal(view.map.selected, undefined);
   assert.equal(view.place?.address, "48.85660, 2.35220");
+});
+
+
+test("Cloud admission failure remains visible through explicit search without provider calls", async () => {
+  for (const [status, code, message] of [
+    [403, "subscription_required", "Maps needs an active Cloud subscription."],
+    [401, "unauthorized", "Sign in to Cloud to use Maps."],
+  ]) {
+    const f = fixture({ unconfigured: true });
+    await settle();
+    const calls = [];
+    const maps = createCloudMaps(() => async (route) => {
+      calls.push(route);
+      throw Object.assign(new Error("private response must not be displayed"), {
+        name: "CloudProtocolError", code: "http", status, data: {code},
+      });
+    }, () => { throw Error("Denied provider must not be installed"); });
+    f.host.initialize = maps.initializeCloudMaps;
+    f.host.diagnostics = maps.cloudMapsDiagnostics;
+    await maps.initializeCloudMaps();
+    f.screen.setQuery("Ferry Building, San Francisco");
+    f.screen.submit();
+    await settle();
+    assert.equal(f.screen.view().status.text, message);
+    assert.equal(f.screen.view().hasResults, false);
+    assert.deepEqual(f.calls.searches, []);
+    assert.deepEqual(f.calls.routes, []);
+    assert.deepEqual(calls, ["capabilities", "capabilities"]);
+    f.screen.submit();
+    await settle();
+    assert.equal(f.screen.view().status.text, message);
+    assert.deepEqual(calls, ["capabilities", "capabilities", "capabilities"]);
+    f.screen.dispose();
+  }
 });
