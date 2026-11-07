@@ -197,13 +197,6 @@ const numberType: ControlType = {
     return parseFloat(cleaned);
   },
 
-  format: (value: JsonValue): string => {
-    if (value === null || value === undefined) return "";
-    const num = typeof value === "number" ? value : parseFloat(String(value));
-    if (Number.isNaN(num)) return String(value);
-    return num.toLocaleString();
-  },
-
   extractionPrompt: "a number (integer or decimal)",
 };
 

@@ -871,8 +871,12 @@ export function formatValue(
   if (handler?.format) return handler.format(value);
   switch (control.type) {
     case "number":
-      // Use locale formatting for numbers
-      return typeof value === "number" ? value.toLocaleString() : String(value);
+      // Use locale formatting for numbers, without the default rounding to
+      // three decimals: the user and the model confirm this text, and
+      // 0.0005 must not read as 0.001.
+      return typeof value === "number"
+        ? value.toLocaleString(undefined, { maximumFractionDigits: 20 })
+        : String(value);
     case "boolean": {
       // Human-friendly boolean display. An unknown persisted value must not
       // render as a confident "Yes" merely because a non-empty string is
