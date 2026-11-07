@@ -2745,6 +2745,12 @@ export abstract class SQLiteRecordAdapter extends DatabaseAdapter<IStorage> {
     const memories = await this.storage.getWhere<StoredMemory>(
       COLLECTIONS.MEMORIES,
       (memory) =>
+        // plugin-sql resolves this read through getMemoriesByRoomIds, which
+        // adds `agent_id = this.agentId`. A restored or shared file can keep
+        // another agent's memory in this agent's room, and the room lookup
+        // above cannot tell them apart. Rows stored without an agentId
+        // belong to this database, as in the other tenant checks.
+        (memory.agentId ?? this.agentId) === this.agentId &&
         roomSet.has(memory.roomId as UUID) &&
         storedMemoryTableName(memory) === tableName,
     );
