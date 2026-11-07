@@ -29,6 +29,10 @@ retains the service start fence after exact stop acknowledgement until its owner
 releases it after commit or proven pre-commit cancellation. Failed stop or uncertain
 commit stays fenced, and stale release cannot clear a newer request. The retained
 `CredentialIntentFence` name delegates to the same secure-store implementation.
+`RuntimeUpdatePause` durably fences resident starts during owner-confirmed package replacement.
+The host binds the exact session, installed APK digest and executing APK digest. Pending
+confirmation and storage failures keep the fence; only an exact successor or proven
+ended baseline attempt releases it. Hosts configure admission before Android providers start.
 File-based primitives require Android API 26 or newer. Run their portable JVM
 crash/recovery tests with JDK 21 and `bun run --cwd plugins/plugin-native-agent test:native-host`.
 
@@ -39,6 +43,22 @@ observation budget and authenticated trust hooks. Production verification remain
 mandatory alongside those hooks; test APK acceptance requires explicit host
 opt-in. `PreparationFlow` fences each long operation by generation, installed
 identity and cancellation. It cannot install packages or select a trust authority.
+Admission is not a lasting permission. While a plan is `VERIFIED`, a run refreshes
+metadata instead of preparing and drops the plan when it has expired, been revoked,
+fallen below the security floor or been superseded (the lane published a newer
+sequence, even one this device must still wait for). That refresh adds no wait
+after a success, since the activation run relies on it, so every run while a
+plan is `VERIFIED` fetches metadata and the descriptor: a host that runs
+preparation often pays that network cost each time. Commit runs the host's
+`verifyCommitFreshness` under the journal lock, and a refusal leaves the plan
+`VERIFIED`. The activation run passes its trusted start time to `commit`. The
+lane must have refreshed no more than `CommitFreshness.MAX_COMMIT_STALENESS_MS`
+(default 0: in the same run) before that start, and the commit must happen
+within `CommitFreshness.MAX_ACTIVATION_RUN_MS` (default 10 minutes) of it, so a
+revocation published before a commit is missed for at most their sum. A
+`RECOVERY_READY` plan whose recovery revocations or floors have made unloadable
+moves to `QUARANTINED`, so a newer release can fix it forward. Lost prepared or
+admission state is reported as an error and the wait goes on.
 Its portable contract is included in `test:native-host`. Qualify the host adapter
 separately with real Android install/recovery tests; journal tests alone do not
 prove silent-install authority or product health.
@@ -363,6 +383,14 @@ close the broker when the launch retires. Retain the database writer lease;
 keys for existing databases must fail, never trigger creation. An interrupted
 mutation may have committed even if its response is refused or lost; do not
 blindly retry destructive operations.
+
+A host that refuses to adopt a launch's key into an account that already has
+its own key can keep that launch's slot apart as a stranded slot. It then
+implements `readStranded` and `completeStranded(expectedKeyId)`. The gateway
+reads the stranded key, merges its rows into the bound database, and only after
+that commit calls `completeStranded`, which erases the slot if it still holds
+that generation. The merge must be idempotent, because a stop can come between
+the commit and the erase. The defaults report no stranded slot.
 
 `createLocalTaskDataKeyStore` is the private native-process client. It validates
 versioned key material and returns `{id, bytes}`; erase the byte array after use.

@@ -31,7 +31,8 @@ public final class RuntimeRequestDispatcher implements AutoCloseable {
     if (bodyTextUnits < 0) throw new IllegalArgumentException("Negative body size");
     if (bodyTextUnits > (path.equals("/voice/stt") ? MAX_STT_BODY_TEXT_UNITS : MAX_BODY_TEXT_UNITS))
       return Admission.TOO_LARGE;
-    boolean urgent = path.endsWith("/abort") || path.matches("/tasks/[^/]+/(pause|cancel)");
+    boolean urgent = path.endsWith("/abort") || path.matches("/tasks/[^/]+/(pause|cancel)")
+      || path.matches("/conversations/[^/]+/messages/stream/cancel");
     try { (urgent ? controls : requests).execute(work); return Admission.ACCEPTED; }
     catch (RejectedExecutionException fullOrClosed) { return Admission.BUSY; }
   }

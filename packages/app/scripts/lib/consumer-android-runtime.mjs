@@ -15,6 +15,7 @@ const BARE_SPECIFIER =
  * Build a pinned mobile payload; the consumer supplies skills and gateway composition.
  * `stubPlugins` names packages the consumer never loads; the bundle omits them
  * (ELIZA_MOBILE_STUB_PLUGINS in build-mobile-bundle.ts).
+ * `embeddingModel: false` stages no BGE embedding model, for an agent that never loads it.
  */
 export function buildConsumerAndroidRuntime({
   source,
@@ -26,7 +27,10 @@ export function buildConsumerAndroidRuntime({
   targetAbi = "arm64-v8a",
   bunTarget = "linux-musl",
   stubPlugins = [],
+  embeddingModel = true,
 }) {
+  if (typeof embeddingModel !== "boolean")
+    throw new ConsumerSourceError("embeddingModel must be a boolean");
   if (!["arm64-v8a", "x86_64"].includes(targetAbi))
     throw new ConsumerSourceError(
       "Consumer runtime ABI must be arm64-v8a or x86_64",
@@ -132,7 +136,7 @@ export function buildConsumerAndroidRuntime({
   const stageRunner = path.join(output, "stage-runtime.mjs");
   fs.writeFileSync(
     stageRunner,
-    `import {stageAndroidAgentRuntime} from ${JSON.stringify(pathToFileURL(path.join(source, stageRelative)).href)};\nawait stageAndroidAgentRuntime({androidDir:${JSON.stringify(path.join(output, "android"))},spikeDir:${JSON.stringify(path.join(source, "packages/app/scripts/aosp"))},objective:false});\n`,
+    `import {stageAndroidAgentRuntime} from ${JSON.stringify(pathToFileURL(path.join(source, stageRelative)).href)};\nawait stageAndroidAgentRuntime({androidDir:${JSON.stringify(path.join(output, "android"))},spikeDir:${JSON.stringify(path.join(source, "packages/app/scripts/aosp"))},objective:false,embeddingModel:${embeddingModel}});\n`,
     { flag: "wx" },
   );
   execute([stageRunner], {
@@ -233,6 +237,7 @@ export function buildConsumerAndroidRuntime({
     target: targetAbi,
     bunTarget,
     stubPlugins,
+    embeddingModel,
     completedAt: new Date().toISOString(),
     claim:
       "Fresh bundle module-load smoke and staged byte integrity only. Unreviewed development source; not a production APK or on-device execution.",

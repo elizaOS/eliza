@@ -90,12 +90,19 @@ then return `kind: "agent-action"`, a current control ref, an action (`click`,
 `fill`, `select`, or directional `scroll`) and a held `valueRef` when needed.
 `executeAction(offerKey)` rechecks host policy and the complete page observation
 before one task-runtime dispatch; `actionTargets(task)` supplies its current target.
+`authorizeAction(input, context)` runs in two phases. While a step is planned,
+`context.phase` is `"plan"` and answering `true` offers it. At dispatch,
+`context.phase` is `"dispatch"` and only returning `context.authorize()` lets the
+effect run, so no planning answer, and no bare `true`, can authorize an effect.
 The host must grant the capability, decide consequence policy, resolve held values,
 and verify the result from fresh page evidence. The default remains person-guided.
 Unknown effects stop further actions and are not replayed.
 
 A browser-stopped submit or page change pauses the task; a form the person sent
-while the website was hers is a `person-check` stop. `BillWorkflow` is the bill
+while the website was hers is a `person-check` stop. A `person-check` result
+carries the task `epoch` it was asked in; pass it back as
+`acknowledge(result.key, { epoch: result.epoch })` so a late yes given after a
+Stop or Resume never arms the step. `BillWorkflow` is the bill
 configuration of this workflow. Run the real Chromium and model lane with
 `ELIZA_BROWSER_EXECUTABLE=... CEREBRAS_API_KEY=... bun run --cwd plugins/plugin-personal-assistant test:guided-website`.
 

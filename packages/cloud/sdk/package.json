@@ -30,7 +30,9 @@
     "native-host/plan-change.mjs",
     "native-host/timed-speech.mjs",
     "native-host/clef-decisions.mjs",
-    "native-host/clef-decisions.d.mts"
+    "native-host/clef-decisions.d.mts",
+    "native-host/subscription-grant.mjs",
+    "native-host/subscription-grant.d.mts"
   ],
   "sideEffects": false,
   "scripts": {

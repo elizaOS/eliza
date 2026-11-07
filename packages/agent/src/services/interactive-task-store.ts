@@ -26,6 +26,9 @@ export interface TaskSqliteConnection {
   };
 }
 
+/** Journal rows recovery reads at a time. */
+const RECOVERY_PAGE = 64;
+
 function ownerKey(owner: TaskOwner): string {
   return JSON.stringify([
     owner.agentId,
@@ -37,22 +40,58 @@ function ownerKey(owner: TaskOwner): string {
 function fail(message: string, code: string): never {
   throw new ElizaError(message, { code });
 }
-function decode(row: unknown): InteractiveTask | null {
-  if (row === undefined || row === null) return null;
-  if (
-    typeof row !== "object" ||
-    !("document" in row) ||
-    typeof row.document !== "string"
-  )
+function parse(document: unknown): InteractiveTask {
+  if (typeof document !== "string")
     fail("Invalid persisted task row", "TASK_STORAGE_CORRUPT");
-  let value: InteractiveTask;
   try {
-    value = JSON.parse(row.document) as InteractiveTask;
+    return JSON.parse(document) as InteractiveTask;
   } catch {
     fail("Invalid persisted task JSON", "TASK_STORAGE_CORRUPT");
   }
+}
+function decode(row: unknown): InteractiveTask | null {
+  if (row === undefined || row === null) return null;
+  if (typeof row !== "object" || !("document" in row))
+    fail("Invalid persisted task row", "TASK_STORAGE_CORRUPT");
+  const value = parse(row.document);
   validateInteractiveTask(value);
   return value;
+}
+/** Why a record is valid JSON but not a task this build can read, such as one
+ * written by an older or newer build. A torn row is not quarantined: it stays
+ * corrupt and fails where it is read. */
+function unreadableReason(document: unknown): string | null {
+  try {
+    validateInteractiveTask(parse(document));
+  } catch (error) {
+    if (error instanceof ElizaError && error.code === "TASK_INVALID")
+      return error.message;
+  }
+  return null;
+}
+function readable(document: unknown): boolean {
+  try {
+    validateInteractiveTask(parse(document));
+    return true;
+  } catch {
+    return false;
+  }
+}
+const UNRESOLVED = ["prepared", "dispatched", "unknown"];
+
+/** A task record this build could not read; its document stays in the journal. */
+export interface UnreadableTaskRecord {
+  taskId: string;
+  reason: string;
+  quarantinedAt: number;
+  /** Set once the owner released the slot the record held. */
+  acknowledgedAt: number | null;
+}
+
+/** The owner accepted that this operation's outcome stays unknown. */
+export interface UnknownOutcomeAcknowledgement {
+  operationId: string;
+  acknowledgedAt: number;
 }
 
 export class SqliteInteractiveTaskStore {
@@ -81,6 +120,13 @@ export class SqliteInteractiveTaskStore {
     CREATE TABLE IF NOT EXISTS interactive_task_events_v1 (
       task_id TEXT NOT NULL, owner_key TEXT NOT NULL, sequence INTEGER NOT NULL,
       document TEXT NOT NULL, PRIMARY KEY(task_id, sequence));
+    CREATE TABLE IF NOT EXISTS interactive_task_unknown_acknowledgements_v1 (
+      task_id TEXT NOT NULL, owner_key TEXT NOT NULL, operation_id TEXT NOT NULL,
+      acknowledged_at INTEGER NOT NULL, PRIMARY KEY(task_id, operation_id));
+    CREATE TABLE IF NOT EXISTS interactive_task_quarantine_v1 (
+      task_id TEXT PRIMARY KEY NOT NULL, owner_key TEXT NOT NULL,
+      reason TEXT NOT NULL, quarantined_at INTEGER NOT NULL,
+      acknowledged_at INTEGER);
     INSERT OR IGNORE INTO interactive_task_events_v1 (task_id, owner_key, sequence, document)
       SELECT id, owner_key, json_extract(document, '$.revision'),
         json_object('schemaVersion', 1, 'eventId', id || '#' || json_extract(document, '$.revision'),
@@ -115,6 +161,8 @@ export class SqliteInteractiveTaskStore {
     cursor: number;
     hasMore: boolean;
     task: InteractiveTask;
+    /** Operations whose unknown outcome the owner accepted, and when. */
+    acknowledgements: UnknownOutcomeAcknowledgement[];
   } {
     if (!Number.isSafeInteger(afterSequence) || afterSequence < -1)
       fail("Invalid event cursor", "TASK_INVALID");
@@ -156,8 +204,21 @@ export class SqliteInteractiveTaskStore {
         cursor: events.at(-1)?.sequence ?? afterSequence,
         hasMore: values.length > 128,
         task,
+        acknowledgements: this.acknowledgements(id, owner),
       };
     });
+  }
+
+  private acknowledgements(
+    id: string,
+    owner: TaskOwner,
+  ): UnknownOutcomeAcknowledgement[] {
+    const row = this.db
+      .prepare(
+        "SELECT json_group_array(json_object('operationId', operation_id, 'acknowledgedAt', acknowledged_at)) AS rows FROM (SELECT * FROM interactive_task_unknown_acknowledgements_v1 WHERE task_id = ? AND owner_key = ? ORDER BY acknowledged_at, operation_id)",
+      )
+      .get(id, ownerKey(owner)) as { rows: string };
+    return JSON.parse(row.rows) as UnknownOutcomeAcknowledgement[];
   }
 
   /** Complete bounded history for synchronous host evidence projection.
@@ -201,7 +262,7 @@ export class SqliteInteractiveTaskStore {
     const before = mark();
     const row = this.db
       .prepare(
-        "SELECT json_group_array(id) AS ids FROM (SELECT id FROM interactive_task_journal_v1 WHERE owner_key=? ORDER BY id LIMIT ?)",
+        "SELECT json_group_array(id) AS ids FROM (SELECT id FROM interactive_task_journal_v1 WHERE owner_key=? AND id NOT IN (SELECT task_id FROM interactive_task_quarantine_v1) ORDER BY id LIMIT ?)",
       )
       .get(ownerKey(owner), maxTasks + 1) as { ids: string };
     const ids: unknown = JSON.parse(row.ids);
@@ -264,23 +325,30 @@ export class SqliteInteractiveTaskStore {
   }
 
   get(id: string, owner: TaskOwner): InteractiveTask | null {
-    const task = decode(
-      this.db
-        .prepare(
-          "SELECT document FROM interactive_task_journal_v1 WHERE id = ? AND owner_key = ?",
-        )
-        .get(id, ownerKey(owner)),
-    );
+    const row = this.db
+      .prepare(
+        "SELECT document, EXISTS (SELECT 1 FROM interactive_task_quarantine_v1 WHERE task_id = tasks.id) AS quarantined FROM interactive_task_journal_v1 AS tasks WHERE id = ? AND owner_key = ?",
+      )
+      .get(id, ownerKey(owner)) as
+      | { document: unknown; quarantined: number }
+      | undefined;
+    if (row?.quarantined)
+      fail(
+        "This task record cannot be read by this version",
+        "TASK_UNREADABLE",
+      );
+    const task = decode(row);
     if (task && (task.id !== id || !sameTaskOwner(task.owner, owner)))
       fail("Task row identity mismatch", "TASK_STORAGE_CORRUPT");
     return task;
   }
 
+  /** The owner's readable unfinished task. An unreadable one is listed by `unreadable`. */
   getUnfinished(owner: TaskOwner): InteractiveTask | null {
     const task = decode(
       this.db
         .prepare(
-          "SELECT document FROM interactive_task_journal_v1 WHERE owner_key = ? AND unfinished = 1",
+          "SELECT document FROM interactive_task_journal_v1 WHERE owner_key = ? AND unfinished = 1 AND id NOT IN (SELECT task_id FROM interactive_task_quarantine_v1)",
         )
         .get(ownerKey(owner)),
     );
@@ -289,22 +357,154 @@ export class SqliteInteractiveTaskStore {
     return task;
   }
 
+  /** Set aside each of the owner's records this build cannot read, so one
+   * record from another version never stops the host. Its document is kept
+   * unchanged, and an unfinished one still holds the slot until the owner
+   * acknowledges it. */
+  private quarantineUnreadable(owner: TaskOwner, now: number): void {
+    const key = ownerKey(owner);
+    // A record set aside under another build, such as before a rollback was
+    // undone, is a task again once this build can read it. An acknowledged one
+    // gave up its slot, so it stays set aside.
+    const held = this.db
+      .prepare(
+        "SELECT json_group_array(json_object('id', id, 'document', document)) AS rows FROM interactive_task_journal_v1 WHERE owner_key = ? AND id IN (SELECT task_id FROM interactive_task_quarantine_v1 WHERE owner_key = ? AND acknowledged_at IS NULL)",
+      )
+      .get(key, key) as { rows: string };
+    for (const row of JSON.parse(held.rows) as {
+      id: string;
+      document: unknown;
+    }[])
+      if (readable(row.document))
+        this.db
+          .prepare(
+            "DELETE FROM interactive_task_quarantine_v1 WHERE task_id = ? AND owner_key = ?",
+          )
+          .run(row.id, key);
+    // The journal keeps every task the owner ever ran, so read it in id
+    // pages: memory stays bounded however long the history grows.
+    const page = this.db.prepare(
+      "SELECT json_group_array(json_object('id', id, 'document', document)) AS rows FROM (SELECT id, document FROM interactive_task_journal_v1 WHERE owner_key = ? AND id > ? AND id NOT IN (SELECT task_id FROM interactive_task_quarantine_v1) ORDER BY id LIMIT ?)",
+    );
+    for (let afterId = ""; ; ) {
+      const rows = JSON.parse(
+        (page.get(key, afterId, RECOVERY_PAGE) as { rows: string }).rows,
+      ) as { id: string; document: unknown }[];
+      for (const row of rows) {
+        const reason = unreadableReason(row.document);
+        if (reason === null) continue;
+        this.db
+          .prepare(
+            "INSERT INTO interactive_task_quarantine_v1 (task_id, owner_key, reason, quarantined_at) VALUES (?, ?, ?, ?)",
+          )
+          .run(row.id, key, reason, now);
+      }
+      if (rows.length < RECOVERY_PAGE) break;
+      afterId = rows[rows.length - 1].id;
+    }
+  }
+
+  unreadable(owner: TaskOwner): UnreadableTaskRecord[] {
+    const row = this.db
+      .prepare(
+        "SELECT json_group_array(json_object('taskId', task_id, 'reason', reason, 'quarantinedAt', quarantined_at, 'acknowledgedAt', acknowledged_at)) AS records FROM (SELECT * FROM interactive_task_quarantine_v1 WHERE owner_key = ? ORDER BY quarantined_at, task_id)",
+      )
+      .get(ownerKey(owner)) as { records: string };
+    return JSON.parse(row.records) as UnreadableTaskRecord[];
+  }
+
+  /** The owner releases the slot an unreadable record held. The record stays. */
+  acknowledgeUnreadable(
+    id: string,
+    owner: TaskOwner,
+    now: number,
+  ): UnreadableTaskRecord[] {
+    return this.transaction(() => {
+      const key = ownerKey(owner);
+      if (
+        !this.db
+          .prepare(
+            "SELECT 1 AS pending FROM interactive_task_quarantine_v1 WHERE task_id = ? AND owner_key = ? AND acknowledged_at IS NULL",
+          )
+          .get(id, key)
+      )
+        fail("No unreadable task record to acknowledge", "TASK_NOT_FOUND");
+      this.db
+        .prepare(
+          "UPDATE interactive_task_quarantine_v1 SET acknowledged_at = ? WHERE task_id = ? AND owner_key = ?",
+        )
+        .run(now, id, key);
+      this.db
+        .prepare(
+          "UPDATE interactive_task_journal_v1 SET unfinished = 0 WHERE id = ? AND owner_key = ?",
+        )
+        .run(id, key);
+      return this.unreadable(owner);
+    });
+  }
+
+  /**
+   * The owner accepts that the task's unresolved operation stays unknown, for
+   * example after sign-out revoked the readback. The task is cancelled if it
+   * was not, the operation keeps status "unknown" and nothing records success.
+   * Only the slot is released, so a new task can start. It is refused while
+   * the authorization is active: readback can still settle the outcome, and
+   * a new task could repeat an effect that already happened. Revoke first.
+   */
+  acknowledgeUnknown(id: string, context: TaskContext): InteractiveTask {
+    return this.transaction(() => {
+      let task = this.get(id, context.owner);
+      if (!task) fail("Task not found for this owner", "TASK_NOT_FOUND");
+      if (task.revision !== context.expectedRevision)
+        fail("Task revision changed", "TASK_CONFLICT");
+      const operation = task.operations.find((op) => op.status === "unknown");
+      if (!operation || this.acknowledged(id, operation.proposal.id))
+        fail("No unknown operation to acknowledge", "TASK_REPLAY");
+      if (task.authorization.state !== "revoked")
+        fail("Readback can still resolve this outcome", "TASK_UNKNOWN_OUTCOME");
+      if (!["completed", "cancelled"].includes(task.status)) {
+        const result = transitionInteractiveTask(task, context, {
+          type: "cancel",
+        });
+        task = result.task;
+        this.db
+          .prepare(
+            "UPDATE interactive_task_journal_v1 SET document = ? WHERE id = ? AND owner_key = ?",
+          )
+          .run(JSON.stringify(task), id, ownerKey(context.owner));
+        this.appendEvent(context.owner, result.event);
+      }
+      this.db
+        .prepare(
+          "INSERT INTO interactive_task_unknown_acknowledgements_v1 (task_id, owner_key, operation_id, acknowledged_at) VALUES (?, ?, ?, ?)",
+        )
+        .run(id, ownerKey(context.owner), operation.proposal.id, context.now);
+      this.db
+        .prepare(
+          "UPDATE interactive_task_journal_v1 SET unfinished = 0 WHERE id = ? AND owner_key = ?",
+        )
+        .run(id, ownerKey(context.owner));
+      return task;
+    });
+  }
+
+  private acknowledged(id: string, operationId: string): boolean {
+    return !!this.db
+      .prepare(
+        "SELECT 1 AS acknowledged FROM interactive_task_unknown_acknowledgements_v1 WHERE task_id = ? AND operation_id = ?",
+      )
+      .get(id, operationId);
+  }
+
   /** Call once after exclusive host startup, before accepting task commands.
    * A second live host must not call this as a replacement for coordination.
    * Even a prepared operation is cancelled; dispatched outcomes require readback.
    */
   recoverOwner(owner: TaskOwner, now: number): InteractiveTask | null {
     return this.transaction(() => {
-      const current = decode(
-        this.db
-          .prepare(
-            "SELECT document FROM interactive_task_journal_v1 WHERE owner_key = ? AND unfinished = 1",
-          )
-          .get(ownerKey(owner)),
-      );
+      this.quarantineUnreadable(owner, now);
+      const current = this.getUnfinished(owner);
       if (!current) return null;
-      if (!sameTaskOwner(current.owner, owner))
-        fail("Task row identity mismatch", "TASK_STORAGE_CORRUPT");
       const { task, event } = transitionInteractiveTask(
         current,
         { owner, expectedRevision: current.revision, now },
@@ -323,11 +523,24 @@ export class SqliteInteractiveTaskStore {
   create(input: Parameters<typeof createInteractiveTask>[0]): InteractiveTask {
     const task = createInteractiveTask(input);
     return this.transaction(() => {
+      const key = ownerKey(task.owner);
       const existing = this.db
         .prepare(
           "SELECT id FROM interactive_task_journal_v1 WHERE id = ? OR (owner_key = ? AND unfinished = 1)",
         )
-        .get(task.id, ownerKey(task.owner));
+        .get(task.id, key);
+      if (
+        existing &&
+        this.db
+          .prepare(
+            "SELECT 1 AS held FROM interactive_task_journal_v1 AS tasks JOIN interactive_task_quarantine_v1 AS records ON records.task_id = tasks.id WHERE tasks.owner_key = ? AND tasks.unfinished = 1",
+          )
+          .get(key)
+      )
+        fail(
+          "An unreadable unfinished task holds the slot until its owner acknowledges it",
+          "TASK_UNREADABLE",
+        );
       if (existing)
         fail(
           "An unfinished task or task identity already exists",
@@ -362,9 +575,12 @@ export class SqliteInteractiveTaskStore {
       if (!current) fail("Task not found for this owner", "TASK_NOT_FOUND");
       const result = transitionInteractiveTask(current, context, change);
       // A cancelled task with an uncertain operation still occupies the slot.
-      // Resolving that operation is mandatory before a replacement can start.
-      const uncertain = result.task.operations.some((operation) =>
-        ["prepared", "dispatched", "unknown"].includes(operation.status),
+      // Resolving that operation, or the owner acknowledging that its outcome
+      // stays unknown, is mandatory before a replacement can start.
+      const uncertain = result.task.operations.some(
+        (operation) =>
+          UNRESOLVED.includes(operation.status) &&
+          !this.acknowledged(id, operation.proposal.id),
       );
       const unfinished =
         uncertain || !["completed", "cancelled"].includes(result.task.status);

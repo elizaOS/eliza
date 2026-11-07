@@ -537,8 +537,13 @@ export class ProviderStateComposer {
 		}
 		const recordProviderAccesses = (includeText: boolean) => {
 			if (trajectoryStepId && trajLogger) {
-				const userText =
-					typeof message.content.text === "string" ? message.content.text : "";
+				const query = {
+					message: toWellFormedUnicode(
+						typeof message.content.text === "string"
+							? message.content.text
+							: "",
+					),
+				};
 				const trajCtx = activeTrajectoryContext;
 				const providerTraceId = this.runtime.getActiveTrace(
 					this.runtime.getCurrentRunId(),
@@ -579,7 +584,7 @@ export class ProviderStateComposer {
 							// access row — omit them so readers do not slice a different
 							// string with compose-local offsets.
 							purpose: "compose_state",
-							query: { message: toWellFormedUnicode(userText) },
+							query,
 							runId: trajCtx?.runId,
 							roomId: trajCtx?.roomId,
 							messageId: trajCtx?.messageId,
@@ -624,7 +629,7 @@ export class ProviderStateComposer {
 							tokenCount: attribution?.tokenCount,
 							position: attribution?.position,
 							purpose: "compose_state",
-							query: { message: toWellFormedUnicode(userText) },
+							query,
 							runId: trajCtx?.runId,
 							roomId: trajCtx?.roomId,
 							messageId: trajCtx?.messageId,
@@ -721,22 +726,17 @@ export class ProviderStateComposer {
 		};
 		for (const provider of providersToGet) {
 			const providerResult = currentProviderResults[provider.name];
-			if (
-				providerResult?.values &&
-				typeof providerResult.values === "object" &&
-				providerResult.values !== null
-			) {
+			if (providerResult?.values && typeof providerResult.values === "object") {
 				Object.assign(aggregatedStateValues, providerResult.values);
 			}
 		}
-		const providersToGetNames = new Set(providersToGet.map((p) => p.name));
+		const providersToGetNames = new Set(providerOrderNames);
 		for (const providerName in currentProviderResults) {
 			if (!providersToGetNames.has(providerName)) {
 				const providerResult = currentProviderResults[providerName];
 				if (
 					providerResult?.values &&
-					typeof providerResult.values === "object" &&
-					providerResult.values !== null
+					typeof providerResult.values === "object"
 				) {
 					Object.assign(aggregatedStateValues, providerResult.values);
 				}

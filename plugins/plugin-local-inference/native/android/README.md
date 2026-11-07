@@ -125,7 +125,14 @@ The legacy `elizaParadeeCapacitor` flag and `ParadeeVoicePlugin` name select the
 same owner. Existing `ai.eliza.voice` Java APIs remain source compatible;
 new code should use `InferenceSession` instead of opening independent handles.
 The old app-side Gradle path forwards here. The public `Wer` helper and legacy Android
-on-device recognizer API remain available. The Capacitor transcription route
+on-device recognizer API remain available. `OnDeviceRecognizer.feed(pcm)` gives the
+recognizer speech while it is spoken, and `finish(limitMillis)` ends it and waits for the
+transcript (same timeout and cancel meaning as `transcribe`). If Android's recognizer answers
+early (at a pause, or "no speech heard" before she talks), `feed` returns false and
+`answered()` is true, so the host starts a new session for the rest of the speech. Fed
+audio waiting for a recognizer that stopped reading is capped at 64 seconds; past that the
+session ends with `OnDeviceRecognizer.BACKLOG`. `ParadeeVoice.Request`
+cancels one non-streaming `synthesize` call and no other call on that voice. The Capacitor transcription route
 uses only Phonon-2 through `InferenceSession`, with the same request queue and
 cancellation owner. Missing native assets or a failed transcription report an
 error; they never select the platform recognizer or a cloud provider.
@@ -144,8 +151,14 @@ A host can register its own `@CapacitorPlugin` subclass of
 `describe` (add status fields), `hear` (put its own recognizer in front of
 `Transcription.asr()`), `answerBeforeInstall` (status answers from the APK
 manifest and the bundle installs after it), `failureCode` (the host's own
-rejection codes), `resolved` (for example timing logs), `idleReleaseMillis`
-and `cancelAll`. The defaults keep the behavior above.
+rejection codes), `resolved` (for example timing logs), `idleReleaseMillis`,
+`hiddenReleaseMillis` and `holdsModels` (release the transport's hold on the
+models once the host's activity stops or Android reports `TRIM_MEMORY_UI_HIDDEN`,
+nothing is queued or running and nothing was spoken or heard for that time;
+never cancels running work), `releaseModels` and `cancelAll`. The defaults keep
+the behavior above: no release for a hidden host. A host that overrides
+`handleOnStart` or `handleOnStop` must call `super`, since they tell the
+transport that the host is shown or hidden.
 
 Transcription runs on its own hearing worker with its own client of the
 session, so a slow host recognizer never holds synthesis, and a cancel on one
@@ -169,13 +182,20 @@ transport is for downstream consumers without that server.
   records that decision next to the pin as `spanish.release_override`, and
   `packages/scripts/verify-voice-product-release.ts` fails a bundled voice
   with a `PENDING` or `BLOCKED` status that no such override names. To turn
-  the voice off, set `spanish.enabled` to false in `inputs.json`, the one
-  switch: the build then neither converts nor bundles the GGUF or its notices,
-  the manifest has no `voices`, `speechLanguages()` is `["en"]`, Gradle refuses
-  a bundle that still carries it, and the release gate refuses a catalog that
-  lists it. Its G2P is eSpeak NG `es` (misaki `EspeakG2P`), so it needs
-  `es_dict` and `lang/roa/es` in the bundle's eSpeak NG data (the fork pins
-  them, so they ship either way; the English G2P never reads them). It loads
+  the voice off for every consumer, set `spanish.enabled` to false in
+  `inputs.json`; the release gate then also refuses a catalog that lists it.
+  A product that only admits English can instead build with `--languages en`
+  and set `ext.elizaParadeeLanguages = 'en'` before applying `consumer.gradle`.
+  This excludes the Spanish model, notices and eSpeak language data without
+  changing another product's default. The build receipt records `productLanguages`.
+  Gradle rejects a different selection, assets outside the bundle, unselected
+  models or eSpeak data, and changed pinned bytes. A Spanish bundle must
+  include the Delibes license and notices.
+  `--languages en,es` requires Spanish to be enabled by the pinned inputs.
+  With no explicit selection, the existing pinned language set remains the default.
+  Language selection does not grant model approval or device qualification.
+  Spanish G2P uses eSpeak NG `es` (misaki `EspeakG2P`), which needs `es_dict`
+  and `lang/roa/es`. It loads
   into its own libelizainference voice slot (ABI 20) of the same context:
   `InferenceSession.synthesize(text, speed, "es")`,
   `InferenceSession.speechLanguages()`, `VoiceAssets.Bundle.openVoice("es")` or
@@ -267,8 +287,9 @@ and applies `consumer.gradle`. Optional properties: `elizaParadeeNativeDir`,
 library packages only its JNI bridge; both runtime libraries remain the host's
 responsibility. This also excludes CMake's implicit copies, avoiding duplicate
 runtime selection during APK merging. The default still packages both runtime
-libraries for standalone consumers such as Sense. The build fails if a generated
-file differs from `native/build-record.json`.
+libraries for standalone consumers such as Sense. Put Node on Gradle's `PATH`
+when packaging voice assets so it can check the product language selection.
+The build fails if a generated file differs from `native/build-record.json`.
 
 The APK may compress the voice models and lexicon. `VoiceBundleAssets` streams them
 to private storage and checks their hashes before native code memory-maps the
@@ -277,6 +298,20 @@ extracted files. A host that needs uncompressed APK entries can still set
 The canonical app also copies BGE through `ElizaAgentService` before the encoder
 verifies its pinned hash. `CopiedModelAssetsInstrumentedTest` checks both actual
 APK extraction paths, model hashes and repeated file reuse on a cleared installation.
+
+To skip the copy, a host stores the models uncompressed (`noCompress` above),
+aligns those entries to 16 bytes, and sets the application meta-data
+`ai.eliza.voice.MODELS_IN_PLACE` to `true`. The installer then writes a
+libelizainference region file (`tools/file-region` in the fork) in place of each
+uncompressed `.gguf` or `.lex` under `asr/` or `tts/`. That file names the
+asset's offset and length in the APK, and the native loaders map those bytes
+directly. The installer hashes the bytes in the APK once per bundle manifest.
+After an app update with the same manifest it only rewrites the region files for
+the new APK path, since the package manager has checked the APK's signature. The
+agent's ASR check (`asr-provenance.ts`) reads the GGUF header through a region
+file too. It still copies compressed or unaligned entries, the VAD model and the
+eSpeak NG data. A region bundle needs a libelizainference built from a fork
+commit with region-file support.
 
 ## Licenses
 
@@ -299,6 +334,8 @@ rules ported from them.
 ## Hosts with an existing native inference server
 
 Set `elizaParadeeAssetsOnly=true` when applying `consumer.gradle` to package only the pinned models and `VoiceBundleAssets` installer. This mode includes no inference session classes, JNI bridge or native library. The Eliza Android app uses this mode through `:voice-assets`; `ELIZA_VOICE_NATIVE_DIR` selects its generated native input directory. Explicit cloud and host-test builds omit these assets.
+
+Set `elizaParadeeApiOnly=true` to compile only the Java API (`ai.eliza.voice`, with the optional Capacitor and speech-bridge sources) for a packaging check. This mode has no NDK or CMake build, no models, no native libraries and no `build-record.json` check, so the app finds no voice bundle at run time. It cannot be combined with `elizaParadeeAssetsOnly`.
 
 Admission checks the complete asset inventory against the build record and rejects duplicate paths, extra files and symlinks. Required speech models must also match `inputs.json`; a matching record cannot substitute a different model.
 

@@ -1,0 +1,1119 @@
+{
+  "schemaVersion": 1,
+  "scope": "Reviewed nonbilling lifecycle obligations and bounded-model coverage inputs. This registry is intentionally incomplete.",
+  "complete": false,
+  "statesAreAbstractMilestones": true,
+  "notes": [
+    "Source references are owning anchors, not an exhaustive source inventory.",
+    "A model covers only its declared bounds and assumptions; no implementation refinement is established.",
+    "Generate source declarations and discovery reports into ignored test-results; never gate builds on saved candidate counts."
+  ],
+  "flows": [
+    {
+      "id": "oauth-intents",
+      "sources": [
+        "packages/cloud/shared/src/lib/services/oauth-intents.ts",
+        "packages/cloud/shared/src/db/repositories/oauth-intents.ts",
+        "packages/cloud/api/v1/oauth/callback/[provider]/route.ts"
+      ],
+      "states": ["pending", "bound", "denied", "expired", "canceled"],
+      "invariants": [
+        "Terminal outcomes are immutable",
+        "Decision and durable event receipt commit together",
+        "Expiry and owner authority are checked at the committing boundary"
+      ],
+      "assumptions": [
+        "Two concurrent callers, two tenant identities and a bounded clock.",
+        "Atomic decision/receipt commit is an intended contract; implementation review remains private and incomplete.",
+        "Cryptographic proof validity is supplied by the environment."
+      ],
+      "models": ["authorization_intents.qnt"],
+      "coverage": "partial-bounded-model",
+      "unmodeled": false,
+      "implementationRefinementEstablished": false,
+      "remainingWork": [
+        "Intended contract only; private implementation review remains pending.",
+        "Verify implementation transitions and failure paths against the formal contract."
+      ]
+    },
+    {
+      "id": "signed-approvals",
+      "sources": [
+        "packages/cloud/shared/src/lib/services/approval-requests.ts",
+        "packages/cloud/shared/src/db/repositories/approval-requests.ts",
+        "packages/cloud/shared/src/lib/services/identity-verification-gatekeeper.ts"
+      ],
+      "states": [
+        "pending",
+        "delivered",
+        "approved",
+        "denied",
+        "expired",
+        "canceled"
+      ],
+      "invariants": [
+        "Signature validation is bound to the original challenge",
+        "Terminal decisions retain exact receipts",
+        "Concurrent delivery cannot replace a decision"
+      ],
+      "assumptions": [
+        "Two concurrent callers, two tenant identities and a bounded clock.",
+        "Atomic decision/receipt commit is an intended contract; implementation review remains private and incomplete.",
+        "Cryptographic proof validity is supplied by the environment."
+      ],
+      "models": ["authorization_intents.qnt"],
+      "coverage": "partial-bounded-model",
+      "unmodeled": false,
+      "implementationRefinementEstablished": false,
+      "remainingWork": [
+        "Intended contract only; cryptography is an environment assumption.",
+        "Verify implementation transitions and failure paths against the formal contract."
+      ]
+    },
+    {
+      "id": "cli-authentication",
+      "sources": [
+        "packages/cloud/shared/src/lib/services/cli-auth-sessions.ts",
+        "packages/cloud/shared/src/lib/services/cli-auth-session-completion.ts",
+        "packages/cloud/shared/src/db/repositories/cli-auth-sessions.ts"
+      ],
+      "states": ["pending", "authenticated", "consumed", "expired"],
+      "invariants": [
+        "At most one plaintext reveal wins",
+        "Session and key ownership remain bound",
+        "Abandoned credentials are revoked"
+      ],
+      "assumptions": [
+        "These lifecycle milestones and invariants are review obligations, not a verified transition relation.",
+        "External services, storage failures, concurrency, cancellation and restart require explicit modeling before proof claims."
+      ],
+      "models": [],
+      "coverage": "none",
+      "unmodeled": true,
+      "implementationRefinementEstablished": false,
+      "remainingWork": [
+        "No finite implementation model yet.",
+        "Verify implementation transitions and failure paths against the formal contract."
+      ]
+    },
+    {
+      "id": "mobile-app-authentication",
+      "sources": [
+        "packages/cloud/shared/src/lib/services/mobile-app-auth.ts",
+        "packages/cloud/shared/src/db/repositories/mobile-app-auth-grants.ts"
+      ],
+      "states": ["pending", "exchanged", "acknowledged", "expired"],
+      "invariants": [
+        "Exchange retains the exact application and PKCE binding",
+        "Credentials activate only after acknowledgement",
+        "Expiry cleanup cannot revoke an acknowledged credential"
+      ],
+      "assumptions": [
+        "These lifecycle milestones and invariants are review obligations, not a verified transition relation.",
+        "External services, storage failures, concurrency, cancellation and restart require explicit modeling before proof claims."
+      ],
+      "models": [],
+      "coverage": "none",
+      "unmodeled": true,
+      "implementationRefinementEstablished": false,
+      "remainingWork": [
+        "No finite implementation model yet.",
+        "Verify implementation transitions and failure paths against the formal contract."
+      ]
+    },
+    {
+      "id": "remote-session-pairing",
+      "sources": [
+        "packages/cloud/shared/src/db/repositories/remote-sessions-store.ts",
+        "packages/cloud/shared/src/db/schemas/remote-sessions.ts",
+        "packages/cloud/shared/src/db/crypto/remote-pairing-code.ts"
+      ],
+      "states": [
+        "pending",
+        "claimed",
+        "activating",
+        "active",
+        "denied",
+        "revoked",
+        "expired"
+      ],
+      "invariants": [
+        "Pairing token has one owner",
+        "Grant revision and sequence do not regress",
+        "Revocation prevents further authority"
+      ],
+      "assumptions": [
+        "These lifecycle milestones and invariants are review obligations, not a verified transition relation.",
+        "External services, storage failures, concurrency, cancellation and restart require explicit modeling before proof claims."
+      ],
+      "models": [],
+      "coverage": "none",
+      "unmodeled": true,
+      "implementationRefinementEstablished": false,
+      "remainingWork": [
+        "No finite implementation model yet.",
+        "Verify implementation transitions and failure paths against the formal contract."
+      ]
+    },
+    {
+      "id": "a2a-task-lifecycle",
+      "sources": [
+        "packages/cloud/shared/src/lib/types/a2a.ts",
+        "packages/cloud/shared/src/lib/api/a2a/handlers.ts",
+        "packages/cloud/api/a2a/route.ts"
+      ],
+      "states": [
+        "submitted",
+        "working",
+        "input-required",
+        "completed",
+        "canceled",
+        "failed",
+        "unknown"
+      ],
+      "invariants": [
+        "Task status policy must define terminal transitions",
+        "Task owner and full history remain associated",
+        "Cancellation and execution outcomes have explicit ordering"
+      ],
+      "assumptions": [
+        "These lifecycle milestones and invariants are review obligations, not a verified transition relation.",
+        "External services, storage failures, concurrency, cancellation and restart require explicit modeling before proof claims."
+      ],
+      "models": [],
+      "coverage": "none",
+      "unmodeled": true,
+      "implementationRefinementEstablished": false,
+      "remainingWork": [
+        "The task-store model does not establish semantic A2A task transitions.",
+        "Verify implementation transitions and failure paths against the formal contract."
+      ]
+    },
+    {
+      "id": "a2a-task-storage",
+      "sources": [
+        "packages/cloud/api/src/a2a-task-state.ts",
+        "packages/cloud/shared/src/lib/services/cloudflare-a2a-task-store.ts",
+        "packages/cloud/shared/src/lib/services/a2a-task-store.ts"
+      ],
+      "states": [
+        "absent",
+        "present",
+        "expired",
+        "deleted",
+        "importing",
+        "serving"
+      ],
+      "invariants": [
+        "Stale optimistic writes cannot erase acknowledged appends",
+        "Import fingerprints are immutable and import closes after serving",
+        "Expired or deleted records are not revived by old versions"
+      ],
+      "assumptions": [
+        "One task, two optimistic writers, two organizations and fresh bounded versions.",
+        "History is a set of abstract complete items; order, byte content and duplicate client retries are not modeled.",
+        "Initial create/import and append updates only; arbitrary unconditional overwrites, Redis and semantic task status policy are excluded.",
+        "A rejected foreign read conservatively closes import in this model; the implementation rejects ownership first."
+      ],
+      "models": ["a2a_task_store.qnt"],
+      "coverage": "partial-bounded-model",
+      "unmodeled": false,
+      "implementationRefinementEstablished": false,
+      "remainingWork": [
+        "Bounded Cloudflare store projection; Redis and arbitrary unconditional overwrite are excluded.",
+        "Verify implementation transitions and failure paths against the formal contract."
+      ]
+    },
+    {
+      "id": "inference-funding-budget",
+      "sources": [
+        "packages/cloud/api/src/inference-admission-budget.ts",
+        "packages/cloud/shared/src/lib/services/inference-funding-budget-protocol.ts",
+        "packages/cloud/shared/src/db/repositories/inference-funding-budgets.ts"
+      ],
+      "states": [
+        "prepared",
+        "dispatched",
+        "completed",
+        "cancelled",
+        "unacknowledged",
+        "acknowledged",
+        "sealed"
+      ],
+      "invariants": [
+        "Available plus consumed plus reserved funds are conserved",
+        "Every reserved grant retains receipt debt until acknowledgement",
+        "Sealing requires no active lease or unacknowledged receipt"
+      ],
+      "assumptions": [
+        "Two already-installed grants of two integer units and two immutable request IDs.",
+        "Storage transactions are atomic; provider execution and database mint/refill are excluded.",
+        "Acknowledgements refer to exact retained receipts, and cancellation uses the original capability."
+      ],
+      "models": ["inference_budget.qnt"],
+      "coverage": "partial-bounded-model",
+      "unmodeled": false,
+      "implementationRefinementEstablished": false,
+      "remainingWork": [
+        "Two installed grants and two requests only; minting and provider execution excluded.",
+        "Verify implementation transitions and failure paths against the formal contract."
+      ]
+    },
+    {
+      "id": "inference-policy-admission",
+      "sources": [
+        "packages/cloud/api/src/inference-admission-gate.ts",
+        "packages/cloud/shared/src/lib/services/organization-inference-admission.ts",
+        "packages/cloud/shared/src/lib/services/inference-admission-snapshot.ts"
+      ],
+      "states": [
+        "requested",
+        "authorized",
+        "reserved",
+        "dispatched",
+        "released",
+        "recovered"
+      ],
+      "invariants": [
+        "Policy generations and revocation fences remain current",
+        "Dispatch requires durable admission",
+        "Ambiguous acknowledgements do not cause duplicate effects"
+      ],
+      "assumptions": [
+        "These lifecycle milestones and invariants are review obligations, not a verified transition relation.",
+        "External services, storage failures, concurrency, cancellation and restart require explicit modeling before proof claims."
+      ],
+      "models": [],
+      "coverage": "none",
+      "unmodeled": true,
+      "implementationRefinementEstablished": false,
+      "remainingWork": [
+        "No complete policy-admission model yet.",
+        "Verify implementation transitions and failure paths against the formal contract."
+      ]
+    },
+    {
+      "id": "inference-provider-streaming",
+      "sources": [
+        "packages/cloud/api/v1/chat/completions/route.ts",
+        "packages/cloud/api/v1/responses/route.ts"
+      ],
+      "states": [
+        "admitted",
+        "connecting",
+        "streaming",
+        "completed",
+        "aborted",
+        "failed"
+      ],
+      "invariants": [
+        "Disconnect preserves exact billing settlement",
+        "Complete model context is retained",
+        "Buffered data is bounded without silent truncation"
+      ],
+      "assumptions": [
+        "These lifecycle milestones and invariants are review obligations, not a verified transition relation.",
+        "External services, storage failures, concurrency, cancellation and restart require explicit modeling before proof claims."
+      ],
+      "models": [],
+      "coverage": "none",
+      "unmodeled": true,
+      "implementationRefinementEstablished": false,
+      "remainingWork": [
+        "No finite provider-stream model yet.",
+        "Verify implementation transitions and failure paths against the formal contract."
+      ]
+    },
+    {
+      "id": "speech-relay",
+      "sources": [
+        "packages/cloud/api/src/speech-relay-coordinator.ts",
+        "packages/cloud/api/src/speech-retirement-state.ts",
+        "packages/cloud/api/src/speech-relay-admission.ts"
+      ],
+      "states": [
+        "preparing",
+        "ready",
+        "streaming",
+        "ending",
+        "retiring",
+        "retired",
+        "revoked"
+      ],
+      "invariants": [
+        "Revocation reaches the authoritative session namespace",
+        "Retirement retains admission and usage receipts",
+        "Cancellation prevents later audio publication"
+      ],
+      "assumptions": [
+        "These lifecycle milestones and invariants are review obligations, not a verified transition relation.",
+        "External services, storage failures, concurrency, cancellation and restart require explicit modeling before proof claims."
+      ],
+      "models": [],
+      "coverage": "none",
+      "unmodeled": true,
+      "implementationRefinementEstablished": false,
+      "remainingWork": [
+        "No finite speech model yet.",
+        "Verify implementation transitions and failure paths against the formal contract."
+      ]
+    },
+    {
+      "id": "voice-usage",
+      "sources": [
+        "packages/cloud/api/src/voice-usage-state.ts",
+        "packages/cloud/shared/src/lib/services/voice-usage-meter.ts"
+      ],
+      "states": ["reserved", "streaming", "settling", "settled", "expired"],
+      "invariants": [
+        "Quota and usage counters settle once",
+        "Provider ambiguity retains accounting debt",
+        "Retry preserves the original request identity"
+      ],
+      "assumptions": [
+        "These lifecycle milestones and invariants are review obligations, not a verified transition relation.",
+        "External services, storage failures, concurrency, cancellation and restart require explicit modeling before proof claims."
+      ],
+      "models": [],
+      "coverage": "none",
+      "unmodeled": true,
+      "implementationRefinementEstablished": false,
+      "remainingWork": [
+        "No finite usage model yet.",
+        "Verify implementation transitions and failure paths against the formal contract."
+      ]
+    },
+    {
+      "id": "agent-runtime-lifecycle",
+      "sources": [
+        "packages/cloud/services/agent-server/src/agent-manager.ts",
+        "packages/cloud/services/agent-server/src/agent-routing.ts",
+        "packages/cloud/services/agent-server/src/agent-shutdown.ts"
+      ],
+      "states": [
+        "loading",
+        "initializing",
+        "running",
+        "stopping",
+        "stopped",
+        "failed"
+      ],
+      "invariants": [
+        "Initialization completion cannot publish after stop",
+        "Cleanup waits for the owned runtime",
+        "Failed publication remains visible"
+      ],
+      "assumptions": [
+        "One runtime projection; initialization, stop and status publication can complete independently.",
+        "Failures can repeat indefinitely; availability, capacity and cross-agent effects are excluded."
+      ],
+      "models": [
+        "agent_lifecycle.qnt",
+        "agent_routing.qnt",
+        "shutdown_sequence.qnt"
+      ],
+      "coverage": "partial-bounded-model",
+      "unmodeled": false,
+      "implementationRefinementEstablished": false,
+      "remainingWork": [
+        "One-agent runtime projection; scheduler and placement are separate.",
+        "Verify implementation transitions and failure paths against the formal contract."
+      ]
+    },
+    {
+      "id": "operator-placement-routing",
+      "sources": [
+        "packages/cloud/services/operator/capabilities/redis.ts",
+        "packages/cloud/services/operator/capabilities/reconciler.ts",
+        "packages/cloud/services/operator/capabilities/deployment-status.ts"
+      ],
+      "states": ["assigned", "ready", "routing", "terminating", "unassigned"],
+      "invariants": [
+        "Only the current owner removes routing",
+        "Desired and observed placement converge after retry",
+        "Failed status publication is retried"
+      ],
+      "assumptions": [
+        "Two owners and one agent, with atomic compare-and-delete.",
+        "Reconciliation/watch writes serialize per server; network and Kubernetes liveness are excluded."
+      ],
+      "models": ["operator_routing.qnt"],
+      "coverage": "partial-bounded-model",
+      "unmodeled": false,
+      "implementationRefinementEstablished": false,
+      "remainingWork": [
+        "Bounded two-owner routing projection only.",
+        "Verify implementation transitions and failure paths against the formal contract."
+      ]
+    },
+    {
+      "id": "container-provision-and-retire",
+      "sources": [
+        "packages/cloud/shared/src/lib/services/containers.ts",
+        "packages/cloud/shared/src/db/repositories/containers.ts",
+        "packages/cloud/services/container-control-plane/src/index.ts"
+      ],
+      "states": [
+        "queued",
+        "provisioning",
+        "running",
+        "suspending",
+        "suspended",
+        "resuming",
+        "deleting",
+        "deleted",
+        "failed"
+      ],
+      "invariants": [
+        "Provisioning and deletion retain original lease ownership",
+        "Retirement requires provider deletion evidence",
+        "Stale probes cannot revive a retired generation"
+      ],
+      "assumptions": [
+        "These lifecycle milestones and invariants are review obligations, not a verified transition relation.",
+        "External services, storage failures, concurrency, cancellation and restart require explicit modeling before proof claims."
+      ],
+      "models": [],
+      "coverage": "none",
+      "unmodeled": true,
+      "implementationRefinementEstablished": false,
+      "remainingWork": [
+        "No complete container model yet.",
+        "Verify implementation transitions and failure paths against the formal contract."
+      ]
+    },
+    {
+      "id": "agent-backup-and-restore",
+      "sources": [
+        "packages/cloud/shared/src/lib/services/eliza-sandbox.ts",
+        "packages/cloud/shared/src/lib/storage/agent-backup-object-store.ts",
+        "packages/cloud/api/v1/cron/agent-backups/route.ts"
+      ],
+      "states": [
+        "admitted",
+        "capturing",
+        "sealed",
+        "restoring",
+        "activating",
+        "ready",
+        "retired",
+        "failed"
+      ],
+      "invariants": [
+        "Restore source identity is immutable",
+        "Activation belongs to the selected generation",
+        "Cleanup cannot remove the active replacement"
+      ],
+      "assumptions": [
+        "These lifecycle milestones and invariants are review obligations, not a verified transition relation.",
+        "External services, storage failures, concurrency, cancellation and restart require explicit modeling before proof claims."
+      ],
+      "models": [],
+      "coverage": "none",
+      "unmodeled": true,
+      "implementationRefinementEstablished": false,
+      "remainingWork": [
+        "No finite restore/activation model yet.",
+        "Verify implementation transitions and failure paths against the formal contract."
+      ]
+    },
+    {
+      "id": "durable-jobs-and-schedulers",
+      "sources": [
+        "packages/cloud/shared/src/db/repositories/jobs.ts",
+        "packages/cloud/shared/src/node/provisioning-worker.ts",
+        "packages/cloud/services/coding-remote-runner/src/index.ts"
+      ],
+      "states": [
+        "pending",
+        "claimed",
+        "running",
+        "retrying",
+        "completed",
+        "canceled",
+        "failed",
+        "expired"
+      ],
+      "invariants": [
+        "Leases fence stale workers",
+        "Retry budgets remain bounded",
+        "Cancellation establishes quiescence before replacement"
+      ],
+      "assumptions": [
+        "These lifecycle milestones and invariants are review obligations, not a verified transition relation.",
+        "External services, storage failures, concurrency, cancellation and restart require explicit modeling before proof claims."
+      ],
+      "models": [],
+      "coverage": "none",
+      "unmodeled": true,
+      "implementationRefinementEstablished": false,
+      "remainingWork": [
+        "No complete scheduler model yet.",
+        "Verify implementation transitions and failure paths against the formal contract."
+      ]
+    },
+    {
+      "id": "oauth-provider-connections",
+      "sources": [
+        "packages/cloud/shared/src/db/repositories/vendor-connections.ts",
+        "packages/cloud/api/src/twitter-oauth-refresh-coordinator.ts"
+      ],
+      "states": [
+        "disconnected",
+        "connecting",
+        "connected",
+        "refreshing",
+        "revoked",
+        "expired",
+        "error"
+      ],
+      "invariants": [
+        "Credential refresh has a single winning generation",
+        "Revocation prevents stale credential publication",
+        "External identity remains bound to the original owner"
+      ],
+      "assumptions": [
+        "These lifecycle milestones and invariants are review obligations, not a verified transition relation.",
+        "External services, storage failures, concurrency, cancellation and restart require explicit modeling before proof claims."
+      ],
+      "models": [],
+      "coverage": "none",
+      "unmodeled": true,
+      "implementationRefinementEstablished": false,
+      "remainingWork": [
+        "No finite connection-refresh model yet.",
+        "Verify implementation transitions and failure paths against the formal contract."
+      ]
+    },
+    {
+      "id": "messaging-gateways",
+      "sources": [
+        "packages/cloud/services/gateway-webhook/src/index.ts",
+        "packages/cloud/services/gateway-discord/src/index.ts",
+        "packages/cloud/api/src/personal-telegram-delivery.ts"
+      ],
+      "states": [
+        "received",
+        "deduplicated",
+        "queued",
+        "dispatched",
+        "acknowledged",
+        "retrying",
+        "failed"
+      ],
+      "invariants": [
+        "Redelivery does not duplicate an acknowledged effect",
+        "Tenant routing is retained",
+        "Provider failures are not fabricated success"
+      ],
+      "assumptions": [
+        "These lifecycle milestones and invariants are review obligations, not a verified transition relation.",
+        "External services, storage failures, concurrency, cancellation and restart require explicit modeling before proof claims."
+      ],
+      "models": [],
+      "coverage": "none",
+      "unmodeled": true,
+      "implementationRefinementEstablished": false,
+      "remainingWork": [
+        "No finite message-delivery model yet.",
+        "Verify implementation transitions and failure paths against the formal contract."
+      ]
+    },
+    {
+      "id": "callback-and-outbox-delivery",
+      "sources": [
+        "packages/cloud/shared/src/lib/services/oauth-callback-bus.ts",
+        "packages/cloud/shared/src/lib/services/approval-callback-bus.ts",
+        "packages/cloud/shared/src/lib/services/sensitive-callback-bus.ts",
+        "packages/cloud/shared/src/lib/services/idempotent-webhook-recorder.ts"
+      ],
+      "states": [
+        "subscribed",
+        "recorded",
+        "published",
+        "acknowledged",
+        "timed-out",
+        "failed"
+      ],
+      "invariants": [
+        "Durable recording precedes terminal acknowledgement",
+        "Retry retains original event identity",
+        "Cross-process observers have a defined delivery mechanism"
+      ],
+      "assumptions": [
+        "These lifecycle milestones and invariants are review obligations, not a verified transition relation.",
+        "External services, storage failures, concurrency, cancellation and restart require explicit modeling before proof claims."
+      ],
+      "models": [],
+      "coverage": "none",
+      "unmodeled": true,
+      "implementationRefinementEstablished": false,
+      "remainingWork": [
+        "In-process callback listeners are not modeled as durable transport.",
+        "Verify implementation transitions and failure paths against the formal contract."
+      ]
+    },
+    {
+      "id": "account-and-organization-lifecycle",
+      "sources": [
+        "packages/cloud/shared/src/lib/services/account-deletion.ts",
+        "packages/cloud/shared/src/lib/services/account-deletion-saga.ts",
+        "packages/cloud/shared/src/db/repositories/account-deletion-requests.ts"
+      ],
+      "states": [
+        "created",
+        "active",
+        "suspended",
+        "deleting",
+        "deleted",
+        "expired",
+        "migrated"
+      ],
+      "invariants": [
+        "Deletion fences new effects",
+        "Cleanup preserves required receipts",
+        "Source ownership is retained through migration"
+      ],
+      "assumptions": [
+        "These lifecycle milestones and invariants are review obligations, not a verified transition relation.",
+        "External services, storage failures, concurrency, cancellation and restart require explicit modeling before proof claims."
+      ],
+      "models": [],
+      "coverage": "none",
+      "unmodeled": true,
+      "implementationRefinementEstablished": false,
+      "remainingWork": [
+        "No complete account lifecycle model yet.",
+        "Verify implementation transitions and failure paths against the formal contract."
+      ]
+    },
+    {
+      "id": "app-build-and-deployment",
+      "sources": [
+        "packages/cloud/shared/src/lib/services/app-deploy-orchestrator.ts",
+        "packages/cloud/shared/src/lib/services/app-deploy-job-service.ts",
+        "packages/cloud/shared/src/db/repositories/app-frontend-deployments.ts"
+      ],
+      "states": [
+        "queued",
+        "building",
+        "uploading",
+        "finalizing",
+        "ready",
+        "active",
+        "superseded",
+        "failed",
+        "deleted"
+      ],
+      "invariants": [
+        "Only complete artifacts are published",
+        "Active deployment changes atomically",
+        "Rollback retains immutable artifact identity"
+      ],
+      "assumptions": [
+        "These lifecycle milestones and invariants are review obligations, not a verified transition relation.",
+        "External services, storage failures, concurrency, cancellation and restart require explicit modeling before proof claims."
+      ],
+      "models": [],
+      "coverage": "none",
+      "unmodeled": true,
+      "implementationRefinementEstablished": false,
+      "remainingWork": [
+        "No finite deployment model yet.",
+        "Verify implementation transitions and failure paths against the formal contract."
+      ]
+    },
+    {
+      "id": "content-and-object-storage",
+      "sources": [
+        "packages/cloud/shared/src/lib/storage/object-store.ts",
+        "packages/cloud/shared/src/lib/storage/object-store-multipart.ts",
+        "packages/cloud/api/v1/documents/[id]/route.ts"
+      ],
+      "states": [
+        "admitted",
+        "uploading",
+        "validated",
+        "committed",
+        "published",
+        "deleted",
+        "failed"
+      ],
+      "invariants": [
+        "Content address matches complete bytes",
+        "Publication follows durable object commit",
+        "Untrusted reads preserve SSRF and owner boundaries"
+      ],
+      "assumptions": [
+        "These lifecycle milestones and invariants are review obligations, not a verified transition relation.",
+        "External services, storage failures, concurrency, cancellation and restart require explicit modeling before proof claims."
+      ],
+      "models": [],
+      "coverage": "none",
+      "unmodeled": true,
+      "implementationRefinementEstablished": false,
+      "remainingWork": [
+        "No finite content-store model yet.",
+        "Verify implementation transitions and failure paths against the formal contract."
+      ]
+    },
+    {
+      "id": "domain-lifecycle",
+      "sources": [
+        "packages/cloud/shared/src/db/repositories/domain-purchase-attempts.ts",
+        "packages/cloud/api/cron/reconcile-domain-purchases/route.ts"
+      ],
+      "states": [
+        "available",
+        "quoted",
+        "purchasing",
+        "purchased",
+        "verifying",
+        "active",
+        "renewing",
+        "expired",
+        "failed"
+      ],
+      "invariants": [
+        "Purchase identity is idempotent",
+        "DNS proof precedes publication",
+        "Unknown provider outcomes are reconciled"
+      ],
+      "assumptions": [
+        "These lifecycle milestones and invariants are review obligations, not a verified transition relation.",
+        "External services, storage failures, concurrency, cancellation and restart require explicit modeling before proof claims."
+      ],
+      "models": [],
+      "coverage": "none",
+      "unmodeled": true,
+      "implementationRefinementEstablished": false,
+      "remainingWork": [
+        "No finite domain lifecycle model yet.",
+        "Verify implementation transitions and failure paths against the formal contract."
+      ]
+    },
+    {
+      "id": "cache-and-rate-policy",
+      "sources": [
+        "packages/cloud/shared/src/lib/cache/client.ts",
+        "packages/cloud/shared/src/lib/services/plan-request-limiter.ts",
+        "packages/cloud/api/src/lib/maps-request-admission.ts"
+      ],
+      "states": [
+        "miss",
+        "loading",
+        "cached",
+        "expired",
+        "invalidated",
+        "admitted",
+        "limited"
+      ],
+      "invariants": [
+        "Expiry and invalidation do not resurrect stale authority",
+        "Distributed counters do not exceed allowance",
+        "Unknown outcomes are not retried as new admissions"
+      ],
+      "assumptions": [
+        "These lifecycle milestones and invariants are review obligations, not a verified transition relation.",
+        "External services, storage failures, concurrency, cancellation and restart require explicit modeling before proof claims."
+      ],
+      "models": [],
+      "coverage": "none",
+      "unmodeled": true,
+      "implementationRefinementEstablished": false,
+      "remainingWork": [
+        "No finite cache/rate-policy model yet.",
+        "Verify implementation transitions and failure paths against the formal contract."
+      ]
+    },
+    {
+      "id": "anonymous-chat-sessions",
+      "sources": [
+        "packages/cloud/api/src/anonymous-chat-gate.ts",
+        "packages/cloud/shared/src/db/repositories/anonymous-sessions.ts",
+        "packages/cloud/api/auth/migrate-anonymous/route.ts"
+      ],
+      "states": [
+        "created",
+        "leased",
+        "dispatched",
+        "committed",
+        "refunded",
+        "expired"
+      ],
+      "invariants": [
+        "Anonymous request admission retains its original owner",
+        "Expired leases are reconciled once",
+        "Migration does not lose complete conversation content"
+      ],
+      "assumptions": [
+        "These lifecycle milestones and invariants are review obligations, not a verified transition relation.",
+        "External services, storage failures, concurrency, cancellation and restart require explicit modeling before proof claims."
+      ],
+      "models": [],
+      "coverage": "none",
+      "unmodeled": true,
+      "implementationRefinementEstablished": false,
+      "remainingWork": [
+        "No finite anonymous-session model yet.",
+        "Verify implementation transitions and failure paths against the formal contract."
+      ]
+    },
+    {
+      "id": "personal-shared-consent",
+      "sources": [
+        "packages/cloud/shared/src/db/repositories/personal-shared-group-consent-lifecycle.ts",
+        "packages/cloud/api/src/shared-runtime-conversation.ts",
+        "packages/cloud/api/internal/eliza-app/personal-shared/messages/route.ts"
+      ],
+      "states": [
+        "invited",
+        "pending",
+        "approved",
+        "active",
+        "revoked",
+        "expired",
+        "removed"
+      ],
+      "invariants": [
+        "Membership and consent bind the requesting identity",
+        "Revocation fences subsequent delivery",
+        "Conversation updates preserve complete retained content"
+      ],
+      "assumptions": [
+        "These lifecycle milestones and invariants are review obligations, not a verified transition relation.",
+        "External services, storage failures, concurrency, cancellation and restart require explicit modeling before proof claims."
+      ],
+      "models": [],
+      "coverage": "none",
+      "unmodeled": true,
+      "implementationRefinementEstablished": false,
+      "remainingWork": [
+        "No finite membership or group-consent model yet.",
+        "Verify implementation transitions and failure paths against the formal contract."
+      ]
+    },
+    {
+      "id": "onboarding-sessions",
+      "sources": [
+        "packages/cloud/api/src/onboarding-session-coordinator.ts",
+        "packages/cloud/api/src/authentication-state.ts",
+        "packages/cloud/shared/src/lib/auth/authentication-state.ts"
+      ],
+      "states": ["created", "pending", "verified", "completed", "expired"],
+      "invariants": [
+        "Onboarding completion belongs to the original session",
+        "Single-use proofs are not replayed",
+        "Expiry does not become renewed authority"
+      ],
+      "assumptions": [
+        "These lifecycle milestones and invariants are review obligations, not a verified transition relation.",
+        "External services, storage failures, concurrency, cancellation and restart require explicit modeling before proof claims."
+      ],
+      "models": [],
+      "coverage": "none",
+      "unmodeled": true,
+      "implementationRefinementEstablished": false,
+      "remainingWork": [
+        "No finite onboarding model yet.",
+        "Verify implementation transitions and failure paths against the formal contract."
+      ]
+    },
+    {
+      "id": "cloud-runtime-commands",
+      "sources": [
+        "packages/cloud/shared/src/node/provisioning-worker.ts",
+        "packages/cloud/shared/src/lib/services/docker-sandbox-provider.ts",
+        "packages/cloud/api/src/shared-runtime-conversation.ts"
+      ],
+      "states": [
+        "queued",
+        "claimed",
+        "starting",
+        "running",
+        "stopping",
+        "stopped",
+        "failed"
+      ],
+      "invariants": [
+        "Only the current claim executes a command",
+        "Runtime replacement fences older responses",
+        "Stop and timeout retain cancellation ownership"
+      ],
+      "assumptions": [
+        "These lifecycle milestones and invariants are review obligations, not a verified transition relation.",
+        "External services, storage failures, concurrency, cancellation and restart require explicit modeling before proof claims."
+      ],
+      "models": [],
+      "coverage": "none",
+      "unmodeled": true,
+      "implementationRefinementEstablished": false,
+      "remainingWork": [
+        "No complete remote-runtime command model yet.",
+        "Verify implementation transitions and failure paths against the formal contract."
+      ]
+    },
+    {
+      "id": "voice-cloning",
+      "sources": [
+        "packages/cloud/api/v1/voice/clone/route.ts",
+        "packages/cloud/shared/src/lib/services/voice-clone-failure.ts"
+      ],
+      "states": [
+        "admitted",
+        "uploading",
+        "training",
+        "ready",
+        "deleting",
+        "failed"
+      ],
+      "invariants": [
+        "Uploaded material remains bound to its authorized owner",
+        "Only a complete provider result is published",
+        "Cleanup preserves recoverable provider identity"
+      ],
+      "assumptions": [
+        "These lifecycle milestones and invariants are review obligations, not a verified transition relation.",
+        "External services, storage failures, concurrency, cancellation and restart require explicit modeling before proof claims."
+      ],
+      "models": [],
+      "coverage": "none",
+      "unmodeled": true,
+      "implementationRefinementEstablished": false,
+      "remainingWork": [
+        "No finite voice-cloning model yet.",
+        "Verify implementation transitions and failure paths against the formal contract."
+      ]
+    },
+    {
+      "id": "external-checkout-intents",
+      "sources": [
+        "packages/cloud/api/src/doordash-checkout-gate.ts",
+        "packages/cloud/shared/src/lib/services/doordash-checkout-binding.ts"
+      ],
+      "states": [
+        "pending",
+        "reviewed",
+        "dispatching",
+        "completed",
+        "failed",
+        "unknown"
+      ],
+      "invariants": [
+        "Dispatch requires the original reviewed intent",
+        "Unknown provider results retain the original identity",
+        "A terminal receipt is not replaced by a retry"
+      ],
+      "assumptions": [
+        "These lifecycle milestones and invariants are review obligations, not a verified transition relation.",
+        "External services, storage failures, concurrency, cancellation and restart require explicit modeling before proof claims."
+      ],
+      "models": [],
+      "coverage": "none",
+      "unmodeled": true,
+      "implementationRefinementEstablished": false,
+      "remainingWork": [
+        "No finite external-checkout model yet.",
+        "Verify implementation transitions and failure paths against the formal contract."
+      ]
+    },
+    {
+      "id": "social-publishing",
+      "sources": [
+        "packages/cloud/shared/src/lib/services/press-releases.ts",
+        "packages/cloud/shared/src/lib/services/social-media/index.ts"
+      ],
+      "states": [
+        "draft",
+        "scheduled",
+        "publishing",
+        "published",
+        "failed",
+        "canceled"
+      ],
+      "invariants": [
+        "Publication retains the reviewed content and destination",
+        "Provider receipt identifies the original post",
+        "Cancellation fences unstarted work"
+      ],
+      "assumptions": [
+        "These lifecycle milestones and invariants are review obligations, not a verified transition relation.",
+        "External services, storage failures, concurrency, cancellation and restart require explicit modeling before proof claims."
+      ],
+      "models": [],
+      "coverage": "none",
+      "unmodeled": true,
+      "implementationRefinementEstablished": false,
+      "remainingWork": [
+        "No finite social-publishing model yet.",
+        "Verify implementation transitions and failure paths against the formal contract."
+      ]
+    },
+    {
+      "id": "cloud-object-mutations",
+      "sources": [
+        "packages/cloud/shared/src/db/repositories/org-storage-mutations.ts",
+        "packages/cloud/shared/src/db/schemas/org-storage-mutations.ts"
+      ],
+      "states": [
+        "prepared",
+        "uploading",
+        "committed",
+        "deleting",
+        "deleted",
+        "failed"
+      ],
+      "invariants": [
+        "Object mutation is tied to immutable content identity",
+        "Commit and index updates preserve ownership",
+        "Recovery never silently drops an acknowledged object"
+      ],
+      "assumptions": [
+        "These lifecycle milestones and invariants are review obligations, not a verified transition relation.",
+        "External services, storage failures, concurrency, cancellation and restart require explicit modeling before proof claims."
+      ],
+      "models": [],
+      "coverage": "none",
+      "unmodeled": true,
+      "implementationRefinementEstablished": false,
+      "remainingWork": [
+        "No finite object-mutation model yet.",
+        "Verify implementation transitions and failure paths against the formal contract."
+      ]
+    },
+    {
+      "id": "mcp-and-agent-rpc",
+      "sources": [
+        "packages/cloud/api/mcp/route.ts",
+        "packages/cloud/api/mcp/stream/route.ts",
+        "packages/cloud/api/a2a/route.ts"
+      ],
+      "states": [
+        "initialized",
+        "active",
+        "requesting",
+        "streaming",
+        "canceled",
+        "closed",
+        "failed"
+      ],
+      "invariants": [
+        "Session ownership is retained across requests",
+        "Cancellation and close stop later effects",
+        "Streaming errors remain explicit"
+      ],
+      "assumptions": [
+        "These lifecycle milestones and invariants are review obligations, not a verified transition relation.",
+        "External services, storage failures, concurrency, cancellation and restart require explicit modeling before proof claims."
+      ],
+      "models": [],
+      "coverage": "none",
+      "unmodeled": true,
+      "implementationRefinementEstablished": false,
+      "remainingWork": [
+        "No finite MCP session model yet.",
+        "Verify implementation transitions and failure paths against the formal contract."
+      ]
+    }
+  ]
+}

@@ -12,13 +12,20 @@ import com.getcapacitor.annotation.CapacitorPlugin;
 @CapacitorPlugin(name = "HostSpeech")
 public final class HostInferencePlugin extends ElizaInferencePlugin {
     private volatile boolean refusing;
+    /** Speech this host synthesized is still playing under audio focus. */
+    private volatile boolean playing;
 
     @Override protected void admit(PluginCall call) throws Refusal {
         if (refusing) throw new Refusal("Speech is paused", "PAUSED");
     }
 
+    @Override public void load() {
+        // Process-wide and fixed once any voice loads, possibly by another consumer: not in configure.
+        try { ParadeeVoice.setThreadCount(2); } catch (IllegalStateException alreadyFixed) {}
+        super.load();
+    }
+
     @Override protected void configure(InferenceSession session) {
-        ParadeeVoice.setThreadCount(2);
         if (session.speechLanguages().contains("es")) session.speedRange("es", 0.5f, 1.5f);
     }
 
@@ -34,6 +41,12 @@ public final class HostInferencePlugin extends ElizaInferencePlugin {
 
     @Override protected long idleReleaseMillis() { return 0; }
 
+    /** Models stay resident while shown; a minute after the host is hidden and idle, they go. */
+    @Override protected long hiddenReleaseMillis() { return 60000; }
+
+    /** A hidden release waits while this host's speech still plays. */
+    @Override protected boolean holdsModels() { return playing; }
+
     @Override protected boolean answerBeforeInstall() { return true; }
 
     @Override protected String failureCode(String code, Throwable failure) {
@@ -45,6 +58,21 @@ public final class HostInferencePlugin extends ElizaInferencePlugin {
     @PluginMethod public void pause(PluginCall call) {
         refusing = true;
         cancelAll();
+        call.resolve();
+    }
+
+    /** The host's player starts or stops its speech under audio focus. */
+    @PluginMethod public void playing(PluginCall call) {
+        playing = Boolean.TRUE.equals(call.getBoolean("playing", false));
+        call.resolve();
+    }
+
+    /**
+     * Queues a release of the models for when nothing is queued or running, and
+     * resolves at once without its result; the next request loads them again.
+     */
+    @PluginMethod public void trim(PluginCall call) {
+        releaseModels();
         call.resolve();
     }
 }

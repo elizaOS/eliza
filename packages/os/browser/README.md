@@ -99,6 +99,16 @@ An expired, unrevoked binding can renew at the same task epoch only with a highe
 binding revision and identical owner, origin, targets and display name. Revoked
 bindings and scope changes require a new epoch.
 
+A trusted host with no isolated world (for example a development preview that
+injects its own script into the page) can call `pageCommand(command, snapshotId,
+validateOnly, { scope, ownedHosts })`. The page command then keeps its state on
+`scope`, an object the host keeps in its own closure, and not on `globalThis`,
+so page script cannot read or replace it. `ownedHosts` is a WeakSet of the
+elements the host draws on the page; blockers ignore them. This protects only
+the command's own state: page script in the same world can still replace the
+browser's own objects. The extension and the native surface do not pass a host
+and run in an isolated world.
+
 `src/task-bindings.mjs` shares this binding and command-scope enforcement with
 trusted embedded-browser transports. The host supplies storage, exact-page URL
 lookup, page-ID validation and acknowledged guidance cleanup. Callers serialize

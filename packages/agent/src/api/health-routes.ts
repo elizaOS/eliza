@@ -38,6 +38,7 @@ import { detectRuntimeModel } from "./agent-model.ts";
 import type { ConnectorHealthMonitor } from "./connector-health.ts";
 import { probeRuntimeDatabaseLiveness } from "./database-liveness.ts";
 import { loadLocalInferenceRouteApi } from "./local-inference-server-api.ts";
+import { readNativeInferenceTiming } from "./native-inference-timing.ts";
 import {
   getPairingInstanceId,
   isTrustedLocalRequest,
@@ -94,6 +95,8 @@ export type ApiStatusComposer = (
 ) => Record<string, unknown>;
 
 export interface HealthRouteContext {
+  /** Already verified by the existing request gate; diagnostics never resolve authority. */
+  ownerDiagnostics?: boolean;
   composeStatus?: ApiStatusComposer;
   req: http.IncomingMessage;
   res: http.ServerResponse;
@@ -804,6 +807,11 @@ export async function handleHealthRoutes(
       startup: state.startup,
       cloud: cloudStatus,
       ...(cloudInferenceFailure ? { cloudInferenceFailure } : {}),
+      ...(ctx.ownerDiagnostics &&
+      state.runtime &&
+      state.agentState === "running"
+        ? { nativeInferenceTiming: readNativeInferenceTiming(state.runtime) }
+        : {}),
       pendingRestart: state.pendingRestartReasons.length > 0,
       pendingRestartReasons: state.pendingRestartReasons,
     };

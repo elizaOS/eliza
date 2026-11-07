@@ -1,5 +1,7 @@
 import assert from "node:assert/strict";
+import fs from "node:fs";
 import { mkdtemp, readdir, readFile, rm, stat } from "node:fs/promises";
+import { syncBuiltinESMExports } from "node:module";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
@@ -84,6 +86,76 @@ test("private files are replaced whole with owner-only permissions", async (t) =
   assert.equal(ports.readFile(file), '{"entries":[]}');
   ports.removeFile(file);
   assert.throws(() => ports.readFile(file), { code: "ENOENT" });
+});
+
+/**
+ * Runs `fn` while every fsync of a handle opened on `directory` fails with
+ * `code` (or succeeds, when `code` is null), and returns how many there were.
+ */
+function withDirectorySync(directory, code, fn) {
+  const { openSync, fsyncSync } = fs;
+  const handles = new Set();
+  let synced = 0;
+  fs.openSync = (path, ...rest) => {
+    const fd = openSync(path, ...rest);
+    if (path === directory) handles.add(fd);
+    return fd;
+  };
+  fs.fsyncSync = (fd) => {
+    if (!handles.has(fd)) return fsyncSync(fd);
+    synced++;
+    if (code) throw Object.assign(new Error(`synthetic ${code}`), { code });
+  };
+  syncBuiltinESMExports();
+  try {
+    fn();
+  } finally {
+    Object.assign(fs, { openSync, fsyncSync });
+    syncBuiltinESMExports();
+  }
+  return synced;
+}
+
+test("a directory sync I/O failure is reported, not taken as written", async (t) => {
+  const root = await mkdtemp(join(tmpdir(), "task-sealing-"));
+  t.after(() => rm(root, { recursive: true, force: true }));
+  const file = join(root, "journal.json");
+  const ports = sealedFilePorts(
+    createTaskSealer(deriveTaskKeys(master, { namespace }).files, {
+      namespace,
+    }),
+    "diagnostics-journal",
+  );
+  withDirectorySync(root, "EIO", () => {
+    assert.throws(() => writePrivateFileSync(file, "first"), { code: "EIO" });
+    assert.throws(() => ports.writeFile(file, "{}"), { code: "EIO" });
+    assert.throws(() => ports.removeFile(file), { code: "EIO" });
+  });
+  // A filesystem that cannot sync a directory handle at all still writes.
+  withDirectorySync(root, "EINVAL", () => {
+    writePrivateFileSync(file, "second");
+  });
+  assert.equal(await readFile(file, "utf8"), "second");
+});
+
+test("removing a sealed file syncs its directory", async (t) => {
+  const root = await mkdtemp(join(tmpdir(), "task-sealing-"));
+  t.after(() => rm(root, { recursive: true, force: true }));
+  const file = join(root, "journal.json");
+  const ports = sealedFilePorts(
+    createTaskSealer(deriveTaskKeys(master, { namespace }).files, {
+      namespace,
+    }),
+    "diagnostics-journal",
+  );
+  ports.writeFile(file, "{}");
+  assert.equal(
+    withDirectorySync(root, null, () => ports.removeFile(file)),
+    1,
+  );
+  assert.throws(() => ports.readFile(file), { code: "ENOENT" });
+  // Nothing to sync when the directory itself is gone.
+  ports.removeFile(join(root, "missing", "journal.json"));
 });
 
 test("a private file write can verify the staged text before it replaces the file", async (t) => {

@@ -5,6 +5,7 @@
  * verification cannot drift between the two runtimes.
  */
 
+import { utf8ByteLength } from "./utils/unicode.js";
 import { validateUuid } from "./utils/uuid.js";
 
 export const SHARED_TODO_CUTOVER_VERSION = 2 as const;
@@ -411,14 +412,12 @@ function assertUniqueMutations(
 	}
 }
 
-function encodedBytes(value: string): number {
-	return new TextEncoder().encode(value).byteLength;
-}
+const utf8Encoder = new TextEncoder();
 
 async function sha256Hex(value: string): Promise<string> {
 	const digest = await crypto.subtle.digest(
 		"SHA-256",
-		new TextEncoder().encode(value),
+		utf8Encoder.encode(value),
 	);
 	return Array.from(new Uint8Array(digest), (byte) =>
 		byte.toString(16).padStart(2, "0"),
@@ -482,7 +481,7 @@ export async function createSharedTodoCutoverSnapshot(input: {
 		);
 	assertUniqueMutations(mutations);
 	const payload = canonicalPayload(sourceAgentId, todos, mutations);
-	if (encodedBytes(payload) > MAX_SHARED_TODO_CUTOVER_BYTES) {
+	if (utf8ByteLength(payload) > MAX_SHARED_TODO_CUTOVER_BYTES) {
 		invalid(
 			"TODO_CUTOVER_PAYLOAD_TOO_LARGE",
 			`Todo snapshot exceeds ${MAX_SHARED_TODO_CUTOVER_BYTES} bytes`,

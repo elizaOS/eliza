@@ -220,22 +220,27 @@ export function createBillSourceStore(db, tasks, { now = Date.now } = {}) {
      */
     findSelectionBySourceRef(runtime, sourceRef) {
       if (typeof sourceRef !== "string" || !sourceRef) return null;
-      const rows = db
-        .prepare(
-          "SELECT task_id FROM bill_source_selections_v1 WHERE owner_key=? AND json_extract(document,'$.candidate.sourceRef')=? ORDER BY rowid DESC LIMIT 8",
-        )
-        .all(ownerKey(runtime.owner), sourceRef);
-      for (const { task_id: taskId } of rows) {
-        let selected;
-        try {
-          selected = store.forTask(runtime, taskId).load();
-        } catch (error) {
-          if (error?.code === "BILL_SELECTION_STALE") continue;
-          throw error;
+      // Newest first, a page at a time, until one checks out: however many
+      // newer selections of this bill are stale, an older valid one is found.
+      const page = db.prepare(
+        "SELECT rowid AS position, task_id FROM bill_source_selections_v1 WHERE owner_key=? AND json_extract(document,'$.candidate.sourceRef')=? AND rowid<? ORDER BY rowid DESC LIMIT 8",
+      );
+      const key = ownerKey(runtime.owner);
+      for (let before = Number.MAX_SAFE_INTEGER; ; ) {
+        const rows = page.all(key, sourceRef, before);
+        for (const { position, task_id: taskId } of rows) {
+          before = position;
+          let selected;
+          try {
+            selected = store.forTask(runtime, taskId).load();
+          } catch (error) {
+            if (error?.code === "BILL_SELECTION_STALE") continue;
+            throw error;
+          }
+          if (selected?.candidate.sourceRef === sourceRef) return selected;
         }
-        if (selected?.candidate.sourceRef === sourceRef) return selected;
+        if (rows.length < 8) return null;
       }
-      return null;
     },
     forTask(runtime, taskId) {
       const key = ownerKey(runtime.owner);

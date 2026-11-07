@@ -44,12 +44,39 @@ export interface MapsPlace {
   fetchedAt: number;
 }
 
+/** One public-transport ride of a transit route, from the provider's schedules. */
+export interface MapsTransitDetails {
+  /** Line name as riders see it, e.g. "M1" or "Northern line". */
+  line: string;
+  /** Vehicle kind, e.g. "bus", "subway", "train", "tram", "ferry". */
+  vehicle: string;
+  headsign?: string;
+  departureStop: string;
+  arrivalStop: string;
+  /** ISO 8601 scheduled (or real-time) departure and arrival. */
+  departureTime?: string;
+  arrivalTime?: string;
+  stopCount?: number;
+  /** Operator-published line colour, `#rrggbb`. */
+  color?: string;
+}
+
 export interface MapsRouteStep {
   instruction: string;
   coordinate: MapsCoordinate;
   distanceMeters: number;
   maneuver?: MapsManeuver;
+  /** Present on the ride steps of a transit route. */
+  transit?: MapsTransitDetails;
 }
+
+/**
+ * Traffic a route's duration reflects: `none` (free flow) or `live` (current
+ * and predicted traffic from the provider).
+ */
+export type MapsTraffic = "none" | "live";
+/** Transit a provider serves: `none` or `scheduled` (published timetables). */
+export type MapsTransit = "none" | "scheduled";
 
 export interface MapsRoute {
   providerId: string;
@@ -63,7 +90,9 @@ export interface MapsRoute {
   steps: MapsRouteStep[];
   attribution: string;
   fetchedAt: number;
-  traffic: "none";
+  traffic: MapsTraffic;
+  /** Free-flow duration when `traffic` is `live`, so hosts can show the delay. */
+  staticDurationSeconds?: number;
 }
 
 /** West, south, east, north in degrees. */
@@ -99,6 +128,21 @@ export interface MapsDisclosure {
   cloudRecords: "operation-and-result-code";
 }
 
+/**
+ * Raster map tiles proxied by Cloud for providers that serve them. Hosts fetch
+ * them with their Cloud credential and must show `attribution` on the map;
+ * `GET /api/v1/maps/tiles/viewport` returns the copyright for the visible area.
+ */
+export interface MapsTilesDescriptor {
+  /** Path template relative to the Cloud origin, e.g. `/api/v1/maps/tiles/{z}/{x}/{y}`. */
+  urlTemplate: string;
+  mapType: "roadmap";
+  minZoom: number;
+  maxZoom: number;
+  tileSize: number;
+  attribution: string;
+}
+
 export interface MapsCoverage {
   providerId: string;
   /** Stable opaque handle for this Cloud provider configuration. */
@@ -110,18 +154,20 @@ export interface MapsCoverage {
   disclosure: MapsDisclosure;
   regions: MapsCoverageRegion[];
   capabilities: {
-    /** Cloud serves no map tiles yet; hosts keep their own map plane. */
-    map: false;
+    /** True when Cloud serves raster tiles (`tiles`); hosts may draw them instead of their own basemap. */
+    map: boolean;
     search: true;
     placeDetails: true;
     geocode: true;
     reverseGeocode: true;
     modes: MapsTravelMode[];
     alternatives: boolean;
-    traffic: "none";
-    transit: "none";
+    traffic: MapsTraffic;
+    transit: MapsTransit;
     offline: { map: false; search: false; routing: false };
   };
+  /** Present only when the provider serves raster tiles through Cloud. */
+  tiles?: MapsTilesDescriptor;
 }
 
 export const MAPS_OPERATIONS = [
@@ -131,6 +177,8 @@ export const MAPS_OPERATIONS = [
   "search",
   "details",
   "routes",
+  "tiles",
+  "viewport",
 ] as const;
 export type MapsOperation = (typeof MAPS_OPERATIONS)[number];
 
@@ -204,8 +252,51 @@ export const mapsRoutesRequestSchema = z
     to: coordinateSchema,
     mode: z.enum(MAPS_TRAVEL_MODES),
     alternatives: z.boolean().optional(),
+    /** ISO 8601 departure for transit timetables and traffic prediction; default now. */
+    departAt: z.string().datetime({ offset: true }).optional(),
   })
   .strict();
+
+export const MAPS_MAX_TILE_ZOOM = 22;
+
+/** One XYZ tile address; x and y must lie inside the zoom level's grid. */
+export const mapsTileRequestSchema = z
+  .object({
+    z: z.number().int().min(0).max(MAPS_MAX_TILE_ZOOM),
+    x: z.number().int().min(0),
+    y: z.number().int().min(0),
+  })
+  .strict()
+  .refine(({ z: zoom, x, y }) => x < 2 ** zoom && y < 2 ** zoom, "Tile is outside the grid");
+
+export type MapsTileRequest = z.infer<typeof mapsTileRequestSchema>;
+
+/** Visible area of a tiled map, for the provider's copyright text. */
+export const mapsViewportRequestSchema = z
+  .object({
+    zoom: z.number().int().min(0).max(MAPS_MAX_TILE_ZOOM),
+    north: z.number().finite().min(-90).max(90),
+    south: z.number().finite().min(-90).max(90),
+    east: z.number().finite().min(-180).max(180),
+    west: z.number().finite().min(-180).max(180),
+  })
+  .strict()
+  .refine(({ north, south }) => north > south, "North must be above south");
+
+export type MapsViewportRequest = z.infer<typeof mapsViewportRequestSchema>;
+
+export interface MapsViewportResponse {
+  providerId: string;
+  /** Copyright text the host shows on the map, e.g. "Map data ©2026 Google". */
+  copyright: string;
+  maxZoom?: number;
+}
+
+export interface MapsTile {
+  body: ArrayBuffer;
+  contentType: "image/png" | "image/jpeg" | "image/webp";
+  attribution: string;
+}
 
 export type MapsTextSearchRequest = z.infer<typeof mapsTextSearchRequestSchema>;
 export type MapsReverseRequest = z.infer<typeof mapsReverseRequestSchema>;
@@ -242,6 +333,10 @@ export interface MapsProviderAdapter {
   search(request: MapsTextSearchRequest, signal?: AbortSignal): Promise<MapsPlace[]>;
   details(request: MapsPlaceDetailsRequest, signal?: AbortSignal): Promise<MapsPlace | null>;
   routes(request: MapsRoutesRequest, signal?: AbortSignal): Promise<MapsRoute[]>;
+  /** Raster tile; only providers whose coverage carries `tiles` implement it. */
+  tile?(request: MapsTileRequest, signal?: AbortSignal): Promise<MapsTile>;
+  /** Copyright for a visible area; only providers that serve tiles implement it. */
+  viewport?(request: MapsViewportRequest, signal?: AbortSignal): Promise<MapsViewportResponse>;
 }
 
 /** Whether a coordinate lies inside one region (bounds do not cross the antimeridian). */

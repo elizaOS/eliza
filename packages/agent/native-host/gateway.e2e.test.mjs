@@ -435,6 +435,85 @@ test("independent host HTTP authentication, disk ownership restart, stale-accoun
     await rm(root, { recursive: true, force: true });
   }
 });
+test("sign-out stops a room's turn even after its request closed, and only rooms sent a message", async () => {
+  const requests = [];
+  const held = [];
+  // A second conversation that is never sent a message has no turn to stop.
+  const idle = "22222222-2222-4222-8222-222222222222";
+  let conversations = 0;
+  const upstream = http.createServer(async (req, res) => {
+    let raw = "";
+    for await (const chunk of req) raw += chunk;
+    requests.push({ url: req.url, body: raw ? JSON.parse(raw) : null });
+    res.setHeader("Content-Type", "application/json");
+    // The turn runs upstream until it is aborted; its reply never comes.
+    if (req.url.endsWith("/messages")) return held.push(res);
+    res.end(
+      JSON.stringify(
+        req.url === "/api/conversations"
+          ? ++conversations === 1
+            ? { conversation: { id, roomId: id } }
+            : { conversation: { id: idle, roomId: idle } }
+          : { aborted: true },
+      ),
+    );
+  });
+  const target = await listen(upstream);
+  const server = createLocalAgentGateway({
+    hostPolicy: policy,
+    upstream: target,
+    token: "upstream-authority",
+    inboundToken: "host-authority",
+    credentialGate: async () => "a",
+    cloudHandler: async (_req, res, url, { json }) => {
+      if (url.pathname !== "/identity/logout") return false;
+      json(res, 200, { disconnected: true });
+      return true;
+    },
+  });
+  const base = await listen(server);
+  const post = (path, body = {}, signal) =>
+    fetch(base + path, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: "Bearer host-authority",
+      },
+      body: JSON.stringify(body),
+      signal,
+    });
+  const until = async (check) => {
+    for (let i = 0; i < 200 && !check(); i++)
+      await new Promise((resolve) => setTimeout(resolve, 10));
+    assert.ok(check());
+  };
+  try {
+    assert.equal((await post("/conversations")).status, 200);
+    assert.equal((await post("/conversations")).status, 200);
+    const renderer = new AbortController();
+    const message = post(
+      `/conversations/${id}/messages`,
+      { text: "hello" },
+      renderer.signal,
+    ).catch(() => null);
+    await until(() => held.length === 1);
+    // The renderer goes away (reload, closed panel) while the turn runs.
+    renderer.abort();
+    await message;
+    await until(() => held[0].destroyed || held[0].writableEnded);
+    assert.equal((await post("/identity/logout")).status, 200);
+    await until(() => requests.some((r) => r.url === `/api/turns/${id}/abort`));
+    assert.deepEqual(
+      requests.filter((r) => r.url.endsWith("/abort")),
+      [{ url: `/api/turns/${id}/abort`, body: { reason: "cloud-logout" } }],
+    );
+  } finally {
+    for (const res of held) res.destroy();
+    await close(server);
+    await close(upstream);
+  }
+});
+
 test("runtime supervisor starts real processes in isolated account storage and stops only its child", async () => {
   const root = await mkdtemp(join(tmpdir(), "native-runtime-e2e-"));
   let owner = "first";
@@ -480,72 +559,80 @@ test("runtime supervisor starts real processes in isolated account storage and s
   }
 });
 
-for (const transition of ["reset", "rotate"]) {
-  test(`request admission rechecks account after task presentation: ${transition}`, async () => {
-    let owner = "first";
-    let messageRequests = 0;
-    const entered = Promise.withResolvers();
-    const release = Promise.withResolvers();
-    const upstream = http.createServer((req, res) => {
-      if (req.url.endsWith("/messages")) messageRequests++;
-      res.setHeader("Content-Type", "application/json");
-      res.end(
-        JSON.stringify({ conversation: { id, roomId: id }, text: "reply" }),
-      );
-    });
-    const target = await listen(upstream);
-    const gateway = createLocalAgentGateway({
-      upstream: target,
-      token: "upstream-authority",
-      inboundToken: "host-authority",
-      credentialGate: async () => owner,
-      hostPolicy: {
-        ...policy,
-        prepareMessage: (input) => ({
-          body: { text: input.text },
-          chatTask: { id: "task" },
-        }),
-      },
-      taskGateway: {
-        revoke: async () => {},
-        presentationForConversation: async () => {
-          entered.resolve();
-          await release.promise;
-          return { choice: null };
-        },
-      },
-      cloudHandler: async (req, res, url, { json }) => {
-        if (url.pathname !== "/identity/logout") return false;
-        json(res, 200, { disconnected: true });
-        return true;
-      },
-    });
-    const base = await listen(gateway);
-    const post = (path, body = {}) =>
-      fetch(base + path, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: "Bearer host-authority",
-        },
-        body: JSON.stringify(body),
+for (const stage of ["admission", "reply"]) {
+  for (const transition of ["reset", "rotate"]) {
+    test(`request ${stage} rechecks account after task presentation: ${transition}`, async () => {
+      let owner = "first";
+      let messageRequests = 0;
+      let presentations = 0;
+      const entered = Promise.withResolvers();
+      const release = Promise.withResolvers();
+      const upstream = http.createServer((req, res) => {
+        if (req.url.endsWith("/messages")) messageRequests++;
+        res.setHeader("Content-Type", "application/json");
+        res.end(
+          JSON.stringify({ conversation: { id, roomId: id }, text: "reply" }),
+        );
       });
-    try {
-      assert.equal((await post("/conversations")).status, 200);
-      const pending = post(`/conversations/${id}/messages`, { text: "hello" });
-      await entered.promise;
-      if (transition === "reset")
-        assert.equal((await post("/identity/logout")).status, 200);
-      else owner = "second";
-      release.resolve();
-      assert.equal((await pending).status, 409);
-      assert.equal(messageRequests, 0);
-    } finally {
-      release.resolve();
-      await close(gateway);
-      await close(upstream);
-    }
-  });
+      const target = await listen(upstream);
+      const gateway = createLocalAgentGateway({
+        upstream: target,
+        token: "upstream-authority",
+        inboundToken: "host-authority",
+        credentialGate: async () => owner,
+        hostPolicy: {
+          ...policy,
+          prepareMessage: (input) => ({
+            body: { text: input.text },
+            chatTask: { id: "task" },
+          }),
+        },
+        taskGateway: {
+          revoke: async () => {},
+          presentationForConversation: async () => {
+            presentations += 1;
+            if (presentations === (stage === "admission" ? 1 : 2)) {
+              entered.resolve();
+              await release.promise;
+            }
+            return { choice: null };
+          },
+        },
+        cloudHandler: async (req, res, url, { json }) => {
+          if (url.pathname !== "/identity/logout") return false;
+          json(res, 200, { disconnected: true });
+          return true;
+        },
+      });
+      const base = await listen(gateway);
+      const post = (path, body = {}) =>
+        fetch(base + path, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: "Bearer host-authority",
+          },
+          body: JSON.stringify(body),
+        });
+      try {
+        assert.equal((await post("/conversations")).status, 200);
+        const pending = post(`/conversations/${id}/messages`, {
+          text: "hello",
+        });
+        await entered.promise;
+        if (transition === "reset")
+          assert.equal((await post("/identity/logout")).status, 200);
+        else owner = "second";
+        release.resolve();
+        assert.equal((await pending).status, 409);
+        assert.equal(messageRequests, stage === "admission" ? 0 : 1);
+      } finally {
+        release.resolve();
+        await close(gateway);
+        await close(upstream);
+      }
+    });
+  }
 }
 
 const predicatePolicy = {
@@ -691,6 +778,73 @@ test("a host request scope wraps each whole request, also its later async work",
       }),
     TypeError,
   );
+});
+
+test("a rejecting async request scope answers 500 once and never runs the handler twice", async () => {
+  const unhandled = [];
+  const onUnhandled = (reason) => unhandled.push(reason);
+  process.on("unhandledRejection", onUnhandled);
+  let handled = 0;
+  let lateNext;
+  const gateway = createLocalAgentGateway({
+    hostPolicy: policy,
+    upstream: "http://127.0.0.1:9",
+    token: "upstream-authority",
+    inboundToken: "host-authority",
+    requestScope: async (req, _res, next) => {
+      await Promise.resolve();
+      if (req.headers["x-test-case"] === "reject-before") {
+        lateNext = next;
+        throw new Error("host scope rejected");
+      }
+      if (req.headers["x-test-case"] === "reject-after") {
+        await next();
+        throw new Error("host scope rejected after the handler");
+      }
+      if (req.headers["x-test-case"] === "twice") {
+        await next();
+        return next();
+      }
+      return next();
+    },
+    fetchImpl: async () => {
+      handled += 1;
+      return Response.json({});
+    },
+  });
+  const base = await listen(gateway);
+  try {
+    const call = (testCase = "plain") =>
+      fetch(`${base}/health`, {
+        headers: {
+          Authorization: "Bearer host-authority",
+          "X-Test-Case": testCase,
+        },
+        // Without an answer the request would hang; fail instead.
+        signal: AbortSignal.timeout(5_000),
+      });
+    const rejected = await call("reject-before");
+    assert.equal(rejected.status, 500);
+    assert.deepEqual(await rejected.json(), {
+      error: "Local agent unavailable",
+    });
+    assert.equal(handled, 0);
+    // A failed scope cannot start the handler later.
+    assert.throws(() => lateNext(), /Request handler already started/);
+    assert.equal(handled, 0);
+    // A rejection after the handler answered does not answer again.
+    assert.equal((await call("reject-after")).status, 200);
+    assert.equal(handled, 1);
+    assert.equal((await call("twice")).status, 200);
+    assert.equal(handled, 2);
+    assert.equal((await call()).status, 200);
+    assert.equal(handled, 3);
+    await new Promise((resolve) => setImmediate(resolve));
+    assert.deepEqual(unhandled, []);
+  } finally {
+    process.off("unhandledRejection", onUnhandled);
+    await close(gateway);
+  }
 });
 
 test("read-only private JSON enforces real file owner, mode, symlink and byte boundaries", async (t) => {
@@ -891,5 +1045,646 @@ test("embedded surface HTTP channel fences account replacement, cancellation, la
   } finally {
     channel.close();
     await close(server);
+  }
+});
+
+// One agent outcome, answered as the buffered JSON reply and as the event
+// stream the agent writes for it (`writeConversationDoneSse`).
+const agentReply = {
+  text: "Hello there!",
+  agentName: "Agent",
+  messageId: "22222222-2222-4222-8222-222222222222",
+  userMessageId: "33333333-3333-4333-8333-333333333333",
+  historyRefreshRequired: true,
+  actionResults: [{ action: "REPLY", success: true }],
+};
+async function streamHarness({ messageStream, ...options } = {}) {
+  const state = {
+    owner: "a",
+    reply: agentReply,
+    tokens: ["Hello", " there", "!"],
+    status: 200,
+    beforeFrame: async () => {},
+    onTurn: async () => {},
+    requests: [],
+    closed: [],
+    // null: the `done` frame; an object: that frame instead; "none": no frame.
+    terminal: null,
+    gateCalls: 0,
+  };
+  const upstream = http.createServer(async (req, res) => {
+    let raw = "";
+    for await (const chunk of req) raw += chunk;
+    state.requests.push({ url: req.url, body: raw ? JSON.parse(raw) : null });
+    if (req.url === "/api/conversations") {
+      res.setHeader("Content-Type", "application/json");
+      return res.end(
+        JSON.stringify({ conversation: { id, roomId: id, title: "t" } }),
+      );
+    }
+    if (req.url.startsWith("/api/turns/")) {
+      res.setHeader("Content-Type", "application/json");
+      return res.end(JSON.stringify({ aborted: true }));
+    }
+    const closed = new Promise((resolve) => res.on("close", resolve));
+    state.closed.push(closed);
+    await state.onTurn(req.url);
+    if (state.status !== 200 || !req.url.endsWith("/stream")) {
+      res.writeHead(state.status, { "Content-Type": "application/json" });
+      return res.end(
+        JSON.stringify(
+          state.status === 200 ? state.reply : { error: "No such room" },
+        ),
+      );
+    }
+    res.writeHead(200, { "Content-Type": "text/event-stream" });
+    res.write(": heartbeat\n\n");
+    let text = "";
+    for (const [index, token] of state.tokens.entries()) {
+      await state.beforeFrame(index);
+      if (res.destroyed) return;
+      text += token;
+      res.write(`data: ${JSON.stringify({ type: "token", text: token })}\n\n`);
+    }
+    await state.beforeFrame(state.tokens.length);
+    if (res.destroyed) return;
+    if (state.terminal === "none") return res.end();
+    if (state.terminal)
+      return res.end(`data: ${JSON.stringify(state.terminal)}\n\n`);
+    res.write(
+      `data: ${JSON.stringify({ type: "token", fullText: text, provisional: true })}\n\n`,
+    );
+    const { text: fullText, ...metadata } = state.reply;
+    // The terminal frame also carries fields the buffered reply leaves out.
+    res.end(
+      `data: ${JSON.stringify({ ...metadata, thought: "private", usage: { totalTokens: 3 }, type: "done", fullText })}\n\n`,
+    );
+  });
+  const target = await listen(upstream);
+  const gateway = createLocalAgentGateway({
+    hostPolicy: policy,
+    upstream: target,
+    token: "upstream-authority",
+    inboundToken: "host-authority",
+    credentialGate: async () => {
+      state.gateCalls++;
+      if (state.owner instanceof Error) throw state.owner;
+      return state.owner;
+    },
+    cloudHandler: async (_req, res, url, { json }) => {
+      if (url.pathname !== "/identity/logout") return false;
+      json(res, 200, { disconnected: true });
+      return true;
+    },
+    messageStream,
+    ...options,
+  });
+  const base = await listen(gateway);
+  const post = async (path, body = {}) => {
+    const response = await fetch(base + path, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: "Bearer host-authority",
+      },
+      body: JSON.stringify(body),
+    });
+    return { status: response.status, body: await response.json() };
+  };
+  const route = `/conversations/${id}/messages`;
+  const buffered = (text = "hello") => post(route, { text });
+  const start = (text = "hello") => post(`${route}/stream/start`, { text });
+  const pull = (streamId, cursor) =>
+    post(`${route}/stream/pull`, { streamId, cursor });
+  const cancel = (streamId) => post(`${route}/stream/cancel`, { streamId });
+  // Pulls to the end; answers like the buffered route plus the text events.
+  const streamed = async (text = "hello") => {
+    const started = await start(text);
+    if (started.status !== 200) return started;
+    const events = [];
+    let cursor = 0;
+    let pulls = 0;
+    try {
+      for (;;) {
+        const pulled = await pull(started.body.streamId, cursor);
+        if (pulled.status !== 200) return { ...pulled, events };
+        events.push(...pulled.body.events);
+        cursor = pulled.body.cursor;
+        pulls++;
+        if (pulled.body.done)
+          return { status: 200, body: pulled.body.message, events, pulls };
+      }
+    } finally {
+      // A client frees its stream slot after the turn.
+      await cancel(started.body.streamId);
+    }
+  };
+  return {
+    state,
+    post,
+    buffered,
+    start,
+    pull,
+    cancel,
+    streamed,
+    close: async () => {
+      await close(gateway);
+      await close(upstream);
+    },
+  };
+}
+
+test("a streamed reply gives ordered text after a cursor, then the buffered reply", async () => {
+  const gates = [0, 1, 2, 3].map(() => Promise.withResolvers());
+  const harness = await streamHarness({
+    hostPolicy: {
+      ...policy,
+      prepareMessage: (input) => ({
+        body: { text: input.text },
+        chatTask: { id: "task" },
+      }),
+      formatTaskContext: (presentation) => ` [${presentation.choice.id}]`,
+    },
+    taskGateway: {
+      revoke: async () => {},
+      presentationForConversation: async ({ actorId }) => ({
+        choice: { id: `choice-${actorId}` },
+      }),
+    },
+  });
+  const { state, start, pull, cancel } = harness;
+  try {
+    assert.equal((await harness.post("/conversations")).status, 200);
+    const buffered = await harness.buffered();
+    assert.equal(buffered.status, 200);
+    assert.deepEqual(buffered.body.taskChoices, [{ id: "choice-a" }]);
+    state.beforeFrame = (index) => gates[index].promise;
+    gates[0].resolve();
+    const started = await start();
+    assert.equal(started.status, 200);
+    const { streamId } = started.body;
+    // The agent receives the same message as the buffered route sends.
+    assert.equal(
+      state.requests.at(-1).url,
+      `/api/conversations/${id}/messages/stream`,
+    );
+    assert.deepEqual(state.requests.at(-1).body, state.requests.at(-2).body);
+    assert.equal(state.requests.at(-1).body.text, "hello [choice-a]");
+    const first = await pull(streamId, 0);
+    assert.deepEqual(first, {
+      status: 200,
+      body: { events: [{ seq: 1, text: "Hello" }], cursor: 1, done: false },
+    });
+    // With nothing new, a pull waits for the next text.
+    const held = pull(streamId, 1);
+    const early = await Promise.race([
+      held.then(() => "answered"),
+      new Promise((resolve) => setTimeout(resolve, 100, "waiting")),
+    ]);
+    assert.equal(early, "waiting");
+    gates[1].resolve();
+    assert.deepEqual(await held, {
+      status: 200,
+      body: { events: [{ seq: 2, text: " there" }], cursor: 2, done: false },
+    });
+    // A cursor confirms the text before it; that text is released.
+    assert.equal(
+      (await pull(streamId, 0)).body.code,
+      "MESSAGE_STREAM_CURSOR_EXPIRED",
+    );
+    assert.equal((await pull(streamId, 3)).status, 400);
+    assert.equal((await pull("other", 2)).status, 404);
+    gates[2].resolve();
+    gates[3].resolve();
+    const events = [];
+    let cursor = 2;
+    let final;
+    while (!final) {
+      const { status, body } = await pull(streamId, cursor);
+      assert.equal(status, 200);
+      events.push(...body.events);
+      cursor = body.cursor;
+      if (body.done) final = body.message;
+    }
+    assert.deepEqual(events, [
+      { seq: 3, text: "!" },
+      { seq: 4, fullText: "Hello there!", provisional: true },
+    ]);
+    assert.deepEqual(final, buffered.body);
+    assert.equal(final.thought, undefined);
+    // A lost answer can be pulled again with the same cursor.
+    assert.deepEqual((await pull(streamId, cursor)).body.message, final);
+    assert.deepEqual((await cancel(streamId)).body, { cancelled: true });
+    assert.equal((await pull(streamId, cursor)).status, 404);
+  } finally {
+    for (const gate of gates) gate.resolve();
+    await harness.close();
+  }
+});
+
+test("streamed replies are cancelled, expire and stay inside their limits", async () => {
+  const harness = await streamHarness({
+    messageStream: {
+      idleMs: 300,
+      holdMs: 100,
+      coalesceMs: 20,
+      maxStreams: 1,
+      maxBufferedChars: 12,
+    },
+  });
+  const { state, start, pull, cancel } = harness;
+  const never = Promise.withResolvers();
+  try {
+    assert.equal((await harness.post("/conversations")).status, 200);
+    state.beforeFrame = (index) => (index === 1 ? never.promise : undefined);
+    const cancelled = (await start()).body.streamId;
+    assert.equal((await pull(cancelled, 0)).body.cursor, 1);
+    // An empty pull answers after its bounded hold.
+    const before = Date.now();
+    assert.deepEqual((await pull(cancelled, 1)).body, {
+      events: [],
+      cursor: 1,
+      done: false,
+    });
+    assert.ok(Date.now() - before >= 90);
+    assert.equal((await start()).body.code, "MESSAGE_STREAM_LIMIT");
+    assert.equal((await cancel(cancelled)).status, 200);
+    await state.closed.at(-1);
+    assert.equal((await pull(cancelled, 1)).status, 404);
+    // A stream nobody pulls is cancelled at the agent and released.
+    const idle = (await start()).body.streamId;
+    await state.closed.at(-1);
+    assert.equal((await pull(idle, 0)).body.code, "MESSAGE_STREAM_NOT_FOUND");
+    // Unconfirmed text has an explicit limit; it fails, never truncates.
+    state.tokens = ["123456", "7890123"];
+    state.beforeFrame = async () => {};
+    const full = (await start()).body.streamId;
+    await state.closed.at(-1);
+    assert.deepEqual(await pull(full, 0), {
+      status: 503,
+      body: {
+        code: "MESSAGE_STREAM_BUFFER_FULL",
+        error: "Gateway request failed (error26)",
+      },
+    });
+    assert.throws(
+      () =>
+        createLocalAgentGateway({
+          hostPolicy: policy,
+          token: "t",
+          messageStream: { holdMs: 5000, idleMs: 5000 },
+        }),
+      TypeError,
+    );
+    assert.throws(
+      () =>
+        createLocalAgentGateway({
+          hostPolicy: policy,
+          token: "t",
+          messageStream: { coalesceMs: 2000, holdMs: 2000 },
+        }),
+      TypeError,
+    );
+  } finally {
+    never.resolve();
+    await harness.close();
+  }
+});
+
+test("a streamed turn refuses every check exactly as the buffered turn", async () => {
+  let presentation = 0;
+  let inference = true;
+  let paidRefusal = false;
+  const paidPaths = [];
+  const presentationGate = { wait: null };
+  const harness = await streamHarness({
+    hostPolicy: {
+      ...policy,
+      isPaidAction: (_method, path) => {
+        paidPaths.push(path);
+        return path.endsWith("/messages");
+      },
+      prepareMessage: (input) => ({
+        body: { text: input.text },
+        chatTask: { id: "task" },
+      }),
+    },
+    inferenceConfigured: async () => inference,
+    cloudHandler: Object.assign(
+      async (_req, res, url, { json }) => {
+        if (url.pathname !== "/identity/logout") return false;
+        json(res, 200, { disconnected: true });
+        return true;
+      },
+      {
+        requirePaidAccess: async () => {
+          if (paidRefusal)
+            throw Object.assign(new Error("Paid access required"), {
+              status: 402,
+            });
+        },
+      },
+    ),
+    taskGateway: {
+      revoke: async () => {},
+      presentationForConversation: async () => {
+        await presentationGate.wait?.();
+        return { choice: { id: "choice", version: presentation++ } };
+      },
+    },
+  });
+  const { state } = harness;
+  // `atReply`: the check runs on the final reply, after text may have been
+  // pulled; the renderer then discards that text, as for any failed pull.
+  const same = async (name, arrange, expected, atReply = false) => {
+    const results = [];
+    for (const run of [harness.buffered, harness.streamed]) {
+      const restore = await arrange();
+      const { status, body, events = [] } = await run();
+      restore?.();
+      results.push({ status, body });
+      if (!atReply) assert.deepEqual(events, [], name);
+    }
+    assert.deepEqual(results[1], results[0], name);
+    assert.equal(results[0].status, expected, name);
+  };
+  try {
+    await same("room not created", () => {}, 409);
+    assert.equal(state.requests.length, 0);
+    assert.equal((await harness.post("/conversations")).status, 200);
+    await same(
+      "inference unavailable",
+      () => {
+        inference = false;
+        return () => (inference = true);
+      },
+      503,
+    );
+    paidPaths.length = 0;
+    await same(
+      "paid access",
+      () => {
+        paidRefusal = true;
+        return () => (paidRefusal = false);
+      },
+      402,
+    );
+    assert.deepEqual(paidPaths, [
+      `/conversations/${id}/messages`,
+      `/conversations/${id}/messages`,
+    ]);
+    await same(
+      "stale account",
+      () => {
+        state.owner = Object.assign(
+          new Error("Runtime account binding changed"),
+          {
+            status: 409,
+          },
+        );
+        return () => (state.owner = "a");
+      },
+      409,
+    );
+    const turns = () =>
+      state.requests.filter(({ url }) => url.includes("/messages")).length;
+    const sent = turns();
+    await same(
+      "reset during admission",
+      async () => {
+        assert.equal((await harness.post("/conversations")).status, 200);
+        presentationGate.wait = async () => {
+          presentationGate.wait = null;
+          assert.equal((await harness.post("/identity/logout")).status, 200);
+        };
+        return async () => {};
+      },
+      409,
+    );
+    assert.equal(turns(), sent);
+    assert.equal((await harness.post("/conversations")).status, 200);
+    await same(
+      "agent refusal",
+      () => {
+        state.status = 404;
+        return () => (state.status = 200);
+      },
+      404,
+    );
+    await same(
+      "ephemeral reply",
+      () => {
+        state.reply = { ...agentReply, assistantEphemeral: true };
+        return () => (state.reply = agentReply);
+      },
+      503,
+      true,
+    );
+    // The task presentation changes between admission and the reply.
+    await same("task presentation changed", () => {}, 409, true);
+    await same(
+      "account rotated during the turn",
+      () => {
+        state.onTurn = async () => {
+          state.owner = "b";
+        };
+        return () => {
+          state.onTurn = async () => {};
+          state.owner = "a";
+        };
+      },
+      409,
+    );
+  } finally {
+    await harness.close();
+  }
+});
+
+test("account rotation and reset end a stream without its remaining text", async () => {
+  const harness = await streamHarness();
+  const { state, start, pull } = harness;
+  let gate = Promise.withResolvers();
+  try {
+    for (const transition of ["rotate", "reset"]) {
+      gate = Promise.withResolvers();
+      state.owner = "a";
+      assert.equal((await harness.post("/conversations")).status, 200);
+      state.beforeFrame = (index) => (index === 1 ? gate.promise : undefined);
+      const { streamId } = (await start()).body;
+      assert.equal((await pull(streamId, 0)).body.cursor, 1);
+      const held = pull(streamId, 1);
+      if (transition === "rotate") state.owner = "b";
+      else assert.equal((await harness.post("/identity/logout")).status, 200);
+      gate.resolve();
+      const refused = await held;
+      assert.deepEqual(refused, {
+        status: 409,
+        body: {
+          error: "Gateway request failed (error5)",
+          code: "CONVERSATION_NOT_OWNED",
+        },
+      });
+      await state.closed.at(-1);
+      state.owner = "a";
+      assert.equal((await pull(streamId, 1)).status, 404);
+    }
+  } finally {
+    gate.resolve();
+    await harness.close();
+  }
+});
+
+test("a pull collects text to a phrase, one pull waits per stream, one account check per pull", async () => {
+  const harness = await streamHarness({
+    messageStream: { coalesceMs: 400, holdMs: 1500 },
+  });
+  const { state, start, pull, cancel } = harness;
+  const gates = [0, 1, 2, 3, 4].map(() => Promise.withResolvers());
+  try {
+    assert.equal((await harness.post("/conversations")).status, 200);
+    // A burst and its done frame come back in one pull, without the hold.
+    let before = Date.now();
+    const burst = await harness.streamed();
+    assert.ok(Date.now() - before < 1000);
+    assert.deepEqual(
+      burst.events.map(({ seq }) => seq),
+      [1, 2, 3, 4],
+    );
+    assert.equal(burst.pulls, 1);
+    // Text that ends a phrase answers before the collection window ends.
+    state.tokens = ["Hi", " there.", " More"];
+    state.beforeFrame = (index) => gates[index].promise;
+    const { streamId } = (await start()).body;
+    const phrase = pull(streamId, 0);
+    gates[0].resolve();
+    await new Promise((resolve) => setTimeout(resolve, 50));
+    before = Date.now();
+    gates[1].resolve();
+    assert.deepEqual((await phrase).body.events, [
+      { seq: 1, text: "Hi" },
+      { seq: 2, text: " there." },
+    ]);
+    assert.ok(Date.now() - before < 300);
+    // A second waiting pull answers the first one at once.
+    const older = pull(streamId, 2);
+    await new Promise((resolve) => setTimeout(resolve, 50));
+    before = Date.now();
+    const newer = pull(streamId, 2);
+    assert.deepEqual((await older).body, {
+      events: [],
+      cursor: 2,
+      done: false,
+    });
+    assert.ok(Date.now() - before < 300);
+    const settled = await Promise.race([
+      newer.then(() => "answered"),
+      new Promise((resolve) => setTimeout(resolve, 100, "waiting")),
+    ]);
+    assert.equal(settled, "waiting");
+    gates[2].resolve();
+    assert.deepEqual((await newer).body.events, [{ seq: 3, text: " More" }]);
+    // Each pull checks the account once.
+    const calls = state.gateCalls;
+    let pulls = 0;
+    let cursor = 3;
+    gates[3].resolve();
+    for (;;) {
+      const { body } = await pull(streamId, cursor);
+      pulls++;
+      cursor = body.cursor;
+      if (body.done) break;
+    }
+    // One check per pull; the final reply checks before and after task presentation.
+    assert.equal(state.gateCalls - calls, pulls + 2);
+    assert.equal((await cancel(streamId)).status, 200);
+    assert.equal(state.gateCalls - calls, pulls + 2);
+  } finally {
+    for (const gate of gates) gate.resolve();
+    await harness.close();
+  }
+});
+
+test("agent failures after the stream opens become 502, unlike the buffered status", async () => {
+  const harness = await streamHarness();
+  const { state } = harness;
+  try {
+    assert.equal((await harness.post("/conversations")).status, 200);
+    state.terminal = {
+      type: "error",
+      message: "Idempotency key reused",
+      code: "IDEMPOTENCY_CONFLICT",
+    };
+    const conflict = await harness.streamed();
+    assert.equal(conflict.status, 502);
+    assert.deepEqual(conflict.body, {
+      error: "Idempotency key reused",
+      code: "IDEMPOTENCY_CONFLICT",
+    });
+    state.terminal = { type: "error" };
+    assert.deepEqual((await harness.streamed()).body, {
+      error: "Local agent unavailable",
+    });
+    // A stream that ends without its done frame has no reply.
+    state.terminal = "none";
+    assert.deepEqual(
+      await harness.streamed().then(({ status, body }) => ({ status, body })),
+      {
+        status: 502,
+        body: { error: "Local agent unavailable" },
+      },
+    );
+  } finally {
+    await harness.close();
+  }
+});
+
+test("sign-out stops a streamed turn like a buffered one, and never an answered turn", async () => {
+  const harness = await streamHarness();
+  const { state, start, pull, cancel } = harness;
+  const never = Promise.withResolvers();
+  const aborts = () =>
+    state.requests.filter((request) => request.url.startsWith("/api/turns/"));
+  const until = async (check) => {
+    for (let i = 0; i < 200 && !check(); i++)
+      await new Promise((resolve) => setTimeout(resolve, 10));
+    assert.ok(check());
+  };
+  const signOut = async () => {
+    assert.equal((await harness.post("/identity/logout")).status, 200);
+    assert.equal((await harness.post("/conversations")).status, 200);
+  };
+  try {
+    assert.equal((await harness.post("/conversations")).status, 200);
+    // An answered turn, buffered or streamed to its end, has nothing to stop.
+    assert.equal((await harness.buffered()).status, 200);
+    await signOut();
+    assert.equal((await harness.streamed()).status, 200);
+    await signOut();
+    // A sign-out during a streamed reply aborts it here and stops its turn.
+    state.beforeFrame = (index) => (index === 1 ? never.promise : undefined);
+    const { streamId } = (await start()).body;
+    assert.equal((await pull(streamId, 0)).body.cursor, 1);
+    await signOut();
+    await state.closed.at(-1);
+    await until(() => aborts().length === 1);
+    // Its text never reaches the next account.
+    assert.equal((await pull(streamId, 1)).body.code, "CONVERSATION_NOT_OWNED");
+    assert.equal((await pull(streamId, 1)).status, 404);
+    // A cancelled stream may still run upstream, like a closed buffered
+    // request, so the next sign-out still stops its turn.
+    const cancelled = (await start()).body.streamId;
+    assert.equal((await pull(cancelled, 0)).body.cursor, 1);
+    assert.equal((await cancel(cancelled)).status, 200);
+    await state.closed.at(-1);
+    await signOut();
+    await until(() => aborts().length === 2);
+    await new Promise((resolve) => setTimeout(resolve, 50));
+    assert.deepEqual(aborts(), [
+      { url: `/api/turns/${id}/abort`, body: { reason: "cloud-logout" } },
+      { url: `/api/turns/${id}/abort`, body: { reason: "cloud-logout" } },
+    ]);
+  } finally {
+    never.resolve();
+    await harness.close();
   }
 });

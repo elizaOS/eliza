@@ -6,13 +6,11 @@ import ai.eliza.plugins.securestore.nativeonly.TaskDataKeyStore;
 import ai.eliza.plugins.securestore.nativeonly.VerifiedAccountCredentialStore;
 import java.io.File;
 import java.io.IOException;
-import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.LinkOption;
 import java.nio.file.NoSuchFileException;
 import java.nio.file.Path;
 import java.nio.file.attribute.BasicFileAttributes;
-import java.security.MessageDigest;
 import java.util.Arrays;
 import java.util.Base64;
 import java.util.Objects;
@@ -30,16 +28,30 @@ public final class VerifiedTaskCustody implements AutoCloseable {
   /** Reuse the host's dedicated verified-account directory/alias; do not create a parallel owner record.
    * All native account writes must use this instance. DatabaseRoot is an existing private no-backup
    * directory. The actual Bun writer must hold its native lease before any task-key request.
+   * Each database key gets its own Keystore wrapping key, {@code keyAliasPrefix} plus the slot
+   * digest ({@link TaskDataKeyStore#perSlot}, default Keystore).
    */
   public VerifiedTaskCustody(NativeRuntimeSession.Scope scope, File accountDirectory,
-      String accountAlias, File keyDirectory, String keyAlias, File databaseRoot) throws Exception {
+      String accountAlias, File keyDirectory, String keyAliasPrefix, File databaseRoot) throws Exception {
+    this(scope, accountDirectory, accountAlias,
+        TaskDataKeyStore.perSlot(keyDirectory, keyAliasPrefix, false), databaseRoot);
+  }
+
+  /** As above, with the host's own per-slot key store (for example one that prefers StrongBox).
+   * Keys are stored at ({@link Database#ownerIdentity}, database name). A host that finishes a
+   * revocation after the account record is gone deletes the database files, then calls
+   * {@code keys.destroy(ownerIdentity, name)}. A shared-mode store is refused: removing its key
+   * would delete only the wrapped copy, and the shared Keystore key could still decrypt it. */
+  public VerifiedTaskCustody(NativeRuntimeSession.Scope scope, File accountDirectory,
+      String accountAlias, TaskDataKeyStore keys, File databaseRoot) throws Exception {
+    if (!keys.isPerSlot()) throw new IllegalArgumentException("Verified task custody requires per-slot keys");
     this.scope = Objects.requireNonNull(scope);
     guard = () -> { if (closed) throw unavailable(); this.scope.check(); };
     this.databaseRoot = databaseRoot.toPath().toAbsolutePath().normalize();
     if (!this.databaseRoot.equals(this.databaseRoot.toRealPath())) throw unavailable();
     requireDirectory(this.databaseRoot);
     accounts = new VerifiedAccountCredentialStore(accountDirectory, accountAlias, guard);
-    keys = new TaskDataKeyStore(keyDirectory, keyAlias);
+    this.keys = keys;
     scope.check();
     scope.onClose(this::close);
   }
@@ -134,6 +146,7 @@ public final class VerifiedTaskCustody implements AutoCloseable {
         }
       }
     }
+    /** Crypto-erases the key: its Keystore entry first, then its wrapped copy. */
     public boolean remove(String expectedKeyId) throws Exception {
       synchronized (guard) {
         check();
@@ -146,7 +159,7 @@ public final class VerifiedTaskCustody implements AutoCloseable {
     private boolean absent() throws IOException {
       for (String suffix : new String[] {"", "-wal", "-shm", "-journal"}) {
         try {
-          Files.readAttributes(Path.of(path.toString() + suffix), BasicFileAttributes.class,
+          Files.readAttributes(path.resolveSibling(path.getFileName() + suffix), BasicFileAttributes.class,
               LinkOption.NOFOLLOW_LINKS);
           return false;
         } catch (NoSuchFileException absent) { /* Only a confirmed missing entry is new. */ }
@@ -155,21 +168,12 @@ public final class VerifiedTaskCustody implements AutoCloseable {
     }
   }
 
-  /** Match the existing gateway's SHA256(JSON.stringify([authority,userId,organizationId])). */
+  /** The gateway's verifiedOwnerIdentity ({@link VerifiedAccountCredentialStore#ownerIdentity}). */
   public static String ownerIdentity(String snapshot) throws Exception {
-    VerifiedAccountCredentialStore.validate(snapshot);
-    if (snapshot == null) throw unavailable();
-    JSONObject owner = new JSONObject(snapshot).getJSONObject("owner");
-    String tuple = "[" + quote(owner.getString("authority")) + "," + quote(owner.getString("userId"))
-        + "," + quote(owner.getString("organizationId")) + "]";
-    byte[] hash = MessageDigest.getInstance("SHA-256").digest(tuple.getBytes(StandardCharsets.UTF_8));
-    StringBuilder hex = new StringBuilder("cloud-owner-v1:");
-    for (byte b : hash) hex.append(String.format(java.util.Locale.ROOT, "%02x", b & 255));
-    return hex.toString();
+    String identity = VerifiedAccountCredentialStore.ownerIdentity(snapshot);
+    if (identity == null) throw unavailable();
+    return identity;
   }
-  // Validated strings contain no control characters or unpaired surrogates. Android JSON may
-  // escape '/', unlike JavaScript JSON.stringify; explicitly preserve the established bytes.
-  private static String quote(String value) { return "\"" + value.replace("\\", "\\\\").replace("\"", "\\\"") + "\""; }
   private static String encode(TaskDataKeyStore.Key key) throws Exception {
     if (key == null) return null;
     byte[] bytes = key.copyBytes();

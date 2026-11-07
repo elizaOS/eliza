@@ -7,6 +7,13 @@ repository root with `bun run start`; use `bun run dev` for the app and API toge
 Configure providers and connectors through the host configuration; never expose host
 secrets to ungranted agents.
 
+Native hosts that rotate `ELIZA_HOST_CONTEXT_REVISION` can expose the latest
+owner chat's timing through the existing authenticated `GET /api/status`.
+`nativeInferenceTiming` contains fixed stage durations and a validated trace ID,
+not conversation text or raw spans. It is absent for non-owner requests, retired
+host bindings and hosts without that revision contract. Status reads do not
+query the log store. A newer turn prevents an older callback from replacing it.
+
 `build:mobile --target=android` compacts syntax and whitespace while keeping
 identifier names. Its `plugins-manifest.json` records each npm package that
 contributes emitted bytes, the package metadata hash, and the final bundle hash.
@@ -235,6 +242,31 @@ owns product language and view metadata; the gateway owns authenticated loopback
 transport, bounded JSON, conversation ownership, request cancellation, account
 fencing and authenticated task presentation. Only trusted host code provides this
 policy; never accept it from renderer input.
+
+A renderer bridge that cannot read a streamed response can pull a reply as it
+is written. `POST /conversations/{id}/messages/stream/start` takes the message
+body and returns `{streamId}`. `POST .../stream/pull` with `{streamId, cursor}`
+waits up to `holdMs` and returns `{events, cursor, done}`; each event appends
+`text` or replaces all text with `fullText`, and `provisional` text must
+not be spoken before `done`. The cursor confirms earlier events, which are then
+released. On `done`, `message` is the exact buffered reply. Every check of the
+buffered route also applies; a failed pull answers as the buffered route would,
+and the renderer then discards the pulled text. `POST .../stream/cancel` with
+`{streamId}` closes the relay and frees its slot. A paired-session upstream can
+continue its accepted turn after that transport closes. For Stop, first call
+`POST /turns/{roomId}/abort` using the `roomId` returned by
+`POST /conversations`, then release the stream. An unsuccessful abort leaves
+the turn's outcome unconfirmed. After `done`, use `stream/cancel` alone to free
+the slot. The `messageStream` option sets `maxStreams` per account (default 2),
+`maxBufferedChars` of unconfirmed text (more fails, never truncates), `idleMs`
+until an unpulled stream is cancelled, `holdMs` (default 2 s) and `coalesceMs`
+(default 150 ms): new text waits that long for more, unless it ends a phrase.
+Only one pull waits on a stream; a newer pull answers the older one at once.
+A waiting pull holds one native bridge worker, so `maxStreams` held pulls must
+leave workers free; the Android dispatcher runs `.../stream/cancel` as an urgent
+control. A failure the agent reports after its stream opens (an SSE `error`
+frame, or no `done` frame) answers 502 with the agent's message and code, not
+the status the buffered route would give.
 
 Native hosts can opt into `native-host/surface-channel.mjs` with an authenticated
 `credentialGate` and pass that channel as `surfaceChannel` to the gateway. The

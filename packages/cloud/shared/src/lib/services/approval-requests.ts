@@ -1,3 +1,4 @@
+import { ElizaError } from "@elizaos/core";
 // Coordinates cloud service approval requests behavior behind route handlers.
 import type {
   ApprovalChallengeKind,
@@ -69,62 +70,71 @@ interface ApprovalRequestsServiceDeps {
 
 function validateCreateInput(input: CreateApprovalRequestInput): void {
   if (!input.organizationId) {
-    throw new Error("organizationId is required");
+    throw new ElizaError("organizationId is required", {
+      code: "AUTHORIZATION_INTENT_INVALID_STATE",
+      severity: "ephemeral",
+    });
   }
   if (!SUPPORTED_CHALLENGE_KINDS.includes(input.challengeKind)) {
-    throw new Error(`Unsupported challengeKind: ${input.challengeKind}`);
+    throw new ElizaError(`Unsupported challengeKind: ${input.challengeKind}`, {
+      code: "AUTHORIZATION_INTENT_INVALID_STATE",
+      severity: "ephemeral",
+    });
   }
   if (!input.challengePayload || typeof input.challengePayload !== "object") {
-    throw new Error("challengePayload is required");
+    throw new ElizaError("challengePayload is required", {
+      code: "AUTHORIZATION_INTENT_INVALID_STATE",
+      severity: "ephemeral",
+    });
   }
   const message = input.challengePayload.message;
   if (typeof message !== "string" || message.trim().length === 0) {
-    throw new Error("challengePayload.message is required");
+    throw new ElizaError("challengePayload.message is required", {
+      code: "AUTHORIZATION_INTENT_INVALID_STATE",
+      severity: "ephemeral",
+    });
   }
   const signerKind = input.challengePayload.signerKind;
   if (signerKind && signerKind !== "wallet" && signerKind !== "ed25519") {
-    throw new Error(`Unsupported challengePayload.signerKind: ${signerKind}`);
+    throw new ElizaError(`Unsupported challengePayload.signerKind: ${signerKind}`, {
+      code: "AUTHORIZATION_INTENT_INVALID_STATE",
+      severity: "ephemeral",
+    });
   }
   if (signerKind === "wallet" && !input.challengePayload.walletAddress) {
-    throw new Error("challengePayload.walletAddress is required for wallet signers");
+    throw new ElizaError("challengePayload.walletAddress is required for wallet signers", {
+      code: "AUTHORIZATION_INTENT_INVALID_STATE",
+      severity: "ephemeral",
+    });
   }
   if (signerKind === "ed25519" && !input.challengePayload.publicKey) {
-    throw new Error("challengePayload.publicKey is required for ed25519 signers");
+    throw new ElizaError("challengePayload.publicKey is required for ed25519 signers", {
+      code: "AUTHORIZATION_INTENT_INVALID_STATE",
+      severity: "ephemeral",
+    });
   }
   if (input.expiresInMs !== undefined && input.expiresInMs <= 0) {
-    throw new Error("expiresInMs must be positive");
+    throw new ElizaError("expiresInMs must be positive", {
+      code: "AUTHORIZATION_INTENT_INVALID_STATE",
+      severity: "ephemeral",
+    });
   }
-}
-
-function redactPayload(args: {
-  approvalRequest: ApprovalRequestRow;
-  status: ApprovalRequestStatus;
-  signerIdentityId?: string;
-  reason?: string;
-}): Record<string, unknown> {
-  return {
-    approvalRequestId: args.approvalRequest.id,
-    organizationId: args.approvalRequest.organizationId,
-    challengeKind: args.approvalRequest.challengeKind,
-    expectedSignerIdentityId: args.approvalRequest.expectedSignerIdentityId,
-    status: args.status,
-    signerIdentityId: args.signerIdentityId,
-    reason: args.reason,
-  };
 }
 
 function assertNotTerminal(row: ApprovalRequestRow, action: string): void {
   if (TERMINAL_STATUSES.has(row.status)) {
-    throw new Error(
+    throw new ElizaError(
       `Cannot ${action} approval request ${row.id}: already in terminal status "${row.status}"`,
+      { code: "AUTHORIZATION_INTENT_INVALID_STATE", severity: "ephemeral" },
     );
   }
 }
 
 function assertCancelable(row: ApprovalRequestRow): void {
   if (row.status !== "pending" && row.status !== "delivered") {
-    throw new Error(
+    throw new ElizaError(
       `Cannot cancel approval request ${row.id}: status "${row.status}" is not cancelable`,
+      { code: "AUTHORIZATION_INTENT_INVALID_STATE", severity: "ephemeral" },
     );
   }
 }
@@ -135,7 +145,10 @@ function requireRow(
   context: string,
 ): ApprovalRequestRow {
   if (!row) {
-    throw new Error(`Approval request ${id} not found (${context})`);
+    throw new ElizaError(`Approval request ${id} not found (${context})`, {
+      code: "AUTHORIZATION_INTENT_INVALID_STATE",
+      severity: "ephemeral",
+    });
   }
   return row;
 }
@@ -163,12 +176,6 @@ class ApprovalRequestsServiceImpl implements ApprovalRequestsService {
       expectedSignerIdentityId: input.expectedSignerIdentityId ?? null,
       expiresAt,
       metadata: input.metadata ?? {},
-    });
-
-    await this.repository.recordApprovalRequestEvent({
-      approvalRequestId: created.id,
-      eventName: "approval.created",
-      redactedPayload: redactPayload({ approvalRequest: created, status: created.status }),
     });
 
     logger.info("[ApprovalRequests] Created approval request", {
@@ -216,15 +223,10 @@ class ApprovalRequestsServiceImpl implements ApprovalRequestsService {
       return existing;
     }
     const updated = requireRow(
-      await this.repository.setApprovalRequestStatus(id, "delivered"),
+      await this.repository.transitionApprovalRequest(id, "delivered"),
       id,
       "markDelivered update",
     );
-    await this.repository.recordApprovalRequestEvent({
-      approvalRequestId: id,
-      eventName: "approval.delivered",
-      redactedPayload: redactPayload({ approvalRequest: updated, status: "delivered" }),
-    });
     return updated;
   }
 
@@ -238,23 +240,13 @@ class ApprovalRequestsServiceImpl implements ApprovalRequestsService {
 
     const signedAt = new Date();
     const updated = requireRow(
-      await this.repository.setApprovalRequestStatus(input.approvalRequestId, "approved", {
-        signatureText: input.signatureText,
-        signedAt,
+      await this.repository.transitionApprovalRequest(input.approvalRequestId, "approved", {
+        patch: { signatureText: input.signatureText, signedAt },
+        eventPayload: { signerIdentityId: input.signerIdentityId },
       }),
       input.approvalRequestId,
       "markApproved update",
     );
-
-    await this.repository.recordApprovalRequestEvent({
-      approvalRequestId: input.approvalRequestId,
-      eventName: "approval.approved",
-      redactedPayload: redactPayload({
-        approvalRequest: updated,
-        status: "approved",
-        signerIdentityId: input.signerIdentityId,
-      }),
-    });
 
     logger.info("[ApprovalRequests] Approved approval request", {
       approvalRequestId: input.approvalRequestId,
@@ -273,20 +265,10 @@ class ApprovalRequestsServiceImpl implements ApprovalRequestsService {
     assertNotTerminal(existing, "deny");
 
     const updated = requireRow(
-      await this.repository.setApprovalRequestStatus(id, "denied"),
+      await this.repository.transitionApprovalRequest(id, "denied", { eventPayload: { reason } }),
       id,
       "markDenied update",
     );
-
-    await this.repository.recordApprovalRequestEvent({
-      approvalRequestId: id,
-      eventName: "approval.denied",
-      redactedPayload: redactPayload({
-        approvalRequest: updated,
-        status: "denied",
-        reason,
-      }),
-    });
 
     logger.info("[ApprovalRequests] Denied approval request", {
       approvalRequestId: id,
@@ -299,25 +281,21 @@ class ApprovalRequestsServiceImpl implements ApprovalRequestsService {
   async cancel(id: string, organizationId: string, reason?: string): Promise<ApprovalRequestRow> {
     const existing = requireRow(await this.repository.getApprovalRequest(id), id, "cancel lookup");
     if (existing.organizationId !== organizationId) {
-      throw new Error(`Approval request ${id} does not belong to organization ${organizationId}`);
+      throw new ElizaError(
+        `Approval request ${id} does not belong to organization ${organizationId}`,
+        { code: "AUTHORIZATION_INTENT_INVALID_STATE", severity: "ephemeral" },
+      );
     }
     assertCancelable(existing);
 
     const updated = requireRow(
-      await this.repository.setApprovalRequestStatus(id, "canceled"),
+      await this.repository.transitionApprovalRequest(id, "canceled", {
+        organizationId,
+        eventPayload: { reason },
+      }),
       id,
       "cancel update",
     );
-
-    await this.repository.recordApprovalRequestEvent({
-      approvalRequestId: id,
-      eventName: "approval.canceled",
-      redactedPayload: redactPayload({
-        approvalRequest: updated,
-        status: "canceled",
-        reason,
-      }),
-    });
 
     logger.info("[ApprovalRequests] Canceled approval request", {
       approvalRequestId: id,
@@ -330,15 +308,6 @@ class ApprovalRequestsServiceImpl implements ApprovalRequestsService {
 
   async expirePast(now: Date = new Date()): Promise<string[]> {
     const expiredIds = await this.repository.expirePastApprovalRequests(now);
-    for (const id of expiredIds) {
-      const row = await this.repository.getApprovalRequest(id);
-      if (!row) continue;
-      await this.repository.recordApprovalRequestEvent({
-        approvalRequestId: id,
-        eventName: "approval.expired",
-        redactedPayload: redactPayload({ approvalRequest: row, status: "expired" }),
-      });
-    }
     if (expiredIds.length > 0) {
       logger.info("[ApprovalRequests] Expired approval requests", {
         count: expiredIds.length,

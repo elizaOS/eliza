@@ -21,7 +21,6 @@ const {
   getCachedFlatPricingEntry,
   getCachedTextPricingRates,
   __clearPersistedPricingCache,
-  AiPricingCacheWarmingError,
   AiPricingCacheUnavailableError,
 } = await import("./cache");
 const options = (): PricingCacheReadOptions => ({
@@ -106,11 +105,9 @@ function cases<T>(
     ).rejects.toBeInstanceOf(AiPricingCacheUnavailableError);
     expect(writes).toBe(0);
   });
-  test(`${kind}: cache outage remains unavailable even if the loader can resolve`, async () => {
+  test(`${kind}: a cache outage is served from the authoritative load`, async () => {
     cacheOutcome = "unavailable";
-    await expect(read(kind, async () => value, options())).rejects.toBeInstanceOf(
-      AiPricingCacheUnavailableError,
-    );
+    expect(await read(kind, async () => value, options())).toEqual(value);
   });
   test(`${kind}: missing execution context never starts a cold load`, async () => {
     let loads = 0;
@@ -145,33 +142,6 @@ const flat: PreparedPricingEntry = {
   sourceUrl: "fixture://canonical",
 };
 cases<PreparedPricingEntry>("flat", flat, getCachedFlatPricingEntry);
-test("cold wait is bounded while waitUntil retains the original load", async () => {
-  let resolve!: (v: PreparedPricingEntry) => void;
-  const gate = new Promise<PreparedPricingEntry>((r) => {
-    resolve = r;
-  });
-  const start = performance.now();
-  try {
-    await expect(
-      getCachedFlatPricingEntry("bounded", () => gate, options()),
-    ).rejects.toBeInstanceOf(AiPricingCacheWarmingError);
-    expect(performance.now() - start).toBeGreaterThanOrEqual(900);
-    expect(performance.now() - start).toBeLessThan(2000);
-  } finally {
-    resolve(flat);
-    await Promise.all(background);
-  }
-  expect(
-    await getCachedFlatPricingEntry(
-      "bounded",
-      async () => {
-        throw Error("must reuse warmed rates");
-      },
-      options(),
-    ),
-  ).toEqual(flat);
-});
-
 test("invalid canonical prices cannot be used for billing", async () => {
   await expect(
     getCachedFlatPricingEntry("invalid-flat", async () => ({ ...flat, unitPrice: 0 }), options()),

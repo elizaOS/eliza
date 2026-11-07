@@ -30,6 +30,88 @@ public final class VoiceBundleAssetsTest {
         Files.writeString(assets.resolve(VoiceBundleAssets.ASSET_ROOT).resolve("manifest.json"), manifest.toString());
         return manifest;
     }
+    /** Writes an APK stand-in that stores each named asset uncompressed at its offset. */
+    private static Path apk(Path temp, String name, Path assets, Context context, Object... placed) throws Exception {
+        Path apk = temp.resolve(name).toAbsolutePath();
+        java.io.ByteArrayOutputStream bytes = new java.io.ByteArrayOutputStream();
+        context.getAssets().stored.clear();
+        for (int i = 0; i < placed.length; i += 2) {
+            String asset = VoiceBundleAssets.ASSET_ROOT + "/" + placed[i];
+            long offset = (Long) placed[i + 1];
+            while (bytes.size() < offset) bytes.write('j');
+            bytes.write(Files.readAllBytes(assets.resolve(asset)));
+            context.getAssets().stored.put(asset, new Object[]{apk.toString(), offset});
+        }
+        bytes.write("trailer".getBytes(StandardCharsets.UTF_8));
+        Files.write(apk, bytes.toByteArray());
+        return apk;
+    }
+
+    private static String region(Path apk, long offset, long length) {
+        return VoiceBundleAssets.REGION_MAGIC + "\noffset=" + offset + "\nlength=" + length + "\npath=" + apk + "\n";
+    }
+
+    /** MODELS_IN_PLACE: region files for uncompressed, aligned model assets; copies for the rest. */
+    private static void inPlace(Path temp, Path assets, Context context) throws Exception {
+        context.info.metaData.put(VoiceBundleAssets.DIRECTORY_METADATA, "in-place");
+        manifest(assets, "in-place model bytes");
+        long length = "in-place model bytes".length();
+        // asr model: aligned (in place); tts model: unaligned (copied); lexicon: not stored (compressed,
+        // copied); vad model: aligned but not a loader that reads region files (copied).
+        Path first = apk(temp, "first.apk", assets, context, "asr/model.gguf", 4096L + 16, "tts/paradee/model.gguf", 8200L + 4,
+                "vad/model.gguf", 12288L);
+        context.info.metaData.put(VoiceBundleAssets.MODELS_IN_PLACE_METADATA, true);
+        VoiceBundleAssets.Installation one = VoiceBundleAssets.install(context);
+        Path asr = one.root.toPath().resolve("asr/model.gguf");
+        check(Files.readString(asr).equals(region(first, 4096 + 16, length)), "asr model is a region file");
+        check(Files.readString(one.model.toPath()).equals("in-place model bytes"), "unaligned asset copied");
+        check(Files.readString(one.lexicon.toPath()).equals("in-place model bytes"), "compressed asset copied");
+        check(Files.readString(one.root.toPath().resolve("vad/model.gguf")).equals("in-place model bytes"), "vad copied");
+        long before = asr.toFile().lastModified();
+        Thread.sleep(20);
+        VoiceBundleAssets.install(context);
+        check(asr.toFile().lastModified() == before, "unchanged region file is not rewritten");
+        // An app update moves the asset; the region file follows it.
+        Path second = apk(temp, "second.apk", assets, context, "asr/model.gguf", 65536L);
+        VoiceBundleAssets.install(context);
+        check(Files.readString(asr).equals(region(second, 65536, length)), "region file follows the APK");
+        // An update with the same manifest is not hashed again: junk bytes in the moved APK still link.
+        Path moved = temp.resolve("moved.apk").toAbsolutePath();
+        Files.write(moved, new byte[70000]);
+        context.getAssets().stored.put(VoiceBundleAssets.ASSET_ROOT + "/asr/model.gguf", new Object[]{moved.toString(), 1024L});
+        VoiceBundleAssets.install(context);
+        check(Files.readString(asr).equals(region(moved, 1024, length)), "same manifest: region file rewritten without hashing");
+        // Without a verified stamp the APK bytes must match the manifest.
+        Path stamp = asr.getParent().getParent().resolve("installed-manifest.json");
+        Files.delete(stamp);
+        context.getAssets().stored.put(VoiceBundleAssets.ASSET_ROOT + "/asr/model.gguf", new Object[]{moved.toString(), 2048L});
+        rejected(context);
+        check(Files.readString(asr).equals(region(moved, 1024, length)), "failed check keeps the region file");
+        // A changed manifest hashes again.
+        manifest(assets, "in-place model bytes");
+        Files.writeString(stamp, "older manifest");
+        rejected(context);
+        apk(temp, "second.apk", assets, context, "asr/model.gguf", 65536L);
+        VoiceBundleAssets.install(context);
+        check(Files.readString(asr).equals(region(second, 65536, length)), "changed manifest hashes and links");
+        // Without the meta-data the model is copied again, replacing the region file.
+        context.info.metaData.remove(VoiceBundleAssets.MODELS_IN_PLACE_METADATA);
+        VoiceBundleAssets.install(context);
+        check(Files.readString(asr).equals("in-place model bytes"), "copy replaces the region file");
+        // A copy is replaced by a region file, which frees its storage.
+        apk(temp, "third.apk", assets, context, "asr/model.gguf", 4096L);
+        context.info.metaData.put(VoiceBundleAssets.MODELS_IN_PLACE_METADATA, true);
+        VoiceBundleAssets.install(context);
+        check(Files.readString(asr).startsWith(VoiceBundleAssets.REGION_MAGIC + "\n"), "region file replaces the copy");
+        context.info.metaData.put(VoiceBundleAssets.MODELS_IN_PLACE_METADATA, "true");
+        rejected(context);
+        context.info.metaData.remove(VoiceBundleAssets.MODELS_IN_PLACE_METADATA);
+        context.getAssets().stored.clear();
+        check(VoiceBundleAssets.inPlaceEligible("asr/a.gguf") && VoiceBundleAssets.inPlaceEligible("tts/paradee/a.lex")
+                && !VoiceBundleAssets.inPlaceEligible("vad/a.gguf")
+                && !VoiceBundleAssets.inPlaceEligible("tts/paradee/espeak-ng-data/phontab"), "eligible paths");
+    }
+
     public static void main(String[] args) throws Exception {
         Path temp = Path.of(args[0]), assets = temp.resolve("assets"), files = temp.resolve("private");
         Files.createDirectories(files);
@@ -92,8 +174,9 @@ public final class VoiceBundleAssetsTest {
                 catch (java.io.IOException expected) {}
             }
         }
+        inPlace(temp, assets, context);
         try { Class.forName("ai.eliza.voice.VoiceNative"); throw new AssertionError("installer required a JNI owner"); }
         catch (ClassNotFoundException expected) {}
-        System.out.println("PASS shared voice asset installation, storage identity, repair, failed-copy preservation and v2 voices without JNI");
+        System.out.println("PASS shared voice asset installation, storage identity, repair, failed-copy preservation, v2 voices and in-place models without JNI");
     }
 }

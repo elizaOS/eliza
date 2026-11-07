@@ -209,7 +209,10 @@ export class NativeTaskActuator {
        */
       target: Pick<NativeSocketBrowserTarget, "bindTask" | "execute"> &
         Partial<
-          Pick<NativeSocketBrowserTarget, "guideTask" | "hasCapability">
+          Pick<
+            NativeSocketBrowserTarget,
+            "guideTask" | "hasCapability" | "settled"
+          >
         > & {
           advertised?: ReadonlySet<string>;
         };
@@ -675,7 +678,11 @@ export class NativeTaskActuator {
 
   /**
    * May run after task revocation. It only removes this owner's cached
-   * overlay, or with `pausedCursor` pauses it (see that option).
+   * overlay, or with `pausedCursor` pauses it (see that option). It resolves
+   * only once no cancelled browser command can still reach the page, so a
+   * Pause never answers before its fence did. The overlay is removed or
+   * paused first, so an unconfirmed fence never leaves guidance showing on a
+   * stopped task.
    */
   async quiesce({
     owner,
@@ -686,9 +693,13 @@ export class NativeTaskActuator {
     taskId: string;
     reason?: TaskCleanupReason;
   }): Promise<void> {
-    if (this.options.pausedCursor && this.pausedByPerson(taskId, reason))
-      return this.pauseGuidance({ owner, taskId });
-    return this.hide(owner, taskId);
+    try {
+      if (this.options.pausedCursor && this.pausedByPerson(taskId, reason))
+        await this.pauseGuidance({ owner, taskId });
+      else await this.hide(owner, taskId);
+    } finally {
+      await this.options.target.settled?.();
+    }
   }
 
   private pausedByPerson(taskId: string, reason?: TaskCleanupReason) {
@@ -1049,7 +1060,9 @@ export class NativeTaskActuator {
           taskContext: binding.context,
           subaction,
           targetRef: proposal.targetRef,
-          selector: proposal.expectedSelector,
+          // The selector the browser will check. Under "omit" none is sent,
+          // and a commit is never sent without its reviewed control checked.
+          selector: expectedSelector,
           now: this.now(),
         }) ||
         // The page the person said yes on: for an extended task this is the

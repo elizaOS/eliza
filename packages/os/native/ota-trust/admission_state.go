@@ -17,6 +17,12 @@ type admissionFloor struct {
 	Core     string   `json:"core"`
 	Rollout  string   `json:"rollout"`
 	Revoked  []string `json:"revoked"`
+	// Refreshed is the trusted lower bound of the last descriptor fetched and
+	// authenticated for this lane. Commit freshness is measured against it. It
+	// is kept in refreshed.json, not in admission.json, so the version 1 state
+	// stays readable by a build from before refreshes were recorded: a host
+	// whose updater updates itself can recover to such a build.
+	Refreshed int64 `json:"-"`
 }
 type admissionState struct {
 	Version      int64                     `json:"version"`
@@ -61,10 +67,13 @@ func EvaluateRememberedReleaseInterval(directory string, descriptor, deviceJSON,
 	if err := decodeAdmission(policyJSON, &policy); err != nil {
 		return nil, err
 	}
-	return evaluateRememberedRelease(directory, descriptor, deviceJSON, policy)
+	return evaluateRememberedRelease(directory, descriptor, deviceJSON, policy, 0)
 }
 
-func evaluateRememberedRelease(directory string, descriptor, deviceJSON []byte, policy admissionPolicy) (result *AdmissionResult, err error) {
+// fetchedLower is the trusted lower bound read before descriptor was fetched
+// and authenticated, or 0 when descriptor is stored bytes. Only a fetch records
+// a lane refresh; re-evaluating stored bytes never counts as fresh metadata.
+func evaluateRememberedRelease(directory string, descriptor, deviceJSON []byte, policy admissionPolicy, fetchedLower int64) (result *AdmissionResult, err error) {
 	err = lockedAdmission(directory, func() error {
 		state, e := readAdmission(directory)
 		if e != nil {
@@ -122,8 +131,13 @@ func evaluateRememberedRelease(directory string, descriptor, deviceJSON []byte, 
 		if floor.Sequence == d.Sequence && floor.Revision == rollout.Revision && floor.Rollout != rolloutHash {
 			return errors.New("rollout revision equivocation")
 		}
-		state.Lanes[device.Channel] = admissionFloor{Sequence: d.Sequence, Revision: rollout.Revision, Security: d.SecurityFloor, Core: coreHash, Rollout: rolloutHash, Revoked: rollout.Revoked}
-		return saveAdmission(directory, *state, nil)
+		state.Lanes[device.Channel] = admissionFloor{Sequence: d.Sequence, Revision: rollout.Revision, Security: d.SecurityFloor, Core: coreHash, Rollout: rolloutHash, Revoked: rollout.Revoked, Refreshed: max(floor.Refreshed, fetchedLower)}
+		if e = saveAdmission(directory, *state, nil); e != nil || fetchedLower <= floor.Refreshed {
+			return e
+		}
+		// After the floors: a crash between the two writes leaves the refresh
+		// older than it was, which is stale, never fresher.
+		return saveRefreshes(directory, *state)
 	})
 	if err != nil {
 		return nil, err
@@ -184,7 +198,68 @@ func readAdmission(directory string) (*admissionState, error) {
 			return nil, errors.New("invalid remembered admission floor")
 		}
 	}
+	readRefreshes(directory, &s)
 	return &s, nil
+}
+
+type refreshState struct {
+	Version      int64            `json:"version"`
+	Repository   string           `json:"repository"`
+	Distribution string           `json:"distribution"`
+	Lanes        map[string]int64 `json:"lanes"`
+}
+type refreshEnvelope struct {
+	State refreshState `json:"state"`
+	Hash  string       `json:"hash"`
+}
+
+// readRefreshes sets each lane's Refreshed from refreshed.json. A missing,
+// unsafe, corrupt or mismatched file reads as never refreshed: that is stale,
+// so the commit waits for a fetch, and the fetch rewrites the file.
+func readRefreshes(directory string, s *admissionState) {
+	name := filepath.Join(directory, "refreshed.json")
+	stat, err := os.Lstat(name)
+	if err != nil || !stat.Mode().IsRegular() || stat.Size() > maxBytes {
+		return
+	}
+	data, err := os.ReadFile(name)
+	if err != nil {
+		return
+	}
+	var envelope refreshEnvelope
+	if decodeAdmission(data, &envelope) != nil {
+		return
+	}
+	r := envelope.State
+	if digest, e := admissionHash(r); e != nil || digest != envelope.Hash || r.Version != 1 || r.Repository != s.Repository || r.Distribution != s.Distribution {
+		return
+	}
+	for _, refreshed := range r.Lanes {
+		if !bounded(refreshed, 1, safeInteger) {
+			return
+		}
+	}
+	for channel, floor := range s.Lanes {
+		floor.Refreshed = r.Lanes[channel]
+		s.Lanes[channel] = floor
+	}
+}
+func saveRefreshes(directory string, s admissionState) error {
+	r := refreshState{Version: 1, Repository: s.Repository, Distribution: s.Distribution, Lanes: map[string]int64{}}
+	for channel, floor := range s.Lanes {
+		if floor.Refreshed > 0 {
+			r.Lanes[channel] = floor.Refreshed
+		}
+	}
+	hash, err := admissionHash(r)
+	if err != nil {
+		return err
+	}
+	data, err := json.Marshal(refreshEnvelope{State: r, Hash: hash})
+	if err != nil {
+		return err
+	}
+	return writePrivate(directory, "refreshed", data, nil)
 }
 func saveAdmission(directory string, state admissionState, fault func(string)) error {
 	hash, err := admissionHash(state)
@@ -195,7 +270,12 @@ func saveAdmission(directory string, state admissionState, fault func(string)) e
 	if err != nil {
 		return err
 	}
-	temporary := filepath.Join(directory, "admission.tmp")
+	return writePrivate(directory, "admission", data, fault)
+}
+
+// writePrivate durably replaces name.json in directory through name.tmp.
+func writePrivate(directory, name string, data []byte, fault func(string)) error {
+	temporary := filepath.Join(directory, name+".tmp")
 	if stat, e := os.Lstat(temporary); e == nil {
 		if !stat.Mode().IsRegular() {
 			return errors.New("unsafe admission temporary file")
@@ -226,7 +306,7 @@ func saveAdmission(directory string, state admissionState, fault func(string)) e
 	if fault != nil {
 		fault("before-rename")
 	}
-	if err = os.Rename(temporary, filepath.Join(directory, "admission.json")); err != nil {
+	if err = os.Rename(temporary, filepath.Join(directory, name+".json")); err != nil {
 		return err
 	}
 	dir, err := os.Open(directory)

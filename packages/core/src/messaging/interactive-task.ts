@@ -133,6 +133,13 @@ export type TaskTransition =
 	| { type: "observe"; observation: TaskObservation }
 	| { type: "resume"; observation: TaskObservation }
 	| { type: "pause" | "cancel" | "recover" | "revoke" | "complete" }
+	/**
+	 * Trusted host only: a new epoch for a new browser binding, for example a
+	 * new action target. The task stays active and needs a fresh observation.
+	 * The guide never pauses a task to take a new binding: a pause is her Stop
+	 * or a host safety stop, and only her Resume ends it.
+	 */
+	| { type: "rebind" }
 	| { type: "prepare"; proposal: TaskActionProposal }
 	/**
 	 * Trusted host only, after its own safety check of this exact origin passed.
@@ -169,7 +176,10 @@ type UnresolvedOperation = Extract<
 function isUnresolved(
 	operation: TaskOperation,
 ): operation is UnresolvedOperation {
-	return ["prepared", "dispatched", "unknown"].includes(operation.status);
+	const { status } = operation;
+	return (
+		status === "prepared" || status === "dispatched" || status === "unknown"
+	);
 }
 /** Transitions a finished task still accepts: they only narrow what it may do. */
 const AFTER_END: readonly TaskTransition["type"][] = [
@@ -201,11 +211,9 @@ function shape(
 	)
 		reject("Unexpected task record fields");
 }
+const OPAQUE_REF_PATTERN = /^[A-Za-z0-9][A-Za-z0-9_.:@/-]{0,255}$/;
 function id(value: unknown): asserts value is string {
-	if (
-		typeof value !== "string" ||
-		!/^[A-Za-z0-9][A-Za-z0-9_.:@/-]{0,255}$/.test(value)
-	)
+	if (typeof value !== "string" || !OPAQUE_REF_PATTERN.test(value))
 		reject("Expected an opaque task reference");
 }
 function counter(value: unknown): asserts value is number {
@@ -565,6 +573,7 @@ function checkDispatch(
 	task: InteractiveTask,
 	proposal: TaskActionProposal,
 	now: number,
+	wallNow: number,
 ): void {
 	if (task.status !== "active" || task.authorization.state !== "active")
 		reject("Task is not authorized to act", "TASK_NOT_ACTIVE");
@@ -574,7 +583,15 @@ function checkDispatch(
 		reject("Action is outside task authorization", "TASK_ACTION_DENIED");
 	// Expiry is the one part of this check that time alone can break, so it is
 	// not part of the stored invariant.
-	if (proposal.expiresAt <= now) reject("Action expired", "TASK_STALE_ACTION");
+	if (proposal.expiresAt > now) return;
+	// Task time never moves back, so an action leased from a clock that is
+	// behind the task's stored time expires early; say so instead of "expired".
+	if (proposal.expiresAt > wallNow)
+		reject(
+			"Action expired against the task's stored time, which is ahead of this clock; it can act once the clock catches up, or cancel and start a new task",
+			"TASK_STALE_ACTION",
+		);
+	reject("Action expired", "TASK_STALE_ACTION");
 }
 /** Operations change by replacement, so each status keeps exactly its own fields. */
 function replaceOperation(
@@ -712,6 +729,20 @@ export function transitionInteractiveTask(
 			task.observation = null;
 			break;
 		}
+		case "rebind": {
+			if (task.status !== "active" || task.authorization.state !== "active")
+				reject("Only an active task can take a new binding", "TASK_NOT_ACTIVE");
+			if (unresolved && ["dispatched", "unknown"].includes(unresolved.status))
+				reject(
+					"Resolve the previous operation before a new binding",
+					"TASK_UNKNOWN_OUTCOME",
+				);
+			if (unresolved?.status === "prepared")
+				setStatus(task, unresolved, "cancelled");
+			task.epoch++;
+			task.observation = null;
+			break;
+		}
 		case "pause":
 		case "cancel":
 		case "recover":
@@ -731,7 +762,7 @@ export function transitionInteractiveTask(
 		}
 		case "prepare": {
 			validateProposal(transition.proposal);
-			checkDispatch(task, transition.proposal, now);
+			checkDispatch(task, transition.proposal, now, context.now);
 			if (unresolved) reject("An operation is already unresolved", "TASK_BUSY");
 			if (
 				task.operations.some((op) => op.proposal.id === transition.proposal.id)
@@ -750,7 +781,7 @@ export function transitionInteractiveTask(
 				unresolved.status !== "prepared"
 			)
 				reject("No matching prepared operation", "TASK_REPLAY");
-			checkDispatch(task, unresolved.proposal, now);
+			checkDispatch(task, unresolved.proposal, now, context.now);
 			setStatus(task, unresolved, "dispatched");
 			task.status = "waiting";
 			break;

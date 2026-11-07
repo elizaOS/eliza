@@ -63,6 +63,9 @@ public final class TaskDataKeyStore {
     return new TaskDataKeyStore(directory, aliasPrefix, preferStrongBox);
   }
 
+  /** True for {@link #perSlot} custody, where {@link #remove} and {@link #destroy} delete the slot's Keystore entry. */
+  public boolean isPerSlot() { return shared == null; }
+
   /** Returns null without creating a missing key. The host must refuse an existing database in that case. */
   public Key read(String accountId, String databaseId) throws Exception {
     synchronized (JsonCredentialSlots.LOCK) {
@@ -148,6 +151,34 @@ public final class TaskDataKeyStore {
     }
   }
 
+  /**
+   * Per-slot mode only. The Keystore alias of the slot's wrapping key, whether or not it exists.
+   * A name, not key material: hosts use it for diagnostics and for tests that remove the entry.
+   */
+  public String wrappingKeyAlias(String accountId, String databaseId) throws Exception {
+    if (shared != null) throw new IllegalStateException("Wrapping key alias requires per-slot wrapping keys");
+    return wrappingAlias(slot(accountId, databaseId));
+  }
+
+  /**
+   * Per-slot mode only. Where the slot's wrapping key is held (StrongBox, TEE or software), or null
+   * when the slot has no wrapping key. Never creates a key and never reads the data key.
+   */
+  public android.security.keystore.KeyInfo keyProtection(String accountId, String databaseId) throws Exception {
+    String alias = wrappingKeyAlias(accountId, databaseId);
+    KeyStore keys = keyStore();
+    if (!keys.containsAlias(alias)) return null;
+    javax.crypto.SecretKey key = (javax.crypto.SecretKey) keys.getKey(alias, null);
+    return (android.security.keystore.KeyInfo) javax.crypto.SecretKeyFactory
+        .getInstance(key.getAlgorithm(), "AndroidKeyStore")
+        .getKeySpec(key, android.security.keystore.KeyInfo.class);
+  }
+
+  /** The file that holds the slot's wrapped data key, whether or not it exists. */
+  public File wrappedFile(String accountId, String databaseId) throws Exception {
+    return wrappedFile(slot(accountId, databaseId));
+  }
+
   private String readSlot(String slot) throws Exception {
     if (shared != null) return shared.read(slot);
     // Never let a read create a wrapping key: a lost key stays visible as erased custody.
@@ -183,9 +214,13 @@ public final class TaskDataKeyStore {
     return shared != null ? shared : new JsonCredentialSlots(directory, wrappingAlias(slot), ignored -> 512);
   }
 
-  private boolean stored(String slot) throws Exception {
+  private File wrappedFile(String slot) throws Exception {
     JsonCredentialSlots slots = slots(slot);
-    File file = slots.slotFile(slots.slotHash(slot)).getBaseFile();
+    return slots.slotFile(slots.slotHash(slot)).getBaseFile();
+  }
+
+  private boolean stored(String slot) throws Exception {
+    File file = wrappedFile(slot);
     return file.exists() || new File(file.getPath() + ".bak").exists();
   }
 
