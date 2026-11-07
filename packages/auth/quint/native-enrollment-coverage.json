@@ -46,7 +46,7 @@
     ]
   },
   {
-    "id": "auth.AccountPoolSelection",
+    "id": "auth.AccountPoolHealthAndStrategies",
     "model": null,
     "sources": [
       "packages/auth/src/accounts/account-pool.ts",
@@ -56,7 +56,7 @@
     "invariants": [],
     "status": "unmodeled",
     "limitations": [
-      "Eligibility, affinity retry limits, selection strategies, in-flight account snapshots, usage refresh, cooldown and health mutation need source-specific models."
+      "Eligibility health/cooldown/expiry clocks, usage refresh and mutations, priority/least-used/quota/reset strategies, and bounded-cache eviction remain to be modeled. AccountPoolAffinity covers the separate round-robin/affinity selection snapshot contract."
     ]
   },
   {
@@ -125,6 +125,29 @@
     "status": "unmodeled",
     "limitations": [
       "OAuth state/PKCE and redirect binding, single-use enrollment claims, identity-link ownership and session/token issuance require protocol models beyond AuthStorePublication atomic storage. External provider cryptography and remote service semantics need explicit assumptions."
+    ]
+  },
+  {
+    "id": "auth.AccountPoolAffinity",
+    "model": "packages/auth/quint/AccountPoolAffinity.qnt",
+    "sources": [
+      "packages/auth/src/accounts/account-pool.ts",
+      "packages/auth/src/accounts/account-selection.ts"
+    ],
+    "invariants": [
+      "SelectedFromCapturedEligibility",
+      "ProviderMembership",
+      "IndependentAffinity",
+      "AffinityReuseKeepsCursor",
+      "EmptySelectionKeepsState",
+      "CacheEntriesStayInProvider",
+      "FailedSelectionHasNoCacheEffects"
+    ],
+    "status": "partial",
+    "limitations": [
+      "Round-robin with two providers, two sessions, three accounts, two concurrent calls, four total calls and one eligibility update. The same external account id exists under both providers. Selection uses captured immutable inventory and live affinity/cursor state after the expiry-write await.",
+      "Generated and specified scenario traces replay through real AccountPool.select with controlled metadata-write promises. A persistence rejection fails selection without changing affinity/cursor. The in-memory adapter does not prove encrypted storage or cross-process metadata locking; existing default-pool tests cover real storage.",
+      "Other strategies, health/time classifiers, repeated eligibility changes, usage polling, 10,000-entry eviction and credential effect admission are separate obligations. Weak fairness of selection completion is the progress assumption. There is no cancellation input in AccountPool.select."
     ]
   }
 ]
