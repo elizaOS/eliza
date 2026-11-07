@@ -65,7 +65,7 @@ export function isAnthropicWebSearchEnabled(
   return enabled && provider === "anthropic" && supportsAnthropicWebSearch(model);
 }
 
-function resolveWebSearchMaxUses(maxUses: number | undefined): number {
+export function resolveWebSearchMaxUses(maxUses: number | undefined): number {
   if (typeof maxUses !== "number" || !Number.isFinite(maxUses)) {
     return DEFAULT_ANTHROPIC_WEB_SEARCH_MAX_USES;
   }

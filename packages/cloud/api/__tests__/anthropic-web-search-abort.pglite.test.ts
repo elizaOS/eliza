@@ -222,3 +222,146 @@ test("a failed server search followed by abort retains unknown settlement, not a
     fetchSpy.mockRestore();
   }
 });
+
+test("a web search stream aborted after more output than the hold priced is billed for that output", async () => {
+  const { __streamingCreditTestHooks } = await import(
+    "../v1/chat/completions/route"
+  );
+  const {
+    buildProviderNativeWebSearchTools,
+    calculateAnthropicWebSearchMaxCost,
+  } = await import("@elizaos/cloud-shared/lib/providers/anthropic-web-search");
+  const { estimateTokens } = await import("@elizaos/cloud-shared/lib/pricing");
+  // Far more than the 500 output tokens the hold prices without max_tokens.
+  const longText = "The quick brown fox jumps over the lazy dog. ".repeat(400);
+  const abort = new AbortController();
+  const encoder = new TextEncoder();
+  const fetchSpy = spyOn(globalThis, "fetch").mockImplementation((async (
+    input: RequestInfo | URL,
+    init?: RequestInit,
+  ) => {
+    const signal =
+      init?.signal ?? (input instanceof Request ? input.signal : undefined);
+    return new Response(
+      new ReadableStream<Uint8Array>({
+        start(controller) {
+          const frames = [
+            {
+              type: "message_start",
+              message: {
+                id: "msg_search_long_abort",
+                type: "message",
+                role: "assistant",
+                model: MODEL,
+                content: [],
+                stop_reason: null,
+                stop_sequence: null,
+                usage: { input_tokens: 100, output_tokens: 0 },
+              },
+            },
+            {
+              type: "content_block_start",
+              index: 0,
+              content_block: { type: "text", text: "" },
+            },
+            {
+              type: "content_block_delta",
+              index: 0,
+              delta: { type: "text_delta", text: longText },
+            },
+          ];
+          for (const frame of frames) {
+            controller.enqueue(
+              encoder.encode(
+                `event: ${frame.type}\ndata: ${JSON.stringify(frame)}\n\n`,
+              ),
+            );
+          }
+          // No final usage arrives. The caller cancels after it receives text.
+          signal?.addEventListener(
+            "abort",
+            () => controller.error(signal?.reason),
+            { once: true },
+          );
+        },
+      }),
+      { headers: { "content-type": "text/event-stream" } },
+    );
+  }) as typeof fetch);
+  const exactCharges: number[] = [];
+  let unknownSettlements = 0;
+  const settled = Promise.withResolvers<void>();
+  try {
+    const response = await __streamingCreditTestHooks.handleStreamingRequest(
+      `anthropic/${MODEL}`,
+      undefined,
+      [{ role: "user", content: "Search the web and write a long report." }],
+      {
+        model: `anthropic/${MODEL}`,
+        messages: [
+          { role: "user", content: "Search the web and write a long report." },
+        ],
+        stream: true,
+        webSearchEnabled: true,
+        webSearchMaxUses: 5,
+      },
+      {
+        id: "00000000-0000-0000-0000-00000000d002",
+        organization_id: "00000000-0000-0000-0000-00000000d001",
+      },
+      null,
+      null,
+      "search-long-abort",
+      "search-long-abort",
+      null,
+      Date.now(),
+      abort.signal,
+      10_000,
+      10_100,
+      async (amount) => {
+        exactCharges.push(amount);
+        settled.resolve();
+        return null;
+      },
+      async () => {
+        unknownSettlements += 1;
+        settled.resolve();
+        return null;
+      },
+      undefined,
+      {},
+      undefined,
+      buildProviderNativeWebSearchTools({
+        provider: "anthropic",
+        model: MODEL,
+        enabled: true,
+        maxUses: 5,
+      }),
+      "bitrouter",
+      null,
+      false,
+    );
+    expect(response.status).toBe(200);
+    const reader = response.body!.getReader();
+    let output = "";
+    while (true) {
+      const { value, done } = await reader.read();
+      if (done) break;
+      output += new TextDecoder().decode(value);
+      if (output.includes("lazy dog. The quick")) abort.abort();
+    }
+    await settled.promise;
+    const deliveredTokens = estimateTokens(longText);
+    expect(deliveredTokens).toBeGreaterThan(2_000);
+    expect(unknownSettlements).toBe(0);
+    expect(exactCharges).toHaveLength(1);
+    // At least the delivered output and the most searches the hold priced;
+    // the hold's 500 output tokens alone would be 500 * 15e-6.
+    expect(exactCharges[0]).toBeGreaterThanOrEqual(
+      deliveredTokens * 15e-6 + calculateAnthropicWebSearchMaxCost(5),
+    );
+  } finally {
+    abort.abort();
+    fetchSpy.mockRestore();
+  }
+});

@@ -61,6 +61,7 @@ import {
   buildProviderNativeWebSearchTools,
   calculateAnthropicWebSearchMaxCost,
   isAnthropicWebSearchEnabled,
+  resolveWebSearchMaxUses,
 } from "@elizaos/cloud-shared/lib/providers/anthropic-web-search";
 import {
   canonicalizeCerebrasModelId,
@@ -1801,8 +1802,10 @@ export async function handleChatCompletionsPOST(
       estimateInputTokens(
         request.messages.map((m) => ({ content: getMessageContent(m) })),
       ) + (webSearchActive ? ANTHROPIC_WEB_SEARCH_INPUT_TOKEN_BUFFER : 0);
-    const estimatedOutputTokens =
-      effectiveMaxTokens ?? request.max_tokens ?? 500;
+    const estimatedOutputTokens = admittedOutputTokens(
+      effectiveMaxTokens,
+      request,
+    );
     const affiliateCode = options.appFundingActor
       ? null
       : req.headers.get("X-Affiliate-Code");
@@ -2464,6 +2467,14 @@ function openAiErrorTypeForStatus(status: number): string {
   return "api_error";
 }
 
+/** Output tokens the admission hold prices for one request. */
+function admittedOutputTokens(
+  effectiveMaxTokens: number | undefined,
+  request: ChatRequest,
+): number {
+  return effectiveMaxTokens ?? request.max_tokens ?? 500;
+}
+
 async function settleStreamingAbortReservation(params: {
   model: string;
   provider: string;
@@ -2480,6 +2491,9 @@ async function settleStreamingAbortReservation(params: {
   estimatedInputTokens: number;
   deliveredText: string;
   webSearchEnabled?: boolean;
+  webSearchMaxUses?: number;
+  /** Output tokens the hold priced; read only when web search is enabled. */
+  admittedOutputTokens?: number;
   steps: readonly StepResult<ToolSet>[];
   settleReservation: (
     actualCost: number,
@@ -2487,14 +2501,22 @@ async function settleStreamingAbortReservation(params: {
   settleUnknown: () => Promise<CreditReconciliationResult | null>;
   billingReservation?: CreditReservation;
 }): Promise<CreditReconciliationResult | null> {
+  const deliveredOutputTokens = estimateTokens(params.deliveredText);
   // Tool-call frames prove only an attempt, not a billed search: Anthropic
   // does not bill failed searches. An aborted request can also omit usage for
-  // the current step. Keep the admitted unknown-outcome settlement instead of
-  // treating observed calls or usage from earlier steps as the final charge.
-  if (params.webSearchEnabled) return await params.settleUnknown();
+  // the current step. Keep the admitted unknown-outcome settlement, which
+  // holds the most searches, unless the client already received more output
+  // than the hold priced. Then bill the delivered output with the same
+  // worst-case search count the hold priced, so the charge never falls below
+  // the hold.
+  if (
+    params.webSearchEnabled &&
+    deliveredOutputTokens <= (params.admittedOutputTokens ?? 500)
+  ) {
+    return await params.settleUnknown();
+  }
 
   const finishedStepUsage = summarizeFinishedStepUsage(params.steps);
-  const deliveredOutputTokens = estimateTokens(params.deliveredText);
   const inputTokens = Math.max(
     params.estimatedInputTokens,
     finishedStepUsage?.inputTokens ?? 0,
@@ -2528,6 +2550,15 @@ async function settleStreamingAbortReservation(params: {
         totalTokens,
         cacheReadInputTokens: finishedStepUsage?.cacheReadInputTokens,
         cacheWriteInputTokens: finishedStepUsage?.cacheWriteInputTokens,
+        ...(params.webSearchEnabled && {
+          raw: {
+            server_tool_use: {
+              web_search_requests: resolveWebSearchMaxUses(
+                params.webSearchMaxUses,
+              ),
+            },
+          },
+        }),
       },
       params.billingReservation,
     );
@@ -3238,6 +3269,11 @@ async function handleStreamingRequest(
           estimatedInputTokens,
           deliveredText,
           webSearchEnabled: Object.keys(webSearchOptions).length > 0,
+          webSearchMaxUses: request.webSearchMaxUses,
+          admittedOutputTokens: admittedOutputTokens(
+            effectiveMaxTokens,
+            request,
+          ),
           steps,
           settleReservation,
           settleUnknown,
