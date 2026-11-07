@@ -5,7 +5,10 @@ import type {
   LifeOpsCalendarSourceError,
   LifeOpsCalendarSummary,
 } from "@elizaos/contracts";
-import { calendarReadBrokerDiagnosticHeader } from "@elizaos/contracts";
+import {
+  calendarReadBrokerDiagnosticHeader,
+  MANAGED_CALENDAR_FEED_RESPONSE_MAX_BYTES,
+} from "@elizaos/contracts";
 import { ElizaError } from "@elizaos/core";
 import { z } from "zod";
 
@@ -293,6 +296,10 @@ export function createManagedCalendarRead(
       await r.body?.cancel();
       throw fail(attempt, !r.ok ? "HTTP_STATUS" : "BODY_MISSING");
     }
+    const maxBytes =
+      attempt?.operation === "feed"
+        ? MANAGED_CALENDAR_FEED_RESPONSE_MAX_BYTES
+        : 256 * 1024;
     const reader = r.body.getReader(),
       chunks: Uint8Array[] = [];
     let size = 0;
@@ -301,7 +308,7 @@ export function createManagedCalendarRead(
         const { done, value } = await reader.read();
         if (done) break;
         size += value.length;
-        if (size > 256 * 1024) throw fail(attempt, "BODY_LIMIT");
+        if (size > maxBytes) throw fail(attempt, "BODY_LIMIT");
         chunks.push(value);
       }
     } finally {
