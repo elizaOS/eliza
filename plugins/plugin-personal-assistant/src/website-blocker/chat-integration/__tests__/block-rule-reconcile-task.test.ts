@@ -66,6 +66,34 @@ describe("BLOCK_RULE_RECONCILE task through the real core task tick", () => {
     expect(harness.tasks.size).toBe(1);
   });
 
+  it("boot makes a row that core auto-paused runnable again", async () => {
+    const taskId = await ensureBlockRuleReconcileTask(harness.runtime);
+    // Core's maxFailures ladder leaves this after one failure burst, and
+    // nothing in the product resumes it.
+    await harness.runtime.updateTask(taskId, {
+      metadata: {
+        ...(harness.tasks.get(taskId)?.metadata ?? {}),
+        paused: true,
+        failureCount: 5,
+        lastError: "database keeps timing out",
+        updateInterval: BLOCK_RULE_RECONCILE_INTERVAL_MS * 32,
+        baseInterval: BLOCK_RULE_RECONCILE_INTERVAL_MS * 32,
+      },
+    });
+    expect(harness.tasks.get(taskId)?.metadata?.paused).toBe(true);
+
+    const secondId = await ensureBlockRuleReconcileTask(harness.runtime);
+    expect(secondId).toBe(taskId);
+    expect(harness.tasks.get(taskId)?.metadata).toMatchObject({
+      paused: false,
+      failureCount: 0,
+      maxFailures: 0,
+      updateInterval: BLOCK_RULE_RECONCILE_INTERVAL_MS,
+      baseInterval: BLOCK_RULE_RECONCILE_INTERVAL_MS,
+    });
+    expect(harness.tasks.get(taskId)?.metadata?.lastError).toBeUndefined();
+  });
+
   it("the real TaskService.runTick fires the worker on interval and it releases a fulfilled gate", async () => {
     registerBlockRuleReconcilerWorker(harness.runtime);
     const taskId = await ensureBlockRuleReconcileTask(harness.runtime);

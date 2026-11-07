@@ -117,6 +117,14 @@ function buildFollowupTrackerMetadata(
   const metadata: TaskMetadata = {
     ...(isRecord(previous) ? previous : {}),
     updateInterval: FOLLOWUP_TRACKER_INTERVAL_MS,
+    baseInterval: FOLLOWUP_TRACKER_INTERVAL_MS,
+    // Boot self-heals a row that core's maxFailures ladder paused after one
+    // failure burst: nothing else resumes it, and the spread above would
+    // carry paused=true across every restart (mirrors the LifeOps heartbeat).
+    maxFailures: 0,
+    paused: false,
+    failureCount: 0,
+    lastError: undefined,
   };
   return metadata;
 }
