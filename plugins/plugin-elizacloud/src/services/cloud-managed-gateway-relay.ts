@@ -209,6 +209,8 @@ export class CloudManagedGatewayRelayService extends Service {
   private authService: CloudAuthService | null = null;
   private loopPromise: Promise<void> | null = null;
   private currentSessionId: string | null = null;
+  /** The Cloud API key that registered `currentSessionId`. */
+  private sessionApiKey: string | null = null;
   private stopping = false;
   private activeAbortController: AbortController | null = null;
   private relayStatus: RelayRuntimeStatus = "idle";
@@ -332,9 +334,28 @@ export class CloudManagedGatewayRelayService extends Service {
 
   private async runLoop(): Promise<void> {
     while (!this.stopping) {
+      // A disconnect clears the CloudAuth key and a login replaces it. Stop
+      // when signed out (the next login starts the loop again), and register
+      // a new session under a new key: a session belongs to the key that
+      // registered it.
+      const apiKey = this.authService?.isAuthenticated()
+        ? (this.authService.getApiKey() ?? null)
+        : null;
+      if (!apiKey) {
+        this.currentSessionId = null;
+        this.sessionApiKey = null;
+        this.relayStatus = "idle";
+        this.loopPromise = null;
+        return;
+      }
+      if (this.currentSessionId && apiKey !== this.sessionApiKey) {
+        this.currentSessionId = null;
+      }
+
       try {
         if (!this.currentSessionId) {
           this.currentSessionId = await this.registerSession();
+          this.sessionApiKey = apiKey;
           this.relayStatus = "registered";
           this.lastSeenAt = new Date().toISOString();
           continue;
