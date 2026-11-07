@@ -6,7 +6,7 @@
 import { ORGANIZATION_CREDIT_CHECKOUT_LIMITS } from "@elizaos/cloud-sdk/browser-contracts";
 import { ElizaError } from "@elizaos/core";
 import Decimal from "decimal.js";
-import { and, eq, inArray, isNull } from "drizzle-orm";
+import { and, eq, gt, inArray, isNull, or, sql } from "drizzle-orm";
 import { dbWrite, writeTransaction } from "../../db/helpers";
 import { creditTransactions } from "../../db/schemas/credit-transactions";
 import { organizations } from "../../db/schemas/organizations";
@@ -20,6 +20,7 @@ import { users } from "../../db/schemas/users";
 import { creditsService } from "./credits";
 
 const FULFILLABLE_STATUSES = ["delivered"] as const;
+export const STRIPE_CHECKOUT_PROVIDER_RETRY_WINDOW_MS = 23 * 60 * 60 * 1000;
 
 export class StripeCheckoutAuthorityError extends ElizaError {
   override readonly name = "StripeCheckoutAuthorityError";
@@ -330,19 +331,43 @@ export class StripeCheckoutOrdersService {
   }
 
   async markProviderStarted(orderId: string): Promise<void> {
+    const now = new Date();
+    const earliestSafeStart = new Date(now.getTime() - STRIPE_CHECKOUT_PROVIDER_RETRY_WINDOW_MS);
     const [row] = await dbWrite
       .update(stripeCheckoutOrders)
-      .set({ status: "provider_started", updated_at: new Date() })
+      .set({
+        status: "provider_started",
+        provider_started_at: sql`COALESCE(${stripeCheckoutOrders.provider_started_at}, ${now})`,
+        updated_at: now,
+      })
       .where(
         and(
           eq(stripeCheckoutOrders.id, orderId),
-          inArray(stripeCheckoutOrders.status, ["quoted", "provider_ambiguous"]),
+          or(
+            eq(stripeCheckoutOrders.status, "quoted"),
+            and(
+              eq(stripeCheckoutOrders.status, "provider_ambiguous"),
+              gt(stripeCheckoutOrders.provider_started_at, earliestSafeStart),
+            ),
+          ),
         ),
       )
       .returning({ id: stripeCheckoutOrders.id });
     if (!row) {
       const existing = await this.get(orderId);
-      if (existing?.status === "provider_started") return;
+      if (
+        existing?.status === "provider_started" &&
+        existing.provider_started_at &&
+        existing.provider_started_at > earliestSafeStart
+      )
+        return;
+      if (existing?.status === "provider_started" || existing?.status === "provider_ambiguous") {
+        throw new StripeCheckoutAuthorityError(
+          "STRIPE_CHECKOUT_RECONCILIATION_REQUIRED",
+          "Checkout provider creation requires read-only reconciliation",
+          { checkoutOrderId: orderId },
+        );
+      }
       throw new StripeCheckoutAuthorityError(
         "STRIPE_CHECKOUT_PROVIDER_START_CONFLICT",
         "Checkout order is not available for provider creation",
