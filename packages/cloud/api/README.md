@@ -569,6 +569,52 @@ each environment:
 - Optional `ELIZA_MAPS_OPERATOR`, `ELIZA_MAPS_ATTRIBUTION` and
   `ELIZA_MAPS_PROVIDER_ID`.
 
+`ELIZA_MAPS_PROVIDER=google` serves the same contract from Google Maps
+Platform instead: Places API (New) text search and place details, Geocoding API
+geocode and reverse, Routes API `computeRoutes` (drive with live traffic, walk,
+bicycle, and transit on published timetables) and Map Tiles API 2D roadmap
+tiles. Ops provision:
+
+- Secret `GOOGLE_MAPS_API_KEY`: a server key restricted to those four APIs
+  (no application restriction usable from Workers; restrict by API). It goes
+  only in request headers or Google's own request URLs and never leaves Cloud.
+- Optional `ELIZA_MAPS_COVERAGE_JSON` (default: one `world` region),
+  `ELIZA_MAPS_LANGUAGE` (BCP-47, e.g. `en-US`), `ELIZA_MAPS_REGION` (CLDR,
+  e.g. `US`; tiles default to `en-US`/`US`), `ELIZA_MAPS_ROUTE_ALTERNATIVES`,
+  `ELIZA_MAPS_DATASET_REVISION` (default `google-maps-platform-live`),
+  `ELIZA_MAPS_PROVIDER_ID` (default `eliza-cloud-google`) and
+  `ELIZA_MAPS_ATTRIBUTION` (default `Google Maps`).
+- `ELIZA_MAPS_TILES=false` turns the tile proxy off; `ELIZA_MAPS_TRAFFIC=none`
+  drops live traffic (traffic-aware routes bill as Routes Pro);
+  `ELIZA_MAPS_TRANSIT=false` drops transit.
+
+`capabilities.traffic` is `live` and `capabilities.transit` is `scheduled`
+while those are on; `modes` then includes `transit`. Drive routes are requested
+`TRAFFIC_AWARE`, carry `traffic: "live"` and `staticDurationSeconds` (the
+free-flow time); walk, bicycle and transit routes carry `traffic: "none"`.
+Transit ride steps carry `transit` (`line`, `vehicle`, `headsign`, stops,
+times, `stopCount`, `color`). `POST routes` accepts an optional `departAt`
+(ISO 8601) for timetables and traffic prediction; a past departure for a
+traffic-aware drive is `400 invalid_request`. Search asks only for basic place
+fields (Text Search Pro); details adds website, phone and opening hours.
+
+`GET /api/v1/maps/tiles/{z}/{x}/{y}` returns one PNG roadmap tile
+(`Cache-Control: private, max-age=86400`) when the provider serves tiles;
+`capabilities.tiles` then gives the URL template, zoom range, tile size and
+the attribution a host must show on the map, and `capabilities.map` is `true`.
+`POST /api/v1/maps/tiles/viewport` with `{zoom, north, south, east, west}`
+returns `{providerId, copyright, maxZoom}`: the copyright for the visible area,
+which the host shows with the tiles (it is metadata like `capabilities`: it
+needs the subscription but no `Idempotency-Key` and consumes no allowance).
+plugin-maps' `createCloudMaps(..., { tileRequest })` and `MapPlane` with a
+`cloud-raster` basemap draw these tiles. Cloud creates the Map Tiles
+session once per isolate, key, language and region, renews it an hour before
+it expires and once more if Google refuses it. Tiles use the same
+authentication, subscription and durable admission as every Maps operation:
+one request unit and a unique `Idempotency-Key` per tile, so size the
+`ELIZA_CLOUD_MAPS_REQUEST_ALLOWANCES` plans for map browsing (a screen is
+roughly 12-20 tiles). Other providers answer `503 maps_not_configured`.
+
 `capabilities` also reports `sources` and a location `disclosure`: the services
 that receive a request's text and coordinates and their operator. Cloud records
 only the operation and result code. A self-hostable reference stack with TLS,
