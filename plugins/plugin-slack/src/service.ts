@@ -1599,12 +1599,14 @@ export class SlackService extends Service implements ISlackService {
       accountId,
     );
     if (!gate.allowed) return;
-    // Public/private mentions also arrive on app_mention. Arbitration happens
-    // after classification so a missing channel_type cannot create two lanes.
+    // Mentions in channels and group DMs also arrive on app_mention (Slack
+    // withholds it only in 1:1 DMs). Arbitration happens after classification
+    // so a missing channel_type cannot create two lanes.
     if (
       isMentioned &&
       (gate.conversationKind === "public_channel" ||
-        gate.conversationKind === "private_channel")
+        gate.conversationKind === "private_channel" ||
+        gate.conversationKind === "multi_party_direct_message")
     ) {
       return;
     }

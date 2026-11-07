@@ -703,6 +703,24 @@ describe("persisted Slack policy through Bolt handlers", () => {
     expect(harness.processAgentMessage).toHaveBeenCalledTimes(1);
   });
 
+  it("runs one turn for a group-DM mention that arrives as both message and app_mention", async () => {
+    const harness = await startHarness({
+      dm: { policy: "allowlist", allowFrom: [ALICE], groupEnabled: true },
+    });
+    const text = "<@U0BOTBOT0> status?";
+    // Slack sends app_mention in every conversation except a 1:1 DM, and the
+    // same post also arrives as message.mpim.
+    await harness.app.messageHandler?.({
+      message: message({ channel: MPIM, channel_type: "mpim", text }),
+      client: harness.app.client,
+    });
+    await harness.app.eventHandlers.get("app_mention")?.({
+      event: mention({ channel: MPIM, channel_type: "mpim", text }),
+      client: harness.app.client,
+    });
+    expect(harness.processAgentMessage).toHaveBeenCalledTimes(1);
+  });
+
   it("does not let a member_joined_channel event admit an unconfigured channel", async () => {
     const harness = await startHarness();
     const joined = harness.app.eventHandlers.get("member_joined_channel");
