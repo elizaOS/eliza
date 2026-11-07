@@ -574,6 +574,7 @@ export class DurableDraftController<Recovery = unknown> {
    * Persist and read back the current editor without claiming a send, clearing
    * text, resolving a conflict, or restoring a different copy. The host must
    * prevent further edits before using this result to stop its process.
+   * Pending writes from retired bindings must also settle and read back.
    * A changed binding, queued edit or in-flight send refuses that handoff.
    */
   async flush(current: () => boolean = () => true): Promise<void> {
