@@ -318,8 +318,14 @@ export function chunkMarkdownText(text: string, limit: number): string[] {
 			break;
 		}
 
+		// Inside a code block every character is content. Only a newline that the
+		// added close line already ends is skipped, so the next part keeps its
+		// indentation and blank lines.
 		const brokeOnSeparator =
-			breakIdx < remaining.length && /\s/.test(remaining[breakIdx]);
+			breakIdx < remaining.length &&
+			(fenceToSplit
+				? remaining[breakIdx] === "\n" && !rawChunk.endsWith("\n")
+				: /\s/.test(remaining[breakIdx]));
 		const nextStart = Math.min(
 			remaining.length,
 			breakIdx + (brokeOnSeparator ? 1 : 0),
