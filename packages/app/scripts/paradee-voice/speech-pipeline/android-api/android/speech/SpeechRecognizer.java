@@ -9,7 +9,9 @@ import java.util.concurrent.atomic.AtomicInteger;
 /**
  * Test double: a scripted recognition service. A support check answers the {@link #installed}
  * languages, or {@link #supportError}, or, while {@link #supportSilent}, keeps its callback in
- * {@link #pending} for the test to answer late. Error codes are the Android 36 values.
+ * {@link #pending} for the test to answer late. {@link #listening} is the last recognizer that
+ * started listening, with its listener and intent, for the test to answer. Error codes are the
+ * Android 36 values.
  */
 public class SpeechRecognizer {
     public static final String RESULTS_RECOGNITION = "results_recognition";
@@ -25,6 +27,13 @@ public class SpeechRecognizer {
     public static volatile boolean createThrows;
     public static volatile RecognitionSupportCallback pending;
     public static final AtomicInteger probes = new AtomicInteger();
+    public static final AtomicInteger created = new AtomicInteger();
+    public static volatile SpeechRecognizer listening;
+
+    public volatile RecognitionListener listener;
+    public volatile Intent intent;
+    public volatile boolean cancelled;
+    public volatile boolean destroyed;
 
     public static boolean isOnDeviceRecognitionAvailable(Context context) {
         return true;
@@ -32,6 +41,7 @@ public class SpeechRecognizer {
 
     public static SpeechRecognizer createOnDeviceSpeechRecognizer(Context context) {
         if (createThrows) throw new SecurityException("recognition service not bound");
+        created.incrementAndGet();
         return new SpeechRecognizer();
     }
 
@@ -48,11 +58,20 @@ public class SpeechRecognizer {
         }
     }
 
-    public void setRecognitionListener(RecognitionListener listener) {}
+    public void setRecognitionListener(RecognitionListener listener) {
+        this.listener = listener;
+    }
 
-    public void startListening(Intent intent) {}
+    public void startListening(Intent intent) {
+        this.intent = intent;
+        listening = this;
+    }
 
-    public void cancel() {}
+    public void cancel() {
+        cancelled = true;
+    }
 
-    public void destroy() {}
+    public void destroy() {
+        destroyed = true;
+    }
 }
