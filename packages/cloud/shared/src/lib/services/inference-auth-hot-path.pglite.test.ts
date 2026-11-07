@@ -10,7 +10,7 @@
  * Background work (`waitUntil`) runs only after the request returned and the
  * tripwire was disarmed.
  */
-import { BillingHoldActiveError } from "./billing-hold";
+
 import {
   afterAll,
   afterEach,
@@ -22,6 +22,7 @@ import {
 } from "bun:test";
 import { createHash } from "node:crypto";
 import { getTableConfig, type PgTable } from "drizzle-orm/pg-core";
+import { BillingHoldActiveError } from "./billing-hold";
 
 process.env.DATABASE_URL = "pglite://memory";
 process.env.NODE_ENV ||= "test";
@@ -452,11 +453,78 @@ describe("Worker inference auth never queries Postgres", () => {
   });
 });
 
+describe("Worker credential checks include cold gate routing", () => {
+  for (const allowed of [true, false]) {
+    test(`a cold gate reply remains authoritative when allowed=${allowed}`, async () => {
+      const key = await seedKey();
+      await seedPositiveEntry(key);
+      const bindings = {
+        INFERENCE_ADMISSION_GATES: {
+          getByName() {
+            return {
+              async fetch(request: Request) {
+                expect(new URL(request.url).pathname).toBe("/credential/check");
+                // Production routing took about two seconds before the gate
+                // handler ran; the authorization reply still decides the result.
+                await new Promise<void>((resolve, reject) => {
+                  const abort = () => {
+                    clearTimeout(timer);
+                    reject(request.signal.reason);
+                  };
+                  const timer = setTimeout(() => {
+                    request.signal.removeEventListener("abort", abort);
+                    resolve();
+                  }, 2_000);
+                  request.signal.addEventListener("abort", abort, { once: true });
+                  if (request.signal.aborted) abort();
+                });
+                return allowed
+                  ? Response.json({ allowed: true })
+                  : Response.json(
+                      { allowed: false, reason: "credential_revoked" },
+                      { status: 403 },
+                    );
+              },
+            };
+          },
+        },
+      };
+      const result = await workerRequest(key.rawKey, bindings);
+      expect(result.touches).toBe(0);
+      expect(result.resolution).toMatchObject(
+        allowed
+          ? { kind: "authorized" }
+          : { kind: "rejected", status: 401, reason: "credential_inactive" },
+      );
+      await settle(result);
+    });
+  }
+
+  test("an unresponsive gate still fails closed without a primary fallback", async () => {
+    const key = await seedKey();
+    await seedPositiveEntry(key);
+    const bindings = {
+      INFERENCE_ADMISSION_GATES: {
+        getByName: () => ({
+          fetch: (request: Request) =>
+            new Promise<Response>((_resolve, reject) => {
+              const abort = () => reject(request.signal.reason);
+              request.signal.addEventListener("abort", abort, { once: true });
+              if (request.signal.aborted) abort();
+            }),
+        }),
+      },
+    };
+    await expect(workerRequest(key.rawKey, bindings)).rejects.toMatchObject({
+      name: "InferenceCredentialRevocationUnavailableError",
+      statusCode: 503,
+    });
+    expect(primaryTouches).toBe(0);
+  }, 10_000);
+});
+
 describe("Worker billing admits from the snapshot and the organization gate only", () => {
-  const admit = async (
-    snapshot: InferenceAdmissionSnapshot,
-    gate: (path: string) => Response,
-  ) => {
+  const admit = async (snapshot: InferenceAdmissionSnapshot, gate: (path: string) => Response) => {
     const { admitOrganizationInference } = await import("./organization-inference-admission");
     return runWithCloudBindingsAsync(
       {
