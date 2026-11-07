@@ -846,8 +846,9 @@ export class CameraWeb extends WebPlugin {
           track.stop();
         });
         cameraStatus = "granted";
-      } catch {
-        // error-policy:J4 camera permission denied
+      } catch (error) {
+        // Only an explicit denial is a camera status; a missing or busy camera stays a failure.
+        if (cameraAccessDenied(error) !== "camera") throw error;
         cameraStatus = "denied";
       }
 

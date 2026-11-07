@@ -47,6 +47,60 @@ describe("camera-only access", () => {
   });
 });
 
+describe("combined camera and microphone access", () => {
+  const release = () => ({ getTracks: () => [{ stop: vi.fn() }] });
+
+  it("reports a camera denial only for an explicit denial", async () => {
+    const denied = new DOMException("denied", "NotAllowedError");
+    const getUserMedia = vi.fn(async () => {
+      throw denied;
+    });
+    vi.stubGlobal("navigator", { mediaDevices: { getUserMedia } });
+    expect(await new CameraWeb().requestPermissions()).toEqual({
+      camera: "denied",
+      microphone: "denied",
+      photos: "denied",
+    });
+  });
+
+  it.each([
+    [
+      "no camera",
+      new DOMException("Requested device not found", "NotFoundError"),
+    ],
+    [
+      "a camera busy in another app",
+      new DOMException("Could not start video source", "NotReadableError"),
+    ],
+  ])("preserves %s instead of reporting a denial", async (_label, failure) => {
+    const getUserMedia = vi.fn(async () => {
+      throw failure;
+    });
+    vi.stubGlobal("navigator", { mediaDevices: { getUserMedia } });
+    await expect(new CameraWeb().requestPermissions()).rejects.toBe(failure);
+  });
+
+  it("preserves a missing MediaDevices API instead of reporting a denial", async () => {
+    vi.stubGlobal("navigator", {});
+    await expect(new CameraWeb().requestPermissions()).rejects.toThrow(
+      "Camera media devices API is not available",
+    );
+  });
+
+  it("keeps a granted camera when only the microphone fails", async () => {
+    const noMicrophone = new DOMException("No microphone", "NotFoundError");
+    const getUserMedia = vi.fn(async (constraints: MediaStreamConstraints) => {
+      if (constraints.audio) throw noMicrophone;
+      return release();
+    });
+    vi.stubGlobal("navigator", { mediaDevices: { getUserMedia } });
+    expect(await new CameraWeb().requestPermissions()).toMatchObject({
+      camera: "granted",
+      photos: "granted",
+    });
+  });
+});
+
 describe("CameraWeb startPreview", () => {
   it("rejects a preview without a host element", async () => {
     // Native callers omit `element`, so the shared options type allows it;
